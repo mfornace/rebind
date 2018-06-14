@@ -10,7 +10,7 @@ namespace cpy {
 
 /******************************************************************************/
 
-using Value = std::variant<
+using Variant = std::variant<
     std::monostate,
     bool,
     std::size_t,
@@ -20,6 +20,26 @@ using Value = std::variant<
     std::string,
     std::string_view
 >;
+
+struct Value {
+    Variant var;
+
+    Value(std::monostate={});
+    Value(bool);
+    Value(std::size_t);
+    Value(std::ptrdiff_t);
+    Value(double);
+    Value(std::complex<double>);
+    Value(std::string);
+    Value(std::string_view);
+
+    Value & operator=(Value &&v);
+    Value & operator=(Value const &v);
+
+    Value(Value &&) noexcept;
+    Value(Value const &);
+    ~Value();
+};
 
 /*
  Add std::vector<>,              YES

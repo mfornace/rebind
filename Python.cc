@@ -6,6 +6,22 @@ namespace cpy {
 
 /******************************************************************************/
 
+Value & Value::operator=(Value const &v) {var = v.var; return *this;}
+Value & Value::operator=(Value &&v) {var = std::move(v.var); return *this;}
+Value::Value(Value &&v) noexcept : var(std::move(v.var)) {}
+Value::Value(Value const &v) : var(v.var) {}
+Value::Value(std::monostate v) : var(v) {}
+Value::Value(bool v) : var(v) {}
+Value::Value(std::size_t v) : var(v) {}
+Value::Value(std::ptrdiff_t v) : var(v) {}
+Value::Value(double v) : var(v) {}
+Value::Value(std::complex<double> v) : var(v) {}
+Value::Value(std::string v) : var(std::move(v)) {}
+Value::Value(std::string_view v) : var(std::move(v)) {}
+Value::~Value() {}
+
+/******************************************************************************/
+
 Suite &default_suite() {
     static Suite suite;
     return suite;
@@ -106,7 +122,7 @@ PyObject *to_python(std::wstring_view const &s) noexcept {
 }
 
 PyObject *to_python(Value const &s) noexcept {
-    return std::visit([](auto const &x) {return to_python(x);}, s);
+    return std::visit([](auto const &x) {return to_python(x);}, s.var);
 }
 
 /******************************************************************************/
@@ -291,5 +307,6 @@ PyMODINIT_FUNC PyInit_cpy(void) {
 }
 
 /******************************************************************************/
+
 
 }

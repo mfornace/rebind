@@ -21,12 +21,12 @@ struct CastVariant {
 
 template <std::size_t I, class T>
 T cast_index(ArgPack &v, IndexedType<I, T>) {
-    return std::visit(CastVariant<T>(), v[I - 2]);
+    return std::visit(CastVariant<T>(), v[I - 2].var);
 }
 
 template <std::size_t I, class T>
 bool check_cast_index(ArgPack &v, IndexedType<I, T>) {
-    return std::visit([](auto const &x) {return CastVariant<T>().check(x);}, v[I - 2]);
+    return std::visit([](auto const &x) {return CastVariant<T>().check(x);}, v[I - 2].var);
 }
 
 /******************************************************************************/
