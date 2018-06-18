@@ -70,8 +70,8 @@ struct AddKeyPairs<Glue<K, V>> {
 /******************************************************************************/
 
 struct FileLine {
-    int line;
-    char const *file;
+    int line = 0;
+    char const *file = nullptr;
 };
 
 inline auto file_and_line(char const *s, int i) {return FileLine{i, s};}

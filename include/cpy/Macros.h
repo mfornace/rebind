@@ -13,7 +13,7 @@
 #endif
 
 #ifndef COMMENT
-#   define COMMENT(STRING) ::cpy::comment(STRING, __FILE__, __LINE__)
+#   define COMMENT(...) ::cpy::comment(__VA_ARGS__ "", __FILE__, __LINE__)
 #endif
 
 
@@ -22,5 +22,5 @@
 
     #define UNIT_TEST_CAT(s1, s2) UNIT_TEST_CAT_IMPL(s1, s2)
 
-    #define UNIT_TEST(NAME) static auto UNIT_TEST_CAT(anonymous_test_, __COUNTER__) = ::cpy::AnonymousClosure{NAME, __FILE__, __LINE__}
+    #define UNIT_TEST(NAME, ...) static auto UNIT_TEST_CAT(anonymous_test_, __COUNTER__) = ::cpy::AnonymousClosure{NAME, COMMENT(__VA_ARGS__)}
 #endif

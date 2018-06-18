@@ -66,16 +66,34 @@ struct TestAdaptor {
 
 /******************************************************************************/
 
+struct TestCaseComment {
+    std::string comment;
+    FileLine location;
+    TestCaseComment() = default;
+
+    template <class T>
+    TestCaseComment(Comment<T> c)
+        : comment(std::move(c.comment)), location(std::move(c.location)) {}
+};
+
+struct TestCase {
+    std::string name;
+    TestCaseComment comment;
+    std::function<bool(Context, ArgPack)> function;
+};
+
 struct Suite {
-    std::vector<std::pair<std::string, std::function<bool(Context, ArgPack)>>> cases;
+    std::vector<TestCase> cases;
 
     template <class F>
-    void operator()(std::string name, F const &f) {
-        cases.emplace_back(std::move(name), TestAdaptor<F>{f});
+    void operator()(std::string name, TestCaseComment c, F const &f) {
+        cases.emplace_back(TestCase{std::move(name), std::move(c), TestAdaptor<F>{f}});
     }
 };
 
 Suite & default_suite();
+
+/******************************************************************************/
 
 template <class String, class F>
 struct UnitTest {
@@ -84,26 +102,39 @@ struct UnitTest {
 };
 
 template <class N, class F>
-constexpr UnitTest<N, F> unit_test(N name, F const &f) {
-    default_suite()(name, f);
+UnitTest<N, F> unit_test(N name, F const &f) {
+    default_suite()(name, TestCaseComment(), f);
     return {std::move(name), f};
 }
 
 template <class N, class F>
-constexpr bool anonymous_test(N &&name, F &&function) {
-    default_suite()(static_cast<N &&>(name), static_cast<F &&>(function));
+UnitTest<N, F> unit_test(N name, TestCaseComment comment, F const &f) {
+    default_suite()(name, std::move(comment), f);
+    return {std::move(name), f};
+}
+
+/******************************************************************************/
+
+template <class N, class F>
+bool anonymous_test(N &&name, F &&function) {
+    default_suite()(static_cast<N &&>(name), TestCaseComment(), static_cast<F &&>(function));
+    return true;
+}
+
+template <class N, class F>
+bool anonymous_test(N &&name, TestCaseComment comment, F &&function) {
+    default_suite()(static_cast<N &&>(name), std::move(comment), static_cast<F &&>(function));
     return true;
 }
 
 struct AnonymousClosure {
     std::string const &name;
-    int line;
-    char const *file;
+    TestCaseComment comment;
 
-    AnonymousClosure(std::string const &s, char const *f, int l) : name(s), file(f), line(l) {}
+    AnonymousClosure(std::string const &s, TestCaseComment c) : name(s), comment(std::move(c)) {}
 
     template <class F>
-    constexpr bool operator=(F const &f) {return anonymous_test(name, f);}
+    constexpr bool operator=(F const &f) {return anonymous_test(name, comment, f);}
 };
 
 /******************************************************************************/

@@ -79,7 +79,8 @@ struct Context {
             (void) std::initializer_list<bool>{(info(static_cast<Ts &&>(ts)), false)...};
             handlers[e](e, scopes, std::move(logs));
         }
-        if (counters && e < counters->size()) ++(*counters)[e];
+        if (counters && e < counters->size())
+            (*counters)[e].fetch_add(1u, std::memory_order_relaxed);
         logs.clear();
     }
 

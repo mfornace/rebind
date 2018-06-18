@@ -33,11 +33,11 @@ struct Value {
     Value(std::string);
     Value(std::string_view);
 
-    Value & operator=(Value &&v);
-    Value & operator=(Value const &v);
+    Value & operator=(Value &&v) noexcept;
+    Value & operator=(Value const &v) noexcept;
 
     Value(Value &&) noexcept;
-    Value(Value const &);
+    Value(Value const &) noexcept;
     ~Value();
 };
 

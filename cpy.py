@@ -4,6 +4,8 @@ except ImportError:
     def colored(s, *args, **kwargs):
         return s
 
+from contextlib import ExitStack
+
 Events = [
     colored('Failure:',   'red'),
     colored('Success:',   'green'),
@@ -24,27 +26,53 @@ def find(key, keys, values, default=None):
 ################################################################################
 
 class ConsoleHandler:
-    def __init__(self, file, footer='\n', indent='    ', format_scope=None):
-        self.count = 0
-        self.footer = footer
+    def __init__(self, file, info, **kwargs):
+        self.file = file
+        self.file.write('Compiler info: {} ({}, {})\n'.format(*info))
+        self.kwargs = kwargs
+
+    def __call__(self, index, info):
+        return ConsoleTestHandler(index, info, self.file, **self.kwargs)
+
+    def __enter__(self):
+        return self
+
+    def finalize(self, counts):
+        s = '=' * 80 + '\nTotal counts:\n'
+
+        spacing = max(map(len, Events))
+        for e, c in zip(Events, counts):
+            s += '    {} {}\n'.format(e.ljust(spacing), c)
+        self.file.write(s)
+
+    def __exit__(self, value, cls, traceback):
+        self.file.write('=' * 80 + '\n')
+
+################################################################################
+
+class ConsoleTestHandler:
+    def __init__(self, index, info, file, footer='\n', indent='    ', format_scope=None):
         if format_scope is None:
             self.format_scope = lambda s: repr('.'.join(s))
         else:
             self.format_scope = format_scope
-        self.file = file
+        self.footer = footer
         self.indent = indent
+        self.index = index
+        self.info = info
+        self.file = file
 
     def __call__(self, event, scopes, logs):
-        self.count += 1
         keys, values = map(list, zip(*logs))
-        line, file = (find(k, keys, values) for k in ('line', 'file'))
+        line, path = (find(k, keys, values) for k in ('line', 'file'))
+        scopes = self.format_scope(scopes)
 
         # first line
-        if file is None:
-            s = '{} {}\n'.format(Events[event], self.format_scope(scopes))
+        if path is None:
+            s = '{} {}\n'.format(Events[event], scopes)
         else:
-            desc = '({})'.format(file) if line is None else '({}:{})'.format(file, line)
-            s = '{} {} {}\n'.format(Events[event], self.format_scope(scopes), desc)
+            desc = '({})'.format(path) if line is None else '({}:{})'.format(path, line)
+            s = '{} {} {}\n'.format(Events[event], scopes, desc)
 
         # comments
         while 'comment' in keys:
@@ -67,26 +95,68 @@ class ConsoleHandler:
         self.file.write(s)
         self.file.flush()
 
+    def finalize(self, counts):
+        if any(counts):
+            s = ', '.join('%s %d' % (e, c) for e, c in zip(Events, counts) if c)
+            self.file.write('Test counts: {%s}\n' % s)
+
+    def __enter__(self):
+        if self.info[1]:
+            info = repr(self.info[0]) + ' (%s:%d): ' % self.info[1:3] + repr(self.info[3])
+        else:
+            info = repr(self.info[0])
+        self.file.write('=' * 80 +
+            colored('\nTest %d: ' % self.index, 'blue', attrs=['bold']) + info + '\n\n')
+        self.file.flush()
+        return self
+
+    def __exit__(self, value, cls, traceback):
+        pass
+
 ################################################################################
 
-def go(lib, file, indices, handlers):
-    counts = [0] * len(Events)
+class MultiHandler:
+    def __init__(self, handlers):
+        self.handlers = handlers
+
+    def __call__(self, index, scopes, logs):
+        for h in self.handlers:
+            h(index, scopes, logs)
+
+def multihandler(*handlers):
+    if not handlers:
+        return None
+    if len(handlers) == 1:
+        return handlers[0]
+    return MultiHandler(handlers)
+
+################################################################################
+
+def run_test(lib, index, test_masks):
+    lists = [[] for _ in Events]
+    with ExitStack() as stack:
+        for h, mask in test_masks:
+            stack.enter_context(h)
+            for m, l in zip(mask, lists):
+                if m:
+                    l.append(h)
+        handlers = [multihandler(*l) for l in lists]
+        return lib.run_test(index, handlers, (), True, True)
+
+def go(lib, file, indices, suite_masks):
+    totals = [0] * len(Events)
 
     for i in indices:
-        file.write('=' * 80 +
-                   colored('\nTest %d: ' % i, 'blue', attrs=['bold']) +
-                   repr(lib.test_name(i)) + '\n\n')
-        file.flush()
-        counts = [x + y for x, y in zip(counts, lib.run_test(i, handlers))]
+        info = lib.test_info(i)
+        with ExitStack() as stack:
+            test_masks = [(h(i, info), m) for h, m in suite_masks]
+            counts, out, err = run_test(lib, i, test_masks)
+            totals = [x + y for x, y in zip(totals, counts)]
+            for h, _ in test_masks:
+                h.finalize(counts)
 
-    s = '=' * 80 + '\nTotal counts:\n'
-
-    spacing = max(map(len, Events))
-    for e, c in zip(Events, counts):
-        s += '    {} {}\n'.format(e.ljust(spacing), c)
-
-    file.write(s + '\n')
-    file.flush()
+    for h, _ in suite_masks:
+        h.finalize(totals)
 
 ################################################################################
 
@@ -122,14 +192,15 @@ def main(args):
     else:
         indices = tuple(range(lib.n_tests()))
 
-    flags = (args.failure, args.success, args.exception, args.timing)
+    mask = (args.failure, args.success, args.exception, args.timing)
 
-    run = lambda o: go(lib, o, indices, [ConsoleHandler(o) if f else None for f in flags])
-    if args.output in ('stderr', 'stdout'):
-        run(getattr(sys, args.output))
-    else:
-        with open(args.output, args.output_mode) as o:
-            run(o)
+    with ExitStack() as stack:
+        if args.output in ('stderr', 'stdout'):
+            o = getattr(sys, args.output)
+        else:
+            o = stack.enter_context(open(args.output, args.output_mode))
+        console = stack.enter_context(ConsoleHandler(o, lib.compile_info()))
+        go(lib, o, indices, [(console, mask)])
 
 
 if __name__ == '__main__':
