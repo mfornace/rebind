@@ -1,6 +1,4 @@
 from .common import events, run_test, ExitStack
-from .console import ConsoleHandler
-from .junit import XMLFileHandler
 from io import StringIO
 
 def go(lib, indices, suite_masks):
@@ -34,9 +32,26 @@ def parser():
     out.add_argument('--success',     '-s', action='store_true', help='show successes')
     out.add_argument('--exception',   '-e', action='store_true', help='show exceptions (also enabled if --failure)')
     out.add_argument('--timing',      '-t', action='store_true', help='show timings')
-    out.add_argument('--xml',         '-x', type=str, default='', help='XML file path')
+    out.add_argument('--xml',               type=str, default='', help='XML file path')
+    out.add_argument('--teamcity',          type=str, default='', help='XML file path')
+    out.add_argument('--regex',       '-r', type=str, default='', help='include test names matching a given regex')
     out.add_argument('tests', type=str, default=[], nargs='*', help='test names (if not given, run all tests)')
     return out
+
+################################################################################
+
+def find_tests(lib, tests, regex):
+    if tests:
+        indices = [lib.find_test(t) for t in tests]
+    elif not regex:
+        indices = list(range(lib.n_tests()))
+
+    if regex:
+        import re
+        pattern = re.compile(regex)
+        indices += [i for i, t in enumerate(lib.test_names()) if pattern.match(t)]
+
+    return sorted(set(indices))
 
 ################################################################################
 
@@ -47,14 +62,11 @@ def main(args):
 
     args.exception = args.exception or args.timing
 
-    if args.list:
-        print(*lib.test_names(), sep='\n')
-        return
+    indices = find_tests(lib, args.tests, args.regex)
 
-    if args.tests:
-        indices = tuple(lib.find_test(t) for t in args.tests)
-    else:
-        indices = tuple(range(lib.n_tests()))
+    if args.list:
+        print('\n'.join(lib.test_info(i)[0] for i in indices))
+        return
 
     mask = (args.failure, args.success, args.exception, args.timing)
     info = lib.compile_info()
@@ -62,6 +74,7 @@ def main(args):
     with ExitStack() as stack:
         masks = []
         if not args.quiet:
+            from .console import ConsoleHandler
             if args.output in ('stderr', 'stdout'):
                 o = getattr(sys, args.output)
             else:
@@ -69,8 +82,14 @@ def main(args):
             masks.append((stack.enter_context(ConsoleHandler(o, info)), mask))
 
         if args.xml:
+            from .junit import XMLFileHandler
             o = stack.enter_context(open(args.xml, 'wb'))
-            masks.append((stack.enter_context(XMLFileHandler(o, info)), mask))
+            masks.append((stack.enter_context(XMLFileHandler(o, info)), (1, 0, 1, 0)))
+
+        if args.teamcity:
+            from .teamcity import TeamCityHandler
+            o = stack.enter_context(open(args.teamcity, 'w'))
+            masks.append((stack.enter_context(TeamCityHandler(o, info)), (1, 0, 1, 0)))
 
         go(lib, indices, masks)
 

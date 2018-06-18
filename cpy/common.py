@@ -1,8 +1,10 @@
+def colored_dummy(s, *args, **kwargs):
+    return s
+
 try:
     from termcolor import colored
 except ImportError:
-    def colored(s, *args, **kwargs):
-        return s
+    colored = colored_dummy
 
 from contextlib import ExitStack
 
