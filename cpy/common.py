@@ -7,11 +7,21 @@ except ImportError:
 from contextlib import ExitStack
 
 Events = [
-    colored('Failure:',   'red'),
-    colored('Success:',   'green'),
-    colored('Exception:', 'red'),
-    colored('Timing:',    'yellow'),
+    'Failure',
+    'Success',
+    'Exception',
+    'Timing',
 ]
+
+ColoredEvents = [
+    colored('Failure',   'red'),
+    colored('Success',   'green'),
+    colored('Exception', 'red'),
+    colored('Timing',    'yellow')
+]
+
+def events(color=False):
+    return ColoredEvents if color else Events
 
 ################################################################################
 
@@ -43,7 +53,7 @@ def multihandler(*handlers):
 ################################################################################
 
 def run_test(lib, index, test_masks):
-    lists = [[] for _ in Events]
+    lists = [[] for _ in events()]
     with ExitStack() as stack:
         for h, mask in test_masks:
             stack.enter_context(h)
@@ -52,3 +62,36 @@ def run_test(lib, index, test_masks):
                     l.append(h)
         handlers = [multihandler(*l) for l in lists]
         return lib.run_test(index, handlers, (), True, True)
+
+################################################################################
+
+def readable_message(kind, scopes, logs, indent='    ', format_scope=None):
+    keys, values = map(list, zip(*logs))
+    line, path = (find(k, keys, values) for k in ('line', 'file'))
+    scopes = repr('.'.join(scopes)) if format_scope is None else format_scope(scopes)
+
+    # first line
+    if path is None:
+        s = '{}: {}\n'.format(kind, scopes)
+    else:
+        desc = '({})'.format(path) if line is None else '({}:{})'.format(path, line)
+        s = '{}: {} {}\n'.format(kind, scopes, desc)
+
+    # comments
+    while 'comment' in keys:
+        s += '{}comment: {}\n'.format(indent, repr(find('comment', keys, values)))
+
+    # comparisons
+    comp = ('lhs', 'op', 'rhs')
+    while all(c in keys for c in comp):
+        lhs, op, rhs = (find(k, keys, values) for k in comp)
+        s += indent + 'required: {} {} {}\n'.format(lhs, op, rhs)
+
+    # all other logged keys and values
+    for k, v in zip(keys, values):
+        if k:
+            s += indent + '{}: {}\n'.format(k, repr(v))
+        else:
+            s += indent + '{}\n'.format(repr(v))
+
+    return s

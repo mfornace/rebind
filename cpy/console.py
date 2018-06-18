@@ -1,4 +1,4 @@
-from .common import Events, colored, find
+from .common import events, colored, readable_message
 
 ################################################################################
 
@@ -14,12 +14,12 @@ class ConsoleHandler:
     def __enter__(self):
         return self
 
-    def finalize(self, counts):
+    def finalize(self, counts, out, err):
         s = '=' * 80 + '\nTotal counts:\n'
 
-        spacing = max(map(len, Events))
-        for e, c in zip(Events, counts):
-            s += '    {} {}\n'.format(e.ljust(spacing), c)
+        spacing = max(map(len, events(True))) + 1
+        for e, c in zip(events(True), counts):
+            s += '    {} {}\n'.format((e + ':').ljust(spacing), c)
         self.file.write(s)
 
     def __exit__(self, value, cls, traceback):
@@ -29,10 +29,7 @@ class ConsoleHandler:
 
 class ConsoleTestHandler:
     def __init__(self, index, info, file, footer='\n', indent='    ', format_scope=None):
-        if format_scope is None:
-            self.format_scope = lambda s: repr('.'.join(s))
-        else:
-            self.format_scope = format_scope
+        self.format_scope = format_scope
         self.footer = footer
         self.indent = indent
         self.index = index
@@ -40,50 +37,23 @@ class ConsoleTestHandler:
         self.file = file
 
     def __call__(self, event, scopes, logs):
-        keys, values = map(list, zip(*logs))
-        line, path = (find(k, keys, values) for k in ('line', 'file'))
-        scopes = self.format_scope(scopes)
-
-        # first line
-        if path is None:
-            s = '{} {}\n'.format(Events[event], scopes)
-        else:
-            desc = '({})'.format(path) if line is None else '({}:{})'.format(path, line)
-            s = '{} {} {}\n'.format(Events[event], scopes, desc)
-
-        # comments
-        while 'comment' in keys:
-            s += '{}comment: {}\n'.format(self.indent, repr(find('comment', keys, values)))
-
-        # comparisons
-        comp = ('lhs', 'op', 'rhs')
-        while all(c in keys for c in comp):
-            lhs, op, rhs = (find(k, keys, values) for k in comp)
-            s += self.indent + 'required: {} {} {}\n'.format(lhs, op, rhs)
-
-        # all other logged keys and values
-        for k, v in zip(keys, values):
-            if k:
-                s += self.indent + '{}: {}\n'.format(k, repr(v))
-            else:
-                s += self.indent + '{}\n'.format(repr(v))
-
-        s += self.footer
-        self.file.write(s)
+        self.file.write(readable_message(events(True)[event], scopes, logs, self.indent, self.format_scope))
+        self.file.write(self.footer)
         self.file.flush()
 
-    def finalize(self, counts):
+    def finalize(self, counts, out, err):
         if any(counts):
-            s = ', '.join('%s %d' % (e, c) for e, c in zip(Events, counts) if c)
-            self.file.write('Test counts: {%s}\n' % s)
+            s = ', '.join('%s: %d' % (e, c) for e, c in zip(events(True), counts) if c)
+            self.file.write('Counts for test %d: {%s}\n' % (self.index, s))
 
     def __enter__(self):
         if self.info[1]:
             info = repr(self.info[0]) + ' (%s:%d): ' % self.info[1:3] + repr(self.info[3])
         else:
             info = repr(self.info[0])
-        self.file.write('=' * 80 +
-            colored('\nTest %d: ' % self.index, 'blue', attrs=['bold']) + info + '\n\n')
+        self.file.write('=' * 80)
+        self.file.write(colored('\nTest %d' % self.index, 'blue', attrs=['bold']))
+        self.file.write(': {}\n\n'.format(info))
         self.file.flush()
         return self
 
