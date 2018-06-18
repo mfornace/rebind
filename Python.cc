@@ -364,7 +364,7 @@ static PyMethodDef cpy_methods[] = {
 
 static struct PyModuleDef cpy_definition = {
     PyModuleDef_HEAD_INIT,
-    "cpy_test",
+    "libcpy",
     "A Python module to run C++ unit tests",
     -1,
     cpy_methods
@@ -372,7 +372,7 @@ static struct PyModuleDef cpy_definition = {
 
 /******************************************************************************/
 
-PyMODINIT_FUNC PyInit_cpy(void) {
+PyMODINIT_FUNC PyInit_libcpy(void) {
     Py_Initialize();
     return PyModule_Create(&cpy_definition);
 }
