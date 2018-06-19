@@ -4,14 +4,14 @@ import time, datetime
 
 ################################################################################
 
-class TeamCityHandler:
+class TeamCityReport:
     def __init__(self, file, info, **kwargs):
         self.messages = TeamcityServiceMessages(file)
         self.messages.message('compile-info', name=info[0], date=info[1], time=info[2])
         self.time = time.time()
 
     def __call__(self, index, info):
-        return TeamCityTestHandler(self.messages, info[0])
+        return TeamCityTestReport(self.messages, info[0])
 
     def __enter__(self):
         self.messages.testSuiteStarted('default-suite')
@@ -26,7 +26,7 @@ class TeamCityHandler:
 
 ################################################################################
 
-class TeamCityTestHandler:
+class TeamCityTestReport:
     def __init__(self, messages, name):
         self.messages = messages
         self.name = name

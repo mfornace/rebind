@@ -2,14 +2,14 @@ from .common import events, colored, readable_message
 
 ################################################################################
 
-class ConsoleHandler:
+class ConsoleReport:
     def __init__(self, file, info, **kwargs):
         self.file = file
         self.file.write('Compiler info: {} ({}, {})\n'.format(*info))
         self.kwargs = kwargs
 
     def __call__(self, index, info):
-        return ConsoleTestHandler(index, info, self.file, **self.kwargs)
+        return ConsoleTestReport(index, info, self.file, **self.kwargs)
 
     def __enter__(self):
         return self
@@ -27,7 +27,7 @@ class ConsoleHandler:
 
 ################################################################################
 
-class ConsoleTestHandler:
+class ConsoleTestReport:
     def __init__(self, index, info, file, indent='    ', format_scope=None):
         self.format_scope = format_scope
         self.indent = indent

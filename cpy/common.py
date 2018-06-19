@@ -37,33 +37,33 @@ def pop_value(key, keys, values, default=None):
 
 ################################################################################
 
-class MultiHandler:
-    def __init__(self, handlers):
-        self.handlers = handlers
+class MultiReport:
+    def __init__(self, reports):
+        self.reports = reports
 
     def __call__(self, index, scopes, logs):
-        for h in self.handlers:
-            h(index, scopes, logs)
+        for r in self.reports:
+            r(index, scopes, logs)
 
-def multihandler(*handlers):
-    if not handlers:
+def multireport(*reports):
+    if not reports:
         return None
-    if len(handlers) == 1:
-        return handlers[0]
-    return MultiHandler(handlers)
+    if len(reports) == 1:
+        return reports[0]
+    return MultiReport(reports)
 
 ################################################################################
 
-def run_test(lib, index, test_masks, *, cout=False, cerr=False):
+def run_test(lib, index, test_masks, *, gil=False, cout=False, cerr=False):
     lists = [[] for _ in events()]
     with ExitStack() as stack:
-        for h, mask in test_masks:
-            stack.enter_context(h)
+        for r, mask in test_masks:
+            stack.enter_context(r)
             for m, l in zip(mask, lists):
                 if m:
-                    l.append(h)
-        handlers = [multihandler(*l) for l in lists]
-        return lib.run_test(index, handlers, (), cout, cerr)
+                    l.append(r)
+        reports = [multireport(*l) for l in lists]
+        return lib.run_test(index, reports, (), gil, cout, cerr)
 
 ################################################################################
 

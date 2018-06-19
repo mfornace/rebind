@@ -39,16 +39,25 @@ struct Object {
     PyObject *ptr = nullptr;
     explicit Object(PyObject *o, bool incref) : ptr(o) {if (incref) Py_INCREF(ptr);}
     Object(Object const &o) : ptr(o.ptr) {Py_XINCREF(ptr);}
-    Object(Object &&o) : ptr(std::exchange(o.ptr, nullptr)) {}
+    Object(Object &&o) noexcept : ptr(std::exchange(o.ptr, nullptr)) {}
     ~Object() {Py_XDECREF(ptr);}
 };
 
+/// RAII release of Python GIL
 struct ReleaseGIL {
-    PyThreadState *state;
-    ReleaseGIL() : state(PyEval_SaveThread()) {}
-    ReleaseGIL(ReleaseGIL &&g) : state(std::exchange(g.state, nullptr)) {}
-    ReleaseGIL(ReleaseGIL const &) = delete;
+    PyThreadState * state;
+    std::mutex mutex;
+    ReleaseGIL(bool no_gil) : state(no_gil ? PyEval_SaveThread() : nullptr) {}
+    void acquire() noexcept {if (state) {mutex.lock(); PyEval_RestoreThread(state);}}
+    void release() noexcept {if (state) {state = PyEval_SaveThread(); mutex.unlock();}}
     ~ReleaseGIL() {if (state) PyEval_RestoreThread(state);}
+};
+
+/// RAII reacquisition of Python GIL
+struct AcquireGIL {
+    ReleaseGIL * const lock; //< ReleaseGIL object; can be nullptr
+    AcquireGIL(ReleaseGIL *u) : lock(u) {if (lock) lock->acquire();}
+    ~AcquireGIL() {if (lock) lock->release();}
 };
 
 /******************************************************************************/
@@ -159,11 +168,13 @@ PyObject *to_python(std::vector<T> const &v, F const &f={}) noexcept {
 
 /******************************************************************************/
 
-struct PyHandler {
+struct PyCallback {
     Object object;
+    ReleaseGIL *unlock = nullptr;
 
     bool operator()(Event event, Scopes const &scopes, Logs &&logs) noexcept {
         if (!object.ptr) return false;
+        AcquireGIL lk(unlock); // reacquire the GIL (if it was released)
 
         PyObject *pyevent = to_python(static_cast<std::size_t>(event));
         if (!pyevent) return false;
@@ -199,6 +210,7 @@ bool build_vector(V &v, PyObject *iterable, F &&f) {
 
 /******************************************************************************/
 
+/// RAII acquisition of cout or cerr given a mutex
 struct RedirectStream {
     std::streambuf *buf;
     std::ostream &os;
@@ -220,7 +232,7 @@ std::mutex cout_mutex, cerr_mutex;
 
 /******************************************************************************/
 
-PyObject *run_test(Py_ssize_t i, PyObject *pyhandlers, PyObject *pypack) {
+PyObject *run_test(bool no_gil, Py_ssize_t i, PyObject *pycalls, PyObject *pypack) {
     auto const &suite = cpy::default_suite();
 
     if (i >= suite.cases.size()) {
@@ -228,10 +240,10 @@ PyObject *run_test(Py_ssize_t i, PyObject *pyhandlers, PyObject *pypack) {
         return nullptr;
     };
 
-    std::vector<cpy::Handler> handlers;
-    if (!cpy::build_vector(handlers, pyhandlers, [](cpy::Object &&o) -> cpy::Handler {
+    std::vector<cpy::Callback> callbacks;
+    if (!cpy::build_vector(callbacks, pycalls, [](cpy::Object &&o) -> cpy::Callback {
         if (o.ptr == Py_None) return {};
-        return cpy::PyHandler{std::move(o)};
+        return cpy::PyCallback{std::move(o)};
     })) {return nullptr;}
 
     cpy::ArgPack pack;
@@ -244,11 +256,17 @@ PyObject *run_test(Py_ssize_t i, PyObject *pyhandlers, PyObject *pypack) {
         }) || !ok) return nullptr;
     }
 
-    std::vector<cpy::Counter> counters(handlers.size());
-    for (auto &c : counters) c.store(0u);
+    std::vector<cpy::Counter> counters(callbacks.size());
+    {
+        ReleaseGIL lk(no_gil);
+        if (no_gil) for (auto &c : callbacks)
+            if (c) c.target<cpy::PyCallback>()->unlock = &lk;
 
-    cpy::Context ctx({suite.cases[i].name}, std::move(handlers), &counters);
-    ok = suite.cases[i].function(std::move(ctx), std::move(pack));
+        for (auto &c : counters) c.store(0u);
+
+        cpy::Context ctx({suite.cases[i].name}, std::move(callbacks), &counters);
+        ok = suite.cases[i].function(std::move(ctx), std::move(pack));
+    }
 
     if (ok) return cpy::to_python(counters, [](auto const &c) {return c.load();});
     PyErr_SetString(PyExc_TypeError, "Invalid unit test argument types");
@@ -263,25 +281,22 @@ extern "C" {
 
 static PyObject *cpy_run_test(PyObject *self, PyObject *args) {
     Py_ssize_t i;
-    PyObject *pyhandlers;
-    PyObject *pypack = nullptr;
-    PyObject *cout = nullptr;
-    PyObject *cerr = nullptr;
-    PyObject *counts;
+    PyObject *pycalls, *pypack, *cout, *cerr, *counts, *gil;
     std::stringstream out, err;
-    if (!PyArg_ParseTuple(args, "nOOOO", &i, &pyhandlers, &pypack, &cout, &cerr)) return nullptr;
-
+    if (!PyArg_ParseTuple(args, "nOOOOO", &i, &pycalls, &pypack, &gil, &cout, &cerr))
+        return nullptr;
+    bool const no_gil = PyObject_Not(gil);
     if (cout && PyObject_IsTrue(cout)) {
         cpy::RedirectStream o(out.rdbuf(), std::cout, cpy::cout_mutex);
         if (cerr && PyObject_IsTrue(cerr)) {
             cpy::RedirectStream e(err.rdbuf(), std::cerr, cpy::cerr_mutex);
-            counts = cpy::run_test(i, pyhandlers, pypack);
-        } else counts = cpy::run_test(i, pyhandlers, pypack);
+            counts = cpy::run_test(no_gil, i, pycalls, pypack);
+        } else counts = cpy::run_test(no_gil, i, pycalls, pypack);
     } else {
         if (cerr && PyObject_IsTrue(cerr)) {
             cpy::RedirectStream e(err.rdbuf(), std::cerr, cpy::cerr_mutex);
-            counts = cpy::run_test(i, pyhandlers, pypack);
-        } else counts = cpy::run_test(i, pyhandlers, pypack);
+            counts = cpy::run_test(no_gil, i, pycalls, pypack);
+        } else counts = cpy::run_test(no_gil, i, pycalls, pypack);
     }
     if (!counts) return nullptr;
     PyObject *pyout = cpy::to_python(out.str());
@@ -300,12 +315,11 @@ static PyObject *cpy_n_tests(PyObject *, PyObject *) {
 
 static PyObject *cpy_compile_info(PyObject *, PyObject *) {
     return PyTuple_Pack(3u,
-        cpy::to_python(__VERSION__),
-        cpy::to_python(__DATE__),
-        cpy::to_python(__TIME__)
+        cpy::to_python(__VERSION__ ""),
+        cpy::to_python(__DATE__ ""),
+        cpy::to_python(__TIME__ "")
     );
 }
-
 
 /******************************************************************************/
 

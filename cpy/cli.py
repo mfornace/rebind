@@ -1,14 +1,14 @@
 from .common import events, run_test, ExitStack
 from io import StringIO
 
-def go(lib, indices, suite_masks, cout, cerr):
+def go(lib, indices, suite_masks, gil, cout, cerr):
     totals = [0] * len(events())
     stdout, stderr = StringIO(), StringIO()
 
     for i in indices:
         info = lib.test_info(i)
         test_masks = [(h(i, info), m) for h, m in suite_masks]
-        counts, out, err = run_test(lib, i, test_masks, cout=cout, cerr=cerr)
+        counts, out, err = run_test(lib, i, test_masks, gil=gil, cout=cout, cerr=cerr)
         stdout.write(out)
         stderr.write(err)
         totals = [x + y for x, y in zip(totals, counts)]
@@ -31,6 +31,7 @@ def parser():
     out.add_argument('--list',        '-l', action='store_true', help='list all test names')
     out.add_argument('--quiet',       '-q', action='store_true', help='no command line output')
     out.add_argument('--capture',     '-c', action='store_true', help='capture std::cerr and std::cout')
+    out.add_argument('--gil',         '-g', action='store_true', help='keep Python interpeter lock on')
 
     out.add_argument('--output',      '-o', type=str, default='stdout', help='output file')
     out.add_argument('--output-mode', '-m', type=str, default='w', help='output file open mode')
@@ -83,21 +84,21 @@ def main(args):
     with ExitStack() as stack:
         masks = []
         if not args.quiet:
-            from .console import ConsoleHandler
-            h = ConsoleHandler(open_file(stack, args.output, args.output_mode), info)
+            from .console import ConsoleReport
+            h = ConsoleReport(open_file(stack, args.output, args.output_mode), info)
             masks.append((stack.enter_context(h), mask))
 
         if args.xml:
-            from .junit import XMLFileHandler
-            h = XMLFileHandler(open_file(stack, args.xml, 'wb'), info)
+            from .junit import XMLFileReport
+            h = XMLFileReport(open_file(stack, args.xml, 'wb'), info)
             masks.append((stack.enter_context(h), (1, 0, 1, 0)))
 
         if args.teamcity:
-            from .teamcity import TeamCityHandler
-            h = TeamCityHandler(open_file(stack, args.teamcity, 'w'), info)
+            from .teamcity import TeamCityReport
+            h = TeamCityReport(open_file(stack, args.teamcity, 'w'), info)
             masks.append((stack.enter_context(h), (1, 0, 1, 0)))
 
-        go(lib, indices, masks, cout=args.capture, cerr=args.capture)
+        go(lib, indices, masks, gil=args.gil, cout=args.capture, cerr=args.capture)
 
 
 if __name__ == '__main__':

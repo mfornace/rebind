@@ -26,30 +26,30 @@ double current_time() noexcept;
 
 /******************************************************************************/
 
-using Handler = std::function<bool(Event, Scopes const &, Logs &&)>;
+using Callback = std::function<bool(Event, Scopes const &, Logs &&)>;
 
 using Counter = std::atomic<std::size_t>;
 
 /******************************************************************************/
 
 struct Context {
-    std::vector<Handler> handlers; // or could be vector of handlers for each type.
+    std::vector<Callback> callbacks; // or could be vector of callbacks for each type.
     Scopes scopes;
     Logs logs;
     std::vector<Counter> *counters = nullptr;
 
     Context() = default;
 
-    Context(Scopes const &s, std::vector<Handler> const &h, std::vector<Counter> *c=nullptr)
-        : scopes(s), handlers(h), counters(c) {}
+    Context(Scopes const &s, std::vector<Callback> const &h, std::vector<Counter> *c=nullptr)
+        : scopes(s), callbacks(h), counters(c) {}
 
-    Context(Scopes &&s, std::vector<Handler> &&h, std::vector<Counter> *c=nullptr)
-        : scopes(std::move(s)), handlers(std::move(h)), counters(c) {}
+    Context(Scopes &&s, std::vector<Callback> &&h, std::vector<Counter> *c=nullptr)
+        : scopes(std::move(s)), callbacks(std::move(h)), counters(c) {}
 
     /// Subsection
     template <class F>
     auto operator()(std::string name, F &&functor) {
-        Context ctx(scopes, handlers, counters);
+        Context ctx(scopes, callbacks, counters);
         ctx.scopes.push_back(std::move(name));
         return functor(ctx);
     }
@@ -75,9 +75,9 @@ struct Context {
 
     template <class ...Ts>
     void handle(Event e, Ts &&...ts) {
-        if (e < handlers.size() && handlers[e]) {
+        if (e < callbacks.size() && callbacks[e]) {
             (void) std::initializer_list<bool>{(info(static_cast<Ts &&>(ts)), false)...};
-            handlers[e](e, scopes, std::move(logs));
+            callbacks[e](e, scopes, std::move(logs));
         }
         if (counters && e < counters->size())
             (*counters)[e].fetch_add(1u, std::memory_order_relaxed);

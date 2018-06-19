@@ -4,7 +4,7 @@ import time, datetime
 
 ################################################################################
 
-class XMLHandler:
+class XMLReport:
     def __init__(self, info, index=0, name='cpy', package='', **kwargs):
         self.root = ET.Element('testsuites')
         time = datetime.datetime.now().isoformat(timespec='seconds')
@@ -24,7 +24,7 @@ class XMLHandler:
         self.time = time
 
     def __call__(self, index, info):
-        c = XMLTestHandler(index, info)
+        c = XMLTestReport(index, info)
         self.cases.append(c)
         return c
 
@@ -46,7 +46,7 @@ class XMLHandler:
 
 ################################################################################
 
-class XMLFileHandler(XMLHandler):
+class XMLFileReport(XMLReport):
     def __init__(self, file, *args, **kwargs):
         self.file = getattr(file, 'buffer', file)
         super().__init__(*args, **kwargs)
@@ -57,7 +57,7 @@ class XMLFileHandler(XMLHandler):
 
 ################################################################################
 
-class XMLTestHandler:
+class XMLTestReport:
     def __init__(self, index, info):
         self.element = ET.Element('testcase', name=info[0], classname=info[0])
         self.time = None
