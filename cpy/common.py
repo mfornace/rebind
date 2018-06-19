@@ -54,14 +54,14 @@ def multireport(*reports):
 
 ################################################################################
 
-def run_test(lib, index, test_masks, *, args=(), gil=False, cout=False, cerr=False):
+def run_test(lib, suite, index, test_masks, *, args=(), gil=False, cout=False, cerr=False):
     lists = [[] for _ in events()]
     with ExitStack() as stack:
         for r, mask in test_masks:
             stack.enter_context(r)
             [l.append(r) for m, l in zip(mask, lists) if m]
         reports = [multireport(*l) for l in lists]
-        return lib.run_test(index, reports, args, gil, cout, cerr)
+        return lib.run_test(suite, index, reports, args, gil, cout, cerr)
 
 ################################################################################
 

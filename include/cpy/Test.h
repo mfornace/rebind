@@ -97,39 +97,51 @@ struct Suite {
     }
 };
 
-Suite & default_suite();
+Suite & suite(std::string_view={});
 
 /******************************************************************************/
 
-template <class String, class F>
+template <class F>
 struct UnitTest {
-    String name;
+    std::string name;
     F function;
 };
 
-template <class N, class F>
-UnitTest<N, F> unit_test(N name, F const &f) {
-    default_suite()(name, TestCaseComment(), f);
+template <class F>
+UnitTest<F> unit_test(std::string_view s, std::string name, F const &f, std::vector<ArgPack> v={}) {
+    suite(s)(name, TestCaseComment(), f);
     return {std::move(name), f};
 }
 
-template <class N, class F>
-UnitTest<N, F> unit_test(N name, TestCaseComment comment, F const &f, std::vector<ArgPack> v={}) {
-    default_suite()(name, std::move(comment), f);
+template <class F>
+UnitTest<F> unit_test(std::string name, F const &f, std::vector<ArgPack> v={}) {
+    suite()(name, TestCaseComment(), f);
+    return {std::move(name), f};
+}
+
+template <class F>
+UnitTest<F> unit_test(std::string name, TestCaseComment comment, F const &f, std::vector<ArgPack> v={}) {
+    suite()(name, std::move(comment), f);
+    return {std::move(name), f};
+}
+
+template <class F>
+UnitTest<F> unit_test(std::string_view s, std::string name, TestCaseComment comment, F const &f, std::vector<ArgPack> v={}) {
+    suite(s)(name, std::move(comment), f);
     return {std::move(name), f};
 }
 
 /******************************************************************************/
 
-template <class N, class F>
-bool anonymous_test(N &&name, F &&function) {
-    default_suite()(static_cast<N &&>(name), TestCaseComment(), static_cast<F &&>(function));
+template <class F>
+bool anonymous_test(std::string name, F &&function) {
+    suite()(std::move(name), TestCaseComment(), static_cast<F &&>(function));
     return true;
 }
 
-template <class N, class F>
-bool anonymous_test(N &&name, TestCaseComment comment, F &&function) {
-    default_suite()(static_cast<N &&>(name), std::move(comment), static_cast<F &&>(function));
+template <class F>
+bool anonymous_test(std::string name, TestCaseComment comment, F &&function) {
+    suite()(std::move(name), std::move(comment), static_cast<F &&>(function));
     return true;
 }
 

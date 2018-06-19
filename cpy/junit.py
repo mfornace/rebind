@@ -1,18 +1,21 @@
 from .common import readable_message, events
 import xml.etree.ElementTree as ET
-import time, datetime
+import io, time, datetime
 
 ################################################################################
 
 class XMLReport:
-    def __init__(self, info, index=0, name='cpy', package='', **kwargs):
-        self.root = ET.Element('testsuites')
+    def __init__(self, info, name='cpy', package='', root=None, **kwargs):
+        self.root = ET.Element('testsuites') if root is None else root
         time = datetime.datetime.now().isoformat(timespec='seconds')
 
         import socket
         host = socket.gethostname()
 
-        self.suite = ET.SubElement(self.root, 'testsuite', id=str(index), name=name,
+        for c in self.root.findall('testsuite'):
+            if c.attrib['name'] == name:
+                self.root.remove(c)
+        self.suite = ET.SubElement(self.root, 'testsuite', name=name,
                                    package=package, hostname=host, timestamp=time)
         props = ET.SubElement(self.suite, 'properties')
 
@@ -49,10 +52,20 @@ class XMLReport:
 class XMLFileReport(XMLReport):
     def __init__(self, file, *args, **kwargs):
         self.file = getattr(file, 'buffer', file)
-        super().__init__(*args, **kwargs)
+        try:
+            self.file.seek(0)
+            root = ET.parse(self.file).getroot()
+            assert root is not None
+            self.file.seek(0)
+            self.file.truncate()
+        except (io.UnsupportedOperation, ET.ParseError):
+            root = None
+        super().__init__(*args, root=root, **kwargs)
 
     def __exit__(self, value, cls, traceback):
         super().__exit__(value, cls, traceback)
+        for i, c in enumerate(self.root):
+            c.set('id', str(i))
         ET.ElementTree(self.root).write(self.file, xml_declaration=True)
 
 ################################################################################
