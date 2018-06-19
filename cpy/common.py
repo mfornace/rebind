@@ -54,21 +54,21 @@ def multireport(*reports):
 
 ################################################################################
 
-def run_test(lib, suite, index, test_masks, *, args=(), gil=False, cout=False, cerr=False):
+def run_test(lib, index, test_masks, *, args=(), gil=False, cout=False, cerr=False):
     lists = [[] for _ in events()]
     with ExitStack() as stack:
         for r, mask in test_masks:
             stack.enter_context(r)
             [l.append(r) for m, l in zip(mask, lists) if m]
         reports = [multireport(*l) for l in lists]
-        return lib.run_test(suite, index, reports, args, gil, cout, cerr)
+        return lib.run_test(index, reports, args, gil, cout, cerr)
 
 ################################################################################
 
-def readable_message(kind, scopes, logs, indent='    ', format_scope=None):
+def readable_message(kind, scopes, logs, indent='    '):
     keys, values = map(list, zip(*logs))
     line, path = (pop_value(k, keys, values) for k in ('line', 'file'))
-    scopes = repr('.'.join(scopes)) if format_scope is None else format_scope(scopes)
+    scopes = repr('/'.join(scopes))
 
     # first line
     if path is None:

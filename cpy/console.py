@@ -28,8 +28,7 @@ class ConsoleReport:
 ################################################################################
 
 class ConsoleTestReport:
-    def __init__(self, index, info, file, indent='    ', format_scope=None):
-        self.format_scope = format_scope
+    def __init__(self, index, info, file, indent='    '):
         self.indent = indent
         self.index = index
         self.info = info
@@ -41,7 +40,7 @@ class ConsoleTestReport:
         self.file.flush()
 
     def __call__(self, event, scopes, logs):
-        self.write(readable_message(events(True)[event], scopes, logs, self.indent, self.format_scope), '\n')
+        self.write(readable_message(events(True)[event], scopes, logs, self.indent), '\n')
 
     def finalize(self, counts, out, err):
         for o, s in zip((out, err), ('cout', 'cerr')):

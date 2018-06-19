@@ -5,7 +5,7 @@ import io, time, datetime
 ################################################################################
 
 class XMLReport:
-    def __init__(self, info, name='cpy', package='', root=None, **kwargs):
+    def __init__(self, info, suite, package='', root=None, **kwargs):
         self.root = ET.Element('testsuites') if root is None else root
         time = datetime.datetime.now().isoformat(timespec='seconds')
 
@@ -13,9 +13,9 @@ class XMLReport:
         host = socket.gethostname()
 
         for c in self.root.findall('testsuite'):
-            if c.attrib['name'] == name:
+            if c.attrib['name'] == suite:
                 self.root.remove(c)
-        self.suite = ET.SubElement(self.root, 'testsuite', name=name,
+        self.suite = ET.SubElement(self.root, 'testsuite', name=suite,
                                    package=package, hostname=host, timestamp=time)
         props = ET.SubElement(self.suite, 'properties')
 

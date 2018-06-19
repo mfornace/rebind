@@ -97,7 +97,7 @@ struct Suite {
     }
 };
 
-Suite & suite(std::string_view={});
+Suite & suite();
 
 /******************************************************************************/
 
@@ -108,12 +108,6 @@ struct UnitTest {
 };
 
 template <class F>
-UnitTest<F> unit_test(std::string_view s, std::string name, F const &f, std::vector<ArgPack> v={}) {
-    suite(s)(name, TestCaseComment(), f);
-    return {std::move(name), f};
-}
-
-template <class F>
 UnitTest<F> unit_test(std::string name, F const &f, std::vector<ArgPack> v={}) {
     suite()(name, TestCaseComment(), f);
     return {std::move(name), f};
@@ -122,12 +116,6 @@ UnitTest<F> unit_test(std::string name, F const &f, std::vector<ArgPack> v={}) {
 template <class F>
 UnitTest<F> unit_test(std::string name, TestCaseComment comment, F const &f, std::vector<ArgPack> v={}) {
     suite()(name, std::move(comment), f);
-    return {std::move(name), f};
-}
-
-template <class F>
-UnitTest<F> unit_test(std::string_view s, std::string name, TestCaseComment comment, F const &f, std::vector<ArgPack> v={}) {
-    suite(s)(name, std::move(comment), f);
     return {std::move(name), f};
 }
 
