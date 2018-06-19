@@ -8,7 +8,7 @@ def go(lib, indices, suite_masks, gil, cout, cerr):
     for i in indices:
         info = lib.test_info(i)
         test_masks = [(h(i, info), m) for h, m in suite_masks]
-        counts, out, err = run_test(lib, i, test_masks, gil=gil, cout=cout, cerr=cerr)
+        counts, out, err = run_test(lib, i, test_masks, args=(), gil=gil, cout=cout, cerr=cerr)
         stdout.write(out)
         stderr.write(err)
         totals = [x + y for x, y in zip(totals, counts)]

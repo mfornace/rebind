@@ -26,7 +26,7 @@ auto test1 = unit_test("first-test", COMMENT("This is a test"), [](Context ctx) 
     ctx.require_eq(xxx, yyy, COMMENT("x should equal y"));
 
     if (!ctx.require_eq(1, 2)) return;
-});
+}, {{false}});
 
 UNIT_TEST("second-test", "This is a test 2") = [](Context ctx) {
     std::cerr << "Hey I am std::cerr 2" << std::endl;
@@ -34,7 +34,7 @@ UNIT_TEST("second-test", "This is a test 2") = [](Context ctx) {
     if (!ctx.require_throws<std::runtime_error>([]{})) return;
 };
 
-UNIT_TEST("third-test") = [](Context ctx) {
+UNIT_TEST("third-test") = [](auto) {
     throw std::runtime_error("runtime_error: uh oh");
 };
 

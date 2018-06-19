@@ -48,6 +48,7 @@ struct Value {
  std::time_t,                    NO
  std::chrono::duration<double>,  BLEH need to import datetime then.
  wstring?                        NOT MUCH USE CASE I THINK
+ maybe optional for parametrized tests?
 */
 
 struct KeyPair {

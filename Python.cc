@@ -239,6 +239,7 @@ PyObject *run_test(bool no_gil, Py_ssize_t i, PyObject *pycalls, PyObject *pypac
         PyErr_SetString(PyExc_IndexError, "Unit test index out of range");
         return nullptr;
     };
+    auto const &test = suite.cases[i];
 
     std::vector<cpy::Callback> callbacks;
     if (!cpy::build_vector(callbacks, pycalls, [](cpy::Object &&o) -> cpy::Callback {
@@ -248,7 +249,15 @@ PyObject *run_test(bool no_gil, Py_ssize_t i, PyObject *pycalls, PyObject *pypac
 
     cpy::ArgPack pack;
     bool ok = true;
-    if (pypack) {
+    if (PyLong_Check(pypack)) {
+        auto n = PyLong_AsSize_t(pypack);
+        if (PyErr_Occurred()) return nullptr;
+        if (n >= test.parameters.size()) {
+            PyErr_SetString(PyExc_IndexError, "Parameter pack index out of range");
+            return nullptr;
+        }
+        pack = test.parameters[n];
+    } else {
         if (!cpy::build_vector(pack, pypack, [&ok](cpy::Object &&o) {
             cpy::Value v;
             ok = ok && cpy::from_python(v, o.ptr);
@@ -264,8 +273,8 @@ PyObject *run_test(bool no_gil, Py_ssize_t i, PyObject *pycalls, PyObject *pypac
 
         for (auto &c : counters) c.store(0u);
 
-        cpy::Context ctx({suite.cases[i].name}, std::move(callbacks), &counters);
-        ok = suite.cases[i].function(std::move(ctx), std::move(pack));
+        cpy::Context ctx({test.name}, std::move(callbacks), &counters);
+        ok = test.function(std::move(ctx), std::move(pack));
     }
 
     if (ok) return cpy::to_python(counters, [](auto const &c) {return c.load();});
@@ -366,12 +375,20 @@ static PyObject *cpy_test_info(PyObject *self, PyObject *args) {
 /******************************************************************************/
 
 static PyMethodDef cpy_methods[] = {
-    {"run_test",     (PyCFunction) cpy_run_test,     METH_VARARGS, "Run a unit test"},
-    {"find_test",    (PyCFunction) cpy_find_test,    METH_VARARGS, "Find the index of a unit test"},
-    {"n_tests",      (PyCFunction) cpy_n_tests,      METH_NOARGS,  "Number of registered tests"},
-    {"compile_info", (PyCFunction) cpy_compile_info, METH_NOARGS,  "Compilation information"},
-    {"test_names",   (PyCFunction) cpy_test_names,   METH_NOARGS,  "Names of registered tests"},
-    {"test_info",    (PyCFunction) cpy_test_info,    METH_VARARGS, "Info of a registered test"},
+    {"run_test",     (PyCFunction) cpy_run_test,     METH_VARARGS,
+        "Run a unit test. Positional arguments:\n"
+        "i (int):             test index\n"
+        "callbacks (tuple):   list of callbacks for each event\n"
+        "args (tuple or int): arguments to apply, or index of the already-registered argument pack\n"
+        "gil (bool):          whether to keep the Python global interpreter lock on\n"
+        "cout (bool):         whether to redirect std::cout\n"
+        "cerr (bool):         whether to redirect std::cerr\n"},
+    {"find_test",    (PyCFunction) cpy_find_test,    METH_VARARGS,
+        "Find the index of a unit test from its registered name (str)"},
+    {"n_tests",      (PyCFunction) cpy_n_tests,      METH_NOARGS,  "Number of registered tests (no arguments)"},
+    {"compile_info", (PyCFunction) cpy_compile_info, METH_NOARGS,  "Compilation information (no arguments)"},
+    {"test_names",   (PyCFunction) cpy_test_names,   METH_NOARGS,  "Names of registered tests (no arguments)"},
+    {"test_info",    (PyCFunction) cpy_test_info,    METH_VARARGS, "Info of a registered test from its index (int)"},
     {nullptr, nullptr, 0, nullptr}};
 
 /******************************************************************************/

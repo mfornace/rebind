@@ -14,9 +14,9 @@ target_include_directories(libcpy PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include/cpy
 ################################################################################
 
 if(${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
-set(CMAKE_SHARED_MODULE_CREATE_CXX_FLAGS "${CMAKE_SHARED_MODULE_CREATE_CXX_FLAGS} -undefined,dynamic_lookup")
+    set(CMAKE_SHARED_MODULE_CREATE_CXX_FLAGS "${CMAKE_SHARED_MODULE_CREATE_CXX_FLAGS} -undefined,dynamic_lookup")
 else()
-set(CMAKE_SHARED_MODULE_CREATE_CXX_FLAGS "${CMAKE_SHARED_MODULE_CREATE_CXX_FLAGS} -undefined dynamic_lookup")
+    set(CMAKE_SHARED_MODULE_CREATE_CXX_FLAGS "${CMAKE_SHARED_MODULE_CREATE_CXX_FLAGS} -undefined dynamic_lookup")
 endif()
 
 ################################################################################

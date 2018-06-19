@@ -1,10 +1,10 @@
-def colored_dummy(s, *args, **kwargs):
+def not_colored(s, *args, **kwargs):
     return s
 
 try:
     from termcolor import colored
 except ImportError:
-    colored = colored_dummy
+    colored = not_colored
 
 from contextlib import ExitStack
 
@@ -54,16 +54,14 @@ def multireport(*reports):
 
 ################################################################################
 
-def run_test(lib, index, test_masks, *, gil=False, cout=False, cerr=False):
+def run_test(lib, index, test_masks, *, args=(), gil=False, cout=False, cerr=False):
     lists = [[] for _ in events()]
     with ExitStack() as stack:
         for r, mask in test_masks:
             stack.enter_context(r)
-            for m, l in zip(mask, lists):
-                if m:
-                    l.append(r)
+            [l.append(r) for m, l in zip(mask, lists) if m]
         reports = [multireport(*l) for l in lists]
-        return lib.run_test(index, reports, (), gil, cout, cerr)
+        return lib.run_test(index, reports, args, gil, cout, cerr)
 
 ################################################################################
 
@@ -81,7 +79,7 @@ def readable_message(kind, scopes, logs, indent='    ', format_scope=None):
 
     # comments
     while 'comment' in keys:
-        s += '{}comment: {}\n'.format(indent, repr(pop_value('comment', keys, values)))
+        s += indent + 'comment: ' + repr(pop_value('comment', keys, values)) + '\n'
 
     # comparisons
     comp = ('lhs', 'op', 'rhs')
@@ -91,9 +89,6 @@ def readable_message(kind, scopes, logs, indent='    ', format_scope=None):
 
     # all other logged keys and values
     for k, v in zip(keys, values):
-        if k:
-            s += indent + '{}: {}\n'.format(k, repr(v))
-        else:
-            s += indent + '{}\n'.format(repr(v))
+        s += indent + (k + ': ' if k else '') + repr(v) + '\n'
 
     return s

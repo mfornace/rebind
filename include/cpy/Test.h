@@ -79,11 +79,12 @@ struct TestCaseComment {
         : comment(std::move(c.comment)), location(std::move(c.location)) {}
 };
 
-/// A named, commented unit test case
+/// A named, commented, possibly parametrized unit test case
 struct TestCase {
     std::string name;
     TestCaseComment comment;
     std::function<bool(Context, ArgPack)> function;
+    std::vector<ArgPack> parameters;
 };
 
 /// A vector of TestCase
@@ -91,8 +92,8 @@ struct Suite {
     std::vector<TestCase> cases;
 
     template <class F>
-    void operator()(std::string name, TestCaseComment c, F const &f) {
-        cases.emplace_back(TestCase{std::move(name), std::move(c), TestAdaptor<F>{f}});
+    void operator()(std::string name, TestCaseComment c, F const &f, std::vector<ArgPack> v={}) {
+        cases.emplace_back(TestCase{std::move(name), std::move(c), TestAdaptor<F>{f}, std::move(v)});
     }
 };
 
@@ -113,7 +114,7 @@ UnitTest<N, F> unit_test(N name, F const &f) {
 }
 
 template <class N, class F>
-UnitTest<N, F> unit_test(N name, TestCaseComment comment, F const &f) {
+UnitTest<N, F> unit_test(N name, TestCaseComment comment, F const &f, std::vector<ArgPack> v={}) {
     default_suite()(name, std::move(comment), f);
     return {std::move(name), f};
 }
