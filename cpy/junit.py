@@ -1,4 +1,4 @@
-from .common import find, readable_message, events
+from .common import readable_message, events
 import xml.etree.ElementTree as ET
 import time, datetime
 
@@ -48,7 +48,7 @@ class XMLHandler:
 
 class XMLFileHandler(XMLHandler):
     def __init__(self, file, *args, **kwargs):
-        self.file = file
+        self.file = getattr(file, 'buffer', file)
         super().__init__(*args, **kwargs)
 
     def __exit__(self, value, cls, traceback):

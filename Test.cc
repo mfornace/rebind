@@ -1,5 +1,6 @@
 #include "Test.h"
 #include "Macros.h"
+#include <iostream>
 
 using namespace cpy;
 
@@ -13,6 +14,9 @@ auto test1 = unit_test("first-test", COMMENT("This is a test"), [](Context ctx) 
     });
     ctx.info(true);
 
+    std::cerr << "Hey I am std::cerr 1" << std::endl;
+    std::cout << "Hey I am std::cout 1" << std::endl;
+
     ctx.time(1, []{return 1;});
 
     ctx.require_near(5, 5.0);
@@ -25,6 +29,8 @@ auto test1 = unit_test("first-test", COMMENT("This is a test"), [](Context ctx) 
 });
 
 UNIT_TEST("second-test", "This is a test 2") = [](Context ctx) {
+    std::cerr << "Hey I am std::cerr 2" << std::endl;
+    std::cout << "Hey I am std::cout 2" << std::endl;
     if (!ctx.require_throws<std::runtime_error>([]{})) return;
 };
 

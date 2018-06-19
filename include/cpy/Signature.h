@@ -3,8 +3,9 @@
 
 /******************************************************************************************/
 
-template <std::size_t I, class T>
+template <class T>
 struct IndexedType {
+    std::size_t index;
     T operator*() const; // undefined
 };
 
@@ -14,7 +15,7 @@ struct IndexedType {
 template <class ...Ts> struct Pack {
     template <class F, std::size_t ...Is>
     static constexpr auto apply(F &&f, std::index_sequence<Is...>) {
-        return static_cast<F &&>(f)(IndexedType<Is, Ts>()...);
+        return static_cast<F &&>(f)(IndexedType<Ts>{Is}...);
     }
 
     template <class F>

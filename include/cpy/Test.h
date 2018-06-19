@@ -19,23 +19,26 @@ struct CastVariant {
     T operator()(U &u) const {return static_cast<T>(std::move(u));}
 };
 
-template <std::size_t I, class T>
-T cast_index(ArgPack &v, IndexedType<I, T>) {
-    return std::visit(CastVariant<T>(), v[I - 2].var);
+/// Cast element i of v to type T
+template <class T>
+T cast_index(ArgPack &v, IndexedType<T> i) {
+    return std::visit(CastVariant<T>(), v[i.index - 2].var);
 }
 
-template <std::size_t I, class T>
-bool check_cast_index(ArgPack &v, IndexedType<I, T>) {
-    return std::visit([](auto const &x) {return CastVariant<T>().check(x);}, v[I - 2].var);
+/// Check that element i of v can be cast to type T
+template <class T>
+bool check_cast_index(ArgPack &v, IndexedType<T> i) {
+    return std::visit([](auto const &x) {return CastVariant<T>().check(x);}, v[i.index - 2].var);
 }
 
 /******************************************************************************/
 
+/// TestSignature assumes signature void(Context) if none can be deduced
 template <class F, class=void>
 struct TestSignature : Pack<void, Context> {
     static_assert(std::is_invocable<F, Context>(),
         "Functor is not callable with implicit signature void(Context). "
-        "Specialize Signature<T> for your function or use a functor with a "
+        "Specialize cpy::Signature<T> for your function or use a functor with a "
         "deducable (i.e. non-templated) signature");
 };
 
@@ -76,12 +79,14 @@ struct TestCaseComment {
         : comment(std::move(c.comment)), location(std::move(c.location)) {}
 };
 
+/// A named, commented unit test case
 struct TestCase {
     std::string name;
     TestCaseComment comment;
     std::function<bool(Context, ArgPack)> function;
 };
 
+/// A vector of TestCase
 struct Suite {
     std::vector<TestCase> cases;
 

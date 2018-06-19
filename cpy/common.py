@@ -27,7 +27,7 @@ def events(color=False):
 
 ################################################################################
 
-def find(key, keys, values, default=None):
+def pop_value(key, keys, values, default=None):
     try:
         idx = keys.index(key)
         keys.pop(idx)
@@ -54,7 +54,7 @@ def multihandler(*handlers):
 
 ################################################################################
 
-def run_test(lib, index, test_masks):
+def run_test(lib, index, test_masks, *, cout=False, cerr=False):
     lists = [[] for _ in events()]
     with ExitStack() as stack:
         for h, mask in test_masks:
@@ -63,13 +63,13 @@ def run_test(lib, index, test_masks):
                 if m:
                     l.append(h)
         handlers = [multihandler(*l) for l in lists]
-        return lib.run_test(index, handlers, (), True, True)
+        return lib.run_test(index, handlers, (), cout, cerr)
 
 ################################################################################
 
 def readable_message(kind, scopes, logs, indent='    ', format_scope=None):
     keys, values = map(list, zip(*logs))
-    line, path = (find(k, keys, values) for k in ('line', 'file'))
+    line, path = (pop_value(k, keys, values) for k in ('line', 'file'))
     scopes = repr('.'.join(scopes)) if format_scope is None else format_scope(scopes)
 
     # first line
@@ -81,12 +81,12 @@ def readable_message(kind, scopes, logs, indent='    ', format_scope=None):
 
     # comments
     while 'comment' in keys:
-        s += '{}comment: {}\n'.format(indent, repr(find('comment', keys, values)))
+        s += '{}comment: {}\n'.format(indent, repr(pop_value('comment', keys, values)))
 
     # comparisons
     comp = ('lhs', 'op', 'rhs')
     while all(c in keys for c in comp):
-        lhs, op, rhs = (find(k, keys, values) for k in comp)
+        lhs, op, rhs = (pop_value(k, keys, values) for k in comp)
         s += indent + 'required: {} {} {}\n'.format(lhs, op, rhs)
 
     # all other logged keys and values

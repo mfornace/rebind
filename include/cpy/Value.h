@@ -2,9 +2,9 @@
 #include <variant>
 #include <complex>
 #include <string>
-#include <string_view>
 #include <vector>
 #include <type_traits>
+#include <string_view>
 
 namespace cpy {
 

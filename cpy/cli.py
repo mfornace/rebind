@@ -1,14 +1,14 @@
 from .common import events, run_test, ExitStack
 from io import StringIO
 
-def go(lib, indices, suite_masks):
+def go(lib, indices, suite_masks, cout, cerr):
     totals = [0] * len(events())
     stdout, stderr = StringIO(), StringIO()
 
     for i in indices:
         info = lib.test_info(i)
         test_masks = [(h(i, info), m) for h, m in suite_masks]
-        counts, out, err = run_test(lib, i, test_masks)
+        counts, out, err = run_test(lib, i, test_masks, cout=cout, cerr=cerr)
         stdout.write(out)
         stderr.write(err)
         totals = [x + y for x, y in zip(totals, counts)]
@@ -24,17 +24,20 @@ def parser():
     from argparse import ArgumentParser
     out = ArgumentParser(description='Run unit tests')
     out.add_argument('--lib',         '-a', type=str, default='libcpy', help='file path for test library')
-    out.add_argument('--list',        '-l', action='store_true', help='list all test names')
-    out.add_argument('--quiet',       '-q', action='store_true', help='no command line output')
-    out.add_argument('--output',      '-o', type=str, default='stdout', help='output file')
-    out.add_argument('--output-mode', '-m', type=str, default='w', help='output file open mode')
     out.add_argument('--failure',     '-f', action='store_true', help='show failures')
     out.add_argument('--success',     '-s', action='store_true', help='show successes')
-    out.add_argument('--exception',   '-e', action='store_true', help='show exceptions (also enabled if --failure)')
+    out.add_argument('--exception',   '-e', action='store_true', help='show exceptions')
     out.add_argument('--timing',      '-t', action='store_true', help='show timings')
+    out.add_argument('--list',        '-l', action='store_true', help='list all test names')
+    out.add_argument('--quiet',       '-q', action='store_true', help='no command line output')
+    out.add_argument('--capture',     '-c', action='store_true', help='capture std::cerr and std::cout')
+
+    out.add_argument('--output',      '-o', type=str, default='stdout', help='output file')
+    out.add_argument('--output-mode', '-m', type=str, default='w', help='output file open mode')
     out.add_argument('--xml',               type=str, default='', help='XML file path')
-    out.add_argument('--teamcity',          type=str, default='', help='XML file path')
+    out.add_argument('--teamcity',          type=str, default='', help='TeamCity file path')
     out.add_argument('--regex',       '-r', type=str, default='', help='include test names matching a given regex')
+
     out.add_argument('tests', type=str, default=[], nargs='*', help='test names (if not given, run all tests)')
     return out
 
@@ -55,12 +58,18 @@ def find_tests(lib, tests, regex):
 
 ################################################################################
 
+def open_file(stack, name, mode):
+    if name in ('stderr', 'stdout'):
+        return getattr(sys, name)
+    else:
+        return stack.enter_context(open(name, mode))
+
+################################################################################
+
 def main(args):
     import sys, os, importlib
     sys.path.insert(0, os.path.dirname(os.path.abspath(args.lib)))
     lib = importlib.import_module(args.lib)
-
-    args.exception = args.exception or args.timing
 
     indices = find_tests(lib, args.tests, args.regex)
 
@@ -75,23 +84,20 @@ def main(args):
         masks = []
         if not args.quiet:
             from .console import ConsoleHandler
-            if args.output in ('stderr', 'stdout'):
-                o = getattr(sys, args.output)
-            else:
-                o = stack.enter_context(open(args.output, args.output_mode))
-            masks.append((stack.enter_context(ConsoleHandler(o, info)), mask))
+            h = ConsoleHandler(open_file(stack, args.output, args.output_mode), info)
+            masks.append((stack.enter_context(h), mask))
 
         if args.xml:
             from .junit import XMLFileHandler
-            o = stack.enter_context(open(args.xml, 'wb'))
-            masks.append((stack.enter_context(XMLFileHandler(o, info)), (1, 0, 1, 0)))
+            h = XMLFileHandler(open_file(stack, args.xml, 'wb'), info)
+            masks.append((stack.enter_context(h), (1, 0, 1, 0)))
 
         if args.teamcity:
             from .teamcity import TeamCityHandler
-            o = stack.enter_context(open(args.teamcity, 'w'))
-            masks.append((stack.enter_context(TeamCityHandler(o, info)), (1, 0, 1, 0)))
+            h = TeamCityHandler(open_file(stack, args.teamcity, 'w'), info)
+            masks.append((stack.enter_context(h), (1, 0, 1, 0)))
 
-        go(lib, indices, masks)
+        go(lib, indices, masks, cout=args.capture, cerr=args.capture)
 
 
 if __name__ == '__main__':

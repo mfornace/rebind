@@ -30,8 +30,8 @@ struct ApproxEquals;
 
 template <class T>
 struct ApproxEquals<T, std::enable_if_t<(std::is_floating_point<T>::value)>> {
-    static T const epsilon;
-    static T const scale;
+    static constexpr T scale = 1;
+    static constexpr T epsilon = T(1) / (1 << std::numeric_limits<T>::digits / 2);
 
     bool operator()(T const &l, T const &r) const {
         if (l == r) return true; // i.e. for exact matches including infinite numbers
@@ -40,9 +40,9 @@ struct ApproxEquals<T, std::enable_if_t<(std::is_floating_point<T>::value)>> {
 };
 
 template <class T>
-T const ApproxEquals<T, std::enable_if_t<(std::is_floating_point<T>::value)>>::scale = 1;
+T const ApproxEquals<T, std::enable_if_t<(std::is_floating_point<T>::value)>>::scale;
 
 template <class T>
-T const ApproxEquals<T, std::enable_if_t<(std::is_floating_point<T>::value)>>::epsilon = std::sqrt(std::numeric_limits<T>::epsilon());
+T const ApproxEquals<T, std::enable_if_t<(std::is_floating_point<T>::value)>>::epsilon;
 
 /******************************************************************************/

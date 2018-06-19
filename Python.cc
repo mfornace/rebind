@@ -68,8 +68,8 @@ bool from_python(Value &v, PyObject *o) {
     } else if (PyComplex_Check(o)) {
         v = std::complex<double>{PyComplex_RealAsDouble(o), PyComplex_ImagAsDouble(o)};
     } else if (PyBytes_Check(o)) {
-        Py_ssize_t size;
         char *c;
+        Py_ssize_t size;
         PyBytes_AsStringAndSize(o, &c, &size);
         v = std::string_view(c, size);
     } else if (PyUnicode_Check(o)) { // no use of wstring for now.
@@ -269,17 +269,17 @@ static PyObject *cpy_run_test(PyObject *self, PyObject *args) {
     PyObject *cerr = nullptr;
     PyObject *counts;
     std::stringstream out, err;
-
     if (!PyArg_ParseTuple(args, "nOOOO", &i, &pyhandlers, &pypack, &cout, &cerr)) return nullptr;
+
     if (cout && PyObject_IsTrue(cout)) {
-        cpy::RedirectStream(out.rdbuf(), std::cout, cpy::cout_mutex);
+        cpy::RedirectStream o(out.rdbuf(), std::cout, cpy::cout_mutex);
         if (cerr && PyObject_IsTrue(cerr)) {
-            cpy::RedirectStream(err.rdbuf(), std::cerr, cpy::cerr_mutex);
+            cpy::RedirectStream e(err.rdbuf(), std::cerr, cpy::cerr_mutex);
             counts = cpy::run_test(i, pyhandlers, pypack);
         } else counts = cpy::run_test(i, pyhandlers, pypack);
     } else {
         if (cerr && PyObject_IsTrue(cerr)) {
-            cpy::RedirectStream(err.rdbuf(), std::cerr, cpy::cerr_mutex);
+            cpy::RedirectStream e(err.rdbuf(), std::cerr, cpy::cerr_mutex);
             counts = cpy::run_test(i, pyhandlers, pypack);
         } else counts = cpy::run_test(i, pyhandlers, pypack);
     }
