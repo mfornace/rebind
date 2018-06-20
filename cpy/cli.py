@@ -103,12 +103,12 @@ def main(run=run_suite, lib='libcpy', list=False, failure=False, success=False,
         if xml:
             from .junit import XMLFileReport
             r = XMLFileReport(open_file(stack, xml, xml_mode), info, suite)
-            masks.append((stack.enter_context(r), (1, 0, 1, 0)))
+            masks.append((stack.enter_context(r), (1, 0, 1))) # failures & exceptions
 
         if teamcity:
             from .teamcity import TeamCityReport
             r = TeamCityReport(open_file(stack, teamcity, 'w'), info)
-            masks.append((stack.enter_context(r), (1, 0, 1, 0)))
+            masks.append((stack.enter_context(r), (1, 0, 1))) # failures & exceptions
 
         if json:
             from .native import NativeReport

@@ -228,7 +228,7 @@ bool build_vector(V &v, Object iterable, F &&f) {
 /// std::ostream synchronizer for redirection from multiple threads
 struct StreamSync {
     std::ostream &stream;
-    std::streambuf *original;
+    std::streambuf *original; // never changed (unless by user)
     std::mutex mutex;
     std::vector<std::streambuf *> queue;
 };

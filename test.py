@@ -4,7 +4,6 @@ lib = cli.import_library('libcpy')
 
 def hmm(*args):
     print(args)
-    # raise ValueError
 
 lib.add_test('hmm', hmm)
 
