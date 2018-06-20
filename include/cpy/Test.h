@@ -45,18 +45,25 @@ struct TestSignature : Pack<void, Context> {
 template <class F>
 struct TestSignature<F, std::void_t<typename Signature<F>::return_type>> : Signature<F> {};
 
+template <class F, class ...Ts, std::enable_if_t<(!std::is_same<void, std::invoke_result_t<F, Ts...>>::value), int> = 0>
+void invoke(Value &output, F &&f, Ts &&...ts) {output = std::invoke(static_cast<F &&>(f), static_cast<Ts &&>(ts)...);}
+
+template <class F, class ...Ts, std::enable_if_t<(std::is_same<void, std::invoke_result_t<F, Ts...>>::value), int> = 0>
+void invoke(Value &, F &&f, Ts &&...ts) {std::invoke(static_cast<F &&>(f), static_cast<Ts &&>(ts)...);}
+
 template <class F>
 struct TestAdaptor {
     F function;
 
-    bool operator()(Context ctx, ArgPack args) noexcept {
+    /// Catches any exceptions; returns whether the test could be begun.
+    bool operator()(Value &output, Context ctx, ArgPack args) noexcept {
         try {
             return TestSignature<F>::apply([&](auto return_type, auto context_type, auto ...ts) {
                 static_assert(std::is_convertible<Context, decltype(*context_type)>(),
                               "First argument in signature should be of type Context");
                 bool ok = args.size() == sizeof...(ts);
                 (void) std::initializer_list<bool>{(ok = ok && check_cast_index(args, ts))...};
-                if (ok) std::invoke(function, Context(ctx), cast_index(args, ts)...);
+                if (ok) invoke(output, function, Context(ctx), cast_index(args, ts)...);
                 return ok;
             });
         } catch (std::exception const &e) {
@@ -83,7 +90,7 @@ struct TestCaseComment {
 struct TestCase {
     std::string name;
     TestCaseComment comment;
-    std::function<bool(Context, ArgPack)> function;
+    std::function<bool(Value &, Context, ArgPack)> function;
     std::vector<ArgPack> parameters;
 };
 

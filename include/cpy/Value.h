@@ -26,12 +26,22 @@ struct Value {
 
     Value(std::monostate={});
     Value(bool);
+
     Value(std::size_t);
+    template <class T, std::enable_if_t<(std::is_integral_v<T> && !std::is_signed_v<T>), int> = 0>
+    Value(T t) : Value(static_cast<std::ptrdiff_t>(t)) {}
+
     Value(std::ptrdiff_t);
+    template <class T, std::enable_if_t<(std::is_integral_v<T> && std::is_signed_v<T>), int> = 0>
+    Value(T t) : Value(static_cast<std::ptrdiff_t>(t)) {}
+
     Value(double);
     Value(std::complex<double>);
+
     Value(std::string);
+
     Value(std::string_view);
+    Value(char const *c) : Value(std::string_view(c)) {}
 
     Value & operator=(Value &&v) noexcept;
     Value & operator=(Value const &v) noexcept;

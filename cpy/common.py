@@ -7,6 +7,11 @@ except ImportError:
     colored = not_colored
 
 from contextlib import ExitStack
+import io
+
+################################################################################
+
+ScopeDelimiter = '/'
 
 Events = [
     'Failure',
@@ -21,6 +26,8 @@ ColoredEvents = [
     colored('Exception', 'red'),
     colored('Timing',    'yellow')
 ]
+
+################################################################################
 
 def events(color=False):
     return ColoredEvents if color else Events
@@ -56,6 +63,8 @@ def multireport(*reports):
 
 def run_test(lib, index, test_masks, *, args=(), gil=False, cout=False, cerr=False):
     lists = [[] for _ in events()]
+    out, err = io.StringIO(), io.StringIO()
+
     with ExitStack() as stack:
         for r, mask in test_masks:
             stack.enter_context(r)
@@ -68,7 +77,7 @@ def run_test(lib, index, test_masks, *, args=(), gil=False, cout=False, cerr=Fal
 def readable_message(kind, scopes, logs, indent='    '):
     keys, values = map(list, zip(*logs))
     line, path = (pop_value(k, keys, values) for k in ('line', 'file'))
-    scopes = repr('/'.join(scopes))
+    scopes = repr(ScopeDelimiter.join(scopes))
 
     # first line
     if path is None:

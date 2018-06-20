@@ -188,7 +188,7 @@ struct PyCallback {
         PyObject *args = PyTuple_Pack(3u, pyevent, pyscopes, pylogs);
         if (!args) return false;
 
-        PyObject *out = PyObject_Call(object.ptr, args, nullptr);
+        PyObject *out = PyObject_CallObject(object.ptr, args);
         return bool(out);
     }
 };
@@ -200,31 +200,35 @@ bool build_vector(V &v, PyObject *iterable, F &&f) {
     PyObject *iter = PyObject_GetIter(iterable);
     if (!iter) return false;
 
-    while (true) {
+    bool ok = true;
+    while (ok) {
         Object it{PyIter_Next(iter), false};
         if (!it.ptr) break;
-        v.emplace_back(f(std::move(it)));
+        v.emplace_back(f(std::move(it), ok));
     }
-    return true;
+    return ok;
 }
 
 /******************************************************************************/
 
 /// RAII acquisition of cout or cerr given a mutex
 struct RedirectStream {
-    std::streambuf *buf;
     std::ostream &os;
     std::mutex &mut;
+    std::streambuf *buf;
 
-    RedirectStream(std::streambuf *b, std::ostream &o, std::mutex &m, std::lock_guard<std::mutex> const &)
-        : buf(o.rdbuf(b)), os(o), mut(m) {}
-
-    RedirectStream(std::streambuf *b, std::ostream &o, std::mutex &m) : RedirectStream(
-        b, o, m, std::lock_guard<std::mutex>(m)) {}
+    RedirectStream(std::streambuf *b, std::ostream &o, std::mutex &m) : os(o), mut(m), buf(b) {
+        if (buf) {
+            std::lock_guard<std::mutex> lk(mut);
+            buf = os.rdbuf(b);
+        }
+    }
 
     ~RedirectStream() {
-        std::lock_guard<std::mutex> lk(mut);
-        os.rdbuf(buf);
+        if (buf) {
+            std::lock_guard<std::mutex> lk(mut);
+            os.rdbuf(buf);
+        }
     }
 };
 
@@ -232,53 +236,63 @@ std::mutex cout_mutex, cerr_mutex;
 
 /******************************************************************************/
 
-PyObject *run_test(Py_ssize_t i, bool no_gil, PyObject *pycalls, PyObject *pypack) {
+struct PyTestCase : Object {
+    using Object::Object;
+
+    bool operator()(Value &out, Context ctx, ArgPack const &pack) noexcept {
+        PyObject *args = cpy::to_python(pack);
+        if (!args) return false;
+        PyObject *o = PyObject_CallObject(Object::ptr, args);
+        if (!o) return false;
+        return cpy::from_python(out, o);
+    }
+};
+
+/******************************************************************************/
+
+bool build_argpack(ArgPack &pack, PyObject *pypack) {
+    return cpy::build_vector(pack, pypack, [](cpy::Object &&o, bool &ok) {
+            cpy::Value v;
+            ok &= cpy::from_python(v, o.ptr);
+            return v;
+    });
+}
+
+/******************************************************************************/
+
+bool build_callbacks(std::vector<Callback> &v, PyObject *pycalls) {
+    return build_vector(v, pycalls, [](Object &&o, bool) -> Callback {
+        if (o.ptr == Py_None) return {};
+        return PyCallback{std::move(o)};
+    });
+}
+
+/******************************************************************************/
+
+bool run_test(Value &v, TestCase const &test, bool no_gil, std::vector<Counter> &counts,
+              std::vector<Callback> callbacks, ArgPack pack) {
+    no_gil = no_gil && !test.function.target<PyTestCase>();
+    ReleaseGIL lk(no_gil);
+    if (no_gil) for (auto &c : callbacks)
+        if (c) c.target<PyCallback>()->unlock = &lk;
+
+    for (auto &c : counts) c.store(0u);
+
+    Context ctx({test.name}, std::move(callbacks), &counts);
+    return test.function(v, std::move(ctx), std::move(pack));
+}
+
+/******************************************************************************/
+
+TestCase *find_test(Py_ssize_t i) {
     if (i >= cpy::suite().cases.size()) {
         PyErr_SetString(PyExc_IndexError, "Unit test index out of range");
         return nullptr;
-    };
-    auto const &test = cpy::suite().cases[i];
-
-    std::vector<cpy::Callback> callbacks;
-    if (!cpy::build_vector(callbacks, pycalls, [](cpy::Object &&o) -> cpy::Callback {
-        if (o.ptr == Py_None) return {};
-        return cpy::PyCallback{std::move(o)};
-    })) {return nullptr;}
-
-    cpy::ArgPack pack;
-    bool ok = true;
-    if (PyLong_Check(pypack)) {
-        auto n = PyLong_AsSize_t(pypack);
-        if (PyErr_Occurred()) return nullptr;
-        if (n >= test.parameters.size()) {
-            PyErr_SetString(PyExc_IndexError, "Parameter pack index out of range");
-            return nullptr;
-        }
-        pack = test.parameters[n];
-    } else {
-        if (!cpy::build_vector(pack, pypack, [&ok](cpy::Object &&o) {
-            cpy::Value v;
-            ok = ok && cpy::from_python(v, o.ptr);
-            return v;
-        }) || !ok) return nullptr;
     }
-
-    std::vector<cpy::Counter> counters(callbacks.size());
-    {
-        ReleaseGIL lk(no_gil);
-        if (no_gil) for (auto &c : callbacks)
-            if (c) c.target<cpy::PyCallback>()->unlock = &lk;
-
-        for (auto &c : counters) c.store(0u);
-
-        cpy::Context ctx({test.name}, std::move(callbacks), &counters);
-        ok = test.function(std::move(ctx), std::move(pack));
-    }
-
-    if (ok) return cpy::to_python(counters, [](auto const &c) {return c.load();});
-    PyErr_SetString(PyExc_TypeError, "Invalid unit test argument types");
-    return nullptr;
+    return &cpy::suite().cases[i];
 }
+
+/******************************************************************************/
 
 }
 
@@ -288,31 +302,52 @@ extern "C" {
 
 static PyObject *cpy_run_test(PyObject *self, PyObject *args) {
     Py_ssize_t i;
-    PyObject *pycalls, *pypack, *cout, *cerr, *counts, *gil;
+    PyObject *pycalls, *pypack, *cout, *cerr, *gil;
     if (!PyArg_ParseTuple(args, "nOOOOO", &i, &pycalls, &pypack, &gil, &cout, &cerr))
         return nullptr;
+
+
+    auto const test = cpy::find_test(i);
+    if (!test) return nullptr;
+
+    std::vector<cpy::Callback> callbacks;
+    if (!cpy::build_callbacks(callbacks, pycalls)) return nullptr;
+
+    cpy::ArgPack pack;
+    if (PyLong_Check(pypack)) {
+        auto n = PyLong_AsSize_t(pypack);
+        if (PyErr_Occurred()) return nullptr;
+        if (n >= test->parameters.size()) {
+            PyErr_SetString(PyExc_IndexError, "Parameter pack index out of range");
+            return nullptr;
+        }
+        pack = test->parameters[n];
+    } else if (!build_argpack(pack, pypack)) return nullptr;
 
     bool const no_gil = PyObject_Not(gil);
     std::stringstream out, err;
 
-    if (cout && PyObject_IsTrue(cout)) {
-        cpy::RedirectStream o(out.rdbuf(), std::cout, cpy::cout_mutex);
-        if (cerr && PyObject_IsTrue(cerr)) {
-            cpy::RedirectStream e(err.rdbuf(), std::cerr, cpy::cerr_mutex);
-            counts = cpy::run_test(i, no_gil, pycalls, pypack);
-        } else counts = cpy::run_test(i, no_gil, pycalls, pypack);
-    } else {
-        if (cerr && PyObject_IsTrue(cerr)) {
-            cpy::RedirectStream e(err.rdbuf(), std::cerr, cpy::cerr_mutex);
-            counts = cpy::run_test(i, no_gil, pycalls, pypack);
-        } else counts = cpy::run_test(i, no_gil, pycalls, pypack);
+    cpy::Value v;
+    std::vector<cpy::Counter> counters(callbacks.size());
+
+    {
+        cpy::RedirectStream o(PyObject_IsTrue(cout) ? out.rdbuf() : nullptr, std::cout, cpy::cout_mutex);
+        cpy::RedirectStream e(PyObject_IsTrue(cerr) ? err.rdbuf() : nullptr, std::cerr, cpy::cerr_mutex);
+        if (!cpy::run_test(v, *test, no_gil, counters, std::move(callbacks), std::move(pack))) {
+            PyErr_SetString(PyExc_TypeError, "Invalid unit test argument types");
+            return nullptr;
+        }
     }
+
+    PyObject *value = cpy::to_python(v);
+    if (!value) return nullptr;
+    PyObject *counts = cpy::to_python(counters, [](auto const &c) {return c.load();});
     if (!counts) return nullptr;
     PyObject *pyout = cpy::to_python(out.str());
     if (!pyout) return nullptr;
     PyObject *pyerr = cpy::to_python(err.str());
     if (!pyerr) return nullptr;
-    return PyTuple_Pack(3u, counts, pyout, pyerr);
+    return PyTuple_Pack(4u, value, counts, pyout, pyerr);
 }
 
 /******************************************************************************/
@@ -321,6 +356,28 @@ static PyObject *cpy_n_tests(PyObject *, PyObject *args) {
     Py_ssize_t n = cpy::suite().cases.size();
     return Py_BuildValue("n", n);
 }
+
+/******************************************************************************/
+
+static PyObject *cpy_add_test(PyObject *, PyObject *args) {
+    char const *s;
+    PyObject *fun, *pypacks = nullptr;
+    if (!PyArg_ParseTuple(args, "sO|O", &s, &fun, &pypacks)) return nullptr;
+
+    std::vector<cpy::ArgPack> packs;
+    if (pypacks) {
+        cpy::build_vector(packs, pypacks, [](cpy::Object &&o, bool &ok) {
+            cpy::ArgPack pack;
+            ok &= cpy::build_argpack(pack, o.ptr);
+            return pack;
+        });
+    }
+
+    cpy::suite().cases.emplace_back(cpy::TestCase{s, {}, cpy::PyTestCase(fun, true), std::move(packs)});
+    Py_RETURN_NONE;
+}
+
+/******************************************************************************/
 
 static PyObject *cpy_compile_info(PyObject *, PyObject *) {
     return PyTuple_Pack(3u,
@@ -347,7 +404,7 @@ static PyObject *cpy_find_test(PyObject *self, PyObject *args) {
     auto const &cases = cpy::suite().cases;
     for (std::size_t i = 0; i != cases.size(); ++i)
         if (cases[i].name == name) return cpy::to_python(i);
-    PyErr_SetString(PyExc_IndexError, "Test name not found");
+    PyErr_SetString(PyExc_KeyError, "Test name not found");
     return nullptr;
 }
 
@@ -356,21 +413,17 @@ static PyObject *cpy_find_test(PyObject *self, PyObject *args) {
 static PyObject *cpy_test_info(PyObject *self, PyObject *args) {
     Py_ssize_t i;
     if (!PyArg_ParseTuple(args, "n", &i)) return nullptr;
-    auto const &cases = cpy::suite().cases;
-    if (i < cases.size()) {
-        auto const &c = cases[i];
-        PyObject *t0 = cpy::to_python(c.name);
-        if (!t0) return nullptr;
-        PyObject *t1 = cpy::to_python(c.comment.location.file);
-        if (!t1) return nullptr;
-        PyObject *t2 = cpy::to_python(static_cast<std::size_t>(c.comment.location.line));
-        if (!t2) return nullptr;
-        PyObject *t3 = cpy::to_python(c.comment.comment);
-        if (!t3) return nullptr;
-        return PyTuple_Pack(4u, t0, t1, t2, t3);
-    }
-    PyErr_SetString(PyExc_IndexError, "Test index out of bounds");
-    return nullptr;
+    auto c = cpy::find_test(i);
+    if (!c) return nullptr;
+    PyObject *t0 = cpy::to_python(c->name);
+    if (!t0) return nullptr;
+    PyObject *t1 = cpy::to_python(c->comment.location.file);
+    if (!t1) return nullptr;
+    PyObject *t2 = cpy::to_python(static_cast<std::size_t>(c->comment.location.line));
+    if (!t2) return nullptr;
+    PyObject *t3 = cpy::to_python(c->comment.comment);
+    if (!t3) return nullptr;
+    return PyTuple_Pack(4u, t0, t1, t2, t3);
 }
 
 /******************************************************************************/
@@ -390,6 +443,7 @@ static PyMethodDef cpy_methods[] = {
     {"compile_info", (PyCFunction) cpy_compile_info, METH_NOARGS,  "Compilation information (no arguments)"},
     {"test_names",   (PyCFunction) cpy_test_names,   METH_NOARGS,  "Names of registered tests (no arguments)"},
     {"test_info",    (PyCFunction) cpy_test_info,    METH_VARARGS, "Info of a registered test from its index (int)"},
+    {"add_test",     (PyCFunction) cpy_add_test,     METH_VARARGS, "Add a unit test from a python object"},
     {nullptr, nullptr, 0, nullptr}};
 
 /******************************************************************************/

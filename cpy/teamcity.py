@@ -18,7 +18,7 @@ class TeamCityReport:
         self.time = time.time()
         return self
 
-    def finalize(self, counts, out, err):
+    def finalize(self, *args):
         pass
 
     def __exit__(self, value, cls, traceback):
@@ -36,7 +36,7 @@ class TeamCityTestReport:
         assert event == 0 or event == 2
         self.messages.testFailed(self.name, readable_message(events(False)[event], scopes, logs))
 
-    def finalize(self, counts, out, err):
+    def finalize(self, value, counts, out, err):
         self.messages.message('counts', errors=str(counts[0]), exceptions=str(counts[2]))
         self.messages.testStdOut(self.name, out)
         self.messages.testStdErr(self.name, err)

@@ -86,7 +86,7 @@ class XMLTestReport:
                 self.sub = ET.SubElement(self.element, 'error', message='', type='1')
         self.sub.set('message', self.message + readable_message(event, scopes, logs))
 
-    def finalize(self, counts, out, err):
+    def finalize(self, *args):
         pass
 
     def __enter__(self):

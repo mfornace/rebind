@@ -31,7 +31,8 @@ auto test1 = unit_test("first-test", COMMENT("This is a test"), [](Context ctx) 
 UNIT_TEST("second-test", "This is a test 2") = [](Context ctx) {
     std::cerr << "Hey I am std::cerr 2" << std::endl;
     std::cout << "Hey I am std::cout 2" << std::endl;
-    if (!ctx.require_throws<std::runtime_error>([]{})) return;
+    return 8;
+    // if (!ctx.require_throws<std::runtime_error>([]{})) return;
 };
 
 UNIT_TEST("third-test") = [](auto) {

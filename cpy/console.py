@@ -42,11 +42,13 @@ class ConsoleTestReport:
     def __call__(self, event, scopes, logs):
         self.write(readable_message(events(True)[event], scopes, logs, self.indent), '\n')
 
-    def finalize(self, counts, out, err):
+    def finalize(self, value, counts, out, err):
         for o, s in zip((out, err), ('cout', 'cerr')):
             if o:
                 self.write(colored('Contents of std::%s' % s, 'magenta'), ':\n',
                        '=' * 22, '\n', o, '=' * 22, '\n\n')
+        if value is not None:
+            self.write(colored('Return value', 'blue'), ': {}\n'.format(value))
         if any(counts):
             s = ', '.join('%s: %d' % (e, c) for e, c in zip(events(True), counts) if c)
             self.write('Counts for test %d: {%s}\n' % (self.index, s))

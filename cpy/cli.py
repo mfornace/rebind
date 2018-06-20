@@ -8,12 +8,12 @@ def go(lib, indices, suite_masks, gil, cout, cerr):
     for i in indices:
         info = lib.test_info(i)
         test_masks = [(r(i, info), m) for r, m in suite_masks]
-        counts, out, err = run_test(lib, i, test_masks, args=(), gil=gil, cout=cout, cerr=cerr)
+        val, counts, out, err = run_test(lib, i, test_masks, args=(), gil=gil, cout=cout, cerr=cerr)
         stdout.write(out)
         stderr.write(err)
         totals = [x + y for x, y in zip(totals, counts)]
         for r, _ in test_masks:
-            r.finalize(counts, out, err)
+            r.finalize(val, counts, out, err)
 
     for r, _ in suite_masks:
         r.finalize(totals, stdout.getvalue(), stderr.getvalue())
@@ -82,6 +82,7 @@ def main(args):
 
     mask = (args.failure, args.success, args.exception, args.timing)
     info = lib.compile_info()
+
 
     with ExitStack() as stack:
         masks = []
