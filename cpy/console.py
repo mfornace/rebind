@@ -4,20 +4,26 @@ from .common import events, colored, readable_message, Report
 ################################################################################
 
 class ConsoleReport(Report):
-    def __init__(self, file, info, **kwargs):
+    def __init__(self, file, info, timing=False, **kwargs):
         self.file = file
-        self.file.write('Compiler info: {} ({}, {})\n'.format(*info))
+        self.timing = timing
+        self.file.write('Compiler: {}\n'.format(info[0]))
+        self.file.write('Compiled at: {}, {}\n'.format(info[2], info[1]))
         self.kwargs = kwargs
 
     def __call__(self, index, info):
-        return ConsoleTestReport(index, info, self.file, **self.kwargs)
+        return ConsoleTestReport(index, info, self.file, timing=self.timing, **self.kwargs)
 
-    def finalize(self, counts, out, err):
-        s = '=' * 80 + '\nTotal counts:\n'
+    def finalize(self, time, counts, out, err):
+        s = '=' * 80 + '\nTotal results:\n'
 
         spacing = max(map(len, events(True))) + 1
         for e, c in zip(events(True), counts):
             s += '    {} {}\n'.format((e + ':').ljust(spacing), c)
+
+        if self.timing:
+            s += '\n' + colored('Total duration', 'yellow') + ': %.7e\n' % time
+
         self.file.write(s)
 
     def __exit__(self, value, cls, traceback):
@@ -26,10 +32,11 @@ class ConsoleReport(Report):
 ################################################################################
 
 class ConsoleTestReport(Report):
-    def __init__(self, index, info, file, sync=False, indent='    '):
+    def __init__(self, index, info, file, timing=False, sync=False, indent='    '):
         self.indent = indent
         self.index = index
         self.info = info
+        self.timing = timing
         if sync:
             self.file, self.output = io.StringIO(), file
         else:
@@ -43,16 +50,20 @@ class ConsoleTestReport(Report):
     def __call__(self, event, scopes, logs):
         self.write(readable_message(events(True)[event], scopes, logs, self.indent), '\n')
 
-    def finalize(self, value, counts, out, err):
+    def finalize(self, value, time, counts, out, err):
         for o, s in zip((out, err), ('cout', 'cerr')):
             if o:
                 self.write(colored('Contents of std::%s' % s, 'magenta'), ':\n',
                        '=' * 22, '\n', o, '=' * 22, '\n\n')
         if value is not None:
             self.write(colored('Return value', 'blue'), ': {}\n'.format(value))
+
         if any(counts):
             s = ', '.join('%s: %d' % (e, c) for e, c in zip(events(True), counts) if c)
-            self.write('Counts for test %d: {%s}\n' % (self.index, s))
+            self.write('Results: {%s}\n' % s)
+
+        if self.timing:
+            self.write(colored('Test duration', 'yellow'), ': %.7e\n' % time)
 
     def __enter__(self):
         if self.info[1]:

@@ -296,8 +296,17 @@ bool build_callbacks(std::vector<Callback> &v, Object calls) {
 
 /******************************************************************************/
 
-bool run_test(Value &v, TestCase const &test, bool no_gil, std::vector<Counter> &counts,
-              std::vector<Callback> callbacks, ArgPack pack) {
+struct Timer {
+    double start;
+    double &duration;
+    Timer(double &d) : start(current_time()), duration(d) {}
+    ~Timer() {duration = current_time() - start;}
+};
+
+/******************************************************************************/
+
+bool run_test(Value &v, double &time, TestCase const &test, bool no_gil,
+              std::vector<Counter> &counts, std::vector<Callback> callbacks, ArgPack pack) {
     no_gil = no_gil && !test.function.target<PyTestCase>();
     ReleaseGIL lk(no_gil);
     if (no_gil) for (auto &c : callbacks)
@@ -306,6 +315,7 @@ bool run_test(Value &v, TestCase const &test, bool no_gil, std::vector<Counter> 
     for (auto &c : counts) c.store(0u);
 
     Context ctx({test.name}, std::move(callbacks), &counts);
+    Timer t(time);
     return test.function(v, std::move(ctx), std::move(pack));
 }
 
@@ -340,12 +350,14 @@ Object run_test(Py_ssize_t i, Object calls, Object pypack, bool cout, bool cerr,
     std::stringstream out, err;
 
     cpy::Value v;
+    double test_time = 0;
     std::vector<cpy::Counter> counters(callbacks.size());
 
     {
         cpy::RedirectStream o(cpy::cout_sync, cout ? out.rdbuf() : nullptr);
         cpy::RedirectStream e(cpy::cerr_sync, cerr ? err.rdbuf() : nullptr);
-        if (!cpy::run_test(v, *test, no_gil, counters, std::move(callbacks), std::move(pack))) {
+        if (!cpy::run_test(v, test_time, *test, no_gil, counters,
+                           std::move(callbacks), std::move(pack))) {
             if (!PyErr_Occurred())
                 PyErr_SetString(PyExc_TypeError, "Invalid unit test argument types");
             return {};
@@ -354,13 +366,15 @@ Object run_test(Py_ssize_t i, Object calls, Object pypack, bool cout, bool cerr,
 
     auto value = cpy::to_python(v);
     if (!value) return {};
+    auto timed = cpy::to_python(test_time);
+    if (!timed) return {};
     auto counts = cpy::to_python(counters, [](auto const &c) {return c.load();});
     if (!counts) return {};
     auto pyout = cpy::to_python(out.str());
     if (!pyout) return {};
     auto pyerr = cpy::to_python(err.str());
     if (!pyerr) return {};
-    return {PyTuple_Pack(4u, +value, +counts, +pyout, +pyerr), false};
+    return {PyTuple_Pack(5u, +value, +timed, +counts, +pyout, +pyerr), false};
 }
 
 /******************************************************************************/

@@ -36,12 +36,12 @@ def run_index(lib, masks, out, err, gil, cout, cerr, params, i):
     info = lib.test_info(i)
     args = tuple(params.get(info[0], ()))
     test_masks = [(r(i, info), m) for r, m in masks]
-    val, counts, o, e = run_test(lib, i, test_masks, args=args, gil=gil, cout=cout, cerr=cerr)
+    val, time, counts, o, e = run_test(lib, i, test_masks, args=args, gil=gil, cout=cout, cerr=cerr)
     out.write(o)
     err.write(e)
     for r, _ in test_masks:
-        r.finalize(val, counts, o, e)
-    return counts
+        r.finalize(val, time, counts, o, e)
+    return (time,) + counts
 
 def run_suite(lib, indices, masks, *, gil, cout, cerr, params={}, exe=map):
     from io import StringIO
@@ -54,7 +54,7 @@ def run_suite(lib, indices, masks, *, gil, cout, cerr, params={}, exe=map):
     totals = tuple(map(sum, zip(*counts)))
 
     for r, _ in masks:
-        r.finalize(totals, out.getvalue(), err.getvalue())
+        r.finalize(totals[0], totals[1:], out.getvalue(), err.getvalue())
 
 ################################################################################
 
@@ -97,7 +97,7 @@ def main(run=run_suite, lib='libcpy', list=False, failure=False, success=False,
         masks = []
         if not quiet:
             from .console import ConsoleReport
-            r = ConsoleReport(open_file(stack, out, out_mode), info, sync=jobs > 1)
+            r = ConsoleReport(open_file(stack, out, out_mode), info, timing=timing, sync=jobs > 1)
             masks.append((stack.enter_context(r), mask))
 
         if xml:
