@@ -1,8 +1,9 @@
-from .common import events, colored, readable_message
+import io
+from .common import events, colored, readable_message, Report
 
 ################################################################################
 
-class ConsoleReport:
+class ConsoleReport(Report):
     def __init__(self, file, info, **kwargs):
         self.file = file
         self.file.write('Compiler info: {} ({}, {})\n'.format(*info))
@@ -10,9 +11,6 @@ class ConsoleReport:
 
     def __call__(self, index, info):
         return ConsoleTestReport(index, info, self.file, **self.kwargs)
-
-    def __enter__(self):
-        return self
 
     def finalize(self, counts, out, err):
         s = '=' * 80 + '\nTotal counts:\n'
@@ -27,12 +25,15 @@ class ConsoleReport:
 
 ################################################################################
 
-class ConsoleTestReport:
-    def __init__(self, index, info, file, indent='    '):
+class ConsoleTestReport(Report):
+    def __init__(self, index, info, file, sync=False, indent='    '):
         self.indent = indent
         self.index = index
         self.info = info
-        self.file = file
+        if sync:
+            self.file, self.output = io.StringIO(), file
+        else:
+            self.file, self.output = file, None
 
     def write(self, *args):
         for a in args:
@@ -64,6 +65,8 @@ class ConsoleTestReport:
         return self
 
     def __exit__(self, value, cls, traceback):
-        pass
+        if self.output is not None:
+            self.output.write(self.file.getvalue())
+            self.output.flush()
 
 ################################################################################

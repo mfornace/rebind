@@ -1,10 +1,10 @@
-from .common import readable_message, events
+from .common import readable_message, events, Report
 import xml.etree.ElementTree as ET
 import io, time, datetime
 
 ################################################################################
 
-class XMLReport:
+class XMLReport(Report):
     def __init__(self, info, suite, package='', root=None, **kwargs):
         self.root = ET.Element('testsuites') if root is None else root
         time = datetime.datetime.now().isoformat(timespec='seconds')
@@ -70,7 +70,7 @@ class XMLFileReport(XMLReport):
 
 ################################################################################
 
-class XMLTestReport:
+class XMLTestReport(Report):
     def __init__(self, index, info):
         self.element = ET.Element('testcase', name=info[0], classname=info[0])
         self.time = None
@@ -85,9 +85,6 @@ class XMLTestReport:
             if event == 2:
                 self.sub = ET.SubElement(self.element, 'error', message='', type='1')
         self.sub.set('message', self.message + readable_message(event, scopes, logs))
-
-    def finalize(self, *args):
-        pass
 
     def __enter__(self):
         self.time = time.time()

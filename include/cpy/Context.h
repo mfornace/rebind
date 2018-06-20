@@ -65,10 +65,7 @@ struct Context {
 
     template <class K, class V>
     void info(K &&k, V &&v) {
-        logs.emplace_back(KeyPair{
-            static_cast<K &&>(k),
-            Valuable<std::decay_t<V>>()(static_cast<V &&>(v))
-        });
+        logs.emplace_back(KeyPair{static_cast<K &&>(k), make_value(static_cast<V &&>(v))});
     }
 
     /**************************************************************************/
@@ -108,7 +105,7 @@ struct Context {
 
 #undef CPY_TMP
 
-    template <class X, class Y, std::enable_if_t<!(std::is_integral<X>::value && std::is_integral<Y>::value), int> = 0>
+    template <class X, class Y, std::enable_if_t<!(std::is_integral_v<X> && std::is_integral_v<Y>), int> = 0>
     bool require_near(X const &x, Y const &y) {
         bool ok = ApproxEquals<typename ApproxType<X, Y>::type>()(unglue(x), unglue(y));
         return require(ok, ComparisonGlue<X const &, Y const &>{x, y, "=="});

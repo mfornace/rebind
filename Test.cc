@@ -2,13 +2,15 @@
 #include "Macros.h"
 #include <iostream>
 
-using namespace cpy;
+struct goo {
+    friend std::ostream & operator<<(std::ostream &os, goo) {return os << "goo";}
+};
 
 /******************************************************************************/
 
-auto test1 = unit_test("first-test", COMMENT("This is a test"), [](Context ctx) {
+auto test1 = unit_test("first-test", COMMENT("This is a test"), [](cpy::Context ctx) {
     ctx.info("a message");
-    int n = ctx("new-section", [](Context ctx) {
+    int n = ctx("new-section", [](cpy::Context ctx) {
         ctx.require_eq(3, 4);
         return 5;
     });
@@ -23,15 +25,15 @@ auto test1 = unit_test("first-test", COMMENT("This is a test"), [](Context ctx) 
 
     auto xxx = 5, yyy = 6;
 
-    ctx.require_eq(xxx, yyy, COMMENT("x should equal y"));
+    ctx.require_eq(xxx, yyy, goo(), COMMENT("x should equal y"));
 
     if (!ctx.require_eq(1, 2)) return;
 }, {{false}});
 
-UNIT_TEST("second-test", "This is a test 2") = [](Context ctx) {
+UNIT_TEST("second-test", "This is a test 2") = [](cpy::Context ctx) {
     std::cerr << "Hey I am std::cerr 2" << std::endl;
     std::cout << "Hey I am std::cout 2" << std::endl;
-    return 8;
+    return "hello";
     // if (!ctx.require_throws<std::runtime_error>([]{})) return;
 };
 

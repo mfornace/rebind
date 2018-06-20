@@ -20,7 +20,7 @@ decltype(auto) unglue(T const &t) {return Ungluer<T>()(t);}
 template <class T, class=void>
 struct AddKeyPairs {
     void operator()(Logs &v, T const &t) const {
-        v.emplace_back(KeyPair{{}, Valuable<T>()(t)});
+        v.emplace_back(KeyPair{{}, make_value(t)});
     }
 };
 
@@ -35,7 +35,7 @@ struct Glue {
 template <class V>
 struct Gluer {
     template <class K>
-    Glue<K, std::conditional_t<std::is_class<V>::value, V, V const &>>
+    Glue<K, std::conditional_t<std::is_class_v<V>, V, V const &>>
         operator()(K key, V const &value) {return {std::move(key), value};}
 };
 
@@ -63,7 +63,7 @@ struct Ungluer<Glue<K, V>> {
 template <class K, class V>
 struct AddKeyPairs<Glue<K, V>> {
     void operator()(Logs &v, Glue<K, V> const &g) const {
-        v.emplace_back(KeyPair{g.key, Valuable<std::decay_t<V>>()(g.value)});
+        v.emplace_back(KeyPair{g.key, make_value(g.value)});
     }
 };
 
@@ -97,7 +97,7 @@ template <class T>
 struct AddKeyPairs<Comment<T>> {
     void operator()(Logs &v, Comment<T> const &c) const {
         AddKeyPairs<FileLine>()(v, c.location);
-        v.emplace_back(KeyPair{"comment", Valuable<T>()(c.comment)});
+        v.emplace_back(KeyPair{"comment", make_value(c.comment)});
     }
 };
 
@@ -118,8 +118,8 @@ ComparisonGlue<X const &, Y const &> comparison_glue(X const &x, Y const &y, cha
 template <class L, class R>
 struct AddKeyPairs<ComparisonGlue<L, R>> {
     void operator()(Logs &v, ComparisonGlue<L, R> const &t) const {
-        v.emplace_back(KeyPair{"lhs", Valuable<std::decay_t<L>>()(t.lhs)});
-        v.emplace_back(KeyPair{"rhs", Valuable<std::decay_t<L>>()(t.rhs)});
+        v.emplace_back(KeyPair{"lhs", make_value(t.lhs)});
+        v.emplace_back(KeyPair{"rhs", make_value(t.rhs)});
         v.emplace_back(KeyPair{"op", Value(std::string_view(t.op))});
     }
 };

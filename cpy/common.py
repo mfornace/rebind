@@ -6,12 +6,12 @@ try:
 except ImportError:
     colored = not_colored
 
+import sys
 from contextlib import ExitStack
-import io
 
 ################################################################################
 
-ScopeDelimiter = '/'
+Delimiter = '/'
 
 Events = [
     'Failure',
@@ -34,6 +34,18 @@ def events(color=False):
 
 ################################################################################
 
+class Report:
+    def __enter__(self):
+        return self
+
+    def finalize(self, *args):
+        pass
+
+    def __exit__(self, value, cls, traceback):
+        pass
+
+################################################################################
+
 def pop_value(key, keys, values, default=None):
     try:
         idx = keys.index(key)
@@ -41,6 +53,29 @@ def pop_value(key, keys, values, default=None):
         return values.pop(idx)
     except ValueError:
         return default
+
+################################################################################
+
+def open_file(stack, name, mode):
+    if name in ('stderr', 'stdout'):
+        return getattr(sys, name)
+    else:
+        return stack.enter_context(open(name, mode))
+
+################################################################################
+
+def find_tests(lib, tests=(), regex=''):
+    if tests:
+        indices = [lib.find_test(t) for t in tests]
+    elif not regex:
+        indices = list(range(lib.n_tests()))
+
+    if regex:
+        import re
+        pattern = re.compile(regex)
+        indices += [i for i, t in enumerate(lib.test_names()) if pattern.match(t)]
+
+    return sorted(set(indices))
 
 ################################################################################
 
@@ -52,7 +87,7 @@ class MultiReport:
         for r in self.reports:
             r(index, scopes, logs)
 
-def multireport(*reports):
+def multireport(reports):
     if not reports:
         return None
     if len(reports) == 1:
@@ -63,13 +98,12 @@ def multireport(*reports):
 
 def run_test(lib, index, test_masks, *, args=(), gil=False, cout=False, cerr=False):
     lists = [[] for _ in events()]
-    out, err = io.StringIO(), io.StringIO()
 
     with ExitStack() as stack:
         for r, mask in test_masks:
             stack.enter_context(r)
             [l.append(r) for m, l in zip(mask, lists) if m]
-        reports = [multireport(*l) for l in lists]
+        reports = tuple(map(multireport, lists))
         return lib.run_test(index, reports, args, gil, cout, cerr)
 
 ################################################################################
@@ -77,7 +111,7 @@ def run_test(lib, index, test_masks, *, args=(), gil=False, cout=False, cerr=Fal
 def readable_message(kind, scopes, logs, indent='    '):
     keys, values = map(list, zip(*logs))
     line, path = (pop_value(k, keys, values) for k in ('line', 'file'))
-    scopes = repr(ScopeDelimiter.join(scopes))
+    scopes = repr(Delimiter.join(scopes))
 
     # first line
     if path is None:

@@ -5,6 +5,7 @@
 #include <vector>
 #include <type_traits>
 #include <string_view>
+#include <iosfwd>
 
 namespace cpy {
 
@@ -19,6 +20,14 @@ using Variant = std::variant<
     std::complex<double>,
     std::string,
     std::string_view
+
+    // std::vector<bool>,
+    // std::vector<std::size_t>,
+    // std::vector<std::ptrdiff_t>,
+    // std::vector<double>,
+    // std::vector<std::complex<double>>,
+    // std::vector<std::string>,
+    // std::vector<std::string_view>
 >;
 
 struct Value {
@@ -26,22 +35,20 @@ struct Value {
 
     Value(std::monostate={});
     Value(bool);
-
     Value(std::size_t);
-    template <class T, std::enable_if_t<(std::is_integral_v<T> && !std::is_signed_v<T>), int> = 0>
-    Value(T t) : Value(static_cast<std::ptrdiff_t>(t)) {}
-
     Value(std::ptrdiff_t);
-    template <class T, std::enable_if_t<(std::is_integral_v<T> && std::is_signed_v<T>), int> = 0>
-    Value(T t) : Value(static_cast<std::ptrdiff_t>(t)) {}
-
     Value(double);
     Value(std::complex<double>);
-
     Value(std::string);
-
     Value(std::string_view);
-    Value(char const *c) : Value(std::string_view(c)) {}
+
+    // Value(std::vector<bool>);
+    // Value(std::vector<std::size_t>);
+    // Value(std::vector<std::ptrdiff_t>);
+    // Value(std::vector<double>);
+    // Value(std::vector<std::complex<double>>);
+    // Value(std::vector<std::string>);
+    // Value(std::vector<std::string_view>);
 
     Value & operator=(Value &&v) noexcept;
     Value & operator=(Value const &v) noexcept;
@@ -52,7 +59,6 @@ struct Value {
 };
 
 /*
- Add std::vector<>,              YES
  std::any,                       any YES. otoh couldn't I just any anyway
  std::function<ArgPack>?,        YEAH POSSIBLY BUT NEED TO FORWARD DECLARE THEN
  std::time_t,                    NO
@@ -71,7 +77,13 @@ using ArgPack = std::vector<Value>;
 /******************************************************************************/
 
 template <class T, class=void>
-struct Valuable;
+struct Valuable {
+    Value operator()(T const &t) const {
+        std::ostringstream ss;
+        ss << t;
+        return ss.str();
+    }
+};
 
 template <>
 struct Valuable<bool> {
@@ -89,14 +101,14 @@ struct Valuable<std::string_view> {
 };
 
 template <class T>
-struct Valuable<T, std::enable_if_t<(std::is_floating_point<T>::value)>> {
+struct Valuable<T, std::enable_if_t<(std::is_floating_point_v<T>)>> {
     Value operator()(T t) const {return static_cast<double>(t);}
 };
 
 template <class T>
-struct Valuable<T, std::enable_if_t<(std::is_integral<T>::value)>> {
+struct Valuable<T, std::enable_if_t<(std::is_integral_v<T>)>> {
     Value operator()(T t) const {
-        if (std::is_signed<T>::value) return static_cast<std::ptrdiff_t>(t);
+        if (std::is_signed_v<T>) return static_cast<std::ptrdiff_t>(t);
         else return static_cast<std::size_t>(t);
     }
 };
@@ -105,6 +117,11 @@ template <>
 struct Valuable<char const *> {
     Value operator()(char const *t) const {return std::string_view(t);}
 };
+
+template <class T>
+Value make_value(T &&t) {
+    return Valuable<std::decay_t<T>>()(static_cast<T &&>(t));
+}
 
 /******************************************************************************/
 

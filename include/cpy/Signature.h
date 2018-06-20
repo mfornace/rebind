@@ -13,6 +13,8 @@ struct IndexedType {
 
 /// A lightweight ordered container of types
 template <class ...Ts> struct Pack {
+    using size = std::integral_constant<std::size_t, sizeof...(Ts)>;
+
     template <class F, std::size_t ...Is>
     static constexpr auto apply(F &&f, std::index_sequence<Is...>) {
         return static_cast<F &&>(f)(IndexedType<Ts>{Is}...);
@@ -31,7 +33,6 @@ struct Signature;
 
 template <class R, class ...Ts>
 struct Signature<R(Ts...)> : Pack<R, Ts...> {
-    using size = std::integral_constant<std::size_t, sizeof...(Ts) + 1>;
     using return_type = R;
 };
 
@@ -42,7 +43,6 @@ struct Signature<R(*)(Ts...)> : Signature<R(Ts...)> {};
     template <class R, class C, class ...Ts> \
     struct Signature<R (C::* )(Ts...) Q> : Pack<R, C2, Ts...> { \
         using return_type = R; \
-        using size = std::integral_constant<std::size_t, sizeof...(Ts) + 2>; \
     };
 
     CPY_TMP(C, , C &);

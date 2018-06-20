@@ -9,13 +9,13 @@ template <class T, class=void>
 struct CastVariant {
     template <class U>
     bool check(U const &u) const {
-        return std::is_convertible<U &&, T>::value || std::is_same<T, std::monostate>::value;
+        return std::is_convertible_v<U &&, T> || std::is_same_v<T, std::monostate>;
     }
 
-    template <class U, std::enable_if_t<(!std::is_convertible<U &&, T>::value), int> = 0>
+    template <class U, std::enable_if_t<(!std::is_convertible_v<U &&, T>), int> = 0>
     T operator()(U &u) const {return T();}
 
-    template <class U, std::enable_if_t<(std::is_convertible<U &&, T>::value), int> = 0>
+    template <class U, std::enable_if_t<(std::is_convertible_v<U &&, T>), int> = 0>
     T operator()(U &u) const {return static_cast<T>(std::move(u));}
 };
 
@@ -45,10 +45,10 @@ struct TestSignature : Pack<void, Context> {
 template <class F>
 struct TestSignature<F, std::void_t<typename Signature<F>::return_type>> : Signature<F> {};
 
-template <class F, class ...Ts, std::enable_if_t<(!std::is_same<void, std::invoke_result_t<F, Ts...>>::value), int> = 0>
-void invoke(Value &output, F &&f, Ts &&...ts) {output = std::invoke(static_cast<F &&>(f), static_cast<Ts &&>(ts)...);}
+template <class F, class ...Ts, std::enable_if_t<(!std::is_same_v<void, std::invoke_result_t<F, Ts...>>), int> = 0>
+void invoke(Value &output, F &&f, Ts &&...ts) {output = make_value(std::invoke(static_cast<F &&>(f), static_cast<Ts &&>(ts)...));}
 
-template <class F, class ...Ts, std::enable_if_t<(std::is_same<void, std::invoke_result_t<F, Ts...>>::value), int> = 0>
+template <class F, class ...Ts, std::enable_if_t<(std::is_same_v<void, std::invoke_result_t<F, Ts...>>), int> = 0>
 void invoke(Value &, F &&f, Ts &&...ts) {std::invoke(static_cast<F &&>(f), static_cast<Ts &&>(ts)...);}
 
 template <class F>
