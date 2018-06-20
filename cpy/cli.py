@@ -1,33 +1,36 @@
-from .common import events, run_test, find_tests, open_file, ExitStack
+from .common import events, run_test, find_tests, open_file
+from .common import ExitStack, import_library, load_parameters
 
 ################################################################################
 
 def parser(prog='cpy', description='Run C++ unit tests from Python', **kwargs):
     from argparse import ArgumentParser
     out = ArgumentParser(prog=prog, description=description, **kwargs)
-    f = out.add_argument
-    f('--lib',       '-a', type=str, default='libcpy', help='file path for test library')
-    f('--failure',   '-f', action='store_true',  help='show failures')
-    f('--success',   '-s', action='store_true',  help='show successes')
-    f('--exception', '-e', action='store_true',  help='show exceptions')
-    f('--timing',    '-t', action='store_true',  help='show timings')
-    f('--list',      '-l', action='store_true',  help='list all test names')
-    f('--quiet',     '-q', action='store_true',  help='prevent command line output from cpy')
-    f('--capture',   '-c', action='store_true',  help='capture std::cerr and std::cout')
-    f('--gil',       '-g', action='store_true',  help='keep Python interpeter lock on')
-    f('--jobs',      '-j', type=int, default=1,  help='number of threads')
-    f('--params',    '-p', type=str, default='', help='JSON file or string containing test parameters')
+    add = out.add_argument
+    add('--lib',       '-a', type=str, default='libcpy', metavar='PATH', help="file path for test library (default 'libcpy')")
+    add('--list',      '-l', action='store_true',  help='list all test names')
+    add('--failure',   '-f', action='store_true',  help='show failures')
+    add('--success',   '-s', action='store_true',  help='show successes')
+    add('--exception', '-e', action='store_true',  help='show exceptions')
+    add('--timing',    '-t', action='store_true',  help='show timings')
+    add('--quiet',     '-q', action='store_true',  help='prevent command line output (from cpy at least)')
+    add('--capture',   '-c', action='store_true',  help='capture std::cerr and std::cout')
+    add('--gil',       '-g', action='store_true',  help='keep Python interpeter lock on')
+    add('--jobs',      '-j', type=int, default=1,  metavar='INT', help='number of threads (default 1)', )
+    add('--params',    '-p', type=str,             metavar='STR', help='JSON file path or Python eval-able parameter string')
 
-    f('--re',        '-r', type=str, default='',       help='include test names matching a given regex')
-    f('--out',       '-o', type=str, default='stdout', help='output file')
-    f('--out-mode',        type=str, default='w',      help='output file open mode')
-    f('--xml',             type=str, default='',       help='XML file path')
-    f('--xml-mode',        type=str, default='a+b',    help='XML file open mode')
-    f('--suite',           type=str, default='cpy',    help='test suite name (e.g. for XML output)')
-    f('--teamcity',        type=str, default='',       help='TeamCity file path')
-    f('--json',            type=str, default='',       help='JSON file path')
+    f = lambda t, m, *args, **kws: out.add_argument(*args, type=t, metavar=m, **kws)
+    f(str, 'RE',   '--regex',  '-r',  help="include test names matching a given regex")
+    f(str, 'PATH', '--out',    '-o',  help="output file path (default 'stdout')", default='stdout')
+    f(str, 'MODE', '--out-mode',      help="output file open mode (default 'w')", default='w')
+    f(str, 'PATH', '--xml',           help="XML file path")
+    f(str, 'MODE', '--xml-mode',      help="XML file open mode (default 'a+b')", default='a+b')
+    f(str, 'NAME', '--suite',         help="test suite output name (default 'cpy')", default='cpy')
+    f(str, 'PATH', '--teamcity',      help="TeamCity file path")
+    f(str, 'PATH', '--json',          help="JSON file path")
+    f(int, 'INT',  '--json-indent',   help="JSON indentation (default None)")
 
-    f('tests', type=str, default=[], nargs='*', help='test names (if not given, run all tests)')
+    add('tests', type=str, nargs='*', help='test names (if not given, run all tests)')
     return out
 
 ################################################################################
@@ -58,32 +61,13 @@ def run_suite(lib, indices, masks, *, gil, cout, cerr, params={}, exe=map):
 
 ################################################################################
 
-def import_library(lib):
-    import sys, os, importlib
-    sys.path.insert(0, os.path.dirname(os.path.abspath(lib)))
-    return importlib.import_module(lib)
-
-def load_parameters(params):
-    if not params:
-        return {}
-    elif not isinstance(params, str):
-        return dict(params)
-    try:
-        with open(params) as f:
-            import json
-            return dict(json.load(f))
-    except FileNotFoundError:
-        return eval('dict(%s)' % params)
-
-################################################################################
-
 def main(run=run_suite, lib='libcpy', list=False, failure=False, success=False,
     exception=False, timing=False, quiet=False, capture=False, gil=False,
-    re='', out='stdout', out_mode='w', xml='', xml_mode='a+b', suite='cpy',
-    teamcity='', json='', jobs=1, tests=(), params=''):
+    regex=None, out='stdout', out_mode='w', xml=None, xml_mode='a+b', suite='cpy',
+    teamcity=None, json=None, json_indent=None, jobs=1, tests=None, params=None):
 
     lib = import_library(lib)
-    indices = find_tests(lib, tests, re)
+    indices = find_tests(lib, tests, regex)
     params = load_parameters(params)
 
     if list:
@@ -112,7 +96,7 @@ def main(run=run_suite, lib='libcpy', list=False, failure=False, success=False,
 
         if json:
             from .native import NativeReport
-            r = NativeReport(open_file(stack, json, 'w'), info, len(indices))
+            r = NativeReport(open_file(stack, json, 'w'), info, indent=json_indent)
             masks.append((stack.enter_context(r), mask))
 
         if jobs > 1:

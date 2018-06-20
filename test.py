@@ -1,10 +1,11 @@
 from cpy import cli
 
-lib = cli.import_library('libcpy')
+args = cli.parser().parse_args()
 
 def hmm(*args):
     print(args)
 
+lib = cli.import_library('libcpy')
 lib.add_test('hmm', hmm)
 
-cli.main(**vars(cli.parser().parse_args()))
+cli.main(**vars(args))

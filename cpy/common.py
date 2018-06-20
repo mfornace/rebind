@@ -11,16 +11,11 @@ from contextlib import ExitStack
 
 ################################################################################
 
-Delimiter = '/'
+DELIMITER = '/'
 
-Events = [
-    'Failure',
-    'Success',
-    'Exception',
-    'Timing',
-]
+EVENTS = ['Failure', 'Success', 'Exception', 'Timing']
 
-ColoredEvents = [
+COLORED_EVENTS = [
     colored('Failure',   'red'),
     colored('Success',   'green'),
     colored('Exception', 'red'),
@@ -30,7 +25,7 @@ ColoredEvents = [
 ################################################################################
 
 def events(color=False):
-    return ColoredEvents if color else Events
+    return COLORED_EVENTS if color else EVENTS
 
 ################################################################################
 
@@ -56,6 +51,27 @@ def pop_value(key, keys, values, default=None):
 
 ################################################################################
 
+def import_library(lib):
+    import os, importlib
+    sys.path.insert(0, os.path.dirname(os.path.abspath(lib)))
+    return importlib.import_module(lib)
+
+################################################################################
+
+def load_parameters(params):
+    if not params:
+        return {}
+    elif not isinstance(params, str):
+        return dict(params)
+    try:
+        with open(params) as f:
+            import json
+            return dict(json.load(f))
+    except FileNotFoundError:
+        return eval('dict(%s)' % params)
+
+################################################################################
+
 def open_file(stack, name, mode):
     if name in ('stderr', 'stdout'):
         return getattr(sys, name)
@@ -64,7 +80,7 @@ def open_file(stack, name, mode):
 
 ################################################################################
 
-def find_tests(lib, tests=(), regex=''):
+def find_tests(lib, tests=None, regex=''):
     if tests:
         indices = [lib.find_test(t) for t in tests]
     elif not regex:
@@ -111,7 +127,7 @@ def run_test(lib, index, test_masks, *, args=(), gil=False, cout=False, cerr=Fal
 def readable_message(kind, scopes, logs, indent='    '):
     keys, values = map(list, zip(*logs))
     line, path = (pop_value(k, keys, values) for k in ('line', 'file'))
-    scopes = repr(Delimiter.join(scopes))
+    scopes = repr(DELIMITER.join(scopes))
 
     # first line
     if path is None:

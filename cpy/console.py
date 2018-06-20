@@ -4,22 +4,24 @@ from .common import events, colored, readable_message, Report
 ################################################################################
 
 class ConsoleReport(Report):
-    def __init__(self, file, info, timing=False, **kwargs):
-        self.file = file
-        self.timing = timing
-        self.file.write('Compiler: {}\n'.format(info[0]))
-        self.file.write('Compiled at: {}, {}\n'.format(info[2], info[1]))
+    def __init__(self, file, info, timing=False, indent='    ', **kwargs):
+        self.file, self.timing, self.indent = file, timing, indent
+        if info[0]:
+            self.file.write('Compiler: {}\n'.format(info[0]))
+        if info[1] and info[2]:
+            self.file.write('Compile time: {}, {}\n'.format(info[2], info[1]))
         self.kwargs = kwargs
 
     def __call__(self, index, info):
-        return ConsoleTestReport(index, info, self.file, timing=self.timing, **self.kwargs)
+        return ConsoleTestReport(index, info, self.file,
+            indent=self.indent, timing=self.timing, **self.kwargs)
 
     def finalize(self, time, counts, out, err):
         s = '=' * 80 + '\nTotal results:\n'
 
         spacing = max(map(len, events(True))) + 1
         for e, c in zip(events(True), counts):
-            s += '    {} {}\n'.format((e + ':').ljust(spacing), c)
+            s += self.indent + '{} {}\n'.format((e + ':').ljust(spacing), c)
 
         if self.timing:
             s += '\n' + colored('Total duration', 'yellow') + ': %.7e\n' % time
@@ -56,7 +58,7 @@ class ConsoleTestReport(Report):
                 self.write(colored('Contents of std::%s' % s, 'magenta'), ':\n',
                        '=' * 22, '\n', o, '=' * 22, '\n\n')
         if value is not None:
-            self.write(colored('Return value', 'blue'), ': {}\n'.format(value))
+            self.write('Return value: ', repr(value), '\n')
 
         if any(counts):
             s = ', '.join('%s: %d' % (e, c) for e, c in zip(events(True), counts) if c)

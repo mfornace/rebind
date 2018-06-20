@@ -34,7 +34,7 @@ class NativeTestReport(Report):
     def __call__(self, event, scopes, logs):
         self.contents['events'].append(dict(event=event, scopes=scopes, logs=logs))
 
-    def finalize(self, value, counts, out, err):
-        self.contents.update(dict(counts=counts, out=out, err=err, value=value))
+    def finalize(self, value, time, counts, out, err):
+        self.contents.update(dict(time=time, counts=counts, out=out, err=err, value=value))
 
 ################################################################################

@@ -24,7 +24,6 @@ class XMLReport(Report):
 
         self.kwargs = kwargs
         self.cases = []
-        self.time = time
 
     def __call__(self, index, info):
         c = XMLTestReport(index, info)
@@ -32,19 +31,18 @@ class XMLReport(Report):
         return c
 
     def __enter__(self):
-        self.time = time.time()
         return self
 
-    def finalize(self, counts, out, err):
+    def finalize(self, time, counts, out, err):
         self.suite.set('failures', str(counts[0]))
         self.suite.set('errors', str(counts[2]))
+        self.suite.set('time', '%f' % time)
         for c in self.cases:
             self.suite.append(c.element)
         ET.SubElement(self.suite, 'system-out').text = out
         ET.SubElement(self.suite, 'system-err').text = err
 
     def __exit__(self, value, cls, traceback):
-        self.suite.set('time', '%f' % (time.time() - self.time))
         self.suite.set('tests', str(len(self.cases)))
 
 ################################################################################
@@ -86,11 +84,7 @@ class XMLTestReport(Report):
                 self.sub = ET.SubElement(self.element, 'error', message='', type='1')
         self.sub.set('message', self.message + readable_message(event, scopes, logs))
 
-    def __enter__(self):
-        self.time = time.time()
-        return self
-
-    def __exit__(self, value, cls, traceback):
-        self.element.set('time', '%f' % (time.time() - self.time))
+    def finalize(self, value, time, counts, out, err):
+        self.element.set('time', '%f' % time)
 
 ################################################################################
