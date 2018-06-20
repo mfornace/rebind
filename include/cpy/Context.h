@@ -37,14 +37,11 @@ struct Context {
     Scopes scopes;
     Logs logs;
     std::vector<Counter> *counters = nullptr;
+    void *metadata; // could be transitioned to std::any but right now pointer is OK
 
-    Context() = default;
+    Context();
 
-    Context(Scopes const &s, std::vector<Callback> const &h, std::vector<Counter> *c=nullptr)
-        : scopes(s), callbacks(h), counters(c) {}
-
-    Context(Scopes &&s, std::vector<Callback> &&h, std::vector<Counter> *c=nullptr)
-        : scopes(std::move(s)), callbacks(std::move(h)), counters(c) {}
+    Context(Scopes s, std::vector<Callback> h, std::vector<Counter> *c=nullptr, void *m=nullptr);
 
     /// Subsection
     template <class F>

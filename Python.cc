@@ -6,7 +6,45 @@
 
 namespace cpy {
 
+Context::Context() = default;
+
+Context::Context(Scopes s, std::vector<Callback> h, std::vector<Counter> *c, void *m)
+    : scopes(std::move(s)), callbacks(std::move(h)), counters(c), metadata(m) {}
+
 /******************************************************************************/
+
+struct ValueAdaptor {
+    Value value;
+
+    bool operator()(Value &out, Context const &, ArgPack const &) noexcept {
+        out = value;
+        return true;
+    }
+};
+
+/******************************************************************************/
+
+Value call(std::string_view s, Context c, ArgPack pack) {
+    Value v;
+    auto const &cases = suite().cases;
+    auto it = std::find_if(cases.begin(), cases.end(), [=](auto const &c) {return c.name == s;});
+    if (it == cases.end())
+        throw std::runtime_error("Test case \"" + std::string(s) + "\" not found");
+    if (!it->function(v, std::move(c), std::move(pack)))
+        throw std::runtime_error("Test case \"" + std::string(s) + "\" failed with an exception");
+    return v;
+}
+
+Value get_value(std::string_view s) {
+    auto const &cases = suite().cases;
+    auto it = std::find_if(cases.begin(), cases.end(), [=](auto const &c) {return c.name == s;});
+    if (it == cases.end())
+        throw std::runtime_error("Test case \"" + std::string(s) + "\" not found");
+    ValueAdaptor const *p = it->function.target<ValueAdaptor>();
+    if (!p)
+        throw std::runtime_error("Test case \"" + std::string(s) + "\" is not a simple value");
+    return p->value;
+}
 
 Value::Value(Value &&v) noexcept : var(std::move(v.var)) {}
 Value::Value(Value const &v) noexcept : var(v.var) {}
@@ -21,6 +59,9 @@ Value::Value(double v) : var(v) {}
 Value::Value(std::complex<double> v) : var(v) {}
 Value::Value(std::string v) : var(std::move(v)) {}
 Value::Value(std::string_view v) : var(std::move(v)) {}
+
+std::string_view Value::as_view() const {return std::get<std::string_view>(var);}
+double Value::as_double() const {return std::get<double>(var);}
 
 // Value::Value(std::vector<bool> v) : var(std::move(v)) {}
 // Value::Value(std::vector<std::size_t> v) : var(std::move(v)) {}
@@ -267,6 +308,7 @@ struct PyTestCase : Object {
     using Object::Object;
 
     bool operator()(Value &out, Context ctx, ArgPack const &pack) noexcept {
+        AcquireGIL lk(static_cast<ReleaseGIL *>(ctx.metadata));
         Object args = cpy::to_python(pack);
         if (!args) return false;
         Object o = {PyObject_CallObject(Object::ptr, +args), false};
@@ -314,7 +356,7 @@ bool run_test(Value &v, double &time, TestCase const &test, bool no_gil,
 
     for (auto &c : counts) c.store(0u);
 
-    Context ctx({test.name}, std::move(callbacks), &counts);
+    Context ctx({test.name}, std::move(callbacks), &counts, &lk);
     Timer t(time);
     return test.function(v, std::move(ctx), std::move(pack));
 }
@@ -444,6 +486,19 @@ static PyObject *cpy_add_test(PyObject *, PyObject *args) {
     });
 }
 
+static PyObject *cpy_add_value(PyObject *, PyObject *args) {
+    char const *s;
+    PyObject *obj;
+    if (!PyArg_ParseTuple(args, "sO", &s, &obj)) return nullptr;
+
+    return cpy::return_object([=] {
+        cpy::Value val;
+        if (!cpy::from_python(val, cpy::Object(obj, true))) return cpy::Object();
+        cpy::suite().cases.emplace_back(cpy::TestCase{s, {}, cpy::ValueAdaptor{std::move(val)}});
+        return cpy::Object(Py_None, true);
+    });
+}
+
 /******************************************************************************/
 
 static PyObject *cpy_compile_info(PyObject *, PyObject *) {
@@ -513,7 +568,8 @@ static PyMethodDef cpy_methods[] = {
     {"compile_info", (PyCFunction) cpy_compile_info, METH_NOARGS,  "Compilation information (no arguments)"},
     {"test_names",   (PyCFunction) cpy_test_names,   METH_NOARGS,  "Names of registered tests (no arguments)"},
     {"test_info",    (PyCFunction) cpy_test_info,    METH_VARARGS, "Info of a registered test from its index (int)"},
-    {"add_test",     (PyCFunction) cpy_add_test,     METH_VARARGS, "Add a unit test from a python object"},
+    {"add_test",     (PyCFunction) cpy_add_test,     METH_VARARGS, "Add a unit test from a python function"},
+    {"add_value",    (PyCFunction) cpy_add_value,    METH_VARARGS, "Add a unit test from a python value"},
     {nullptr, nullptr, 0, nullptr}};
 
 /******************************************************************************/

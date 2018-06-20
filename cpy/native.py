@@ -18,6 +18,9 @@ class NativeReport(Report):
         self.contents['tests'].append(c)
         return NativeTestReport(c, index, info[0])
 
+    def finalize(self, time, counts, out, err):
+        self.contents.update(dict(time=time, counts=counts, out=out, err=err))
+
     def __exit__(self, value, cls, traceback):
         if self.file is not None:
             json.dump(self.contents, self.file, indent=self.indent)
@@ -35,6 +38,6 @@ class NativeTestReport(Report):
         self.contents['events'].append(dict(event=event, scopes=scopes, logs=logs))
 
     def finalize(self, value, time, counts, out, err):
-        self.contents.update(dict(time=time, counts=counts, out=out, err=err, value=value))
+        self.contents.update(dict(value=value, time=time, counts=counts, out=out, err=err))
 
 ################################################################################

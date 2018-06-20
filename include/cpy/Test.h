@@ -152,4 +152,15 @@ struct AnonymousClosure {
 
 /******************************************************************************/
 
+Value call(std::string_view s, Context c, ArgPack pack);
+
+template <class ...Ts>
+Value call(std::string_view s, Context c, Ts &&...ts) {
+    return call(s, std::move(c), ArgPack{make_value(static_cast<Ts &&>(ts))...});
+}
+
+Value get_value(std::string_view s);
+
+/******************************************************************************/
+
 }

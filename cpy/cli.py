@@ -19,7 +19,8 @@ def parser(prog='cpy', description='Run C++ unit tests from Python', **kwargs):
     add('--jobs',      '-j', type=int, default=1,  metavar='INT', help='number of threads (default 1)', )
     add('--params',    '-p', type=str,             metavar='STR', help='JSON file path or Python eval-able parameter string')
 
-    f = lambda t, m, *args, **kws: out.add_argument(*args, type=t, metavar=m, **kws)
+    sub = out.add_argument_group('reports')
+    f = lambda t, m, *args, **kws: sub.add_argument(*args, type=t, metavar=m, **kws)
     f(str, 'RE',   '--regex',  '-r',  help="include test names matching a given regex")
     f(str, 'PATH', '--out',    '-o',  help="output file path (default 'stdout')", default='stdout')
     f(str, 'MODE', '--out-mode',      help="output file open mode (default 'w')", default='w')

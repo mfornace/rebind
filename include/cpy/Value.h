@@ -42,6 +42,9 @@ struct Value {
     Value(std::string);
     Value(std::string_view);
 
+    std::string_view as_view() const;
+    double as_double() const;
+
     // Value(std::vector<bool>);
     // Value(std::vector<std::size_t>);
     // Value(std::vector<std::ptrdiff_t>);

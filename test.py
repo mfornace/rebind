@@ -1,11 +1,11 @@
 from cpy import cli
 
-args = cli.parser().parse_args()
+parser = cli.parser()
+parser.add_argument('--time', type=float, default=1.0, help='maximum test time')
 
-def hmm(*args):
-    print(args)
+args = vars(parser.parse_args())
 
-lib = cli.import_library('libcpy')
-lib.add_test('hmm', hmm)
+lib = cli.import_library(args['lib'])
+lib.add_value('allowed_time', args.pop('time'))
 
-cli.main(**vars(args))
+cli.main(**args)

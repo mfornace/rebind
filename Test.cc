@@ -33,11 +33,13 @@ auto test1 = unit_test("first-test", COMMENT("This is a test"), [](cpy::Context 
 UNIT_TEST("second-test", "This is a test 2") = [](cpy::Context ctx) {
     std::cerr << "Hey I am std::cerr 2" << std::endl;
     std::cout << "Hey I am std::cout 2" << std::endl;
-    return "hello";
+    return 8.9;
+    //return "hello";
     // if (!ctx.require_throws<std::runtime_error>([]{})) return;
 };
 
-UNIT_TEST("third-test") = [](auto) {
+UNIT_TEST("third-test") = [](auto ctx) {
+    std::cout << cpy::get_value("allowed_time").as_double() << std::endl;
     throw std::runtime_error("runtime_error: uh oh");
 };
 
