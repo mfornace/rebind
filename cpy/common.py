@@ -7,7 +7,16 @@ except ImportError:
     colored = not_colored
 
 import sys
-from contextlib import ExitStack
+
+try:
+    from contextlib import ExitStack
+except ImportError:
+    from contextlib2 import ExitStack
+
+try:
+    FileError = FileNotFoundError
+except NameError:
+    FileError = IOError
 
 ################################################################################
 
@@ -30,6 +39,7 @@ def events(color=False):
 ################################################################################
 
 class Report:
+    '''Basic interface for a Report object'''
     def __enter__(self):
         return self
 
@@ -59,6 +69,7 @@ def import_library(lib):
 ################################################################################
 
 def open_file(stack, name, mode):
+    '''Open file with ExitStack()'''
     if name in ('stderr', 'stdout'):
         return getattr(sys, name)
     else:
@@ -75,12 +86,18 @@ def load_parameters(params):
         with open(params) as f:
             import json
             return dict(json.load(f))
-    except FileNotFoundError:
+    except FileError:
         return eval(params)
 
 ################################################################################
 
 def test_indices(lib, exclude=False, tests=None, regex=''):
+    '''
+    Return list of indices of tests to run
+        exclude: whether to include or exclude the specified tests
+        tests: list of manually specified tests
+        regex: pattern to specify tests
+    '''
     if tests:
         indices = set(lib.find_test(t) for t in tests)
     elif not regex:
@@ -98,26 +115,31 @@ def test_indices(lib, exclude=False, tests=None, regex=''):
 ################################################################################
 
 def parametrized_indices(lib, indices, params={}):
+    '''
+    Yield tuple of (index, parameter_pack) for each test to run
+        lib: the cpy library object
+        indices: the possible indices to yield from
+        params: dict or list of specified parameters (e.g. from load_parameters())
+    '''
     names = lib.test_names()
-    def get(i):
-        try:
+    for i in indices:
+        try: # params is dict-like
             ps = list(params.get(names[i], [None]))
-        except AttributeError:
+        except AttributeError: # params gives a constant value for all keys
             ps = params
         n = lib.n_parameters(i)
-        for j in ps:
-            if isinstance(j, int) and j >= n:
-                raise IndexError("Parameter pack index {} is out of range for test '{}' (n={})".format(j, names[i], n))
         while None in ps:
             ps.remove(None)
             ps.extend(range(n))
-        return ps
-
-    return tuple((i, p) for i in indices for p in get(i))
+        for p in ps:
+            if isinstance(p, int) and p >= n:
+                raise IndexError("Parameter pack index {} is out of range for test '{}' (n={})".format(j, names[i], n))
+            yield i, p
 
 ################################################################################
 
 class MultiReport:
+    '''Simple wrapper to call multiple reports from C++ as if they are one'''
     def __init__(self, reports):
         self.reports = reports
 
@@ -126,6 +148,7 @@ class MultiReport:
             r(index, scopes, logs)
 
 def multireport(reports):
+    '''Wrap multiple reports for C++ to look like they are one'''
     if not reports:
         return None
     if len(reports) == 1:
@@ -134,7 +157,7 @@ def multireport(reports):
 
 ################################################################################
 
-def run_test(lib, index, test_masks, *, args=(), gil=False, cout=False, cerr=False):
+def run_test(lib, index, test_masks, args=(), gil=False, cout=False, cerr=False):
     lists = [[] for _ in events()]
 
     with ExitStack() as stack:
@@ -147,6 +170,7 @@ def run_test(lib, index, test_masks, *, args=(), gil=False, cout=False, cerr=Fal
 ################################################################################
 
 def readable_message(kind, scopes, logs, indent='    '):
+    '''Return readable string for a C++ cpy callback'''
     keys, values = map(list, zip(*logs))
     line, path = (pop_value(k, keys, values) for k in ('line', 'file'))
     scopes = repr(DELIMITER.join(scopes))

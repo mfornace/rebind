@@ -1,8 +1,12 @@
 #include "Test.h"
-#include <Python.h>
 #include <chrono>
 #include <iostream>
 #include <vector>
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wregister"
+#include <Python.h>
+#pragma GCC diagnostic pop
 
 namespace cpy {
 
@@ -138,8 +142,13 @@ bool from_python(Value &v, Object o) {
         v = std::string_view(c, size);
     } else if (PyUnicode_Check(+o)) { // no use of wstring for now.
         Py_ssize_t size;
+#if PY_MAJOR_VERSION > 2
         char const *c = PyUnicode_AsUTF8AndSize(+o, &size);
-        if (c) v = std::string_view(c, size);
+#else
+        char *c;
+        if (PyString_AsStringAndSize(+o, &c, &size)) return false;
+#endif
+        if (c) v = std::string_view(static_cast<char const *>(c), size);
         else return false;
     } else {
         PyErr_SetString(PyExc_TypeError, "Invalid type for conversion to C++");
@@ -380,8 +389,13 @@ Object run_test(Py_ssize_t i, Object calls, Object pypack, bool cout, bool cerr,
 
     cpy::ArgPack pack;
     if (+pypack == Py_None) {}
+#if PY_MAJOR_VERSION > 2
     else if (PyLong_Check(+pypack)) {
         auto n = PyLong_AsSize_t(+pypack);
+#else
+    else if (PyInt_Check(+pypack)) {
+        auto n = PyInt_AsSsize_t(+pypack);
+#endif
         if (PyErr_Occurred()) return {};
         if (n >= test->parameters.size()) {
             PyErr_SetString(PyExc_IndexError, "Parameter pack index out of range");
@@ -586,6 +600,7 @@ static PyMethodDef cpy_methods[] = {
 
 /******************************************************************************/
 
+#if PY_MAJOR_VERSION > 2
 static struct PyModuleDef cpy_definition = {
     PyModuleDef_HEAD_INIT,
     "libcpy",
@@ -594,12 +609,17 @@ static struct PyModuleDef cpy_definition = {
     cpy_methods
 };
 
-/******************************************************************************/
-
 PyMODINIT_FUNC PyInit_libcpy(void) {
     Py_Initialize();
     return PyModule_Create(&cpy_definition);
 }
+#else
+
+void initlibcpy(void) {
+    Py_InitModule("libcpy", cpy_methods);
+}
+
+#endif
 
 /******************************************************************************/
 

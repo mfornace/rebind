@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.8)
 project(cpy VERSION 0.0.0 LANGUAGES CXX)
 
-find_package(PythonLibs 3 REQUIRED)
+find_package(PythonLibs 3.3 REQUIRED)
 
 ################################################################################
 

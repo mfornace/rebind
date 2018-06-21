@@ -3,38 +3,41 @@ from .common import ExitStack, import_library, test_indices, parametrized_indice
 
 ################################################################################
 
-def parser(prog='cpy', description='Run C++ unit tests from Python', **kwargs):
+def parser(prog='cpy', description='Run C++ unit tests from Python with the cpy library', **kwargs):
     from argparse import ArgumentParser
-    out = ArgumentParser(prog=prog, description=description, **kwargs)
-    add = out.add_argument
-    add('--lib',       '-a', type=str, default='libcpy', metavar='PATH', help="file path for test library (default 'libcpy')")
-    add('--list',      '-l', action='store_true',  help='list all test names')
-    add('--failure',   '-f', action='store_true',  help='show failures')
-    add('--success',   '-s', action='store_true',  help='show successes')
-    add('--exception', '-e', action='store_true',  help='show exceptions')
-    add('--timing',    '-t', action='store_true',  help='show timings')
-    add('--exclude',   '-x', action='store_true',  help='exclude rather than include')
-    add('--quiet',     '-q', action='store_true',  help='prevent command line output (from cpy at least)')
-    add('--capture',   '-c', action='store_true',  help='capture std::cerr and std::cout')
-    add('--brief',     '-b', action='store_true',  help='abbreviate output')
-    add('--gil',       '-g', action='store_true',  help='keep Python interpeter lock on')
-    add('--jobs',      '-j', type=int, default=1,  metavar='INT', help='number of threads (default 1)', )
-    add('--params',    '-p', type=str,             metavar='STR', help='JSON file path or Python eval-able parameter string')
+    o = lambda a, t, m, *args, **kws: a.add_argument(*args, type=t, metavar=m, **kws)
+    s = lambda a, *args, **kws: a.add_argument(*args, action='store_true', **kws)
 
-    sub = out.add_argument_group('reports')
-    f = lambda t, m, *args, **kws: sub.add_argument(*args, type=t, metavar=m, **kws)
-    f(str, 'RE',   '--regex',  '-r',  help="include test names matching a given regex")
-    f(str, 'PATH', '--out',    '-o',  help="output file path (default 'stdout')", default='stdout')
-    f(str, 'MODE', '--out-mode',      help="output file open mode (default 'w')", default='w')
-    f(str, 'PATH', '--xml',           help="XML file path")
-    f(str, 'MODE', '--xml-mode',      help="XML file open mode (default 'a+b')", default='a+b')
-    f(str, 'NAME', '--suite',         help="test suite output name (default 'cpy')", default='cpy')
-    f(str, 'PATH', '--teamcity',      help="TeamCity file path")
-    f(str, 'PATH', '--json',          help="JSON file path")
-    f(int, 'INT',  '--json-indent',   help="JSON indentation (default None)")
+    p = ArgumentParser(prog=prog, description=description, **kwargs)
+    s(p, '--list',               '-l', help='list all test names')
+    o(p, str, 'PATH', '--lib',   '-a', help="file path for test library (default 'libcpy')", default='libcpy', )
+    o(p, int, 'INT', '--jobs',   '-j', help='number of threads (default 1)', default=1)
+    o(p, str, 'STR', '--params', '-p', help='JSON file path or Python eval-able parameter string')
+    o(p, str, 'RE',  '--regex',  '-r', help="specify tests with names matching a given regex")
+    s(p, '--exclude',            '-x', help='exclude rather than include specified cases')
+    s(p, '--capture',            '-c', help='capture std::cerr and std::cout')
+    s(p, '--gil',                '-g', help='keep Python global interpeter lock on')
+    o(p, str, '', 'tests', nargs='*',  help='test names (if not given, specifies all tests)')
 
-    add('tests', type=str, nargs='*', help='test names (if not given, run all tests)')
-    return out
+    t = p.add_argument_group('output options')
+    s(t, '--quiet',            '-q', help='prevent command line output (from cpy at least)')
+    s(t, '--failure',          '-f', help='show failures')
+    s(t, '--success',          '-s', help='show successes')
+    s(t, '--exception',        '-e', help='show exceptions')
+    s(t, '--timing',           '-t', help='show timings')
+    s(t, '--brief',            '-b', help='abbreviate output')
+    o(t, str, 'PATH', '--out', '-o', help="output file path (default 'stdout')", default='stdout')
+    o(t, str, 'MODE', '--out-mode',  help="output file open mode (default 'w')", default='w')
+
+    r = p.add_argument_group('reporter options')
+    o(r, str, 'PATH', '--xml',         help="XML file path")
+    o(r, str, 'MODE', '--xml-mode',    help="XML file open mode (default 'a+b')", default='a+b')
+    o(r, str, 'NAME', '--suite',       help="test suite output name (default 'cpy')", default='cpy')
+    o(r, str, 'PATH', '--teamcity',    help="TeamCity file path")
+    o(r, str, 'PATH', '--json',        help="JSON file path")
+    o(r, int, 'INT',  '--json-indent', help="JSON indentation (default None)")
+
+    return p
 
 ################################################################################
 
@@ -51,15 +54,15 @@ def run_index(lib, masks, out, err, gil, cout, cerr, p):
 
 ################################################################################
 
-def run_suite(lib, keypairs, masks, *, gil, cout, cerr, exe=map):
+def run_suite(lib, keypairs, masks, gil, cout, cerr, exe=map):
     from io import StringIO
     from functools import partial
 
     totals = [0] * len(events())
     out, err = StringIO(), StringIO()
     f = partial(run_index, lib, masks, out, err, gil, cout, cerr)
-    counts = tuple(exe(f, keypairs))
-    totals = tuple(map(sum, zip(*counts)))
+    totals = tuple(exe(f, keypairs))
+    totals = tuple(map(sum, zip(*totals)))
 
     for r, _ in masks:
         r.finalize(totals[0], totals[1:], out.getvalue(), err.getvalue())
@@ -75,7 +78,7 @@ def main(run=run_suite, lib='libcpy', list=False, failure=False, success=False, 
 
     lib = import_library(lib)
     indices = test_indices(lib, exclude, tests, regex)
-    keypairs = parametrized_indices(lib, indices, load_parameters(params))
+    keypairs = tuple(parametrized_indices(lib, indices, load_parameters(params)))
 
     if list:
         print('\n'.join(lib.test_info(i[0])[0] for i in keypairs))
