@@ -58,6 +58,14 @@ def import_library(lib):
 
 ################################################################################
 
+def open_file(stack, name, mode):
+    if name in ('stderr', 'stdout'):
+        return getattr(sys, name)
+    else:
+        return stack.enter_context(open(name, mode))
+
+################################################################################
+
 def load_parameters(params):
     if not params:
         return {}
@@ -68,30 +76,44 @@ def load_parameters(params):
             import json
             return dict(json.load(f))
     except FileNotFoundError:
-        return eval('dict(%s)' % params)
+        return eval(params)
 
 ################################################################################
 
-def open_file(stack, name, mode):
-    if name in ('stderr', 'stdout'):
-        return getattr(sys, name)
-    else:
-        return stack.enter_context(open(name, mode))
-
-################################################################################
-
-def find_tests(lib, tests=None, regex=''):
+def test_indices(lib, exclude=False, tests=None, regex=''):
     if tests:
-        indices = [lib.find_test(t) for t in tests]
+        indices = set(lib.find_test(t) for t in tests)
     elif not regex:
-        indices = list(range(lib.n_tests()))
+        indices = set() if exclude else set(range(lib.n_tests()))
 
     if regex:
         import re
         pattern = re.compile(regex)
-        indices += [i for i, t in enumerate(lib.test_names()) if pattern.match(t)]
+        indices.update(i for i, t in enumerate(lib.test_names()) if pattern.match(t))
 
-    return sorted(set(indices))
+    if exclude:
+        indices = set(range(lib.n_tests())).difference(indices)
+    return sorted(indices)
+
+################################################################################
+
+def parametrized_indices(lib, indices, params={}):
+    names = lib.test_names()
+    def get(i):
+        try:
+            ps = list(params.get(names[i], [None]))
+        except AttributeError:
+            ps = params
+        n = lib.n_parameters(i)
+        for j in ps:
+            if isinstance(j, int) and j >= n:
+                raise IndexError("Parameter pack index {} is out of range for test '{}' (n={})".format(j, names[i], n))
+        while None in ps:
+            ps.remove(None)
+            ps.extend(range(n))
+        return ps
+
+    return tuple((i, p) for i in indices for p in get(i))
 
 ################################################################################
 

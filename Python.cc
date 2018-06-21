@@ -363,7 +363,7 @@ bool run_test(Value &v, double &time, TestCase const &test, bool no_gil,
 
 /******************************************************************************/
 
-TestCase *find_test(Py_ssize_t i) {
+TestCase *get_test(Py_ssize_t i) {
     if (i >= cpy::suite().cases.size()) {
         PyErr_SetString(PyExc_IndexError, "Unit test index out of range");
         return nullptr;
@@ -372,14 +372,15 @@ TestCase *find_test(Py_ssize_t i) {
 }
 
 Object run_test(Py_ssize_t i, Object calls, Object pypack, bool cout, bool cerr, bool no_gil) {
-    auto const test = cpy::find_test(i);
+    auto const test = cpy::get_test(i);
     if (!test) return {};
 
     std::vector<cpy::Callback> callbacks;
     if (!cpy::build_callbacks(callbacks, std::move(calls))) return {};
 
     cpy::ArgPack pack;
-    if (PyLong_Check(+pypack)) {
+    if (+pypack == Py_None) {}
+    else if (PyLong_Check(+pypack)) {
         auto n = PyLong_AsSize_t(+pypack);
         if (PyErr_Occurred()) return {};
         if (n >= test->parameters.size()) {
@@ -535,10 +536,20 @@ static PyObject *cpy_find_test(PyObject *self, PyObject *args) {
 
 /******************************************************************************/
 
+static PyObject *cpy_n_parameters(PyObject *, PyObject *args) {
+    Py_ssize_t i;
+    if (!PyArg_ParseTuple(args, "n", &i)) return nullptr;
+    auto c = cpy::get_test(i);
+    if (!c) return nullptr;
+    return Py_BuildValue("n", static_cast<Py_ssize_t>(c->parameters.size()));
+}
+
+/******************************************************************************/
+
 static PyObject *cpy_test_info(PyObject *self, PyObject *args) {
     Py_ssize_t i;
     if (!PyArg_ParseTuple(args, "n", &i)) return nullptr;
-    auto c = cpy::find_test(i);
+    auto c = cpy::get_test(i);
     if (!c) return nullptr;
     auto n = cpy::to_python(c->name);
     if (!n) return nullptr;
@@ -568,6 +579,7 @@ static PyMethodDef cpy_methods[] = {
     {"compile_info", (PyCFunction) cpy_compile_info, METH_NOARGS,  "Compilation information (no arguments)"},
     {"test_names",   (PyCFunction) cpy_test_names,   METH_NOARGS,  "Names of registered tests (no arguments)"},
     {"test_info",    (PyCFunction) cpy_test_info,    METH_VARARGS, "Info of a registered test from its index (int)"},
+    {"n_parameters", (PyCFunction) cpy_n_parameters, METH_VARARGS, "Number of parameter packs of a registered test from its index (int)"},
     {"add_test",     (PyCFunction) cpy_add_test,     METH_VARARGS, "Add a unit test from a python function"},
     {"add_value",    (PyCFunction) cpy_add_value,    METH_VARARGS, "Add a unit test from a python value"},
     {nullptr, nullptr, 0, nullptr}};

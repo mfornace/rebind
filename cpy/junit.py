@@ -25,8 +25,8 @@ class XMLReport(Report):
         self.kwargs = kwargs
         self.cases = []
 
-    def __call__(self, index, info):
-        c = XMLTestReport(index, info)
+    def __call__(self, index, args, info):
+        c = XMLTestReport(index, args, info)
         self.cases.append(c)
         return c
 
@@ -69,7 +69,7 @@ class XMLFileReport(XMLReport):
 ################################################################################
 
 class XMLTestReport(Report):
-    def __init__(self, index, info):
+    def __init__(self, index, args, info):
         self.element = ET.Element('testcase', name=info[0], classname=info[0])
         self.time = None
         self.sub = None

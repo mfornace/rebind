@@ -1,5 +1,5 @@
-from .common import events, run_test, find_tests, open_file
-from .common import ExitStack, import_library, load_parameters
+from .common import events, run_test, open_file, load_parameters
+from .common import ExitStack, import_library, test_indices, parametrized_indices
 
 ################################################################################
 
@@ -13,8 +13,10 @@ def parser(prog='cpy', description='Run C++ unit tests from Python', **kwargs):
     add('--success',   '-s', action='store_true',  help='show successes')
     add('--exception', '-e', action='store_true',  help='show exceptions')
     add('--timing',    '-t', action='store_true',  help='show timings')
+    add('--exclude',   '-x', action='store_true',  help='exclude rather than include')
     add('--quiet',     '-q', action='store_true',  help='prevent command line output (from cpy at least)')
     add('--capture',   '-c', action='store_true',  help='capture std::cerr and std::cout')
+    add('--brief',     '-b', action='store_true',  help='abbreviate output')
     add('--gil',       '-g', action='store_true',  help='keep Python interpeter lock on')
     add('--jobs',      '-j', type=int, default=1,  metavar='INT', help='number of threads (default 1)', )
     add('--params',    '-p', type=str,             metavar='STR', help='JSON file path or Python eval-able parameter string')
@@ -36,10 +38,10 @@ def parser(prog='cpy', description='Run C++ unit tests from Python', **kwargs):
 
 ################################################################################
 
-def run_index(lib, masks, out, err, gil, cout, cerr, params, i):
+def run_index(lib, masks, out, err, gil, cout, cerr, p):
+    i, args = p
     info = lib.test_info(i)
-    args = tuple(params.get(info[0], ()))
-    test_masks = [(r(i, info), m) for r, m in masks]
+    test_masks = [(r(i, args, info), m) for r, m in masks]
     val, time, counts, o, e = run_test(lib, i, test_masks, args=args, gil=gil, cout=cout, cerr=cerr)
     out.write(o)
     err.write(e)
@@ -47,32 +49,36 @@ def run_index(lib, masks, out, err, gil, cout, cerr, params, i):
         r.finalize(val, time, counts, o, e)
     return (time,) + counts
 
-def run_suite(lib, indices, masks, *, gil, cout, cerr, params={}, exe=map):
+################################################################################
+
+def run_suite(lib, keypairs, masks, *, gil, cout, cerr, exe=map):
     from io import StringIO
     from functools import partial
 
     totals = [0] * len(events())
     out, err = StringIO(), StringIO()
-    f = partial(run_index, lib, masks, out, err, gil, cout, cerr, params)
-    counts = tuple(exe(f, indices))
+    f = partial(run_index, lib, masks, out, err, gil, cout, cerr)
+    counts = tuple(exe(f, keypairs))
     totals = tuple(map(sum, zip(*counts)))
 
     for r, _ in masks:
         r.finalize(totals[0], totals[1:], out.getvalue(), err.getvalue())
 
+    return totals
+
 ################################################################################
 
-def main(run=run_suite, lib='libcpy', list=False, failure=False, success=False,
-    exception=False, timing=False, quiet=False, capture=False, gil=False,
+def main(run=run_suite, lib='libcpy', list=False, failure=False, success=False, brief=False,
+    exception=False, timing=False, quiet=False, capture=False, gil=False, exclude=False,
     regex=None, out='stdout', out_mode='w', xml=None, xml_mode='a+b', suite='cpy',
     teamcity=None, json=None, json_indent=None, jobs=1, tests=None, params=None):
 
     lib = import_library(lib)
-    indices = find_tests(lib, tests, regex)
-    params = load_parameters(params)
+    indices = test_indices(lib, exclude, tests, regex)
+    keypairs = parametrized_indices(lib, indices, load_parameters(params))
 
     if list:
-        print('\n'.join(lib.test_info(i)[0] for i in indices))
+        print('\n'.join(lib.test_info(i[0])[0] for i in keypairs))
         return
 
     mask = (failure, success, exception, timing)
@@ -81,8 +87,11 @@ def main(run=run_suite, lib='libcpy', list=False, failure=False, success=False,
     with ExitStack() as stack:
         masks = []
         if not quiet:
-            from .console import ConsoleReport
-            r = ConsoleReport(open_file(stack, out, out_mode), info, timing=timing, sync=jobs > 1)
+            from . import console
+            if brief:
+                console.FOOTER, console.STREAM_FOOTER = '', ''
+            r = console.ConsoleReport(open_file(stack, out, out_mode),
+                                      info, timing=timing, sync=jobs > 1)
             masks.append((stack.enter_context(r), mask))
 
         if xml:
@@ -106,10 +115,9 @@ def main(run=run_suite, lib='libcpy', list=False, failure=False, success=False,
         else:
             exe = map
 
-        return run(lib=lib, indices=indices, masks=masks, params=params,
+        return run(lib=lib, keypairs=keypairs, masks=masks,
                    gil=gil, cout=capture, cerr=capture, exe=exe)
 
 
 if __name__ == '__main__':
-    import sys
-    sys.exit(main(**vars(parser().parse_args())))
+    main(**vars(parser().parse_args()))

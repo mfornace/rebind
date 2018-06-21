@@ -8,13 +8,14 @@ struct goo {
 
 /******************************************************************************/
 
-auto test1 = unit_test("first-test", COMMENT("This is a test"), [](cpy::Context ctx) {
+auto test1 = unit_test("first-test", COMMENT("This is a test"), [](cpy::Context ctx, bool b) {
     ctx.info("a message");
     int n = ctx("new-section", [](cpy::Context ctx) {
         ctx.require_eq(3, 4);
         return 5;
     });
-    ctx.info(true);
+    ctx.info("hmm");
+    ctx.info(b);
 
     std::cerr << "Hey I am std::cerr 1" << std::endl;
     std::cout << "Hey I am std::cout 1" << std::endl;
@@ -39,8 +40,12 @@ UNIT_TEST("second-test", "This is a test 2") = [](cpy::Context ctx) {
 };
 
 UNIT_TEST("third-test") = [](auto ctx) {
-    std::cout << cpy::get_value("allowed_time").as_double() << std::endl;
+    std::cout << cpy::get_value("max_time").as_double() << std::endl;
     throw std::runtime_error("runtime_error: uh oh");
+};
+
+UNIT_TEST("fourth-test") = [](auto ctx) {
+    ctx.require_eq(5, 5);
 };
 
 /******************************************************************************/

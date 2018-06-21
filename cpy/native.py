@@ -13,10 +13,10 @@ class NativeReport(Report):
             'tests': [],
         }
 
-    def __call__(self, index, info):
+    def __call__(self, index, args, info):
         c = {}
         self.contents['tests'].append(c)
-        return NativeTestReport(c, index, info[0])
+        return NativeTestReport(c, index, args, info[0])
 
     def finalize(self, time, counts, out, err):
         self.contents.update(dict(time=time, counts=counts, out=out, err=err))
@@ -28,10 +28,11 @@ class NativeReport(Report):
 ################################################################################
 
 class NativeTestReport(Report):
-    def __init__(self, contents, index, name):
+    def __init__(self, contents, index, args, name):
         self.contents = contents
         self.contents['name'] = name
         self.contents['index'] = index
+        self.contents['args'] = args
         self.contents['events'] = []
 
     def __call__(self, event, scopes, logs):

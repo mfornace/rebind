@@ -1,6 +1,6 @@
 #pragma once
 #include "Context.h"
-
+#include <iostream>
 namespace cpy {
 
 /******************************************************************************/
@@ -100,6 +100,7 @@ struct Suite {
 
     template <class F>
     void operator()(std::string name, TestCaseComment c, F const &f, std::vector<ArgPack> v={}) {
+        if (TestSignature<F>::size::value <= 2 && v.empty()) v.emplace_back();
         cases.emplace_back(TestCase{std::move(name), std::move(c), TestAdaptor<F>{f}, std::move(v)});
     }
 };
@@ -116,38 +117,36 @@ struct UnitTest {
 
 template <class F>
 UnitTest<F> unit_test(std::string name, F const &f, std::vector<ArgPack> v={}) {
-    suite()(name, TestCaseComment(), f);
+    suite()(name, TestCaseComment(), f, std::move(v));
     return {std::move(name), f};
 }
 
 template <class F>
 UnitTest<F> unit_test(std::string name, TestCaseComment comment, F const &f, std::vector<ArgPack> v={}) {
-    suite()(name, std::move(comment), f);
+    suite()(name, std::move(comment), f, std::move(v));
     return {std::move(name), f};
 }
 
 /******************************************************************************/
 
 template <class F>
-bool anonymous_test(std::string name, F &&function) {
-    suite()(std::move(name), TestCaseComment(), static_cast<F &&>(function));
-    return true;
-}
-
-template <class F>
-bool anonymous_test(std::string name, TestCaseComment comment, F &&function) {
-    suite()(std::move(name), std::move(comment), static_cast<F &&>(function));
+bool anonymous_test(std::string name, TestCaseComment comment, F &&function, std::vector<ArgPack> v={}) {
+    suite()(std::move(name), std::move(comment), static_cast<F &&>(function), std::move(v));
     return true;
 }
 
 struct AnonymousClosure {
-    std::string const &name;
+    std::string name;
     TestCaseComment comment;
+    std::vector<ArgPack> args;
 
-    AnonymousClosure(std::string const &s, TestCaseComment c) : name(s), comment(std::move(c)) {}
+    AnonymousClosure(std::string s, TestCaseComment c, std::vector<ArgPack> v={})
+        : name(std::move(s)), comment(std::move(c)), args(std::move(v)) {}
 
     template <class F>
-    constexpr bool operator=(F const &f) {return anonymous_test(name, comment, f);}
+    constexpr bool operator=(F const &f) && {
+        return anonymous_test(std::move(name), std::move(comment), f, std::move(args));
+    }
 };
 
 /******************************************************************************/
