@@ -36,7 +36,7 @@ UNIT_TEST("second-test", "This is a test 2") = [](cpy::Context ctx) {
     std::cout << "Hey I am std::cout 2" << std::endl;
     return 8.9;
     //return "hello";
-    // if (!ctx.require_throws<std::runtime_error>([]{})) return;
+    // if (!ctx.throws_as<std::runtime_error>([]{})) return;
 };
 
 UNIT_TEST("third-test") = [](auto ctx) {

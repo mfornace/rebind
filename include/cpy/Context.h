@@ -48,7 +48,7 @@ struct Context {
     auto operator()(std::string name, F &&functor) {
         Context ctx(scopes, callbacks, counters);
         ctx.scopes.push_back(std::move(name));
-        return functor(ctx);
+        return static_cast<F &&>(functor)(ctx);
     }
 
     /**************************************************************************/
@@ -78,51 +78,82 @@ struct Context {
         logs.clear();
     }
 
+    template <class F, class ...Args>
+    auto time(std::size_t n, F &&f, Args &&...args) {
+        auto start = current_time();
+        std::invoke(static_cast<F &&>(f), static_cast<Args &&>(args)...);
+        auto elapsed = current_time() - start;
+        handle(Timing, glue("value", elapsed));
+        return elapsed;
+    }
+
     template <class Bool=bool, class ...Ts>
     bool require(Bool const &ok, Ts &&...ts) {
-        bool b{unglue(ok)};
+        bool b = static_cast<bool>(unglue(ok));
         handle(b ? Success : Failure, static_cast<Ts &&>(ts)..., glue("value", ok));
         return b;
     }
 
-#define CPY_TMP(NAME, OP) template <class X, class Y, class ...Args> \
-    bool NAME(X const &x, Y const &y, Args &&...args) { \
-        return require(unglue(x) OP unglue(y), comparison_glue(x, y, #OP), static_cast<Args &&>(args)...); \
+    /******************************************************************************/
+
+    template <class X, class Y, class ...Ts>
+    bool equal(X const &x, Y const &y, Ts &&...ts) {
+        return require(unglue(x) == unglue(y), comparison_glue(x, y, "=="), static_cast<Ts &&>(ts)...);
     }
 
-    CPY_TMP(require_eq,  ==);
-    CPY_TMP(require_ne,  !=);
-    CPY_TMP(require_lt,  < );
-    CPY_TMP(require_gt,  > );
-    CPY_TMP(require_ge,  >=);
-    CPY_TMP(require_le,  <=);
-    CPY_TMP(require_or,  ||);
-    CPY_TMP(require_and, &&);
-    CPY_TMP(require_xor, ^ );
+    template <class X, class Y, class ...Ts>
+    bool not_equal(X const &x, Y const &y, Ts &&...ts) {
+        return require(unglue(x) != unglue(y), comparison_glue(x, y, "!="), static_cast<Ts &&>(ts)...);
+    }
 
-#undef CPY_TMP
+    template <class X, class Y, class ...Ts>
+    bool less(X const &x, Y const &y, Ts &&...ts) {
+        return require(unglue(x) < unglue(y), comparison_glue(x, y, "<"), static_cast<Ts &&>(ts)...);
+    }
 
-    template <class X, class Y, std::enable_if_t<!(std::is_integral_v<X> && std::is_integral_v<Y>), int> = 0>
-    bool require_near(X const &x, Y const &y) {
+    template <class X, class Y, class ...Ts>
+    bool greater(X const &x, Y const &y, Ts &&...ts) {
+        return require(unglue(x) > unglue(y), comparison_glue(x, y, ">"), static_cast<Ts &&>(ts)...);
+    }
+
+    template <class X, class Y, class ...Ts>
+    bool less_eq(X const &x, Y const &y, Ts &&...ts) {
+        return require(unglue(x) <= unglue(y), comparison_glue(x, y, "<="), static_cast<Ts &&>(ts)...);
+    }
+
+    template <class X, class Y, class ...Ts>
+    bool greater_eq(X const &x, Y const &y, Ts &&...ts) {
+        return require(unglue(x) >= unglue(y), comparison_glue(x, y, ">="), static_cast<Ts &&>(ts)...);
+    }
+
+    template <class X, class Y, class T, class ...Ts>
+    bool within(X const &x, Y const &y, T const &tol, Ts &&...ts) {
+        auto const a = x - y;
+        auto const b = y - x;
+        bool ok = (a < b) ? static_cast<bool>(b < tol) : static_cast<bool>(a < tol);
+        return require(ok, ComparisonGlue<X const &, Y const &>{x, y, "~~"}, glue("tolerance", tol), static_cast<Ts &&>(ts)...);
+    }
+
+    template <class X, class Y, class ...Args>
+    bool near(X const &x, Y const &y, Args &&...args) {
         bool ok = ApproxEquals<typename ApproxType<X, Y>::type>()(unglue(x), unglue(y));
-        return require(ok, ComparisonGlue<X const &, Y const &>{x, y, "=="});
+        return require(ok, ComparisonGlue<X const &, Y const &>{x, y, "~~"}, static_cast<Args &&>(args)...);
     }
 
     template <class Exception, class F, class ...Args>
-    bool require_throws(F &&f, Args &&...args) {
-        bool ok = false;
-        try {f(static_cast<Args &&>(args)...);}
-        catch (Exception const &) {ok = true;}
-        return require(ok);
+    bool throws_as(F &&f, Args &&...args) {
+        try {
+            std::invoke(static_cast<F &&>(f), static_cast<Args &&>(args)...);
+            return require(false);
+        } catch (Exception const &) {return require(true);}
     }
 
     template <class F, class ...Args>
-    auto time(std::size_t n, F &&f, Args &&...args) {
-        auto start = current_time();
-        f(static_cast<Args &&>(args)...);
-        auto elapsed = current_time() - start;
-        handle(Timing, glue("value", elapsed));
-        return elapsed;
+    bool no_throw(F &&f, Args &&...args) {
+        try {
+            std::invoke(static_cast<F &&>(f), static_cast<Args &&>(args)...);
+            return require(true);
+        } catch (...) {return require(false);}
     }
 };
 

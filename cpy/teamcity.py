@@ -29,7 +29,7 @@ class TeamCityTestReport(Report):
 
     def __call__(self, event, scopes, logs):
         assert event == 0 or event == 2
-        self.messages.testFailed(self.name, readable_message(events(False)[event], scopes, logs))
+        self.messages.testFailed(self.name, readable_message(events()[event], scopes, logs))
 
     def finalize(self, value, time, counts, out, err):
         self.messages.message('counts', errors=str(counts[0]), exceptions=str(counts[2]))

@@ -1,4 +1,4 @@
-#include "Test.h"
+#include <cpy/Test.h>
 #include <chrono>
 #include <iostream>
 #include <vector>
@@ -235,11 +235,38 @@ Object to_python(std::vector<T> const &v, F const &f={}) noexcept {
 
 /******************************************************************************/
 
+std::string fetch_error(PyObject **type, PyObject **value, PyObject **traceback) {
+    PyErr_Fetch(type, value, traceback);
+    PyObject *s = PyObject_Str(*value);
+    if (!s) return {};
+    Py_ssize_t size;
+#   if PY_MAJOR_VERSION > 2
+        char const *c = PyUnicode_AsUTF8AndSize(s, &size);
+#   else
+        char *c;
+        if (PyString_AsStringAndSize(s, &c, &size)) c = nullptr;
+#   endif
+    Py_DECREF(s);
+    if (c) return std::string(static_cast<char const *>(c), size);
+    else return {};
+}
+
+struct PythonError : std::runtime_error {
+    PyObject *type, *value, *traceback;
+    // PythonError() : std::runtime_error("") {}
+    PythonError() : std::runtime_error(fetch_error(&type, &value, &traceback)) {}
+    PythonError(PythonError const &) = delete;
+    PythonError(PythonError &&) = delete;
+    ~PythonError() {PyErr_Restore(type, value, traceback);}
+};
+
+/******************************************************************************/
+
 struct PyCallback {
     Object object;
     ReleaseGIL *unlock = nullptr;
 
-    bool operator()(Event event, Scopes const &scopes, Logs &&logs) noexcept {
+    bool operator()(Event event, Scopes const &scopes, Logs &&logs) {
         if (!+object) return false;
         AcquireGIL lk(unlock); // reacquire the GIL (if it was released)
 
@@ -253,6 +280,7 @@ struct PyCallback {
         if (!pylogs) return false;
 
         Object out = {PyObject_CallFunctionObjArgs(+object, +pyevent, +pyscopes, +pylogs, nullptr), false};
+        if (PyErr_Occurred()) throw PythonError();
         return bool(out);
     }
 };
@@ -601,24 +629,20 @@ static PyMethodDef cpy_methods[] = {
 /******************************************************************************/
 
 #if PY_MAJOR_VERSION > 2
-static struct PyModuleDef cpy_definition = {
-    PyModuleDef_HEAD_INIT,
-    "libcpy",
-    "A Python module to run C++ unit tests",
-    -1,
-    cpy_methods
-};
+    static struct PyModuleDef cpy_definition = {
+        PyModuleDef_HEAD_INIT,
+        "libcpy",
+        "A Python module to run C++ unit tests",
+        -1,
+        cpy_methods
+    };
 
-PyMODINIT_FUNC PyInit_libcpy(void) {
-    Py_Initialize();
-    return PyModule_Create(&cpy_definition);
-}
+    PyMODINIT_FUNC PyInit_libcpy(void) {
+        Py_Initialize();
+        return PyModule_Create(&cpy_definition);
+    }
 #else
-
-void initlibcpy(void) {
-    Py_InitModule("libcpy", cpy_methods);
-}
-
+    void initlibcpy(void) {Py_InitModule("libcpy", cpy_methods);}
 #endif
 
 /******************************************************************************/

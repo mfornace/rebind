@@ -2,6 +2,7 @@
 #include <variant>
 #include <complex>
 #include <string>
+#include <sstream>
 #include <vector>
 #include <type_traits>
 #include <string_view>
@@ -80,13 +81,15 @@ using ArgPack = std::vector<Value>;
 /******************************************************************************/
 
 template <class T, class=void>
-struct Valuable {
-    Value operator()(T const &t) const {
-        std::ostringstream ss;
-        ss << t;
-        return ss.str();
-    }
-};
+struct Valuable; // undefined
+
+// option 1: leave the above undefined -- user can define a default.
+// option 5: leave undefined -- make_value uses stream if it is undefined
+// option 3: define it to be the stream operator. then the user has to override the default based on a void_t
+// problem then is, e.g. for std::any -- user would have to use std::is_copyable -- but then ambiguous with all their other overloads.
+// option 2: define but static_assert(false) in it -- that's bad I think
+// option 4: define a void_t stream operator. but then very hard to override
+
 
 template <>
 struct Valuable<bool> {
@@ -121,9 +124,20 @@ struct Valuable<char const *> {
     Value operator()(char const *t) const {return std::string_view(t);}
 };
 
-template <class T>
+/******************************************************************************/
+
+template <class T> static constexpr bool is_valuable_v = std::is_convertible_v<
+    decltype(Valuable<T>()(std::declval<T>())), Value
+>;
+
+template <class T, std::enable_if_t<is_valuable_v<std::decay_t<T>>, int> = 0>
+Value make_value(T &&t) {return Valuable<std::decay_t<T>>()(static_cast<T &&>(t));}
+
+template <class T, std::enable_if_t<!is_valuable_v<std::decay_t<T>>, int> = 0>
 Value make_value(T &&t) {
-    return Valuable<std::decay_t<T>>()(static_cast<T &&>(t));
+    std::ostringstream os;
+    os << static_cast<T &&>(t);
+    return std::move(os).str();
 }
 
 /******************************************************************************/

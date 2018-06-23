@@ -26,6 +26,7 @@ def parser(prog='cpy', description='Run C++ unit tests from Python with the cpy 
     s(t, '--exception',        '-e', help='show exceptions')
     s(t, '--timing',           '-t', help='show timings')
     s(t, '--brief',            '-b', help='abbreviate output')
+    s(t, '--no-color',         '-n', help='do not use ASCI colors in command line output')
     o(t, str, 'PATH', '--out', '-o', help="output file path (default 'stdout')", default='stdout')
     o(t, str, 'MODE', '--out-mode',  help="output file open mode (default 'w')", default='w')
 
@@ -73,7 +74,7 @@ def run_suite(lib, keypairs, masks, gil, cout, cerr, exe=map):
 
 def main(run=run_suite, lib='libcpy', list=False, failure=False, success=False, brief=False,
     exception=False, timing=False, quiet=False, capture=False, gil=False, exclude=False,
-    regex=None, out='stdout', out_mode='w', xml=None, xml_mode='a+b', suite='cpy',
+    no_color=False, regex=None, out='stdout', out_mode='w', xml=None, xml_mode='a+b', suite='cpy',
     teamcity=None, json=None, json_indent=None, jobs=1, tests=None, params=None):
 
     lib = import_library(lib)
@@ -93,8 +94,8 @@ def main(run=run_suite, lib='libcpy', list=False, failure=False, success=False, 
             from . import console
             if brief:
                 console.FOOTER, console.STREAM_FOOTER = '', ''
-            r = console.ConsoleReport(open_file(stack, out, out_mode),
-                                      info, timing=timing, sync=jobs > 1)
+            r = console.ConsoleReport(open_file(stack, out, out_mode), info,
+                colors=(not no_color), timing=timing, sync=jobs > 1)
             masks.append((stack.enter_context(r), mask))
 
         if xml:

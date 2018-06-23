@@ -9,7 +9,7 @@ class NativeReport(Report):
         self.indent = indent
         self.contents = {
             'compile-info': dict(name=info[0], date=info[1], time=info[2]),
-            'events': events(False),
+            'events': events(),
             'tests': [],
         }
 

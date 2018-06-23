@@ -1,12 +1,4 @@
-def not_colored(s, *args, **kwargs):
-    return s
-
-try:
-    from termcolor import colored
-except ImportError:
-    colored = not_colored
-
-import sys
+import sys, io
 
 try:
     from contextlib import ExitStack
@@ -24,17 +16,15 @@ DELIMITER = '/'
 
 EVENTS = ['Failure', 'Success', 'Exception', 'Timing']
 
-COLORED_EVENTS = [
-    colored('Failure',   'red'),
-    colored('Success',   'green'),
-    colored('Exception', 'red'),
-    colored('Timing',    'yellow')
-]
+################################################################################
+
+def events():
+    return EVENTS
 
 ################################################################################
 
-def events(color=False):
-    return COLORED_EVENTS if color else EVENTS
+def foreach(function, *args):
+    return tuple(map(function, args))
 
 ################################################################################
 
@@ -61,10 +51,17 @@ def pop_value(key, keys, values, default=None):
 
 ################################################################################
 
-def import_library(lib):
+def import_library(lib, name='libcpy'):
     import os, importlib
     sys.path.insert(0, os.path.dirname(os.path.abspath(lib)))
-    return importlib.import_module(lib)
+    try:
+        return importlib.import_module(lib)
+    except ImportError as e:
+        if sys.version_info >= (3, 4):
+            spec = importlib.util.find_spec(lib) # Python module has different name than its file name
+            spec.name, spec.loader.name = name, name
+            return importlib.util.module_from_spec(spec)
+        raise e
 
 ################################################################################
 
@@ -99,41 +96,45 @@ def test_indices(lib, exclude=False, tests=None, regex=''):
         regex: pattern to specify tests
     '''
     if tests:
-        indices = set(lib.find_test(t) for t in tests)
-    elif not regex:
-        indices = set() if exclude else set(range(lib.n_tests()))
+        out = set(lib.find_test(t) for t in tests)
+    else:
+        out = set() if (regex or exclude) else set(range(lib.n_tests()))
 
     if regex:
         import re
         pattern = re.compile(regex)
-        indices.update(i for i, t in enumerate(lib.test_names()) if pattern.match(t))
+        out.update(i for i, t in enumerate(lib.test_names()) if pattern.match(t))
 
     if exclude:
-        indices = set(range(lib.n_tests())).difference(indices)
-    return sorted(indices)
+        out = set(range(lib.n_tests())).difference(out)
+    return sorted(out)
 
 ################################################################################
 
-def parametrized_indices(lib, indices, params={}):
+def parametrized_indices(lib, indices, params=(None,), default=(None,)):
     '''
     Yield tuple of (index, parameter_pack) for each test to run
         lib: the cpy library object
         indices: the possible indices to yield from
         params: dict or list of specified parameters (e.g. from load_parameters())
+    If params is not dict-like, it is assumed to give the default parameters for all tests.
+    A valid argument list is either:
+        a tuple of arguments
+        an index to preregistered arguments
+        None, meaning all preregistered arguments
     '''
     names = lib.test_names()
+    if not hasattr(params, 'get'):
+        params, default = {}, params
     for i in indices:
-        try: # params is dict-like
-            ps = list(params.get(names[i], [None]))
-        except AttributeError: # params gives a constant value for all keys
-            ps = params
+        ps = list(params.get(names[i], default))
         n = lib.n_parameters(i)
         while None in ps:
             ps.remove(None)
             ps.extend(range(n))
         for p in ps:
             if isinstance(p, int) and p >= n:
-                raise IndexError("Parameter pack index {} is out of range for test '{}' (n={})".format(j, names[i], n))
+                raise IndexError("Parameter pack index {} is out of range for test '{}' (n={})".format(p, names[i], n))
             yield i, p
 
 ################################################################################
@@ -158,7 +159,7 @@ def multireport(reports):
 ################################################################################
 
 def run_test(lib, index, test_masks, args=(), gil=False, cout=False, cerr=False):
-    lists = [[] for _ in events()]
+    lists = [[] for _ in EVENTS]
 
     with ExitStack() as stack:
         for r, mask in test_masks:
@@ -169,31 +170,39 @@ def run_test(lib, index, test_masks, args=(), gil=False, cout=False, cerr=False)
 
 ################################################################################
 
+def readable_header(keys, values, kind, scopes):
+    '''Return string with basic event information'''
+    scopes = repr(DELIMITER.join(scopes))
+    line, path = (pop_value(k, keys, values) for k in ('line', 'file'))
+    if path is None:
+        return '{}: {}\n'.format(kind, scopes)
+    desc = '({})'.format(path) if line is None else '({}:{})'.format(path, line)
+    return '{}: {} {}\n'.format(kind, scopes, desc)
+
+################################################################################
+
+OPS = {
+    '~~': u'\u2248\u2248'
+}
+
+def readable_logs(keys, values, indent):
+    '''Return readable string of key value pairs'''
+    s = io.StringIO()
+    while 'comment' in keys: # comments
+        foreach(s.write, indent, 'comment: ', repr(pop_value('comment', keys, values)), '\n')
+
+    comp = ('lhs', 'op', 'rhs') # comparisons
+    while all(c in keys for c in comp):
+        lhs, op, rhs = (pop_value(k, keys, values) for k in comp)
+        foreach(s.write, indent, 'required: {} {} {}\n'.format(lhs, OPS.get(op, op), rhs))
+
+    for k, v in zip(keys, values): # all other logged keys and values
+        foreach(s.write, indent, (k + ': ' if k else ''), repr(v), '\n')
+    return s.getvalue()
+
+################################################################################
+
 def readable_message(kind, scopes, logs, indent='    '):
     '''Return readable string for a C++ cpy callback'''
     keys, values = map(list, zip(*logs))
-    line, path = (pop_value(k, keys, values) for k in ('line', 'file'))
-    scopes = repr(DELIMITER.join(scopes))
-
-    # first line
-    if path is None:
-        s = '{}: {}\n'.format(kind, scopes)
-    else:
-        desc = '({})'.format(path) if line is None else '({}:{})'.format(path, line)
-        s = '{}: {} {}\n'.format(kind, scopes, desc)
-
-    # comments
-    while 'comment' in keys:
-        s += indent + 'comment: ' + repr(pop_value('comment', keys, values)) + '\n'
-
-    # comparisons
-    comp = ('lhs', 'op', 'rhs')
-    while all(c in keys for c in comp):
-        lhs, op, rhs = (pop_value(k, keys, values) for k in comp)
-        s += indent + 'required: {} {} {}\n'.format(lhs, op, rhs)
-
-    # all other logged keys and values
-    for k, v in zip(keys, values):
-        s += indent + (k + ': ' if k else '') + repr(v) + '\n'
-
-    return s
+    return readable_header(keys, values, kind, scopes) + readable_logs(keys, values, indent)

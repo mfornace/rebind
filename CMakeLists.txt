@@ -9,7 +9,7 @@ add_library(libcpy STATIC Python.cc)
 target_compile_features(libcpy PUBLIC cxx_std_17)
 set_property(TARGET libcpy PROPERTY OUTPUT_NAME cpy)
 target_include_directories(libcpy PRIVATE ${PYTHON_INCLUDE_DIR})
-target_include_directories(libcpy PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include/cpy)
+target_include_directories(libcpy PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 ################################################################################
 
@@ -24,3 +24,5 @@ endif()
 add_library(testcpy MODULE EXCLUDE_FROM_ALL Test.cc)
 set_property(TARGET testcpy PROPERTY OUTPUT_NAME cpy)
 target_link_libraries(testcpy PRIVATE libcpy)
+
+################################################################################
