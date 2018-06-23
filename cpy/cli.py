@@ -24,6 +24,7 @@ def parser(prog='cpy', description='Run C++ unit tests from Python with the cpy 
     s(t, '--failure',          '-f', help='show failures')
     s(t, '--success',          '-s', help='show successes')
     s(t, '--exception',        '-e', help='show exceptions')
+    s(t, '--skip',          '-k', help='show skip tests')
     s(t, '--timing',           '-t', help='show timings')
     s(t, '--brief',            '-b', help='abbreviate output')
     s(t, '--no-color',         '-n', help='do not use ASCI colors in command line output')
@@ -75,7 +76,7 @@ def run_suite(lib, keypairs, masks, gil, cout, cerr, exe=map):
 def main(run=run_suite, lib='libcpy', list=False, failure=False, success=False, brief=False,
     exception=False, timing=False, quiet=False, capture=False, gil=False, exclude=False,
     no_color=False, regex=None, out='stdout', out_mode='w', xml=None, xml_mode='a+b', suite='cpy',
-    teamcity=None, json=None, json_indent=None, jobs=1, tests=None, params=None):
+    teamcity=None, json=None, json_indent=None, jobs=1, tests=None, params=None, skip=False):
 
     lib = import_library(lib)
     indices = test_indices(lib, exclude, tests, regex)
@@ -85,7 +86,7 @@ def main(run=run_suite, lib='libcpy', list=False, failure=False, success=False, 
         print('\n'.join(lib.test_info(i[0])[0] for i in keypairs))
         return
 
-    mask = (failure, success, exception, timing)
+    mask = (failure, success, exception, timing, skip)
     info = lib.compile_info()
 
     with ExitStack() as stack:

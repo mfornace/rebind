@@ -19,9 +19,8 @@ decltype(auto) unglue(T const &t) {return Ungluer<T>()(t);}
 
 template <class T, class=void>
 struct AddKeyPairs {
-    void operator()(Logs &v, T const &t) const {
-        v.emplace_back(KeyPair{{}, make_value(t)});
-    }
+    void operator()(Logs &v, T const &t) const {v.emplace_back(KeyPair{{}, make_value(t)});}
+    void operator()(Logs &v, T &&t) const {v.emplace_back(KeyPair{{}, make_value(std::move(t))});}
 };
 
 /******************************************************************************/
@@ -35,8 +34,7 @@ struct Glue {
 template <class V>
 struct Gluer {
     template <class K>
-    Glue<K, std::conditional_t<std::is_class_v<V>, V, V const &>>
-        operator()(K key, V const &value) {return {std::move(key), value};}
+    Glue<K, V const &> operator()(K key, V const &value) {return {std::move(key), value};}
 };
 
 template <class K, class V>
@@ -49,11 +47,6 @@ struct Gluer<Glue<K, V>> {
 
 template <class K, class V>
 decltype(auto) glue(K key, V const &value) {return Gluer<V>()(key, value);}
-
-template <class K, class V>
-Glue<std::decay_t<K>, std::decay_t<V>> glue_value(K &&key, V &&value) {
-    return {static_cast<K &&>(key), static_cast<V &&>(value)};
-}
 
 template <class K, class V>
 struct Ungluer<Glue<K, V>> {
@@ -74,7 +67,7 @@ struct FileLine {
     char const *file = nullptr;
 };
 
-inline auto file_and_line(char const *s, int i) {return FileLine{i, s};}
+inline auto file_line(char const *s, int i) {return FileLine{i, s};}
 
 template <>
 struct AddKeyPairs<FileLine> {

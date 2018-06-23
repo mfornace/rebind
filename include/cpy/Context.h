@@ -13,10 +13,11 @@ namespace cpy {
 
 using Event = std::uint_fast32_t;
 
-static constexpr Event Failure = 0;
-static constexpr Event Success = 1;
+static constexpr Event Failure   = 0;
+static constexpr Event Success   = 1;
 static constexpr Event Exception = 2;
-static constexpr Event Timing = 3;
+static constexpr Event Timing    = 3;
+static constexpr Event Skipped   = 4;
 
 using Scopes = std::vector<std::string>;
 
@@ -45,7 +46,7 @@ struct Context {
 
     /// Subsection
     template <class F>
-    auto operator()(std::string name, F &&functor) {
+    auto section(std::string name, F &&functor) const {
         Context ctx(scopes, callbacks, counters);
         ctx.scopes.push_back(std::move(name));
         return static_cast<F &&>(functor)(ctx);
@@ -65,12 +66,15 @@ struct Context {
         logs.emplace_back(KeyPair{static_cast<K &&>(k), make_value(static_cast<V &&>(v))});
     }
 
+    template <class ...Ts>
+    Context & operator()(Ts &&...ts) {(info(static_cast<Ts &&>(ts)), ...); return *this;}
+
     /**************************************************************************/
 
     template <class ...Ts>
     void handle(Event e, Ts &&...ts) {
         if (e < callbacks.size() && callbacks[e]) {
-            (void) std::initializer_list<bool>{(info(static_cast<Ts &&>(ts)), false)...};
+            (*this)(static_cast<Ts &&>(ts)...);
             callbacks[e](e, scopes, std::move(logs));
         }
         if (counters && e < counters->size())
@@ -141,7 +145,7 @@ struct Context {
     }
 
     template <class Exception, class F, class ...Args>
-    bool throws_as(F &&f, Args &&...args) {
+    bool throw_as(F &&f, Args &&...args) {
         try {
             std::invoke(static_cast<F &&>(f), static_cast<Args &&>(args)...);
             return require(false);
