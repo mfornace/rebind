@@ -197,7 +197,7 @@ def readable_logs(keys, values, indent):
         foreach(s.write, indent, 'required: {} {} {}\n'.format(lhs, OPS.get(op, op), rhs))
 
     for k, v in zip(keys, values): # all other logged keys and values
-        foreach(s.write, indent, (k + ': ' if k else ''), repr(v), '\n')
+        foreach(s.write, indent, (k + ': ' if k else 'info: '), v, '\n')
     return s.getvalue()
 
 ################################################################################
