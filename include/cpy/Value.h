@@ -72,7 +72,7 @@ struct Value {
 */
 
 struct KeyPair {
-    std::string key;
+    std::string_view key;
     Value value;
 };
 
@@ -126,9 +126,15 @@ struct Valuable<char const *> {
 
 /******************************************************************************/
 
-template <class T> static constexpr bool is_valuable_v = std::is_convertible_v<
-    decltype(Valuable<T>()(std::declval<T>())), Value
->;
+template <class T, class=void>
+struct is_valuable
+    : std::false_type {};
+
+template <class T>
+struct is_valuable<T, std::void_t<decltype(Valuable<T>()(std::declval<T>()))>>
+    : std::true_type {};
+
+template <class T> static constexpr bool is_valuable_v = is_valuable<T>::value;
 
 template <class T, std::enable_if_t<is_valuable_v<std::decay_t<T>>, int> = 0>
 Value make_value(T &&t) {return Valuable<std::decay_t<T>>()(static_cast<T &&>(t));}

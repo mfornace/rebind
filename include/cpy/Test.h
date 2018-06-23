@@ -5,6 +5,10 @@ namespace cpy {
 
 /******************************************************************************/
 
+struct Skip {};
+
+/******************************************************************************/
+
 template <class T, class=void>
 struct CastVariant {
     template <class U>
@@ -45,11 +49,16 @@ struct TestSignature : Pack<void, Context> {
 template <class F>
 struct TestSignature<F, std::void_t<typename Signature<F>::return_type>> : Signature<F> {};
 
-template <class F, class ...Ts, std::enable_if_t<(!std::is_same_v<void, std::invoke_result_t<F, Ts...>>), int> = 0>
-void invoke(Value &output, F &&f, Ts &&...ts) {output = make_value(std::invoke(static_cast<F &&>(f), static_cast<Ts &&>(ts)...));}
 
-template <class F, class ...Ts, std::enable_if_t<(std::is_same_v<void, std::invoke_result_t<F, Ts...>>), int> = 0>
-void invoke(Value &, F &&f, Ts &&...ts) {std::invoke(static_cast<F &&>(f), static_cast<Ts &&>(ts)...);}
+template <class F, class... Ts, std::enable_if_t<(!std::is_same_v<void, std::invoke_result_t<F, Context &&, Ts...>>), int> = 0>
+void invoke(Value &output, F &&f, Context &&ctx, Ts &&... ts) {
+    output = make_value(std::invoke(static_cast<F &&>(f), std::move(ctx), static_cast<Ts &&>(ts)...));
+}
+
+template <class F, class ...Ts, std::enable_if_t<(std::is_same_v<void, std::invoke_result_t<F, Context &&, Ts...>>), int> = 0>
+void invoke(Value &, F &&f, Context &&ctx, Ts &&...ts) {
+    std::invoke(static_cast<F &&>(f), std::move(ctx), static_cast<Ts &&>(ts)...);
+}
 
 template <class F>
 struct TestAdaptor {
@@ -61,15 +70,19 @@ struct TestAdaptor {
             return TestSignature<F>::apply([&](auto return_type, auto context_type, auto ...ts) {
                 static_assert(std::is_convertible<Context, decltype(*context_type)>(),
                               "First argument in signature should be of type Context");
-                bool ok = args.size() == sizeof...(ts);
-                (void) std::initializer_list<bool>{(ok = ok && check_cast_index(args, ts))...};
-                if (ok) invoke(output, function, Context(ctx), cast_index(args, ts)...);
-                return ok;
+                if ((args.size() == sizeof...(ts)) && (... && check_cast_index(args, ts))) {
+                    invoke(output, function, std::move(ctx), cast_index(args, ts)...);
+                    return true;
+                } else return false;
             });
+        } catch (Skip const &e) {
+            ctx.handle(Skipped);
         } catch (std::exception const &e) {
-            ctx.info("value", e.what());
-        } catch (...) {}
-        ctx.handle(Exception);
+            ctx("value", e.what());
+            ctx.handle(Exception);
+        } catch (...) {
+            ctx.handle(Exception);
+        }
         return true;
     }
 };

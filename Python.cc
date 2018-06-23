@@ -280,7 +280,7 @@ struct PyCallback {
         if (!pylogs) return false;
 
         Object out = {PyObject_CallFunctionObjArgs(+object, +pyevent, +pyscopes, +pylogs, nullptr), false};
-        if (PyErr_Occurred()) throw PythonError();
+        // if (PyErr_Occurred()) throw PythonError();
         return bool(out);
     }
 };

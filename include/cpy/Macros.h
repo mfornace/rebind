@@ -6,7 +6,7 @@
 #define CPY_CAT_IMPL(s1, s2) s1##s2
 #define CPY_CAT(s1, s2) CPY_CAT_IMPL(s1, s2)
 
-#define CPY_LOCATION ::cpy::file_and_line(__FILE__, __LINE__)
+#define CPY_LOCATION ::cpy::file_line(__FILE__, __LINE__)
 #define CPY_COMMENT(...) ::cpy::comment(__VA_ARGS__ "", __FILE__, __LINE__)
 #define CPY_UNIT_TEST(NAME, ...) static auto CPY_CAT(anonymous_test_, __COUNTER__) = ::cpy::AnonymousClosure{NAME, CPY_COMMENT(__VA_ARGS__)}
 

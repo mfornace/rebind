@@ -20,7 +20,8 @@ COLORS =  [
     lambda e: colored(e, 'red'),
     lambda e: colored(e, 'green'),
     lambda e: colored(e, 'red'),
-    lambda e: colored(e, 'yellow')
+    lambda e: colored(e, 'yellow'),
+    lambda e: colored(e, 'grey')
 ]
 
 STDERR = colored('Contents of std::err', 'magenta')
@@ -79,8 +80,7 @@ class ConsoleTestReport(Report):
         self.write(FOOTER, colored('Test %d ' % index, 'blue', attrs=['bold']), info, '\n')
 
     def write(self, *args):
-        for a in args:
-            self.file.write(a)
+        tuple(map(self.file.write, args))
         self.file.flush()
 
     def __call__(self, event, scopes, logs):
