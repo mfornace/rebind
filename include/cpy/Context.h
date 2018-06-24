@@ -40,8 +40,7 @@ struct Context {
     std::vector<Counter> *counters = nullptr;
     void *metadata; // could be transitioned to std::any but right now pointer is OK
 
-    Context();
-
+    Context() noexcept = default;
     Context(Scopes s, std::vector<Callback> h, std::vector<Counter> *c=nullptr, void *m=nullptr);
 
     /// Subsection
@@ -135,7 +134,8 @@ struct Context {
         auto const a = x - y;
         auto const b = y - x;
         bool ok = (a < b) ? static_cast<bool>(b < tol) : static_cast<bool>(a < tol);
-        return require(ok, ComparisonGlue<X const &, Y const &>{x, y, "~~"}, glue("tolerance", tol), static_cast<Ts &&>(ts)...);
+        return require(ok, ComparisonGlue<X const &, Y const &>{x, y, "~~"},
+                       glue("tolerance", tol), glue("difference", b), static_cast<Ts &&>(ts)...);
     }
 
     template <class X, class Y, class ...Args>

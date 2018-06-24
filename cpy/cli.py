@@ -11,7 +11,7 @@ def parser(prog='cpy', description='Run C++ unit tests from Python with the cpy 
     p = ArgumentParser(prog=prog, description=description, **kwargs)
     s(p, '--list',               '-l', help='list all test names')
     o(p, str, 'PATH', '--lib',   '-a', help="file path for test library (default 'libcpy')", default='libcpy', )
-    o(p, int, 'INT', '--jobs',   '-j', help='number of threads (default 1)', default=1)
+    o(p, int, 'INT', '--jobs',   '-j', help='number of job threads (default 1; 0 for jobs to run in main thread)', default=1)
     o(p, str, 'STR', '--params', '-p', help='JSON file path or Python eval-able parameter string')
     o(p, str, 'RE',  '--regex',  '-r', help="specify tests with names matching a given regex")
     s(p, '--exclude',            '-x', help='exclude rather than include specified cases')
@@ -60,11 +60,10 @@ def run_suite(lib, keypairs, masks, gil, cout, cerr, exe=map):
     from io import StringIO
     from functools import partial
 
-    totals = [0] * len(events())
+    totals = (0,) * len(events())
     out, err = StringIO(), StringIO()
     f = partial(run_index, lib, masks, out, err, gil, cout, cerr)
-    totals = tuple(exe(f, keypairs))
-    totals = tuple(map(sum, zip(*totals)))
+    totals = tuple(map(sum, zip(*exe(f, keypairs)))) or totals # take care of no tests case
 
     for r, _ in masks:
         r.finalize(totals[0], totals[1:], out.getvalue(), err.getvalue())
@@ -76,7 +75,7 @@ def run_suite(lib, keypairs, masks, gil, cout, cerr, exe=map):
 def main(run=run_suite, lib='libcpy', list=False, failure=False, success=False, brief=False,
     exception=False, timing=False, quiet=False, capture=False, gil=False, exclude=False,
     no_color=False, regex=None, out='stdout', out_mode='w', xml=None, xml_mode='a+b', suite='cpy',
-    teamcity=None, json=None, json_indent=None, jobs=1, tests=None, params=None, skip=False):
+    teamcity=None, json=None, json_indent=None, jobs=0, tests=None, params=None, skip=False):
 
     lib = import_library(lib)
     indices = test_indices(lib, exclude, tests, regex)
@@ -114,9 +113,9 @@ def main(run=run_suite, lib='libcpy', list=False, failure=False, success=False, 
             r = NativeReport(open_file(stack, json, 'w'), info, indent=json_indent)
             masks.append((stack.enter_context(r), mask))
 
-        if jobs > 1:
+        if jobs:
             from multiprocessing.pool import ThreadPool
-            exe = ThreadPool().map
+            exe = ThreadPool(jobs).imap # .imap() is in order, .map() is not
         else:
             exe = map
 

@@ -1,11 +1,16 @@
 #pragma once
 #include "Context.h"
-#include <iostream>
+
 namespace cpy {
 
 /******************************************************************************/
 
+/// No need to inherit from std::exception since the use case is so limited, I think.
 struct Skip {};
+
+struct HandlerError : std::runtime_error {
+    using std::runtime_error::runtime_error;
+};
 
 /******************************************************************************/
 
@@ -65,7 +70,7 @@ struct TestAdaptor {
     F function;
 
     /// Catches any exceptions; returns whether the test could be begun.
-    bool operator()(Value &output, Context ctx, ArgPack args) noexcept {
+    bool operator()(Value &output, Context ctx, ArgPack args) {
         try {
             return TestSignature<F>::apply([&](auto return_type, auto context_type, auto ...ts) {
                 static_assert(std::is_convertible<Context, decltype(*context_type)>(),
@@ -77,12 +82,25 @@ struct TestAdaptor {
             });
         } catch (Skip const &e) {
             ctx.handle(Skipped);
+        } catch (HandlerError const &e) {
+            throw e;
         } catch (std::exception const &e) {
             ctx("value", e.what());
             ctx.handle(Exception);
         } catch (...) {
             ctx.handle(Exception);
         }
+        return true;
+    }
+};
+
+/******************************************************************************/
+
+struct ValueAdaptor {
+    Value value;
+
+    bool operator()(Value &out, Context const &, ArgPack const &) noexcept {
+        out = value;
         return true;
     }
 };
@@ -107,18 +125,13 @@ struct TestCase {
     std::vector<ArgPack> parameters;
 };
 
-/// A vector of TestCase
-struct Suite {
-    std::vector<TestCase> cases;
+void register_test(TestCase t);
 
-    template <class F>
-    void operator()(std::string name, TestCaseComment c, F const &f, std::vector<ArgPack> v={}) {
-        if (TestSignature<F>::size::value <= 2 && v.empty()) v.emplace_back();
-        cases.emplace_back(TestCase{std::move(name), std::move(c), TestAdaptor<F>{f}, std::move(v)});
-    }
-};
-
-Suite & suite();
+template <class F>
+void register_test(std::string name, TestCaseComment c, F const &f, std::vector<ArgPack> v={}) {
+    if (TestSignature<F>::size::value <= 2 && v.empty()) v.emplace_back();
+    register_test(TestCase{std::move(name), std::move(c), TestAdaptor<F>{f}, std::move(v)});
+}
 
 /******************************************************************************/
 
@@ -130,13 +143,13 @@ struct UnitTest {
 
 template <class F>
 UnitTest<F> unit_test(std::string name, F const &f, std::vector<ArgPack> v={}) {
-    suite()(name, TestCaseComment(), f, std::move(v));
+    register_test(name, TestCaseComment(), f, std::move(v));
     return {std::move(name), f};
 }
 
 template <class F>
 UnitTest<F> unit_test(std::string name, TestCaseComment comment, F const &f, std::vector<ArgPack> v={}) {
-    suite()(name, std::move(comment), f, std::move(v));
+    register_test(name, std::move(comment), f, std::move(v));
     return {std::move(name), f};
 }
 
@@ -144,7 +157,7 @@ UnitTest<F> unit_test(std::string name, TestCaseComment comment, F const &f, std
 
 template <class F>
 bool anonymous_test(std::string name, TestCaseComment comment, F &&function, std::vector<ArgPack> v={}) {
-    suite()(std::move(name), std::move(comment), static_cast<F &&>(function), std::move(v));
+    register_test(std::move(name), std::move(comment), static_cast<F &&>(function), std::move(v));
     return true;
 }
 

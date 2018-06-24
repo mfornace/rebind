@@ -64,15 +64,15 @@ struct AddKeyPairs<Glue<K, V>> {
 
 struct FileLine {
     int line = 0;
-    char const *file = nullptr;
+    std::string_view file;
 };
 
-inline auto file_line(char const *s, int i) {return FileLine{i, s};}
+inline constexpr auto file_line(char const *s, int i) {return FileLine{i, s};}
 
 template <>
 struct AddKeyPairs<FileLine> {
     void operator()(Logs &v, FileLine const &g) const {
-        v.emplace_back(KeyPair{"file", static_cast<std::string_view>(g.file)});
+        v.emplace_back(KeyPair{"file", g.file});
         v.emplace_back(KeyPair{"line", static_cast<std::size_t>(g.line)});
     }
 };

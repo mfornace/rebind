@@ -34,14 +34,14 @@ using Variant = std::variant<
 struct Value {
     Variant var;
 
-    Value(std::monostate={});
-    Value(bool);
-    Value(std::size_t);
-    Value(std::ptrdiff_t);
-    Value(double);
-    Value(std::complex<double>);
-    Value(std::string);
-    Value(std::string_view);
+    Value(std::monostate={}) noexcept;
+    Value(bool) noexcept;
+    Value(std::size_t) noexcept;
+    Value(std::ptrdiff_t) noexcept;
+    Value(double) noexcept;
+    Value(std::complex<double>) noexcept;
+    Value(std::string) noexcept;
+    Value(std::string_view) noexcept;
 
     std::string_view as_view() const;
     double as_double() const;

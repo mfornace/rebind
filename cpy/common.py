@@ -51,16 +51,23 @@ def pop_value(key, keys, values, default=None):
 
 ################################################################################
 
-def import_library(lib, name='libcpy'):
+def import_library(lib, name=None):
+    '''
+    Import a module from a given shared library file name
+    By default, look for a module with the same name as the file it's in.
+    If that fails and :name is given, look for a module of :name instead.
+    '''
     import os, importlib
     sys.path.insert(0, os.path.dirname(os.path.abspath(lib)))
     try:
         return importlib.import_module(lib)
     except ImportError as e:
-        if sys.version_info >= (3, 4):
-            spec = importlib.util.find_spec(lib) # Python module has different name than its file name
-            spec.name, spec.loader.name = name, name
-            return importlib.util.module_from_spec(spec)
+        if name is not None and sys.version_info >= (3, 4):
+            spec = importlib.util.find_spec(lib)
+            if spec is not None:
+                spec.name, spec.loader.name = name, name
+                ret = importlib.util.module_from_spec(spec)
+                return ret
         raise e
 
 ################################################################################
@@ -197,7 +204,7 @@ def readable_logs(keys, values, indent):
         foreach(s.write, indent, 'required: {} {} {}\n'.format(lhs, OPS.get(op, op), rhs))
 
     for k, v in zip(keys, values): # all other logged keys and values
-        foreach(s.write, indent, (k + ': ' if k else 'info: '), v, '\n')
+        foreach(s.write, indent, (k + ': ' if k else 'info: '), str(v), '\n')
     return s.getvalue()
 
 ################################################################################
