@@ -62,3 +62,10 @@ HandlerError has its own exception, which is not caught by test runner. All othe
 - so default is just to use 1 worker thread.
 
 
+### To value
+// option 1: leave the above undefined -- user can define a default.
+// option 5: leave undefined -- make_value uses stream if it is undefined
+// option 3: define it to be the stream operator. then the user has to override the default based on a void_t
+// problem then is, e.g. for std::any -- user would have to use std::is_copyable -- but then ambiguous with all their other overloads.
+// option 2: define but static_assert(false) in it -- that's bad I think
+// option 4: define a void_t stream operator. but then very hard to override

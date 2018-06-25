@@ -34,7 +34,7 @@ target_include_directories(cpy_interface INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/i
 
 ################################################################################
 
-add_library(libcpy STATIC ${CMAKE_CURRENT_SOURCE_DIR}/Source.cc)
+add_library(libcpy STATIC ${CMAKE_CURRENT_SOURCE_DIR}/source/Source.cc)
 set_property(TARGET libcpy PROPERTY OUTPUT_NAME cpy)
 target_link_libraries(libcpy PUBLIC cpy_interface)
 
@@ -42,7 +42,10 @@ target_link_libraries(libcpy PUBLIC cpy_interface)
 
 # Module.cc has to be recompiled based on the exported module name
 # Could just build Python.cc as its own library, but here it's built together with Module.cc
-set_property(GLOBAL PROPERTY cpy_module_files ${CMAKE_CURRENT_SOURCE_DIR}/Module.cc ${CMAKE_CURRENT_SOURCE_DIR}/Python.cc)
+set_property(GLOBAL PROPERTY cpy_module_files
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/Module.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/Python.cc
+)
 
 function(cpy_module module_name)
     get_property(files GLOBAL PROPERTY cpy_module_files)
@@ -62,7 +65,7 @@ endfunction(cpy_module)
 
 ################################################################################
 
-add_library(testcpy STATIC EXCLUDE_FROM_ALL Test.cc)
+add_library(testcpy STATIC EXCLUDE_FROM_ALL source/Test.cc)
 set_property(TARGET testcpy PROPERTY OUTPUT_NAME test)
 target_link_libraries(testcpy PRIVATE libcpy)
 cpy_module(mymodule testcpy)

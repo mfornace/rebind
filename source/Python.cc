@@ -39,8 +39,7 @@ bool from_python(Value &v, Object o) {
         v = (+o == Py_True) ? true : false;
     } else if (PyLong_Check(+o)) {
         long long i = PyLong_AsLongLong(+o);
-        if (i < 0) v = static_cast<std::ptrdiff_t>(i);
-        else v = static_cast<std::size_t>(i);
+        v = static_cast<Integer>(i);
     } else if (PyFloat_Check(+o)) {
         double d = PyFloat_AsDouble(+o);
         v = d;
@@ -304,7 +303,7 @@ PyObject *cpy_test_info(PyObject *self, PyObject *args) {
     if (!n) return nullptr;
     auto f = cpy::to_python(c->comment.location.file);
     if (!f) return nullptr;
-    auto l = cpy::to_python(static_cast<std::size_t>(c->comment.location.line));
+    auto l = cpy::to_python(static_cast<cpy::Integer>(c->comment.location.line));
     if (!l) return nullptr;
     auto o = cpy::to_python(c->comment.comment);
     if (!o) return nullptr;

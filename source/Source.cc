@@ -54,8 +54,7 @@ Value & Value::operator=(Value &&v) noexcept {var = std::move(v.var); return *th
 
 Value::Value(std::monostate v) noexcept : var(v) {}
 Value::Value(bool v) noexcept : var(v) {}
-Value::Value(std::size_t v) noexcept : var(v) {}
-Value::Value(std::ptrdiff_t v) noexcept : var(v) {}
+Value::Value(Integer v) noexcept : var(v) {}
 Value::Value(double v) noexcept : var(v) {}
 Value::Value(std::complex<double> v) noexcept : var(v) {}
 Value::Value(std::string v) noexcept : var(std::move(v)) {}
@@ -63,14 +62,6 @@ Value::Value(std::string_view v) noexcept : var(std::move(v)) {}
 
 std::string_view Value::as_view() const {return std::get<std::string_view>(var);}
 double Value::as_double() const {return std::get<double>(var);}
-
-// Value::Value(std::vector<bool> v) : var(std::move(v)) {}
-// Value::Value(std::vector<std::size_t> v) : var(std::move(v)) {}
-// Value::Value(std::vector<std::ptrdiff_t> v) : var(std::move(v)) {}
-// Value::Value(std::vector<double> v) : var(std::move(v)) {}
-// Value::Value(std::vector<std::complex<double>> v) : var(std::move(v)) {}
-// Value::Value(std::vector<std::string> v) : var(std::move(v)) {}
-// Value::Value(std::vector<std::string_view> v) : var(std::move(v)) {}
 
 Value::~Value() = default;
 

@@ -34,11 +34,8 @@ Object to_python(char const *s) noexcept {
     return {PyUnicode_FromString(s ? s : ""), false};
 }
 
-Object to_python(std::size_t t) noexcept {
-    return {PyLong_FromSsize_t(static_cast<Py_ssize_t>(t)), false};
-}
-
-Object to_python(std::ptrdiff_t t) noexcept {
+template <class T, std::enable_if_t<(std::is_integral_v<T>), int> = 0>
+Object to_python(T t) noexcept {
     return {PyLong_FromLongLong(static_cast<long long>(t)), false};
 }
 
@@ -63,12 +60,6 @@ Object to_python(std::wstring_view const &s) noexcept {
 }
 
 Object to_python(std::complex<double> const &s) noexcept {
-    return {Py_None, true};
-}
-
-// template <class T, std::enable_if_t<(std::is_same_v<T, std::any>), int> = 0>
-Object to_python(std::any) noexcept {
-    std::terminate();
     return {Py_None, true};
 }
 
@@ -153,7 +144,7 @@ struct PyCallback {
         if (!+object) return false;
         AcquireGIL lk(unlock); // reacquire the GIL (if it was released)
 
-        Object pyevent = to_python(static_cast<std::size_t>(event));
+        Object pyevent = to_python(static_cast<Integer>(event));
         if (!pyevent) return false;
 
         Object pyscopes = to_python(scopes);

@@ -73,7 +73,7 @@ template <>
 struct AddKeyPairs<FileLine> {
     void operator()(Logs &v, FileLine const &g) const {
         v.emplace_back(KeyPair{"file", g.file});
-        v.emplace_back(KeyPair{"line", static_cast<std::size_t>(g.line)});
+        v.emplace_back(KeyPair{"line", static_cast<Integer>(g.line)});
     }
 };
 
