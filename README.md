@@ -7,7 +7,8 @@
 - Python 2.7+ or 3.3+
 
 ### Python
-Run `pip install -e .` in the directory where setup.py is.
+Run `pip install -e .` in the directory where setup.py is. Module `cpy.cli` is included for command line.
+It can be run directly as a script or imported from your own script.
 
 ### CMake
 Use CMake function `cpy_module` to make a CMake target for the given library. Define `-DCPY_PYTHON={my python executable}` or `-DCPY_PYTHON_INCLUDE={include folder for python}` to customize.
@@ -55,8 +56,8 @@ throw cpy::Skip();
 ct.handle(Skip); return;
 // log some information before an assertion.
 ct.info("working...");
-// call ct.info(arg) for each arg in args.
-ct(args...);
+// call ct.info(arg) for each arg in args. returns *this for convenience
+Context &ct2 = ct(args...);
 // log source file location
 ct(::cpy::file_line(__FILE__, __LINE__));
 // equivalent macro
