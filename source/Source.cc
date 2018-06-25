@@ -60,8 +60,10 @@ Value::Value(std::complex<double> v) noexcept : var(v) {}
 Value::Value(std::string v) noexcept : var(std::move(v)) {}
 Value::Value(std::string_view v) noexcept : var(std::move(v)) {}
 
-std::string_view Value::as_view() const {return std::get<std::string_view>(var);}
+bool Value::as_bool() const {return std::get<bool>(var);}
+Integer Value::as_integer() const {return std::get<Integer>(var);}
 double Value::as_double() const {return std::get<double>(var);}
+std::string_view Value::as_view() const {return std::get<std::string_view>(var);}
 
 Value::~Value() = default;
 

@@ -40,8 +40,10 @@ struct Value {
     Value(Value const &) noexcept;
     ~Value();
 
-    std::string_view as_view() const;
+    bool as_bool() const;
+    Integer as_integer() const;
     double as_double() const;
+    std::string_view as_view() const;
 };
 
 struct KeyPair {

@@ -1,3 +1,6 @@
+## Install
+Run `pip install -e .` in the directory where setup.py is
+
 ## To do
 
 ### Package name
