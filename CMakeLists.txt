@@ -1,7 +1,30 @@
 cmake_minimum_required(VERSION 3.8)
 project(cpy VERSION 0.0.0 LANGUAGES CXX)
 
-find_package(PythonLibs 3.3 REQUIRED) # 2.7 actually OK though...
+################################################################################
+
+set(CPY_PYTHON "python" CACHE STRING "Python executable to use in deducing include directory")
+# set(CPY_PYTHON_INCLUDE "" CACHE STRING "Include directory containing Python.h")
+set(CPY_MIN_PYTHON 2.7 CACHE STRING "Minimum python version to look for (if CPY_PYTHON and CPY_PYTHON_INCLUDE not defined)")
+
+################################################################################
+
+if (${CPY_PYTHON_INCLUDE})
+    message("-- Using pre-specified Python include ${CPY_PYTHON_INCLUDE}")
+elseif (CPY_PYTHON)
+    execute_process(
+        COMMAND ${CPY_PYTHON} -c "import sys, sysconfig; sys.stdout.write(sysconfig.get_paths()['include'])"
+        RESULT_VARIABLE python_stat OUTPUT_VARIABLE python_include
+    )
+    if (python_stat)
+        message(FATAL_ERROR "Failed to deduce include directory from '${CPY_PYTHON}' executable.\nMaybe specify CPY_PYTHON_INCLUDE directly.")
+    endif()
+    message("-- Using Python include ${python_include} deduced from ${CPY_PYTHON}")
+    set (CPY_PYTHON_INCLUDE ${python_include} CACHE STRING "Python include directory for cpy")
+else()
+    find_package(PythonLibs ${CPY_MIN_PYTHON} REQUIRED)
+    set (CPY_PYTHON_INCLUDE ${PYTHON_INCLUDE_DIR} CACHE STRING "Python include directory for cpy")
+endif()
 
 ################################################################################
 
@@ -34,7 +57,7 @@ function(cpy_module module_name)
 
     target_compile_definitions(${module_name} PRIVATE CPY_MODULE=${module_name})
     target_link_libraries(${module_name} PRIVATE cpy_interface ${ARGN})
-    target_include_directories(${module_name} PRIVATE ${PYTHON_INCLUDE_DIR})
+    target_include_directories(${module_name} PRIVATE ${CPY_PYTHON_INCLUDE})
 endfunction(cpy_module)
 
 ################################################################################

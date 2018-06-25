@@ -17,12 +17,12 @@ PythonError python_error() noexcept {
     PyObject *type, *value, *traceback;
     PyErr_Fetch(&type, &value, &traceback);
     PyObject *str = PyObject_Str(value);
-    char *c = nullptr;
+    char const *c = nullptr;
     if (str) {
 #       if PY_MAJOR_VERSION > 2
             c = PyUnicode_AsUTF8(str); // PyErr_Clear
 #       else
-            if (PyString_AsString(str, &c)) c = nullptr;
+            c = PyString_AsString(str);
 #       endif
         Py_DECREF(str);
     }

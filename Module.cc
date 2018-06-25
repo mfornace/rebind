@@ -15,6 +15,43 @@ extern "C" {
 
 /******************************************************************************/
 
+typedef struct {
+    PyObject_HEAD
+    std::any value; // I think stack is OK because this object is only casted to anyway.
+} cpy_AnyObject;
+
+int cpy_any_init(PyObject *self, PyObject *args, PyObject *kws) {
+    PyObject *value;
+    char const *keywords[] = {"value", nullptr};
+    if (!PyArg_ParseTupleAndKeywords(args, kws, "|O", const_cast<char **>(keywords), &value)) return -1;
+    reinterpret_cast<cpy_AnyObject *>(self)->value.reset();
+    return 0;
+}
+
+PyObject *cpy_any_new(PyTypeObject *subtype, PyObject *, PyObject *) {
+    PyObject* o = subtype->tp_alloc(subtype, 0); // 0 unused
+    new (&(reinterpret_cast<cpy_AnyObject *>(o)->value)) std::any; // noexcept
+    return o;
+}
+
+void cpy_any_delete(PyObject *o) {
+    reinterpret_cast<cpy_AnyObject *>(o)->~cpy_AnyObject();
+    Py_TYPE(o)->tp_free(o);
+}
+
+static PyTypeObject cpy_AnyType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "cpy.Any",
+    .tp_basicsize = sizeof(cpy_AnyObject),
+    .tp_dealloc = static_cast<destructor>(cpy_any_delete),
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_doc = "std::any object",
+    .tp_init = cpy_any_init,
+    .tp_new = cpy_any_new
+};
+
+/******************************************************************************/
+
 static PyMethodDef cpy_methods[] = {
     {"run_test",     (PyCFunction) cpy_run_test,     METH_VARARGS,
         "Run a unit test. Positional arguments:\n"
@@ -51,10 +88,19 @@ static PyMethodDef cpy_methods[] = {
 
     PyObject* CPY_CAT(PyInit_, CPY_MODULE)(void) {
         Py_Initialize();
-        return PyModule_Create(&cpy_definition);
+        if (PyType_Ready(&cpy_AnyType) < 0) return nullptr;
+        auto m = PyModule_Create(&cpy_definition);
+        Py_INCREF(&cpy_AnyType);
+        PyModule_AddObject(m, "Any", reinterpret_cast<PyObject *>(&cpy_AnyType));
+        return m;
     }
 #else
-    void init##CPY_MODULE(void) {Py_InitModule(#CPY_MODULE, cpy_methods);}
+    void CPY_CAT(init, CPY_MODULE)(void) {
+        if (PyType_Ready(&cpy_AnyType) < 0) return;
+        auto m = Py_InitModule(CPY_STRING(CPY_MODULE), cpy_methods);
+        Py_INCREF(&cpy_AnyType);
+        PyModule_AddObject(m, "Any", reinterpret_cast<PyObject *>(&cpy_AnyType));
+    }
 #endif
 
 /******************************************************************************/

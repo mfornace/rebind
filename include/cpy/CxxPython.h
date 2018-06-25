@@ -62,6 +62,16 @@ Object to_python(std::wstring_view const &s) noexcept {
     return {PyUnicode_FromWideChar(s.data(), static_cast<Py_ssize_t>(s.size())), false};
 }
 
+Object to_python(std::complex<double> const &s) noexcept {
+    return {Py_None, true};
+}
+
+// template <class T, std::enable_if_t<(std::is_same_v<T, std::any>), int> = 0>
+Object to_python(std::any) noexcept {
+    std::terminate();
+    return {Py_None, true};
+}
+
 Object to_python(Value const &s) noexcept {
     return std::visit([](auto const &x) {return to_python(x);}, s.var);
 }
@@ -207,15 +217,6 @@ struct PyTestCase : Object {
         if (!o) return false;
         return cpy::from_python(out, std::move(o));
     }
-};
-
-/******************************************************************************/
-
-struct Timer {
-    double start;
-    double &duration;
-    Timer(double &d) : start(current_time()), duration(d) {}
-    ~Timer() {duration = current_time() - start;}
 };
 
 /******************************************************************************/
