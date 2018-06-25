@@ -44,6 +44,7 @@ struct Value {
     Integer as_integer() const;
     double as_double() const;
     std::string_view as_view() const;
+    std::string as_string() const;
 };
 
 struct KeyPair {

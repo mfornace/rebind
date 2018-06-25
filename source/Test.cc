@@ -9,30 +9,30 @@ struct goo {
 
 /******************************************************************************/
 
-auto test1 = unit_test("test-1", COMMENT("This is a test"), [](cpy::Context ctx, bool b) {
-    ctx("a message");
-    int n = ctx.section("new-section", [](cpy::Context ctx) {
-        ctx.equal(3, 4);
+auto test1 = unit_test("test-1", COMMENT("This is a test"), [](cpy::Context ct, bool b) {
+    ct("a message");
+    int n = ct.section("new-section", [](cpy::Context ct) {
+        ct.equal(3, 4);
         return 5;
     });
-    ctx("hmm");
-    ctx(b);
+    ct("hmm");
+    ct(b);
 
     std::cerr << "Hey I am std::cerr 1" << std::endl;
     std::cout << "Hey I am std::cout 1" << std::endl;
 
-    ctx.time(1, []{return 1;});
+    ct.time(1, []{return 1;});
 
-    ctx(LOCATION).near(5, 5.0);
+    ct(LOCATION).near(5, 5.0);
 
     auto xxx = 5, yyy = 6;
 
-    ctx.equal(xxx, yyy, goo(), COMMENT("x should equal y"));
+    ct.equal(xxx, yyy, goo(), COMMENT("x should equal y"));
 
-    if (!ctx.equal(1, 2)) return;
+    if (!ct.equal(1, 2)) return;
 }, {{false}});
 
-UNIT_TEST("test-2", "This is a test 2") = [](cpy::Context ctx) {
+UNIT_TEST("test-2", "This is a test 2") = [](cpy::Context ct) {
     std::cerr << "Hey I am std::cerr 2" << std::endl;
     std::cout << "Hey I am std::cout 2" << std::endl;
 
@@ -49,21 +49,21 @@ UNIT_TEST("test-2", "This is a test 2") = [](cpy::Context ctx) {
 
         return 8.9;
     //return "hello";
-    // if (!ctx.throws_as<std::runtime_error>([]{})) return;
+    // if (!ct.throws_as<std::runtime_error>([]{})) return;
 };
 
-UNIT_TEST("test-3") = [](auto ctx) {
+UNIT_TEST("test-3") = [](auto ct) {
     std::cout << cpy::get_value("max_time").as_double() << std::endl;
     throw std::runtime_error("runtime_error: uh oh");
 };
 
-UNIT_TEST("test-4") = [](auto ctx) {
+UNIT_TEST("test-4") = [](auto ct) {
     throw cpy::Skip();
-    ctx.equal(5, 5);
+    ct.equal(5, 5);
 };
 
-UNIT_TEST("test-5") = [](auto ctx) {
-    ctx.equal(5, 5);
+UNIT_TEST("test-5") = [](auto ct) {
+    ct.equal(5, 5);
 };
 
 /******************************************************************************/

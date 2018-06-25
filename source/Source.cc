@@ -64,6 +64,11 @@ bool Value::as_bool() const {return std::get<bool>(var);}
 Integer Value::as_integer() const {return std::get<Integer>(var);}
 double Value::as_double() const {return std::get<double>(var);}
 std::string_view Value::as_view() const {return std::get<std::string_view>(var);}
+std::string Value::as_string() const {
+    auto s = std::get_if<std::string_view>(&var);
+    if (s) return std::string(*s);
+    return std::get<std::string>(var);
+}
 
 Value::~Value() = default;
 
