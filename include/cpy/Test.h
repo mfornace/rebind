@@ -76,7 +76,7 @@ struct TestAdaptor {
                 static_assert(std::is_convertible<Context, decltype(*context_type)>(),
                               "First argument in signature should be of type Context");
                 if ((args.size() == sizeof...(ts)) && (... && check_cast_index(args, ts))) {
-                    invoke(output, function, std::move(ctx), cast_index(args, ts)...);
+                    invoke(output, function, Context(ctx), cast_index(args, ts)...);
                     return true;
                 } else return false;
             });
@@ -85,9 +85,10 @@ struct TestAdaptor {
         } catch (HandlerError const &e) {
             throw e;
         } catch (std::exception const &e) {
-            ctx("value", e.what());
+            ctx.info("value", e.what());
             ctx.handle(Exception);
-        } catch (...) {
+        }
+        catch (...) {
             ctx.handle(Exception);
         }
         return true;

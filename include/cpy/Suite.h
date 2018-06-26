@@ -10,12 +10,11 @@ using Suite = std::vector<TestCase>;
 
 Suite & suite();
 
-
 struct Timer {
-    double start;
+    Clock::time_point start;
     double &duration;
-    Timer(double &d) : start(current_time()), duration(d) {}
-    ~Timer() {duration = current_time() - start;}
+    Timer(double &d) : start(Clock::now()), duration(d) {}
+    ~Timer() {duration = std::chrono::duration<double>(Clock::now() - start).count();}
 };
 
 /******************************************************************************/

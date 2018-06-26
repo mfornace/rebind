@@ -6,11 +6,13 @@
 
 #include <functional>
 #include <atomic>
+#include <chrono>
 
 namespace cpy {
 
 /******************************************************************************/
 
+using Clock = std::chrono::high_resolution_clock;
 using Event = std::uint_fast32_t;
 
 static constexpr Event Failure   = 0;
@@ -20,10 +22,6 @@ static constexpr Event Timing    = 3;
 static constexpr Event Skipped   = 4;
 
 using Scopes = std::vector<std::string>;
-
-/******************************************************************************/
-
-double current_time() noexcept;
 
 /******************************************************************************/
 
@@ -81,13 +79,23 @@ struct Context {
         logs.clear();
     }
 
+    // void skip(bool can_skip) const {
+    //     if (callbacks[e](e, scopes, logs)) throw Skip();
+    // }
+
     template <class F, class ...Args>
-    auto time(std::size_t n, F &&f, Args &&...args) {
-        auto start = current_time();
-        std::invoke(static_cast<F &&>(f), static_cast<Args &&>(args)...);
-        auto elapsed = current_time() - start;
-        handle(Timing, glue("value", elapsed));
-        return elapsed;
+    auto timed(std::size_t n, F &&f, Args &&...args) {
+        auto const start = Clock::now();
+        if constexpr(std::is_same_v<void, std::invoke_result_t<F &&, Args &&...>>) {
+            std::invoke(static_cast<F &&>(f), static_cast<Args &&>(args)...);
+            auto const elapsed = Clock::now() - start;
+            handle(Timing, glue("value", elapsed));
+            return elapsed;
+        } else {
+            auto result = std::invoke(static_cast<F &&>(f), static_cast<Args &&>(args)...);
+            handle(Timing, glue("value", std::chrono::duration<double>(Clock::now() - start).count()));
+            return result;
+        }
     }
 
     template <class Bool=bool, class ...Ts>

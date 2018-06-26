@@ -74,11 +74,4 @@ Value::~Value() = default;
 
 /******************************************************************************/
 
-double current_time() noexcept {
-    auto t = std::chrono::high_resolution_clock::now().time_since_epoch();
-    return std::chrono::duration<double>{t}.count();
-}
-
-/******************************************************************************/
-
 }

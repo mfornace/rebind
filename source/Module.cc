@@ -37,9 +37,6 @@ static PyMethodDef cpy_methods[] = {
 
 /******************************************************************************/
 
-#define CPY_STRING0(x) #x
-#define CPY_STRING(x) CPY_STRING0(x)
-
 #if PY_MAJOR_VERSION > 2
     static struct PyModuleDef cpy_definition = {
         PyModuleDef_HEAD_INIT,
