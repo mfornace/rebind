@@ -1,7 +1,7 @@
 #pragma once
-#include <mutex>
 #include <cpy/PythonBindings.h>
 #include <cpy/Test.h>
+#include <mutex>
 
 namespace cpy {
 
