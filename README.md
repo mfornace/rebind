@@ -3,7 +3,7 @@
 
 ### Requirements
 - CMake
-- C++17 (`constexpr bool *_v` traits, `std::variant`, `std::string_view`)
+- C++17 (fold expressions, `constexpr bool *_v` traits, `std::variant`, `std::string_view`)
 - Python 2.7+ or 3.3+
 
 ### Python
@@ -17,9 +17,11 @@ Use CMake function `cpy_module` to make a CMake target for the given library. De
 
 ### Unit test declaration
 Unit tests are functors which:
-- take a first argument of `cpy::Context`
+- take a first argument of `cpy::Context` or `cpy::Context &&`
 - take any other arguments of a type convertible from `cpy::Value`
 - return void or an object convertible to `cpy::Value`
+
+You can use `auto` instead of `cpy::Context` if it is the only parameter. You can't use `auto` for the other parameters unless you specialize the `cpy` signature deduction.
 
 ```c++
 // unit test of the given name
@@ -35,7 +37,9 @@ UNIT_TEST("my-test-name", "my test comment") = [](cpy::Context ct, ...) {...};
 ```
 
 ### Context functions
-Context functions do not return early. Write `throw` or `return` yourself if you want that.
+`Context` functions do not return early. Write `throw` or `return` yourself if you want that.
+
+`Context` has essentially the same intrinsic thread safety as `std::vector` and other STL containers. You can copy `Context` as needed to run things in parallel. However, the registered handlers must be thread safe when called concurrently for this to work. The included Python handlers are thread safe.
 
 ```c++
 // handle args if a handler registered for success/failure
@@ -53,7 +57,7 @@ bool ok = ct.no_throw(function, function_args...);
 // skip out of the test with a throw
 throw cpy::Skip();
 // skip out of the test without throwing.
-ct.handle(Skip); return;
+ct.handle(Skipped); return;
 // log some information before an assertion.
 ct.info("working...");
 // call ct.info(arg) for each arg in args. returns *this for convenience
@@ -82,10 +86,42 @@ Value v = cpy::call("my function", args...);
 v.as_bool(); v.as_double(); v.as_integer(); v.as_view(); v.as_string();
 ```
 
+### Configuration hooks
+```c++
+// Define the default Value making operation
+template <class T, class>
+struct Valuable {
+    Value operator()(T const &t) const {...}
+};
+// Specialize a Value making operation
+template <class T>
+struct Valuable<std::enable_if_t<(my_trait<T>::value)> {
+    Value operator()(T const &t) const {...}
+};
+```
+
+If no default is given, `cpy` converts the object to a string via something like the following. The compiler will then error if the operation is not well-formed.
+```c++
+std::ostringstream os;
+os << object;
+return os.str()
+```
+
+### Templated functions
+
+You can test different types via the following within a test case
+```c++
+cpy::Pack<int, double, bool>::for_each([](auto t) {
+    using type = decltype(*t);
+    // do something with type
+});
+```
+For more advanced functionality try something like `boost::hana`.
+
 ## To do
 
 ### Package name
-`cpy` is short but not great otherwise.
+`cpy` is short but not great otherwise. Maybe `cpt` or `cptest`.
 
 ### CMake
 Fix up caching of python include directory.
@@ -93,7 +129,6 @@ Fix up caching of python include directory.
 ### Variant
 - Should rethink if `variant<..., any>` is better than just `any`.
 - Also would like vector types in the future (`vector<Value>` or `Vector<T>...`?)
-- Just use `std::ptrdiff_t` instead of `std::size_t`? Probably.
 - time or timedelta? function?
 
 ### Debugger
@@ -106,6 +141,7 @@ Fix up caching of python include directory.
 ### Variant
 - `complex<double>` is probably not that useful, but it's included (in Python so whatever)
 - `std::string` is the biggest object on my architecture (24 bytes). `std::any` is 32.
+- Just use `std::ptrdiff_t` instead of `std::size_t`? Probably.
 
 
 ### CMake
@@ -136,7 +172,7 @@ The only difference in cost is that
 - It is flushed on every event (maybe should last for multiple events? or is that confusing?)
 
 ### Exceptions
-HandlerError has its own exception, which is not caught by test runner. All others are.
+`HandlerError` and its subclasses are not caught by test runner. All others are.
 
 ### Signals
 - possible to use `PyErr_SetInterrupt`
@@ -144,7 +180,6 @@ HandlerError has its own exception, which is not caught by test runner. All othe
 - that could be the case on a test with no calls to handle of a given type.
 - actually it appears there's no issue if threads are being used!
 - so default is just to use 1 worker thread.
-
 
 ### To value
 - option 1: leave the above undefined -- user can define a default.

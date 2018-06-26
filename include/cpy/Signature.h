@@ -24,6 +24,12 @@ template <class ...Ts> struct Pack {
     static constexpr auto apply(F &&f) {
         return apply(static_cast<F &&>(f), std::make_index_sequence<sizeof...(Ts)>());
     }
+
+    template <class F, std::size_t ...Is>
+    static void for_each(F &&f, std::index_sequence<Is...>) {(f(IndexedType<Ts>{Is}), ...);}
+
+    template <class F>
+    static void for_each(F &&f) {for_each(f, std::make_index_sequence<sizeof...(Ts)>());}
 };
 
 /******************************************************************************************/
