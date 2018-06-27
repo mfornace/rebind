@@ -126,6 +126,13 @@ For more advanced functionality try something like `boost::hana`.
 ### CMake
 Fix up caching of python include directory.
 
+### Breaking out of tests early
+At the very least put `start_time` into Context.
+Problem with giving the short circuit API is partially that it can be ignored in a test.
+It is fully possible to truncate the test once `start_time` is inside, or any other possible version.
+Possibly `start_time` should be given to handler, or `start_time` and `current_time`.
+Standardize what handler return value means, add skip event if needed.
+
 ### Variant
 - Should rethink if `variant<..., any>` is better than just `any`.
 - Also would like vector types in the future (`vector<Value>` or `Vector<T>...`?)

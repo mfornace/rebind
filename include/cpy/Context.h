@@ -35,13 +35,13 @@ struct Context {
     std::vector<Callback> callbacks; // or could be vector of callbacks for each type.
     Scopes scopes;
     Logs logs;
+    typename Clock::time_point start_time;
     std::vector<Counter> *counters = nullptr;
     void *metadata; // could be transitioned to std::any but right now pointer is OK
 
-    Context() noexcept = default;
+    Context() = default;
     Context(Scopes s, std::vector<Callback> h, std::vector<Counter> *c=nullptr, void *m=nullptr);
 
-    /// Subsection
     template <class F>
     auto section(std::string name, F &&functor) const {
         Context ctx(scopes, callbacks, counters);
@@ -78,10 +78,6 @@ struct Context {
             (*counters)[e].fetch_add(1u, std::memory_order_relaxed);
         logs.clear();
     }
-
-    // void skip(bool can_skip) const {
-    //     if (callbacks[e](e, scopes, logs)) throw Skip();
-    // }
 
     template <class F, class ...Args>
     auto timed(std::size_t n, F &&f, Args &&...args) {

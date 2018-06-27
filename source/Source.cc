@@ -21,7 +21,7 @@ void register_test(TestCase c) {
 // Context & Context::operator=(Context &&) noexcept = default;
 
 Context::Context(Scopes s, std::vector<Callback> h, std::vector<Counter> *c, void *m)
-    : scopes(std::move(s)), callbacks(std::move(h)), counters(c), metadata(m) {logs.reserve(4);} // advance reserve, may help a bit?
+    : scopes(std::move(s)), callbacks(std::move(h)), counters(c), metadata(m), start_time(Clock::now()) {}
 
 /******************************************************************************/
 
