@@ -12,11 +12,6 @@ namespace cpy {
 
 /******************************************************************************/
 
-struct HandlerError : std::runtime_error {
-    using std::runtime_error::runtime_error;
-};
-
-using Clock = std::chrono::high_resolution_clock;
 using Event = std::uint_fast32_t;
 
 static constexpr Event Failure   = 0;
@@ -25,9 +20,17 @@ static constexpr Event Exception = 2;
 static constexpr Event Timing    = 3;
 static constexpr Event Skipped   = 4;
 
+/******************************************************************************/
+
+struct HandlerError : std::exception {
+    std::string_view message;
+    HandlerError(std::string_view const &s) : message(s) {}
+    char const * what() const noexcept override {return message.empty() ? "cpy::HandlerError" : message.data();}
+};
+
 using Scopes = std::vector<std::string>;
 
-/******************************************************************************/
+using Clock = std::chrono::high_resolution_clock;
 
 using Callback = std::function<bool(Event, Scopes const &, Logs &&)>;
 
