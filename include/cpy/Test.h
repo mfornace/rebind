@@ -8,10 +8,6 @@ namespace cpy {
 /// No need to inherit from std::exception since the use case is so limited, I think.
 struct Skip {};
 
-struct HandlerError : std::runtime_error {
-    using std::runtime_error::runtime_error;
-};
-
 /******************************************************************************/
 
 template <class T, class=void>

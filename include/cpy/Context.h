@@ -12,6 +12,10 @@ namespace cpy {
 
 /******************************************************************************/
 
+struct HandlerError : std::runtime_error {
+    using std::runtime_error::runtime_error;
+};
+
 using Clock = std::chrono::high_resolution_clock;
 using Event = std::uint_fast32_t;
 
@@ -40,8 +44,11 @@ struct Context {
     void *metadata; // could be transitioned to std::any but right now pointer is OK
 
     Context() = default;
+
+    /// Opens a Context and sets the start_time to the current time
     Context(Scopes s, std::vector<Callback> h, std::vector<Counter> *c=nullptr, void *m=nullptr);
 
+    /// Opens a new section with a reset start_time
     template <class F>
     auto section(std::string name, F &&functor) const {
         Context ctx(scopes, callbacks, counters);
@@ -50,6 +57,8 @@ struct Context {
     }
 
     /**************************************************************************/
+
+    Integer count(Event e) const {return counters ? (*counters)[e].load() : Integer(-1);}
 
     void info(std::string s) {logs.emplace_back(KeyPair{{}, std::move(s)});}
 
@@ -161,6 +170,8 @@ struct Context {
         try {
             std::invoke(static_cast<F &&>(f), static_cast<Args &&>(args)...);
             return require(true);
+        } catch (HandlerError const &e) {
+            throw e;
         } catch (...) {return require(false);}
     }
 };
