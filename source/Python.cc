@@ -156,7 +156,7 @@ Object run_test(Py_ssize_t i, Object calls, Object pypack, bool cout, bool cerr,
     if (!value) return {};
     auto timed = cpy::to_python(test_time);
     if (!timed) return {};
-    auto counts = cpy::to_python(counters, [](auto const &c) {return c.load();});
+    auto counts = cpy::to_python(counters, [](auto const &c) {return c.load(std::memory_order_relaxed);});
     if (!counts) return {};
     auto pyout = cpy::to_python(out.str());
     if (!pyout) return {};

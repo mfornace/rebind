@@ -58,7 +58,10 @@ struct Context {
 
     /**************************************************************************/
 
-    Integer count(Event e) const {return counters ? (*counters)[e].load() : Integer(-1);}
+    Integer count(Event e, std::memory_order order=std::memory_order_relaxed) const {
+        if (counters) return (*counters)[e].load(order);
+        else return -1;
+    }
 
     void info(std::string s) {logs.emplace_back(KeyPair{{}, std::move(s)});}
 
