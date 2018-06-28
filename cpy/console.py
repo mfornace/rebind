@@ -47,8 +47,8 @@ class ConsoleReport(Report):
         return ConsoleTestReport(index, args, info, self.file, events=self.events,
             indent=self.indent, timing=self.timing, **self.kwargs)
 
-    def finalize(self, time, counts, out, err):
-        s = FOOTER + 'Total results:\n'
+    def finalize(self, n, time, counts, out, err):
+        s = FOOTER + 'Total results for {} tests:\n'.format(n)
 
         spacing = max(map(len, self.events)) + 1
         for e, c in zip(self.events, counts):

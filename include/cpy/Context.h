@@ -24,7 +24,7 @@ static constexpr Event Skipped   = 4;
 
 struct HandlerError : std::exception {
     std::string_view message;
-    HandlerError(std::string_view const &s) : message(s) {}
+    explicit HandlerError(std::string_view const &s) noexcept : message(s) {}
     char const * what() const noexcept override {return message.empty() ? "cpy::HandlerError" : message.data();}
 };
 
@@ -42,6 +42,7 @@ struct Context {
     std::vector<Callback> callbacks; // or could be vector of callbacks for each type.
     Scopes scopes;
     Logs logs;
+
     typename Clock::time_point start_time;
     std::vector<Counter> *counters = nullptr;
     void *metadata; // could be transitioned to std::any but right now pointer is OK
@@ -52,11 +53,11 @@ struct Context {
     Context(Scopes s, std::vector<Callback> h, std::vector<Counter> *c=nullptr, void *m=nullptr);
 
     /// Opens a new section with a reset start_time
-    template <class F>
-    auto section(std::string name, F &&functor) const {
+    template <class F, class ...Ts>
+    auto section(std::string name, F &&functor, Ts &&...ts) const {
         Context ctx(scopes, callbacks, counters);
         ctx.scopes.push_back(std::move(name));
-        return static_cast<F &&>(functor)(ctx);
+        return static_cast<F &&>(functor)(ctx, static_cast<Ts &&>(ts)...);
     }
 
     /**************************************************************************/

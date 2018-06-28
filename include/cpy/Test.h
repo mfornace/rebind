@@ -6,22 +6,31 @@ namespace cpy {
 /******************************************************************************/
 
 /// No need to inherit from std::exception since the use case is so limited, I think.
-struct Skip {};
+struct Skip {
+    std::string_view message;
+    Skip() noexcept : message("Test skipped") {}
+    explicit Skip(std::string_view const &m) noexcept : message(m) {}
+};
 
 /******************************************************************************/
 
+static char const *cast_bug_message = "CastVariant().check() returned false but CastVariant()() was still called";
+
+/// Default behavior for casting a variant to a desired argument type
 template <class T, class=void>
 struct CastVariant {
     template <class U>
-    bool check(U const &u) const {
-        return std::is_convertible_v<U &&, T> || std::is_same_v<T, std::monostate>;
+    constexpr bool check(U const &) const {
+        return std::is_convertible_v<U &&, T> ||
+            (std::is_same_v<T, std::monostate> && std::is_default_constructible_v<T>);
     }
 
-    template <class U, std::enable_if_t<(!std::is_convertible_v<U &&, T>), int> = 0>
-    T operator()(U &u) const {return T();}
-
-    template <class U, std::enable_if_t<(std::is_convertible_v<U &&, T>), int> = 0>
-    T operator()(U &u) const {return static_cast<T>(std::move(u));}
+    template <class U>
+    T operator()(U &u) const {
+        if constexpr(std::is_convertible_v<U &&, T>) return static_cast<T>(std::move(u));
+        else if constexpr(std::is_default_constructible_v<T>) return T(); // only hit if U == std::monostate
+        else throw std::logic_error(cast_bug_message); // never get here
+    }
 };
 
 /// Cast element i of v to type T
@@ -47,36 +56,39 @@ struct TestSignature : Pack<void, Context> {
         "deducable (i.e. non-templated) signature");
 };
 
+/// Otherwise TestSignature assumes the deduced Signature
 template <class F>
 struct TestSignature<F, std::void_t<typename Signature<F>::return_type>> : Signature<F> {};
 
-
-template <class F, class... Ts, std::enable_if_t<(!std::is_same_v<void, std::invoke_result_t<F, Context &&, Ts...>>), int> = 0>
-void invoke(Value &output, F &&f, Context &&ctx, Ts &&... ts) {
-    output = make_value(std::invoke(static_cast<F &&>(f), std::move(ctx), static_cast<Ts &&>(ts)...));
+/// Invoke a function and arguments, storing output in a Value if it doesn't return void
+template <class F, class ...Ts>
+void value_invoke(Value &output, F &&f, Context &&ctx, Ts &&... ts) {
+    if constexpr(std::is_same_v<void, std::invoke_result_t<F, Context &&, Ts...>>)
+        std::invoke(static_cast<F &&>(f), std::move(ctx), static_cast<Ts &&>(ts)...);
+    else
+        output = make_value(std::invoke(static_cast<F &&>(f), std::move(ctx), static_cast<Ts &&>(ts)...));
 }
 
-template <class F, class ...Ts, std::enable_if_t<(std::is_same_v<void, std::invoke_result_t<F, Context &&, Ts...>>), int> = 0>
-void invoke(Value &, F &&f, Context &&ctx, Ts &&...ts) {
-    std::invoke(static_cast<F &&>(f), std::move(ctx), static_cast<Ts &&>(ts)...);
-}
+/******************************************************************************/
 
+/// Basic wrapper to make C++ functor into a type erased std::function
 template <class F>
 struct TestAdaptor {
     F function;
 
-    /// Catches any exceptions; returns whether the test could be begun.
-    bool operator()(Value &output, Context ctx, ArgPack args) {
+    /// Catches any non-Handler exceptions; returns whether the test could be begun.
+    bool operator()(Value &output, Context &ctx, ArgPack args) {
         try {
             return TestSignature<F>::apply([&](auto return_type, auto context_type, auto ...ts) {
-                static_assert(std::is_convertible<Context, decltype(*context_type)>(),
+                static_assert(std::is_convertible_v<Context, decltype(*context_type)>,
                               "First argument in signature should be of type Context");
                 if ((args.size() == sizeof...(ts)) && (... && check_cast_index(args, ts))) {
-                    invoke(output, function, Context(ctx), cast_index(args, ts)...);
+                    value_invoke(output, function, Context(ctx), cast_index(args, ts)...);
                     return true;
-                } else return false;
+                } else return false; // here we could just throw I guess. Then return Value instead of bool.
             });
         } catch (Skip const &e) {
+            ctx.info("value", e.message);
             ctx.handle(Skipped);
         } catch (HandlerError const &e) {
             throw e;
@@ -93,10 +105,11 @@ struct TestAdaptor {
 
 /******************************************************************************/
 
+/// Basic wrapper to make a fixed Value into a std::function
 struct ValueAdaptor {
     Value value;
 
-    bool operator()(Value &out, Context const &, ArgPack const &) noexcept {
+    bool operator()(Value &out, Context &, ArgPack const &) {
         out = value;
         return true;
     }
@@ -118,7 +131,7 @@ struct TestCaseComment {
 struct TestCase {
     std::string name;
     TestCaseComment comment;
-    std::function<bool(Value &, Context, ArgPack)> function;
+    std::function<bool(Value &, Context &, ArgPack)> function;
     std::vector<ArgPack> parameters;
 };
 
@@ -152,12 +165,14 @@ UnitTest<F> unit_test(std::string name, TestCaseComment comment, F const &f, std
 
 /******************************************************************************/
 
+/// Same as unit_test() but just returns a meaningless bool instead of a functor object
 template <class F>
 bool anonymous_test(std::string name, TestCaseComment comment, F &&function, std::vector<ArgPack> v={}) {
     register_test(std::move(name), std::move(comment), static_cast<F &&>(function), std::move(v));
-    return true;
+    return bool();
 }
 
+/// Helper class for UNIT_TEST() macro, overloads the = operator to make it a bit prettier.
 struct AnonymousClosure {
     std::string name;
     TestCaseComment comment;
@@ -174,13 +189,16 @@ struct AnonymousClosure {
 
 /******************************************************************************/
 
+/// Call a registered unit test with type-erased arguments and output
 Value call(std::string_view s, Context c, ArgPack pack);
 
+/// Call a registered unit test with non-type-erased arguments and output
 template <class ...Ts>
 Value call(std::string_view s, Context c, Ts &&...ts) {
     return call(s, std::move(c), ArgPack{make_value(static_cast<Ts &&>(ts))...});
 }
 
+/// Get a stored value from its unit test name
 Value get_value(std::string_view s);
 
 /******************************************************************************/

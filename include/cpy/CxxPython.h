@@ -23,48 +23,48 @@ struct Object {
 
 /******************************************************************************/
 
-Object to_python(std::monostate const &) noexcept {
+inline Object to_python(std::monostate const &) noexcept {
     return {Py_None, true};
 }
 
-Object to_python(bool b) noexcept {
+inline Object to_python(bool b) noexcept {
     return {b ? Py_True : Py_False, true};
 }
 
-Object to_python(char const *s) noexcept {
+inline Object to_python(char const *s) noexcept {
     return {PyUnicode_FromString(s ? s : ""), false};
 }
 
 template <class T, std::enable_if_t<(std::is_integral_v<T>), int> = 0>
-Object to_python(T t) noexcept {
+inline Object to_python(T t) noexcept {
     return {PyLong_FromLongLong(static_cast<long long>(t)), false};
 }
 
-Object to_python(double t) noexcept {
+inline Object to_python(double t) noexcept {
     return {PyFloat_FromDouble(t), false};
 }
 
-Object to_python(std::string const &s) noexcept {
+inline Object to_python(std::string const &s) noexcept {
     return {PyUnicode_FromStringAndSize(s.data(), static_cast<Py_ssize_t>(s.size())), false};
 }
 
-Object to_python(std::string_view const &s) noexcept {
+inline Object to_python(std::string_view const &s) noexcept {
     return {PyUnicode_FromStringAndSize(s.data(), static_cast<Py_ssize_t>(s.size())), false};
 }
 
-Object to_python(std::wstring const &s) noexcept {
+inline Object to_python(std::wstring const &s) noexcept {
     return {PyUnicode_FromWideChar(s.data(), static_cast<Py_ssize_t>(s.size())), false};
 }
 
-Object to_python(std::wstring_view const &s) noexcept {
+inline Object to_python(std::wstring_view const &s) noexcept {
     return {PyUnicode_FromWideChar(s.data(), static_cast<Py_ssize_t>(s.size())), false};
 }
 
-Object to_python(std::complex<double> const &s) noexcept {
+inline Object to_python(std::complex<double> const &s) noexcept {
     return {Py_None, true};
 }
 
-Object to_python(Value const &s) noexcept {
+inline Object to_python(Value const &s) noexcept {
     return std::visit([](auto const &x) {return to_python(x);}, s.var);
 }
 

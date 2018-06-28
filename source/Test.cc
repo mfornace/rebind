@@ -58,7 +58,7 @@ UNIT_TEST("test-3") = [](auto ct) {
 };
 
 UNIT_TEST("test-4") = [](auto ct) {
-    throw cpy::Skip();
+    throw cpy::Skip("this test is skipped");
     ct.equal(5, 5);
 };
 

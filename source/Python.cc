@@ -98,7 +98,7 @@ bool run_test(Value &v, double &time, TestCase const &test, bool no_gil,
 
     Context ctx({test.name}, std::move(callbacks), &counts, &lk);
     Timer t(time);
-    return test.function(v, std::move(ctx), std::move(pack));
+    return test.function(v, ctx, std::move(pack));
 }
 
 /******************************************************************************/

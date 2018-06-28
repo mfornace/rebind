@@ -33,7 +33,7 @@ class XMLReport(Report):
     def __enter__(self):
         return self
 
-    def finalize(self, time, counts, out, err):
+    def finalize(self, n, time, counts, out, err):
         self.suite.set('failures', str(counts[0]))
         self.suite.set('errors', str(counts[2]))
         self.suite.set('time', '%f' % time)

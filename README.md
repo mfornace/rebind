@@ -55,23 +55,26 @@ bool ok = ct.throw_as<ExceptionType>(function, function_args...);
 // check that a function does not throw
 bool ok = ct.no_throw(function, function_args...);
 // skip out of the test with a throw
-throw cpy::Skip();
+throw cpy::Skip("optional message");
 // skip out of the test without throwing.
 ct.handle(Skipped); return;
 // log some information before an assertion.
 ct.info("working...");
 // call ct.info(arg) for each arg in args. returns *this for convenience
-Context &ct2 = ct(args...);
+Context &same_as_ct = ct(args...);
 // log source file location
 ct(::cpy::file_line(__FILE__, __LINE__));
 // equivalent macro
 ct(LOCATION);
+// chain statements together if convenient
+ct(LOCATION).require(...);
 // log a single key pair of information before an assertion.
 ct.info("value", 1.5);
 // time a long running computation
-auto elapsed_time = ct.time(function, args...);
-// open a child scope
-ct.section("section name", functor);
+cpy::Clock::duration elapsed = ct.timed(function_returning_void, args...);
+auto function_result = ct.timed(function_returning_nonvoid, args...);
+// open a child scope (functor takes parameters Context, args...)
+ct.section("section name", functor, args...);
 ```
 
 ### Values

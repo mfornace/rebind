@@ -18,8 +18,8 @@ class NativeReport(Report):
         self.contents['tests'].append(c)
         return NativeTestReport(c, index, args, info[0])
 
-    def finalize(self, time, counts, out, err):
-        self.contents.update(dict(time=time, counts=counts, out=out, err=err))
+    def finalize(self, n, time, counts, out, err):
+        self.contents.update(dict(n=n, time=time, counts=counts, out=out, err=err))
 
     def __exit__(self, value, cls, traceback):
         if self.file is not None:

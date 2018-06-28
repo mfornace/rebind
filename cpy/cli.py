@@ -44,6 +44,7 @@ def parser(prog='cpy', description='Run C++ unit tests from Python with the cpy 
 ################################################################################
 
 def run_index(lib, masks, out, err, gil, cout, cerr, p):
+    '''Run test at given index, return (1, time, *counts)'''
     i, args = p
     info = lib.test_info(i)
     test_masks = [(r(i, args, info), m) for r, m in masks]
@@ -52,7 +53,7 @@ def run_index(lib, masks, out, err, gil, cout, cerr, p):
     err.write(e)
     for r, _ in test_masks:
         r.finalize(val, time, counts, o, e)
-    return (time,) + counts
+    return (1, time) + counts
 
 ################################################################################
 
@@ -60,15 +61,14 @@ def run_suite(lib, keypairs, masks, gil, cout, cerr, exe=map):
     from io import StringIO
     from functools import partial
 
-    totals = (0,) * len(events())
     out, err = StringIO(), StringIO()
     f = partial(run_index, lib, masks, out, err, gil, cout, cerr)
-    totals = tuple(map(sum, zip(*exe(f, keypairs)))) or totals # take care of no tests case
+    n, time, *counts = tuple(map(sum, zip(*exe(f, keypairs)))) or (0,) * (len(events()) + 2)
 
     for r, _ in masks:
-        r.finalize(totals[0], totals[1:], out.getvalue(), err.getvalue())
+        r.finalize(n, time, counts, out.getvalue(), err.getvalue())
 
-    return totals
+    return (n, time, *counts)
 
 ################################################################################
 
