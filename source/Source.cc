@@ -31,7 +31,7 @@ Value call(std::string_view s, Context c, ArgPack pack) {
     auto it = std::find_if(cases.begin(), cases.end(), [=](auto const &c) {return c.name == s;});
     if (it == cases.end())
         throw std::runtime_error("Test case \"" + std::string(s) + "\" not found");
-    if (!it->function(v, std::move(c), std::move(pack)))
+    if (!it->function(v, c, std::move(pack)))
         throw std::runtime_error("Test case \"" + std::string(s) + "\" failed with an exception");
     return v;
 }
