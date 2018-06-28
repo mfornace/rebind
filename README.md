@@ -7,8 +7,9 @@
 - Python 2.7+ or 3.3+
 
 ### Python
-Run `pip install -e .` in the directory where setup.py is. Module `cpy.cli` is included for command line.
-It can be run directly as a script or imported from your own script.
+Run `pip install -e .` in the directory where setup.py is. Module `cpy.cli` is included for command line usage.
+It can be run directly as a script `python -m cpy.cli ...` or imported from your own script.
+The `cpy` python package is pure Python, so you can also import it without installing if it's in your `$PYTHONPATH`.
 
 ### CMake
 Use CMake function `cpy_module` to make a CMake target for the given library. Define `-DCPY_PYTHON={my python executable}` or `-DCPY_PYTHON_INCLUDE={include folder for python}` to customize.
@@ -37,7 +38,7 @@ UNIT_TEST("my-test-name", "my test comment") = [](cpy::Context ct, ...) {...};
 ```
 
 ### Context functions
-`Context` functions do not return early. Write `throw` or `return` yourself if you want that.
+`Context` functions have no magic for exiting a test early. Write `throw` or `return` yourself if you want that.
 
 `Context` has essentially the same intrinsic thread safety as `std::vector` and other STL containers. You can copy `Context` as needed to run things in parallel. However, the registered handlers must be thread safe when called concurrently for this to work. The included Python handlers are thread safe.
 
@@ -71,10 +72,12 @@ ct(LOCATION).require(...);
 // log a single key pair of information before an assertion.
 ct.info("value", 1.5);
 // time a long running computation
-cpy::Clock::duration elapsed = ct.timed(function_returning_void, args...);
+typename Clock::duration elapsed = ct.timed(function_returning_void, args...);
 auto function_result = ct.timed(function_returning_nonvoid, args...);
 // open a child scope (functor takes parameters Context, args...)
 ct.section("section name", functor, args...);
+// get the start time of the current unit test or section
+typename Clock::time_point &start = ct.start_time;
 ```
 
 ### Values
@@ -103,7 +106,7 @@ struct Valuable<std::enable_if_t<(my_trait<T>::value)> {
 };
 ```
 
-If no default is given, `cpy` converts the object to a string via something like the following. The compiler will then error if the operation is not well-formed.
+If no default is defined, `cpy` converts the object to a string via something like the following. The compiler will then error if `operator<<` has no matches.
 ```c++
 std::ostringstream os;
 os << object;

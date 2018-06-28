@@ -39,13 +39,18 @@ using Counter = std::atomic<std::size_t>;
 /******************************************************************************/
 
 struct Context {
-    std::vector<Callback> callbacks; // or could be vector of callbacks for each type.
+    /// Vector of Callbacks for each registered Event
+    std::vector<Callback> callbacks;
+    /// Vector of strings making up the current Context scope
     Scopes scopes;
+    /// Keypairs that have been logged prior to an event being called
     Logs logs;
-
+    /// Start time of the current test case or section
     typename Clock::time_point start_time;
+    /// Possibly null handle to a vector of atomic counters for each Event
     std::vector<Counter> *counters = nullptr;
-    void *metadata; // could be transitioned to std::any but right now pointer is OK
+    /// Metadata for use by handler. Test runner has responsibility for allocation/deallocation
+    void *metadata = nullptr;
 
     Context() = default;
 
