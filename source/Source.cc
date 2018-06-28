@@ -26,14 +26,11 @@ Context::Context(Scopes s, std::vector<Callback> h, std::vector<Counter> *c, voi
 /******************************************************************************/
 
 Value call(std::string_view s, Context c, ArgPack pack) {
-    Value v;
     auto const &cases = suite();
     auto it = std::find_if(cases.begin(), cases.end(), [=](auto const &c) {return c.name == s;});
     if (it == cases.end())
         throw std::runtime_error("Test case \"" + std::string(s) + "\" not found");
-    if (!it->function(v, c, std::move(pack)))
-        throw std::runtime_error("Test case \"" + std::string(s) + "\" failed with an exception");
-    return v;
+    return it->function(c, std::move(pack));
 }
 
 Value get_value(std::string_view s) {

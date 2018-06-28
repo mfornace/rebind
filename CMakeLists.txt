@@ -34,8 +34,9 @@ target_include_directories(cpy_interface INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/i
 
 ################################################################################
 
+# Maybe change in future to user provided interface library?
 add_library(libcpy STATIC ${CMAKE_CURRENT_SOURCE_DIR}/source/Source.cc)
-set_property(TARGET libcpy PROPERTY OUTPUT_NAME cpy)
+set_target_properties(libcpy PROPERTIES OUTPUT_NAME cpy ${CPY_STATIC_PROPERTIES})
 target_link_libraries(libcpy PUBLIC cpy_interface)
 
 ################################################################################

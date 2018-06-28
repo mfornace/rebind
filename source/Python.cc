@@ -87,8 +87,8 @@ bool build_callbacks(std::vector<Callback> &v, Object calls) {
 
 /******************************************************************************/
 
-bool run_test(Value &v, double &time, TestCase const &test, bool no_gil,
-              std::vector<Counter> &counts, std::vector<Callback> callbacks, ArgPack pack) {
+Value run_test(double &time, TestCase const &test, bool no_gil,
+               std::vector<Counter> &counts, std::vector<Callback> callbacks, ArgPack pack) {
     no_gil = no_gil && !test.function.target<PyTestCase>();
     ReleaseGIL lk(no_gil);
     if (no_gil) for (auto &c : callbacks)
@@ -98,7 +98,11 @@ bool run_test(Value &v, double &time, TestCase const &test, bool no_gil,
 
     Context ctx({test.name}, std::move(callbacks), &counts, &lk);
     Timer t(time);
-    return test.function(v, ctx, std::move(pack));
+
+    if (!test.function) throw std::runtime_error("Test case has empty std::function");
+    try {return test.function(ctx, std::move(pack));}
+    catch (HandlerError const &e) {throw e;}
+    catch (...) {return {};} // Silence any other exceptions from inside the test
 }
 
 /******************************************************************************/
@@ -144,12 +148,7 @@ Object run_test(Py_ssize_t i, Object calls, Object pypack, bool cout, bool cerr,
     {
         cpy::RedirectStream o(cpy::cout_sync, cout ? out.rdbuf() : nullptr);
         cpy::RedirectStream e(cpy::cerr_sync, cerr ? err.rdbuf() : nullptr);
-        if (!cpy::run_test(v, test_time, *test, no_gil, counters,
-                           std::move(callbacks), std::move(pack))) {
-            if (!PyErr_Occurred())
-                PyErr_SetString(PyExc_TypeError, "Invalid unit test argument types");
-            return {};
-        }
+        v = cpy::run_test(test_time, *test, no_gil, counters, std::move(callbacks), std::move(pack));
     }
 
     auto value = cpy::to_python(v);

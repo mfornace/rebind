@@ -201,13 +201,15 @@ bool from_python(Value &v, Object o);
 struct PyTestCase : Object {
     using Object::Object;
 
-    bool operator()(Value &out, Context ctx, ArgPack const &pack) noexcept {
+    Value operator()(Context ctx, ArgPack const &pack) {
         AcquireGIL lk(static_cast<ReleaseGIL *>(ctx.metadata));
         Object args = cpy::to_python(pack);
-        if (!args) return false;
+        if (!args) throw python_error();
         Object o = {PyObject_CallObject(Object::ptr, +args), false};
-        if (!o) return false;
-        return cpy::from_python(out, std::move(o));
+        if (!o) throw python_error();
+        Value out;
+        if (!cpy::from_python(out, std::move(o))) throw python_error();
+        return out;
     }
 };
 

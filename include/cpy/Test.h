@@ -62,11 +62,13 @@ struct TestSignature<F, std::void_t<typename Signature<F>::return_type>> : Signa
 
 /// Invoke a function and arguments, storing output in a Value if it doesn't return void
 template <class F, class ...Ts>
-void value_invoke(Value &output, F &&f, Context &&ctx, Ts &&... ts) {
-    if constexpr(std::is_same_v<void, std::invoke_result_t<F, Context &&, Ts...>>)
-        std::invoke(static_cast<F &&>(f), std::move(ctx), static_cast<Ts &&>(ts)...);
-    else
-        output = make_value(std::invoke(static_cast<F &&>(f), std::move(ctx), static_cast<Ts &&>(ts)...));
+Value value_invoke(F &&f, Ts &&... ts) {
+    if constexpr(std::is_same_v<void, std::invoke_result_t<F, Ts...>>) {
+        std::invoke(static_cast<F &&>(f), static_cast<Ts &&>(ts)...);
+        return {};
+    } else {
+        return make_value(std::invoke(static_cast<F &&>(f), static_cast<Ts &&>(ts)...));
+    }
 }
 
 /******************************************************************************/
@@ -77,29 +79,31 @@ struct TestAdaptor {
     F function;
 
     /// Catches any non-Handler exceptions; returns whether the test could be begun.
-    bool operator()(Value &output, Context &ctx, ArgPack args) {
+    Value operator()(Context &ctx, ArgPack args) {
         try {
             return TestSignature<F>::apply([&](auto return_type, auto context_type, auto ...ts) {
                 static_assert(std::is_convertible_v<Context, decltype(*context_type)>,
                               "First argument in signature should be of type Context");
-                if ((args.size() == sizeof...(ts)) && (... && check_cast_index(args, ts))) {
-                    value_invoke(output, function, Context(ctx), cast_index(args, ts)...);
-                    return true;
-                } else return false; // here we could just throw I guess. Then return Value instead of bool.
+                if (args.size() != sizeof...(ts))
+                    throw std::invalid_argument("cpy: wrong number of arguments");
+                if ((... && check_cast_index(args, ts)))
+                    return value_invoke(function, Context(ctx), cast_index(args, ts)...);
+                throw std::invalid_argument("cpy: wrong argument types");
             });
         } catch (Skip const &e) {
             ctx.info("value", e.message);
             ctx.handle(Skipped);
+            throw e;
         } catch (HandlerError const &e) {
             throw e;
         } catch (std::exception const &e) {
             ctx.info("value", e.what());
             ctx.handle(Exception);
-        }
-        catch (...) {
+            throw e;
+        } catch (...) {
             ctx.handle(Exception);
+            std::rethrow_exception(std::current_exception());
         }
-        return true;
     }
 };
 
@@ -108,11 +112,7 @@ struct TestAdaptor {
 /// Basic wrapper to make a fixed Value into a std::function
 struct ValueAdaptor {
     Value value;
-
-    bool operator()(Value &out, Context &, ArgPack const &) {
-        out = value;
-        return true;
-    }
+    Value operator()(Context &, ArgPack const &) const {return value;}
 };
 
 /******************************************************************************/
@@ -131,7 +131,7 @@ struct TestCaseComment {
 struct TestCase {
     std::string name;
     TestCaseComment comment;
-    std::function<bool(Value &, Context &, ArgPack)> function;
+    std::function<Value(Context &, ArgPack)> function;
     std::vector<ArgPack> parameters;
 };
 
@@ -190,6 +190,7 @@ struct AnonymousClosure {
 /******************************************************************************/
 
 /// Call a registered unit test with type-erased arguments and output
+/// Throw std::runtime_error if test not found or test throws exception
 Value call(std::string_view s, Context c, ArgPack pack);
 
 /// Call a registered unit test with non-type-erased arguments and output
@@ -199,6 +200,7 @@ Value call(std::string_view s, Context c, Ts &&...ts) {
 }
 
 /// Get a stored value from its unit test name
+/// Throw std::runtime_error if test not found or test does not hold a Value
 Value get_value(std::string_view s);
 
 /******************************************************************************/
