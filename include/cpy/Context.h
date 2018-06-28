@@ -156,11 +156,13 @@ struct Context {
 
     template <class X, class Y, class T, class ...Ts>
     bool within(X const &x, Y const &y, T const &tol, Ts &&...ts) {
+        ComparisonGlue<X const &, Y const &> expr{x, y, "~~"};
+        if (x == y)
+            return require(true, expr, static_cast<Ts &&>(ts)...);
         auto const a = x - y;
         auto const b = y - x;
         bool ok = (a < b) ? static_cast<bool>(b < tol) : static_cast<bool>(a < tol);
-        return require(ok, ComparisonGlue<X const &, Y const &>{x, y, "~~"},
-                       glue("tolerance", tol), glue("difference", b), static_cast<Ts &&>(ts)...);
+        return require(ok, expr, glue("tolerance", tol), glue("difference", b), static_cast<Ts &&>(ts)...);
     }
 
     template <class X, class Y, class ...Args>

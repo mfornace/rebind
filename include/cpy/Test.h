@@ -19,12 +19,13 @@ static char const *cast_bug_message = "CastVariant().check() returned false but 
 /// Default behavior for casting a variant to a desired argument type
 template <class T, class=void>
 struct CastVariant {
+    // Return true if type T can be cast from type U
     template <class U>
     constexpr bool check(U const &) const {
         return std::is_convertible_v<U &&, T> ||
             (std::is_same_v<T, std::monostate> && std::is_default_constructible_v<T>);
     }
-
+    // Return casted type T from type U
     template <class U>
     T operator()(U &u) const {
         if constexpr(std::is_convertible_v<U &&, T>) return static_cast<T>(std::move(u));
@@ -36,13 +37,13 @@ struct CastVariant {
 /// Cast element i of v to type T
 template <class T>
 T cast_index(ArgPack &v, IndexedType<T> i) {
-    return std::visit(CastVariant<T>(), v[i.index - 2].var);
+    return std::visit(CastVariant<T>(), v[i.index - 2u].var);
 }
 
 /// Check that element i of v can be cast to type T
 template <class T>
 bool check_cast_index(ArgPack &v, IndexedType<T> i) {
-    return std::visit([](auto const &x) {return CastVariant<T>().check(x);}, v[i.index - 2].var);
+    return std::visit([](auto const &x) {return CastVariant<T>().check(x);}, v[i.index - 2u].var);
 }
 
 /******************************************************************************/
@@ -78,7 +79,7 @@ template <class F>
 struct TestAdaptor {
     F function;
 
-    /// Catches any non-Handler exceptions; returns whether the test could be begun.
+    /// Run C++ functor; logs non-HandlerException and rethrows all exceptions
     Value operator()(Context &ctx, ArgPack args) {
         try {
             return TestSignature<F>::apply([&](auto return_type, auto context_type, auto ...ts) {

@@ -1,5 +1,11 @@
 from .common import readable_message, events, Report
-from teamcity.messages import TeamcityServiceMessages
+
+try:
+    from teamcity.messages import TeamcityServiceMessages
+except ImportError as e:
+    print('teamcity-messages must be installed, e.g. via pip')
+    raise e
+
 import time, datetime
 
 ################################################################################
