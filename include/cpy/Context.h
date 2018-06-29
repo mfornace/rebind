@@ -12,13 +12,7 @@ namespace cpy {
 
 /******************************************************************************/
 
-using Event = std::uint_fast32_t;
-
-static constexpr Event Failure   = 0;
-static constexpr Event Success   = 1;
-static constexpr Event Exception = 2;
-static constexpr Event Timing    = 3;
-static constexpr Event Skipped   = 4;
+enum Event : std::uint_fast32_t {Failure=0, Success=1, Exception=2, Timing=3, Skipped=4};
 
 /******************************************************************************/
 
