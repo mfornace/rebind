@@ -95,7 +95,7 @@ def main(run=run_suite, lib='libcpy', list=False, failure=False, success=False, 
             if brief:
                 console.FOOTER, console.STREAM_FOOTER = '', ''
             r = console.ConsoleReport(open_file(stack, out, out_mode), info,
-                colors=(False if no_color else None), timing=timing, sync=jobs > 1)
+                color=(False if no_color else None), timing=timing, sync=jobs > 1)
             masks.append((stack.enter_context(r), mask))
 
         if xml:
