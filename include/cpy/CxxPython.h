@@ -112,8 +112,8 @@ bool build_vector(V &v, Object iterable, F &&f) {
 
 /******************************************************************************/
 
-struct PythonError : HandlerError {
-    PythonError(char const *s) : HandlerError(s) {}
+struct PythonError : CallbackError {
+    PythonError(char const *s) : CallbackError(s) {}
 };
 
 PythonError python_error() noexcept;

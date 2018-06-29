@@ -22,10 +22,10 @@ static constexpr Event Skipped   = 4;
 
 /******************************************************************************/
 
-struct HandlerError : std::exception {
+struct CallbackError : std::exception {
     std::string_view message;
-    explicit HandlerError(std::string_view const &s) noexcept : message(s) {}
-    char const * what() const noexcept override {return message.empty() ? "cpy::HandlerError" : message.data();}
+    explicit CallbackError(std::string_view const &s) noexcept : message(s) {}
+    char const * what() const noexcept override {return message.empty() ? "cpy::CallbackError" : message.data();}
 };
 
 using Scopes = std::vector<std::string>;
@@ -49,7 +49,7 @@ struct Context {
     typename Clock::time_point start_time;
     /// Possibly null handle to a vector of atomic counters for each Event
     std::vector<Counter> *counters = nullptr;
-    /// Metadata for use by handler. Test runner has responsibility for allocation/deallocation
+    /// Metadata for use by callbacks. Test runner has responsibility for allocation/deallocation
     void *metadata = nullptr;
 
     Context() = default;
@@ -184,7 +184,7 @@ struct Context {
         try {
             std::invoke(static_cast<F &&>(f), static_cast<Args &&>(args)...);
             return require(true);
-        } catch (HandlerError const &e) {
+        } catch (CallbackError const &e) {
             throw e;
         } catch (...) {return require(false);}
     }

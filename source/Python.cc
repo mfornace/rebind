@@ -101,7 +101,7 @@ Value run_test(double &time, TestCase const &test, bool no_gil,
 
     if (!test.function) throw std::runtime_error("Test case has empty std::function");
     try {return test.function(ctx, std::move(pack));}
-    catch (HandlerError const &e) {throw e;}
+    catch (CallbackError const &e) {throw e;}
     catch (...) {return {};} // Silence any other exceptions from inside the test
 }
 
