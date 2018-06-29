@@ -64,20 +64,29 @@ struct Value {
     Value(Vector<std::string_view>) noexcept;
     Value(Vector<Value>)            noexcept;
 
-    bool             as_bool()    const;
-    Integer          as_integer() const;
-    Real             as_real()    const;
-    Complex          as_complex() const;
-    std::string_view as_view()    const;
-    std::string      as_string()  const;
+    bool             as_bool()    const &;
+    Integer          as_integer() const &;
+    Real             as_real()    const &;
+    Complex          as_complex() const &;
+    std::string_view as_view()    const &;
+    std::string      as_string()  const &;
 
-    Vector<bool>             as_bools()     const;
-    Vector<Integer>          as_integers()  const;
-    Vector<Real>             as_reals()     const;
-    Vector<Complex>          as_complexes() const;
-    Vector<std::string>      as_strings()   const;
-    Vector<std::string_view> as_views()     const;
-    Vector<Value>            as_values()    const;
+    Vector<bool>             as_bools()     const &;
+    Vector<Integer>          as_integers()  const &;
+    Vector<Real>             as_reals()     const &;
+    Vector<Complex>          as_complexes() const &;
+    Vector<std::string>      as_strings()   const &;
+    Vector<std::string_view> as_views()     const &;
+    Vector<Value>            as_values()    const &;
+
+    std::string              as_string()    &&;
+    Vector<bool>             as_bools()     &&;
+    Vector<Integer>          as_integers()  &&;
+    Vector<Real>             as_reals()     &&;
+    Vector<Complex>          as_complexes() &&;
+    Vector<std::string>      as_strings()   &&;
+    Vector<std::string_view> as_views()     &&;
+    Vector<Value>            as_values()    &&;
 };
 
 struct KeyPair {

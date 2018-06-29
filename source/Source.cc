@@ -59,59 +59,60 @@ Value::Value(Complex v)          noexcept : var(v) {}
 Value::Value(std::string v)      noexcept : var(std::move(v)) {}
 Value::Value(std::string_view v) noexcept : var(std::move(v)) {}
 
-Value::Value(Vector<bool> v)             noexcept : var(v) {}
-Value::Value(Vector<Integer> v)          noexcept : var(v) {}
-Value::Value(Vector<Real> v)             noexcept : var(v) {}
-Value::Value(Vector<Complex> v)          noexcept : var(v) {}
+Value::Value(Vector<bool> v)             noexcept : var(std::move(v)) {}
+Value::Value(Vector<Integer> v)          noexcept : var(std::move(v)) {}
+Value::Value(Vector<Real> v)             noexcept : var(std::move(v)) {}
+Value::Value(Vector<Complex> v)          noexcept : var(std::move(v)) {}
 Value::Value(Vector<std::string> v)      noexcept : var(std::move(v)) {}
 Value::Value(Vector<std::string_view> v) noexcept : var(std::move(v)) {}
 Value::Value(Vector<Value> v)            noexcept : var(std::move(v)) {}
 
 /******************************************************************************/
 
-bool Value::as_bool() const {return std::get<bool>(var);}
+bool Value::as_bool() const & {return std::get<bool>(var);}
 
-Integer Value::as_integer() const {return std::get<Integer>(var);}
+Integer Value::as_integer() const & {return std::get<Integer>(var);}
 
-Real Value::as_real() const {return std::get<Real>(var);}
+Real Value::as_real() const & {return std::get<Real>(var);}
 
-std::string_view Value::as_view() const {return std::get<std::string_view>(var);}
+std::string_view Value::as_view() const & {return std::get<std::string_view>(var);}
 
-std::string Value::as_string() const {
+/******************************************************************************/
+
+std::string Value::as_string() const & {
     if (auto s = std::get_if<std::string_view>(&var))
         return std::string(*s);
     return std::get<std::string>(var);
 }
 
-Vector<bool> Value::as_bools() const {
-    return std::get<Vector<bool>>(var);
-}
+Vector<bool> Value::as_bools() const & {return std::get<Vector<bool>>(var);}
+Vector<bool> Value::as_bools() && {return std::get<Vector<bool>>(std::move(var));}
 
-Vector<Integer> Value::as_integers() const {
-    return std::get<Vector<Integer>>(var);
-}
+Vector<Integer> Value::as_integers() const & {return std::get<Vector<Integer>>(var);}
+Vector<Integer> Value::as_integers() && {return std::get<Vector<Integer>>(std::move(var));}
 
-Vector<Real> Value::as_reals() const {
-    return std::get<Vector<Real>>(var);
-}
+Vector<Real> Value::as_reals() const & {return std::get<Vector<Real>>(var);}
+Vector<Real> Value::as_reals() && {return std::get<Vector<Real>>(std::move(var));}
 
-Vector<Complex> Value::as_complexes() const {
-    return std::get<Vector<Complex>>(var);
-}
+Vector<Complex> Value::as_complexes() const & {return std::get<Vector<Complex>>(var);}
+Vector<Complex> Value::as_complexes() && {return std::get<Vector<Complex>>(std::move(var));}
 
-Vector<std::string> Value::as_strings() const {
+Vector<std::string> Value::as_strings() const & {
     if (auto s = std::get_if<Vector<std::string_view>>(&var))
         return {s->begin(), s->end()};
     return std::get<Vector<std::string>>(var);
 }
-
-Vector<std::string_view> Value::as_views() const {
-    return std::get<Vector<std::string_view>>(var);
+Vector<std::string> Value::as_strings() && {
+    if (auto s = std::get_if<Vector<std::string_view>>(&var))
+        return {s->begin(), s->end()};
+    return std::get<Vector<std::string>>(std::move(var));
 }
 
-Vector<Value> Value::as_values() const {
-    return std::get<Vector<Value>>(var);
-}
+Vector<std::string_view> Value::as_views() const & {return std::get<Vector<std::string_view>>(var);}
+Vector<std::string_view> Value::as_views() && {return std::get<Vector<std::string_view>>(std::move(var));}
+
+Vector<Value> Value::as_values() const & {return std::get<Vector<Value>>(var);}
+Vector<Value> Value::as_values() && {return std::get<Vector<Value>>(std::move(var));}
 
 Value::~Value() = default;
 

@@ -61,7 +61,7 @@ inline Object to_python(std::wstring_view const &s) noexcept {
 }
 
 inline Object to_python(std::complex<double> const &s) noexcept {
-    return {PyComplex_FromDoubles(s.real, s.imag), false};
+    return {PyComplex_FromDoubles(s.real(), s.imag()), false};
 }
 
 inline Object to_python(Value const &s) noexcept {

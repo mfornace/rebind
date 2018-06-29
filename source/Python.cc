@@ -78,7 +78,7 @@ bool build_argpack(ArgPack &pack, Object pypack) {
 
 /******************************************************************************/
 
-bool build_callbacks(stdVector<Callback> &v, Object calls) {
+bool build_callbacks(Vector<Callback> &v, Object calls) {
     return build_vector(v, calls, [](Object &&o, bool) -> Callback {
         if (o.ptr == Py_None) return {};
         return PyCallback{std::move(o)};
@@ -88,7 +88,7 @@ bool build_callbacks(stdVector<Callback> &v, Object calls) {
 /******************************************************************************/
 
 Value run_test(double &time, TestCase const &test, bool no_gil,
-               stdVector<Counter> &counts, stdVector<Callback> callbacks, ArgPack pack) {
+               Vector<Counter> &counts, Vector<Callback> callbacks, ArgPack pack) {
     no_gil = no_gil && !test.function.target<PyTestCase>();
     ReleaseGIL lk(no_gil);
     if (no_gil) for (auto &c : callbacks)
@@ -119,7 +119,7 @@ Object run_test(Py_ssize_t i, Object calls, Object pypack, bool cout, bool cerr,
     auto const test = cpy::get_test(i);
     if (!test) return {};
 
-    stdVector<cpy::Callback> callbacks;
+    Vector<cpy::Callback> callbacks;
     if (!cpy::build_callbacks(callbacks, std::move(calls))) return {};
 
     cpy::ArgPack pack;
@@ -143,7 +143,7 @@ Object run_test(Py_ssize_t i, Object calls, Object pypack, bool cout, bool cerr,
 
     cpy::Value v;
     double test_time = 0;
-    stdVector<cpy::Counter> counters(callbacks.size());
+    Vector<cpy::Counter> counters(callbacks.size());
 
     {
         cpy::RedirectStream o(cpy::cout_sync, cout ? out.rdbuf() : nullptr);
@@ -221,7 +221,7 @@ PyObject *cpy_add_test(PyObject *, PyObject *args) {
     if (!PyArg_ParseTuple(args, "sO|O", &s, &fun, &pypacks)) return nullptr;
 
     return cpy::return_object([=] {
-        stdVector<cpy::ArgPack> packs;
+        cpy::Vector<cpy::ArgPack> packs;
         if (pypacks) {
             cpy::build_vector(packs, {pypacks, true}, [](cpy::Object &&o, bool &ok) {
                 cpy::ArgPack pack;
