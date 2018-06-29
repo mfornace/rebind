@@ -61,7 +61,7 @@ inline Object to_python(std::wstring_view const &s) noexcept {
 }
 
 inline Object to_python(std::complex<double> const &s) noexcept {
-    return {Py_None, true};
+    return {PyComplex_FromDoubles(s.real, s.imag), false};
 }
 
 inline Object to_python(Value const &s) noexcept {
@@ -79,7 +79,7 @@ Object to_python(KeyPair const &p) noexcept {
 }
 
 template <class T, class F=Identity>
-Object to_python(std::vector<T> const &v, F const &f={}) noexcept {
+Object to_python(Vector<T> const &v, F const &f={}) noexcept {
     Object out = {PyTuple_New(v.size()), false};
     if (!out) return out;
     for (Py_ssize_t i = 0u; i != v.size(); ++i) {
@@ -165,7 +165,7 @@ struct StreamSync {
     std::ostream &stream;
     std::streambuf *original; // never changed (unless by user)
     std::mutex mutex;
-    std::vector<std::streambuf *> queue;
+    Vector<std::streambuf *> queue;
 };
 
 /// RAII acquisition of cout or cerr

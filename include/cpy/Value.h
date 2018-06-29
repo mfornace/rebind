@@ -10,41 +10,74 @@ namespace cpy {
 
 /******************************************************************************/
 
+struct Value;
+
 using Integer = std::ptrdiff_t;
+
+using Real = double;
+
+using Complex = std::complex<double>;
+
+template <class T>
+using Vector = std::vector<T>;
 
 using Variant = std::variant<
     std::monostate,
     bool,
     Integer,
-    double,
-    std::complex<double>,
+    Real,
+    Complex,
+    std::string_view,
     std::string,
-    std::string_view
+
+    Vector<bool>,
+    Vector<Integer>,
+    Vector<Real>,
+    Vector<Complex>,
+    Vector<std::string>,
+    Vector<std::string_view>,
+    Vector<Value>
 >;
 
 struct Value {
     Variant var;
-
-    Value(std::monostate={}) noexcept;
-    Value(bool) noexcept;
-    Value(Integer) noexcept;
-    Value(double) noexcept;
-    Value(std::complex<double>) noexcept;
-    Value(std::string) noexcept;
-    Value(std::string_view) noexcept;
-
     Value & operator=(Value &&v) noexcept;
-    Value & operator=(Value const &v) noexcept;
+    Value & operator=(Value const &v);
 
     Value(Value &&) noexcept;
-    Value(Value const &) noexcept;
+    Value(Value const &);
     ~Value();
 
-    bool as_bool() const;
-    Integer as_integer() const;
-    double as_double() const;
-    std::string_view as_view() const;
-    std::string as_string() const;
+    Value(std::monostate={}) noexcept;
+    Value(bool)              noexcept;
+    Value(Integer)           noexcept;
+    Value(Real)              noexcept;
+    Value(Complex)           noexcept;
+    Value(std::string)       noexcept;
+    Value(std::string_view)  noexcept;
+
+    Value(Vector<bool>)             noexcept;
+    Value(Vector<Integer>)          noexcept;
+    Value(Vector<Real>)             noexcept;
+    Value(Vector<Complex>)          noexcept;
+    Value(Vector<std::string>)      noexcept;
+    Value(Vector<std::string_view>) noexcept;
+    Value(Vector<Value>)            noexcept;
+
+    bool             as_bool()    const;
+    Integer          as_integer() const;
+    Real             as_real()    const;
+    Complex          as_complex() const;
+    std::string_view as_view()    const;
+    std::string      as_string()  const;
+
+    Vector<bool>             as_bools()     const;
+    Vector<Integer>          as_integers()  const;
+    Vector<Real>             as_reals()     const;
+    Vector<Complex>          as_complexes() const;
+    Vector<std::string>      as_strings()   const;
+    Vector<std::string_view> as_views()     const;
+    Vector<Value>            as_values()    const;
 };
 
 struct KeyPair {
@@ -52,7 +85,7 @@ struct KeyPair {
     Value value;
 };
 
-using ArgPack = std::vector<Value>;
+using ArgPack = Vector<Value>;
 
 /******************************************************************************/
 
@@ -76,7 +109,7 @@ struct Valuable<std::string_view> {
 
 template <class T>
 struct Valuable<T, std::enable_if_t<(std::is_floating_point_v<T>)>> {
-    Value operator()(T t) const {return static_cast<double>(t);}
+    Value operator()(T t) const {return static_cast<Real>(t);}
 };
 
 template <class T>

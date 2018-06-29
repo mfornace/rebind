@@ -6,7 +6,7 @@ namespace cpy {
 
 /******************************************************************************/
 
-using Suite = std::vector<TestCase>;
+using Suite = Vector<TestCase>;
 
 Suite & suite();
 

@@ -28,7 +28,7 @@ struct HandlerError : std::exception {
     char const * what() const noexcept override {return message.empty() ? "cpy::HandlerError" : message.data();}
 };
 
-using Scopes = std::vector<std::string>;
+using Scopes = Vector<std::string>;
 
 using Clock = std::chrono::high_resolution_clock;
 
@@ -40,7 +40,7 @@ using Counter = std::atomic<std::size_t>;
 
 struct Context {
     /// Vector of Callbacks for each registered Event
-    std::vector<Callback> callbacks;
+    Vector<Callback> callbacks;
     /// Vector of strings making up the current Context scope
     Scopes scopes;
     /// Keypairs that have been logged prior to an event being called
@@ -48,14 +48,14 @@ struct Context {
     /// Start time of the current test case or section
     typename Clock::time_point start_time;
     /// Possibly null handle to a vector of atomic counters for each Event
-    std::vector<Counter> *counters = nullptr;
+    Vector<Counter> *counters = nullptr;
     /// Metadata for use by handler. Test runner has responsibility for allocation/deallocation
     void *metadata = nullptr;
 
     Context() = default;
 
     /// Opens a Context and sets the start_time to the current time
-    Context(Scopes s, std::vector<Callback> h, std::vector<Counter> *c=nullptr, void *m=nullptr);
+    Context(Scopes s, Vector<Callback> h, Vector<Counter> *c=nullptr, void *m=nullptr);
 
     /// Opens a new section with a reset start_time
     template <class F, class ...Ts>

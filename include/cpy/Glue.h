@@ -3,7 +3,7 @@
 
 namespace cpy {
 
-using Logs = std::vector<KeyPair>;
+using Logs = Vector<KeyPair>;
 
 /******************************************************************************/
 
