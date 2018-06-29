@@ -220,5 +220,6 @@ def readable_logs(keys, values, indent):
 
 def readable_message(kind, scopes, logs, indent='    '):
     '''Return readable string for a C++ cpy callback'''
+    kind = Event.name(kind) if isinstance(kind, int) else kind
     keys, values = map(list, zip(*logs)) if logs else ((), ())
     return readable_header(keys, values, kind, scopes) + readable_logs(keys, values, indent)

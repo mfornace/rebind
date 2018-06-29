@@ -40,7 +40,7 @@ class TeamCityTestReport(Report):
             f = self.messages.testSkipped
         else:
             raise ValueError('TeamCity does not handle {}'.format(event))
-        f(self.name, readable_message(Event.name(event), scopes, logs))
+        f(self.name, readable_message(event, scopes, logs))
 
     def finalize(self, value, time, counts, out, err):
         self.messages.message('counts', errors=str(counts[0]), exceptions=str(counts[2]))
