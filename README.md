@@ -309,10 +309,9 @@ Let's use the `Value` registered above to write a helper to repeat a test until 
 ```c++
 template <class F>
 void repeat_test(Context const &ct, int n, F const &test) {
-    auto max_time = get_value("max_time").as_double();
+    auto max = ct.start_time + std::chrono::duration<double>(get_value("max_time").as_double());
     for (int i = 0; i != n; ++i) {
-        auto elapsed = std::chrono::duration<double>(Clock::now() - ct.start_time).count();
-        if (elapsed > max_time) return;
+        if (Clock::now() > max) return;
         test();
     }
 }
