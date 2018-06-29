@@ -13,7 +13,7 @@
         - [Approximate comparison](#approximate-comparison)
     - [Macros](#macros)
     - [Values](#values)
-        - [Configuration hook for conversion to Value](#configuration-hook-for-conversion-to-value)
+        - [`Valuable` and conversion of arbitrary types to `Value`](#valuable-and-conversion-of-arbitrary-types-to-value)
         - [Configuration hook for conversion from `Value`](#configuration-hook-for-conversion-from-value)
     - [Test adaptors](#test-adaptors)
         - [C++ type-erased function](#c-type-erased-function)
@@ -23,6 +23,10 @@
 - [Running tests from the command line](#running-tests-from-the-command-line)
     - [Writing your own script](#writing-your-own-script)
     - [An example](#an-example)
+- [Handler C++ API](#handler-c-api)
+- [`libcpy` Python API](#libcpy-python-api)
+    - [Exposed Python functions via C API](#exposed-python-functions-via-c-api)
+    - [Exposed Python C++ API](#exposed-python-c-api)
 - [To do](#to-do)
     - [Package name](#package-name)
     - [CMake](#cmake)
@@ -161,41 +165,89 @@ The next macros are defined with `CPY_` prefix if `Macros.h` is included. If not
 ```
 
 ### Values
-`Value` is a simple wrapper around `std::variant`.
+`Value` is a simple wrapper around a `std::variant`.
 
 ```c++
-// Look up a registered value
-Value v = cpy::get_value("my-value-name");
-// Run a test case from another test case
-Value v = cpy::call("my function", args...);
-// Cast to different types
-v.as_bool(); v.as_double(); v.as_integer(); v.as_view(); v.as_string();
+struct Value {
+    Variant var;
+    bool as_bool() const;
+    double as_double() const;
+    Integer as_integer() const;
+    std::string_view as_view() const;
+    std::string as_string() const;
+};
 ```
 
-#### Configuration hook for conversion to Value
+A `Value` at its core relies on these typedefs:
+
 ```c++
-// Define the default Value making operation
+using Integer = std::ptrdiff_t;
+
+using Variant = std::variant<
+    std::monostate,
+    bool,
+    Integer,
+    double,
+    std::complex<double>,
+    std::string,
+    std::string_view
+>;
+```
+
+The `Value` wrapper provides some convenience functions and also instantiates some `std::variant` templates in the `libcpy` library since `std::variant` can yield a lot of code size:
+
+Next some related structs:
+```c++
+using ArgPack = std::vector<Value>; // A runtime length list of arguments
+struct KeyPair {std::string_view key; Value value;}; // A key value pair used in logging
+```
+
+#### `Valuable` and conversion of arbitrary types to `Value`
+To make a Value from an arbitrary object, the following function is provided:
+```c++
+template <class T>
+Value make_value(T &&t);
+```
+
+This functions does a compile-time lookup of `Valuable<std::decay_t<T>`. If no such struct is defined, `cpy` converts the object to a string via something like the following. The compiler will then error if `operator<<` has no matches.
+```c++
+std::ostringstream os;
+os << static_cast<T &&>(t);
+Value v = os.str()
+```
+
+Otherwise, this implementation is assumed to be usable:
+```
+Value v = Valuable<std::decay_t<T>>()(static_cast<T &&>(t));
+```
+
+`Valuable` be specialized as needed. Here are some examples:
+
+```c++
+// The declaration present in cpy
+template <class T, class=void>
+struct Valuable;
+// User example: define the default Value making operation for all objects
 template <class T, class>
 struct Valuable {
     Value operator()(T const &t) const {...}
 };
-// Specialize a Value making operation
+// User example: specialize a Value making operation for a specific type
+template <>
+struct Valuable<my_type> {
+    Value operator()(my_type const &t) const {return "my_type"}
+};
+// User example: specialize a Value making operation for a trait
 template <class T>
-struct Valuable<std::enable_if_t<(my_trait<T>::value)> {
+struct Valuable<T, std::enable_if_t<(my_trait<T>::value)> {
     Value operator()(T const &t) const {...}
 };
 ```
-
-If no default is defined, `cpy` converts the object to a string via something like the following. The compiler will then error if `operator<<` has no matches.
-```c++
-std::ostringstream os;
-os << object;
-return os.str()
-```
+Look up partial specialization, `std::enable_if`, and `std::void_t` for background on how this type of thing can be used.
 
 #### Configuration hook for conversion from `Value`
 
-The default behavior for casting to a type from a `Value` can be specialized.
+The default behavior for casting to a C++ type from a `Value` can also be specialized. The relevant struct to specialize is declared like the following:
 ```c++
 template <class T, class=void> // T, the type to convert to
 struct CastVariant {
@@ -203,7 +255,7 @@ struct CastVariant {
     bool check(U const &); // Return true if type T can be cast from type U
 
     template <class U>
-    T operator()(U &u); // Return casted type T from type U
+    T operator()(U &u); // Return casted type T from type U if check() returns true
 };
 ```
 
@@ -322,6 +374,72 @@ UNIT_TEST("my-test") = [](Context ct) {
     repeat_test(ct, 500, [&] {run_some_random_test();});
 };
 ```
+
+## Handler C++ API
+Events are kept track of via a simple index. It is pretty easy to extend to more event types.
+
+A handler is registered to be called if a single fixed `Event` is signaled. It is implemented as a `std::function`. If no handler is registered for a given event, nothing is called.
+
+```c++
+using Event = std::uint32_fast_t;
+Event Failure = 0, Success = 1, Exception = 2, Timing = 3, Skipped = 4;
+using Callback = std::function<bool(Event, Scopes const &, Logs &&)>;
+```
+
+## `libcpy` Python API
+
+The `cpy` Python handlers all use the official CPython API. Doing so is really not too hard beyond managing `PyObject *` lifetimes.
+
+### Exposed Python functions via C API
+
+In general each of the following functions is callable only with positional arguments:
+
+```python
+# Return number of tests
+n_tests()
+# Add a test from its name and a callable function
+# callable should accept arguments (event: int, scopes: tuple(str), logs: tuple(tuple))
+add_test(str, callable, [args])
+# Find the index of a test from its name
+find_test(str)
+# Run test given index, handlers for each event, parameter pack, keep GIL on, capture cerr, capture cout
+run_test(int, tuple, tuple, bool, bool, bool)
+# Return a tuple of the names of all registered tests
+test_names()
+# Add a value to the test suite with the given name
+add_value(str, object)
+# return the number of parameter packs for test of a given index
+n_parameters(int)
+# Return tuple of (compiler version, compile data, compile time)
+compile_info()
+# Return (name, file, line, comment) for test of a given index
+test_info(int)
+```
+
+### Exposed Python C++ API
+
+There isn't much reason to mess with this API unless you write your own handlers, but here are some basics:
+
+```c++
+// PyObject * wrapper implementing the reference counting in RAII style
+struct Object;
+// For C++ type T, return an Object of it converted into Python, else raise PyError and return null object
+Object to_python(T); // defined for T each type in Value, for instance
+// Convert a Python object into a Value, return if conversion successful
+bool from_python(Value &v, Object o);
+// A C++ exception which reflects an existing PyErr status
+struct PythonError : HandlerError;
+// RAII managers for the Python global interpreter lock (GIL)
+struct ReleaseGIL; struct AcquireGIL
+// Handler adaptor for a Python object
+struct PyCallback;
+// RAII managers for std::ostream capturing
+struct RedirectStream; struct StreamSync;
+// Test adaptor for a Python object
+struct PyTestCase : Object;
+```
+
+Look in the code for more detail.
 
 ## To do
 

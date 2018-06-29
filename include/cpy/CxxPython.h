@@ -160,7 +160,6 @@ struct PyCallback {
     }
 };
 
-
 /// std::ostream synchronizer for redirection from multiple threads
 struct StreamSync {
     std::ostream &stream;
