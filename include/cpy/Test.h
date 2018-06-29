@@ -133,13 +133,13 @@ struct TestCase {
     std::string name;
     TestCaseComment comment;
     std::function<Value(Context &, ArgPack)> function;
-    std::vector<ArgPack> parameters;
+    Vector<ArgPack> parameters;
 };
 
 void register_test(TestCase t);
 
 template <class F>
-void register_test(std::string name, TestCaseComment c, F const &f, std::vector<ArgPack> v={}) {
+void register_test(std::string name, TestCaseComment c, F const &f, Vector<ArgPack> v={}) {
     if (TestSignature<F>::size::value <= 2 && v.empty()) v.emplace_back();
     register_test(TestCase{std::move(name), std::move(c), TestAdaptor<F>{f}, std::move(v)});
 }
@@ -153,13 +153,13 @@ struct UnitTest {
 };
 
 template <class F>
-UnitTest<F> unit_test(std::string name, F const &f, std::vector<ArgPack> v={}) {
+UnitTest<F> unit_test(std::string name, F const &f, Vector<ArgPack> v={}) {
     register_test(name, TestCaseComment(), f, std::move(v));
     return {std::move(name), f};
 }
 
 template <class F>
-UnitTest<F> unit_test(std::string name, TestCaseComment comment, F const &f, std::vector<ArgPack> v={}) {
+UnitTest<F> unit_test(std::string name, TestCaseComment comment, F const &f, Vector<ArgPack> v={}) {
     register_test(name, std::move(comment), f, std::move(v));
     return {std::move(name), f};
 }
@@ -168,7 +168,7 @@ UnitTest<F> unit_test(std::string name, TestCaseComment comment, F const &f, std
 
 /// Same as unit_test() but just returns a meaningless bool instead of a functor object
 template <class F>
-bool anonymous_test(std::string name, TestCaseComment comment, F &&function, std::vector<ArgPack> v={}) {
+bool anonymous_test(std::string name, TestCaseComment comment, F &&function, Vector<ArgPack> v={}) {
     register_test(std::move(name), std::move(comment), static_cast<F &&>(function), std::move(v));
     return bool();
 }
@@ -177,9 +177,9 @@ bool anonymous_test(std::string name, TestCaseComment comment, F &&function, std
 struct AnonymousClosure {
     std::string name;
     TestCaseComment comment;
-    std::vector<ArgPack> args;
+    Vector<ArgPack> args;
 
-    AnonymousClosure(std::string s, TestCaseComment c, std::vector<ArgPack> v={})
+    AnonymousClosure(std::string s, TestCaseComment c, Vector<ArgPack> v={})
         : name(std::move(s)), comment(std::move(c)), args(std::move(v)) {}
 
     template <class F>

@@ -172,7 +172,7 @@ The next macros are defined with `CPY_` prefix if `Macros.h` is included. If not
 struct Value {
     Variant var;
     bool as_bool() const;
-    double as_double() const;
+    Real as_real() const;
     Integer as_integer() const;
     std::string_view as_view() const;
     std::string as_string() const;
@@ -184,12 +184,19 @@ The `Value` wrapper provides some convenience functions and also instantiates so
 ```c++
 using Integer = std::ptrdiff_t;
 
+using Real = double;
+
+using Complex = std::complex<double>;
+
+template <class T>
+using Vector = std::vector<T>;
+
 using Variant = std::variant<
     std::monostate,
     bool,
     Integer,
-    double,
-    std::complex<double>,
+    Real,
+    Complex,
     std::string,
     std::string_view
 >;
@@ -197,7 +204,7 @@ using Variant = std::variant<
 
 Next, some related structs:
 ```c++
-using ArgPack = std::vector<Value>; // A runtime length list of arguments
+using ArgPack = Vector<Value>; // A runtime length list of arguments
 struct KeyPair {std::string_view key; Value value;}; // A key value pair used in logging
 using Logs = std::vector<KeyPair>; // Keeps tracked of logged information
 ```
@@ -312,7 +319,7 @@ auto n = call("number-of-threads", 5).as_integer(); // n = 10
 
 You can test different types via the following within a test case
 ```c++
-cpy::Pack<int, double, bool>::for_each([](auto t) {
+cpy::Pack<int, Real, bool>::for_each([](auto t) {
     using type = decltype(*t);
     // do something with type
 });
@@ -374,7 +381,7 @@ Let's use the `Value` registered above to write a helper to repeat a test until 
 ```c++
 template <class F>
 void repeat_test(Context const &ct, int n, F const &test) {
-    auto max = ct.start_time + std::chrono::duration<double>(get_value("max_time").as_double());
+    auto max = ct.start_time + std::chrono::duration<Real>(get_value("max_time").as_real());
     for (int i = 0; i != n; ++i) {
         if (Clock::now() > max) return;
         test();
@@ -482,7 +489,7 @@ Possibly `start_time` should be given to callback, or `start_time` and `current_
 Standardize what callback return value means, add skip event if needed.
 
 ### Variant
-- `complex<double>` is probably not that useful, but it's included (in Python so whatever)
+- `complex<Real>` is probably not that useful, but it's included (in Python so whatever)
 - `std::string` is the biggest object on my architecture (24 bytes). `std::any` is 32.
 - Just use `std::ptrdiff_t` instead of `std::size_t`? Probably.
 

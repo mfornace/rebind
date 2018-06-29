@@ -21,7 +21,7 @@ auto test1 = unit_test("test-1", COMMENT("This is a test"), [](cpy::Context ct, 
     std::cerr << "Hey I am std::cerr 1" << std::endl;
     std::cout << "Hey I am std::cout 1" << std::endl;
 
-    ct.time(1, []{return 1;});
+    ct.timed(1, []{return 1;});
 
     ct(LOCATION).near(5, 5.0);
 
@@ -41,8 +41,8 @@ UNIT_TEST("test-2", "This is a test 2") = [](cpy::Context ct) {
     std::cout << sizeof(bool)  << " sizeof(bool) " << std::endl;
     std::cout << sizeof(std::any)  << " sizeof(std::any) " << std::endl;
     std::cout << sizeof(cpy::Integer)  << " sizeof(Integer) " << std::endl;
-    std::cout << sizeof(double)  << " sizeof(double) " << std::endl;
-    std::cout << sizeof(std::complex<double>)  << " sizeof(std::complex<double>) " << std::endl;
+    std::cout << sizeof(cpy::Real)  << " sizeof(Real) " << std::endl;
+    std::cout << sizeof(std::complex<cpy::Real>)  << " sizeof(std::complex<Real>) " << std::endl;
     std::cout << sizeof(std::string)  << " sizeof(std::string) " << std::endl;
     std::cout << sizeof(std::string_view) << " sizeof(std::string_view)" << std::endl;
     std::cout << sizeof(cpy::Value) << " sizeof(Value)" << std::endl;
@@ -53,7 +53,7 @@ UNIT_TEST("test-2", "This is a test 2") = [](cpy::Context ct) {
 };
 
 UNIT_TEST("test-3") = [](auto ct) {
-    std::cout << cpy::get_value("max_time").as_double() << std::endl;
+    std::cout << cpy::get_value("max_time").as_real() << std::endl;
     throw std::runtime_error("runtime_error: uh oh");
 };
 
