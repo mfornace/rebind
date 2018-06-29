@@ -11,6 +11,7 @@ import datetime
 ################################################################################
 
 class TeamCityReport(Report):
+    '''TeamCity streaming reporter for a test suite'''
     def __init__(self, file, info, **kwargs):
         self.messages = TeamcityServiceMessages(file)
         self.messages.message('compile-info', name=info[0], date=info[1], time=info[2])
@@ -28,6 +29,7 @@ class TeamCityReport(Report):
 ################################################################################
 
 class TeamCityTestReport(Report):
+    '''TeamCity streaming reporter for a test case'''
     def __init__(self, messages, args, name):
         self.messages = messages
         self.name = name
@@ -39,13 +41,14 @@ class TeamCityTestReport(Report):
         elif event == Event.skipped:
             f = self.messages.testSkipped
         else:
+            # maybe use customMessage(self, text, status, errorDetails='', flowId=None):
             raise ValueError('TeamCity does not handle {}'.format(event))
         f(self.name, readable_message(event, scopes, logs))
 
     def finalize(self, value, time, counts, out, err):
         self.messages.message('counts', errors=str(counts[0]), exceptions=str(counts[2]))
-        self.messages.testStdOut(self.name, out)
-        self.messages.testStdErr(self.name, err)
+        if out: self.messages.testStdOut(self.name, out)
+        if err: self.messages.testStdErr(self.name, err)
         self.messages.testFinished(self.name, testDuration=datetime.timedelta(seconds=time))
 
 ################################################################################
