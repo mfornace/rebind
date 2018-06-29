@@ -92,10 +92,9 @@ def main(run=run_suite, lib='libcpy', list=False, failure=False, success=False, 
         masks = []
         if not quiet:
             from . import console
-            if brief:
-                console.FOOTER, console.STREAM_FOOTER = '', ''
-            r = console.ConsoleReport(open_file(stack, out, out_mode), info,
-                color=(False if no_color else None), timing=timing, sync=jobs > 1)
+            f = open_file(stack, out, out_mode)
+            color = console.Colorer(False if no_color else f.isatty(), brief=brief)
+            r = console.ConsoleReport(f, info, color=color, timing=timing, sync=jobs > 1)
             masks.append((stack.enter_context(r), mask))
 
         if xml:

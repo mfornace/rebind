@@ -16,10 +16,11 @@ except ImportError:
 class Colorer:
     event_colors = ['red', 'green', 'red', 'yellow', 'grey']
 
-    def __init__(self, colors):
+    def __init__(self, colors, brief, indent='    '):
+        self.indent = indent
         self.colored = colored if colors else not_colored
-        self.stream_footer = '_' * 22 + '\n'
-        self.footer = '_' * 80 + '\n'
+        self.stream_footer = '' if brief else '_' * 22 + '\n'
+        self.footer = '' if brief else '_' * 80 + '\n'
         self.stderr = self.colored('Contents of std::err', 'magenta')
         self.stdout = self.colored('Contents of std::out', 'magenta')
         self.test_duration = self.colored('Test duration', 'yellow')
@@ -37,14 +38,10 @@ class Colorer:
 ################################################################################
 
 class ConsoleReport(Report):
-    def __init__(self, file, info, timing=False, indent='    ', color=None, **kwargs):
-        if isinstance(color, Colorer):
-            self.color = color
-        else:
-            self.color = Colorer(color or (color is None and file.isatty()))
-
+    def __init__(self, file, info, color, timing=False, **kwargs):
+        self.color = color
         self.events = self.color.events()
-        self.file, self.timing, self.indent = file, timing, indent
+        self.file, self.timing = file, timing
 
         if info[0]:
             self.file.write('Compiler: {}\n'.format(info[0]))
@@ -54,14 +51,14 @@ class ConsoleReport(Report):
 
     def __call__(self, index, args, info):
         return ConsoleTestReport(index, args, info, self.file, events=self.events,
-            indent=self.indent, color=self.color, timing=self.timing, **self.kwargs)
+            color=self.color, timing=self.timing, **self.kwargs)
 
     def finalize(self, n, time, counts, out, err):
         s = self.color.footer + 'Total results for {} tests:\n'.format(n)
 
         spacing = max(map(len, self.events)) + 1
         for e, c in zip(self.events, counts):
-            s += self.indent + '{} {}\n'.format((e + ':').ljust(spacing), c)
+            s += self.color.indent + '{} {}\n'.format((e + ':').ljust(spacing), c)
 
         if self.timing:
             if self.color.footer: s += '\n'
@@ -75,8 +72,8 @@ class ConsoleReport(Report):
 ################################################################################
 
 class ConsoleTestReport(Report):
-    def __init__(self, index, args, info, file, events, color=False, timing=False, sync=False, indent='    '):
-        self.color, self.indent, self.timing, self.events = color, indent, timing, events
+    def __init__(self, index, args, info, file, events, color, timing=False, sync=False):
+        self.color, self.timing, self.events = color, timing, events
         if sync:
             self.file, self.output = io.StringIO(), file
         else:
@@ -93,7 +90,7 @@ class ConsoleTestReport(Report):
         self.file.flush()
 
     def __call__(self, event, scopes, logs):
-        self.write('\n', readable_message(self.events[event], scopes, logs, self.indent))
+        self.write('\n', readable_message(self.events[event], scopes, logs, self.color.indent))
 
     def finalize(self, value, time, counts, out, err):
         for o, s in zip((out, err), (self.color.stdout, self.color.stderr)):
