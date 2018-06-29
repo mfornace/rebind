@@ -1,4 +1,4 @@
-import sys, io
+import sys, io, enum
 
 try:
     from contextlib import ExitStack
@@ -14,12 +14,21 @@ except NameError:
 
 DELIMITER = '/'
 
-EVENTS = ['Failure', 'Success', 'Exception', 'Timing', 'Skipped']
+class Event(enum.IntEnum):
+    failure = 0
+    success = 1
+    exception = 2
+    timing = 3
+    skipped = 4
 
-################################################################################
+    @classmethod
+    def name(cls, i):
+        try:
+            return cls.names[i]
+        except IndexError:
+            return str(i)
 
-def events():
-    return EVENTS
+Event.names = ('Failure', 'Success', 'Exception', 'Timing', 'Skipped')
 
 ################################################################################
 
@@ -166,7 +175,7 @@ def multireport(reports):
 ################################################################################
 
 def run_test(lib, index, test_masks, args=(), gil=False, cout=False, cerr=False):
-    lists = [[] for _ in EVENTS]
+    lists = [[] for _ in Event]
 
     with ExitStack() as stack:
         for r, mask in test_masks:

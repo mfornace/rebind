@@ -1,4 +1,4 @@
-from .common import events, Report
+from .common import Event, Report
 import time, datetime, json
 
 ################################################################################
@@ -9,7 +9,7 @@ class NativeReport(Report):
         self.indent = indent
         self.contents = {
             'compile-info': dict(name=info[0], date=info[1], time=info[2]),
-            'events': events(),
+            'events': tuple(map(str, Event)),
             'tests': [],
         }
 

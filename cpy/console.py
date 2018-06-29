@@ -1,5 +1,5 @@
 import io, sys
-from .common import Report, readable_message, events as default_events
+from .common import Report, readable_message, Event
 
 ################################################################################
 
@@ -33,9 +33,9 @@ TOTAL_DURATION = colored('Total duration', 'yellow')
 
 class ConsoleReport(Report):
     def __init__(self, file, info, timing=False, indent='    ', colors=True, **kwargs):
-        events = default_events()
+        events = tuple(Event)
         if colors:
-            events = [c(e) for c, e in zip(COLORS, events)] + events[len(COLORS):]
+            events = tuple(c(Event.name(e)) for c, e in zip(COLORS, events)) + events[len(COLORS):]
         self.events, self.file, self.timing, self.indent = events, file, timing, indent
         if info[0]:
             self.file.write('Compiler: {}\n'.format(info[0]))

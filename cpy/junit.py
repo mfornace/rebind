@@ -1,4 +1,4 @@
-from .common import readable_message, events, Report
+from .common import readable_message, Report
 import xml.etree.ElementTree as ET
 import io, time, datetime
 
@@ -76,7 +76,7 @@ class XMLTestReport(Report):
         self.message = ''
 
     def __call__(self, event, scopes, logs):
-        self.message += readable_message(events()[event], scopes, logs)
+        self.message += readable_message(Event.name(event), scopes, logs)
         if self.sub is None:
             if event == 0:
                 self.sub = ET.SubElement(self.element, 'failure', message='', type='2')

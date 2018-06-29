@@ -1,4 +1,4 @@
-from .common import readable_message, events, Report
+from .common import readable_message, Event, Report
 
 try:
     from teamcity.messages import TeamcityServiceMessages
@@ -6,7 +6,7 @@ except ImportError as e:
     print('teamcity-messages must be installed, e.g. via pip')
     raise e
 
-import time, datetime
+import datetime
 
 ################################################################################
 
@@ -34,8 +34,13 @@ class TeamCityTestReport(Report):
         self.messages.testStarted(self.name)
 
     def __call__(self, event, scopes, logs):
-        assert event == 0 or event == 2
-        self.messages.testFailed(self.name, readable_message(events()[event], scopes, logs))
+        if event in (Event.failure, Event.exception):
+            f = self.messages.testFailed
+        elif event == Event.skipped:
+            f = self.messages.testSkipped
+        else:
+            raise ValueError('TeamCity does not handle {}'.format(event))
+        f(self.name, readable_message(Event.name(event), scopes, logs))
 
     def finalize(self, value, time, counts, out, err):
         self.messages.message('counts', errors=str(counts[0]), exceptions=str(counts[2]))

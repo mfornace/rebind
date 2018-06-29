@@ -1,4 +1,4 @@
-from .common import events, run_test, open_file, load_parameters
+from .common import Event, run_test, open_file, load_parameters
 from .common import ExitStack, import_library, test_indices, parametrized_indices
 
 ################################################################################
@@ -63,7 +63,7 @@ def run_suite(lib, keypairs, masks, gil, cout, cerr, exe=map):
 
     out, err = StringIO(), StringIO()
     f = partial(run_index, lib, masks, out, err, gil, cout, cerr)
-    n, time, *counts = tuple(map(sum, zip(*exe(f, keypairs)))) or (0,) * (len(events()) + 2)
+    n, time, *counts = tuple(map(sum, zip(*exe(f, keypairs)))) or (0,) * (len(Event) + 2)
 
     for r, _ in masks:
         r.finalize(n, time, counts, out.getvalue(), err.getvalue())
