@@ -5,12 +5,19 @@
 #include <vector>
 #include <type_traits>
 #include <string_view>
+#include <any>
+#include <memory>
 
 namespace cpy {
 
 /******************************************************************************/
 
 struct Value;
+
+struct Binary {
+    std::shared_ptr<void const> data;
+    std::size_t size;
+};
 
 using Integer = std::ptrdiff_t;
 
@@ -29,15 +36,24 @@ using Variant = std::variant<
     Complex,
     std::string_view,
     std::string,
-
-    Vector<bool>,
-    Vector<Integer>,
-    Vector<Real>,
-    Vector<Complex>,
-    Vector<std::string>,
-    Vector<std::string_view>,
+    Binary,
+    std::any,
     Vector<Value>
 >;
+
+static_assert( 1 == sizeof(bool));
+static_assert( 1 == sizeof(std::monostate));
+static_assert( 8 == sizeof(Integer));
+static_assert( 8 == sizeof(Real));
+static_assert(16 == sizeof(std::complex<double>));
+static_assert(16 == sizeof(std::string_view));
+static_assert(24 == sizeof(std::string));
+static_assert(24 == sizeof(Vector<bool>));
+static_assert(24 == sizeof(Vector<Value>));
+static_assert(32 == sizeof(std::any));
+static_assert(16 == sizeof(std::shared_ptr<void const>));
+static_assert(24 == sizeof(Binary));
+static_assert(40 == sizeof(Variant));
 
 struct Value {
     Variant var;
@@ -56,13 +72,14 @@ struct Value {
     Value(std::string)       noexcept;
     Value(std::string_view)  noexcept;
 
-    Value(Vector<bool>)             noexcept;
-    Value(Vector<Integer>)          noexcept;
-    Value(Vector<Real>)             noexcept;
-    Value(Vector<Complex>)          noexcept;
-    Value(Vector<std::string>)      noexcept;
-    Value(Vector<std::string_view>) noexcept;
-    Value(Vector<Value>)            noexcept;
+    Value(Vector<bool>)              noexcept;
+    Value(Vector<Integer>)           noexcept;
+    Value(Vector<Real>)              noexcept;
+    Value(Vector<Complex>)           noexcept;
+    Value(Vector<std::string>)       noexcept;
+    Value(Vector<std::string_view>)  noexcept;
+    Value(std::in_place_t, std::any) noexcept;
+    Value(Vector<Value>)             noexcept;
 
     bool             as_bool()    const &;
     Integer          as_integer() const &;
@@ -70,6 +87,7 @@ struct Value {
     Complex          as_complex() const &;
     std::string_view as_view()    const &;
     std::string      as_string()  const &;
+    std::any         as_any()     const &;
 
     Vector<bool>             as_bools()     const &;
     Vector<Integer>          as_integers()  const &;
@@ -79,6 +97,7 @@ struct Value {
     Vector<std::string_view> as_views()     const &;
     Vector<Value>            as_values()    const &;
 
+    std::any                 as_any()       &&;
     std::string              as_string()    &&;
     Vector<bool>             as_bools()     &&;
     Vector<Integer>          as_integers()  &&;
@@ -87,6 +106,7 @@ struct Value {
     Vector<std::string>      as_strings()   &&;
     Vector<std::string_view> as_views()     &&;
     Vector<Value>            as_values()    &&;
+
 };
 
 struct KeyPair {

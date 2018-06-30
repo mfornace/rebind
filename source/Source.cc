@@ -59,13 +59,15 @@ Value::Value(Complex v)          noexcept : var(v) {}
 Value::Value(std::string v)      noexcept : var(std::move(v)) {}
 Value::Value(std::string_view v) noexcept : var(std::move(v)) {}
 
-Value::Value(Vector<bool> v)             noexcept : var(std::move(v)) {}
-Value::Value(Vector<Integer> v)          noexcept : var(std::move(v)) {}
-Value::Value(Vector<Real> v)             noexcept : var(std::move(v)) {}
-Value::Value(Vector<Complex> v)          noexcept : var(std::move(v)) {}
-Value::Value(Vector<std::string> v)      noexcept : var(std::move(v)) {}
-Value::Value(Vector<std::string_view> v) noexcept : var(std::move(v)) {}
-Value::Value(Vector<Value> v)            noexcept : var(std::move(v)) {}
+Value::Value(Vector<bool> v)              noexcept : var(std::move(v)) {}
+Value::Value(Vector<Integer> v)           noexcept : var(std::move(v)) {}
+Value::Value(Vector<Real> v)              noexcept : var(std::move(v)) {}
+Value::Value(Vector<Complex> v)           noexcept : var(std::move(v)) {}
+Value::Value(Vector<std::string> v)       noexcept : var(std::move(v)) {}
+Value::Value(Vector<std::string_view> v)  noexcept : var(std::move(v)) {}
+
+Value::Value(std::in_place_t, std::any v) noexcept : var(std::move(v)) {}
+Value::Value(Vector<Value> v)             noexcept : var(std::move(v)) {}
 
 /******************************************************************************/
 
@@ -78,6 +80,9 @@ Real Value::as_real() const & {return std::get<Real>(var);}
 std::string_view Value::as_view() const & {return std::get<std::string_view>(var);}
 
 /******************************************************************************/
+
+std::any Value::as_any() const & {return std::get<std::any>(var);}
+std::any Value::as_any() && {return std::get<std::any>(std::move(var));}
 
 std::string Value::as_string() const & {
     if (auto s = std::get_if<std::string_view>(&var))
