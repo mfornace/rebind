@@ -1,8 +1,31 @@
+## Summary
 
+`cpy` is a new unit testing library for C++ built on Python bindings. It combines
+- a context-based API for running C++ tests, making assertions, and measuring execution times
+- a test running and event handler package written in pure Python
+
+These two sides are kept pretty modular; in particular, your C++ testing code doesn't need to know anything about (or include) any Python headers. In terms of API, `cpy` draws on ideas from `Catch` and `doctest` but tries to be less macro-based.
+
+There are a lot of nice features in `cpy` including the abilities to:
+- write test event handlers and CLIs in Python (easier than in C++)
+- run tests in a threadsafe and parallel manner
+- parametrize your tests either in C++, Python, or from the command line
+- call tests from other tests within C++ or Python
+- replace the given Python handlers with your own without any recompilation of your C++ code
+
+The primary hurdles to using `cpy` are that it requires C++17 (most importantly for `std::variant`) and Python 2.7+/3.3+ for the Python reporters. The build can also be bit more tricky, though it's not as complicated as you might expect.
+
+`cpy` is quite usable but also at a pretty early stage of development. Please try it out and give some feedback!
+
+## Contents
+
+- [Summary](#summary)
+- [Contents](#contents)
 - [Install](#install)
     - [Requirements](#requirements)
     - [Python](#python)
     - [CMake](#cmake)
+    - [Single header?](#single-header)
 - [Writing tests in C++](#writing-tests-in-c)
     - [Unit test declaration](#unit-test-declaration)
     - [`Context` API](#context-api)
@@ -52,17 +75,22 @@
 ## Install
 
 ### Requirements
-- CMake
+- CMake 3.8+
 - C++17 (fold expressions, `constexpr bool *_v` traits, `std::variant`, `std::string_view`, a few `if constexpr`s)
-- Python 2.7+ or 3.3+
+- CPython 2.7+ or 3.3+
 
 ### Python
-Run `pip install -e .` in the directory where setup.py is. Module `cpy.cli` is included for command line usage.
-It can be run directly as a script `python -m cpy.cli ...` or imported from your own script.
-The `cpy` python package is pure Python, so you can also import it without installing if it's in your `$PYTHONPATH`.
+Run `pip install .` or `python setup.py install` in the directory where setup.py is. (To do: put on PyPI.)
+
+The module `cpy.cli` is included for command line usage. It can be run directly as a script `python -m cpy.cli ...` or imported from your own script. The `cpy` python package is pure Python, so you can also import it without installing if it's in your `$PYTHONPATH`.
 
 ### CMake
-Use CMake function `cpy_module` to make a CMake target for the given library. Define `-DCPY_PYTHON={my python executable}` or `-DCPY_PYTHON_INCLUDE={include folder for python}` to customize.
+Write a CMake target for your own shared library(s). Use CMake function `cpy_module(my_shared_target...)` to define a new CMake python module target based on that library.
+
+Run CMake with `-DCPY_PYTHON={my python executable}` or `-DCPY_PYTHON_INCLUDE={include folder for python}` to customize. CMake's `find_package(Python)` is not used used by default since only the include directory is needed. You can find your include directory from Python via `sysconfig.get_path('include')` if you need to set it manually for some reason.
+
+### Single header?
+Maybe do this in future, although it's a bit silly.
 
 ## Writing tests in C++
 
@@ -442,9 +470,9 @@ auto n = call("number-of-threads", 5).as_integer(); // n = 10
 
 You can test different types via the following within a test case
 ```c++
-cpy::Pack<int, Real, bool>::for_each([](auto t) {
+cpy::Pack<int, Real, bool>::for_each([&ct](auto t) {
     using type = decltype(*t);
-    // do something with type
+    // do something with type and ct
 });
 ```
 For more advanced functionality try something like `boost::hana`.
@@ -458,8 +486,8 @@ python -m cpy.cli -a mylib # run all tests from mylib.so/mylib.dll/mylib.dylib
 By default, events are only counted and not logged. To see more output use:
 
 ```bash
-python -m cpy.cli -a mylib -fe # log information on failures, exceptions
-python -m cpy.cli -a mylib -fsetk # log information on failures, successes, exceptions, timings
+python -m cpy.cli -a mylib -fe # log information on failures, exceptions, skips
+python -m cpy.cli -a mylib -fsetk # log information on failures, successes, exceptions, timings, skips
 ```
 
 There are a few other reporters written in the Python package, including writing to JUnit XML, a simple JSON format, and streaming TeamCity directives.
