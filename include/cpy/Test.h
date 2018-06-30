@@ -14,11 +14,11 @@ struct Skip {
 
 /******************************************************************************/
 
-static char const *cast_bug_message = "CastVariant().check() returned false but CastVariant()() was still called";
+static char const *cast_bug_message = "FromValue().check() returned false but FromValue()() was still called";
 
 /// Default behavior for casting a variant to a desired argument type
 template <class T, class=void>
-struct CastVariant {
+struct FromValue {
     // Return true if type T can be cast from type U
     template <class U>
     constexpr bool check(U const &) const {
@@ -37,13 +37,13 @@ struct CastVariant {
 /// Cast element i of v to type T
 template <class T>
 T cast_index(ArgPack &v, IndexedType<T> i) {
-    return std::visit(CastVariant<T>(), v[i.index - 2u].var);
+    return std::visit(FromValue<T>(), v[i.index - 2u].var);
 }
 
 /// Check that element i of v can be cast to type T
 template <class T>
 bool check_cast_index(ArgPack &v, IndexedType<T> i) {
-    return std::visit([](auto const &x) {return CastVariant<T>().check(x);}, v[i.index - 2u].var);
+    return std::visit([](auto const &x) {return FromValue<T>().check(x);}, v[i.index - 2u].var);
 }
 
 /******************************************************************************/

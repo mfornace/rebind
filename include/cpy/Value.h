@@ -99,35 +99,35 @@ using ArgPack = Vector<Value>;
 /******************************************************************************/
 
 template <class T, class=void>
-struct Valuable; // undefined
+struct ToValue; // undefined
 
 template <>
-struct Valuable<bool> {
+struct ToValue<bool> {
     Value operator()(bool t) const {return t;}
 };
 
 template <>
-struct Valuable<std::string> {
+struct ToValue<std::string> {
     Value operator()(std::string t) const {return std::move(t);}
 };
 
 template <>
-struct Valuable<std::string_view> {
+struct ToValue<std::string_view> {
     Value operator()(std::string_view t) const {return std::move(t);}
 };
 
 template <class T>
-struct Valuable<T, std::enable_if_t<(std::is_floating_point_v<T>)>> {
+struct ToValue<T, std::enable_if_t<(std::is_floating_point_v<T>)>> {
     Value operator()(T t) const {return static_cast<Real>(t);}
 };
 
 template <class T>
-struct Valuable<T, std::enable_if_t<(std::is_integral_v<T>)>> {
+struct ToValue<T, std::enable_if_t<(std::is_integral_v<T>)>> {
     Value operator()(T t) const {return static_cast<Integer>(t);}
 };
 
 template <>
-struct Valuable<char const *> {
+struct ToValue<char const *> {
     Value operator()(char const *t) const {return std::string_view(t);}
 };
 
@@ -138,13 +138,13 @@ struct is_valuable
     : std::false_type {};
 
 template <class T>
-struct is_valuable<T, std::void_t<decltype(Valuable<T>()(std::declval<T>()))>>
+struct is_valuable<T, std::void_t<decltype(ToValue<T>()(std::declval<T>()))>>
     : std::true_type {};
 
 template <class T> static constexpr bool is_valuable_v = is_valuable<T>::value;
 
 template <class T, std::enable_if_t<is_valuable_v<std::decay_t<T>>, int> = 0>
-Value make_value(T &&t) {return Valuable<std::decay_t<T>>()(static_cast<T &&>(t));}
+Value make_value(T &&t) {return ToValue<std::decay_t<T>>()(static_cast<T &&>(t));}
 
 /// @todo fix
 template <class T, std::enable_if_t<!is_valuable_v<std::decay_t<T>>, int> = 0>

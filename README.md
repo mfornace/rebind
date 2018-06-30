@@ -12,9 +12,10 @@
         - [Timings](#timings)
         - [Approximate comparison](#approximate-comparison)
     - [Macros](#macros)
-    - [Values](#values)
-        - [`Valuable` and conversion of arbitrary types to `Value`](#valuable-and-conversion-of-arbitrary-types-to-value)
-        - [`CastVariant` and conversion to `Value`](#castvariant-and-conversion-to-value)
+    - [`Value`](#value)
+        - [`ToValue` and conversion of arbitrary types to `Value`](#tovalue-and-conversion-of-arbitrary-types-to-value)
+        - [`FromValue` and conversion from `Value`](#fromvalue-and-conversion-from-value)
+        - [`Glue` and `AddKeyPairs`](#glue-and-addkeypairs)
     - [Test adaptors](#test-adaptors)
         - [C++ type-erased function](#c-type-erased-function)
         - [Type-erased value](#type-erased-value)
@@ -24,7 +25,7 @@
     - [Python threads](#python-threads)
     - [Writing your own script](#writing-your-own-script)
     - [An example](#an-example)
-- [Callback C++ API](#callback-c-api)
+- [`Callback` C++ API](#callback-c-api)
 - [`libcpy` Python API](#libcpy-python-api)
     - [Exposed Python functions via C API](#exposed-python-functions-via-c-api)
     - [Exposed Python C++ API](#exposed-python-c-api)
@@ -48,7 +49,7 @@
 
 ### Requirements
 - CMake
-- C++17 (fold expressions, `constexpr bool *_v` traits, `std::variant`, `std::string_view`)
+- C++17 (fold expressions, `constexpr bool *_v` traits, `std::variant`, `std::string_view`, a few `if constexpr`s)
 - Python 2.7+ or 3.3+
 
 ### Python
@@ -100,18 +101,27 @@ ct(LOCATION);
 // chain statements together if convenient
 ct(LOCATION).require(...);
 // log a single key pair of information before an assertion.
-ct.info("value", 1.5);
-// open a child scope (functor takes parameters Context, args...)
+ct.info("value", 1.5); // key should be char const * or std::string_view
+// open a child scope (functor takes parameters (Context, args...))
 ct.section("section name", functor, args...);
+// if section returns a result you can get it
+auto functor_result = ct.section("section name", functor, args...);
 ```
 
 #### Assertions
 
+In general, you can add on variadic arguments to the end of a test assertion function call. If a callback is registered for the type of `Event` that fires, those arguments will be logged. If not, the arguments will not be logged (which can save computation time).
+
 ```c++
 // handle args if a callback registered for success/failure
 bool ok = ct.require(true, args...);
-// equality check (also not_equal, less, greater, less_eq, greater_eq)
-bool ok = ct.equal(left, right, args...);
+// check a binary comparison for 2 objects l and r
+bool ok = ct.equal(l, r, args...);      // l == r
+bool ok = ct.not_equal(l, r, args...);  // l != r
+bool ok = ct.less(l, r, args...);       // l < r
+bool ok = ct.greater(l, r, args...);    // l > r
+bool ok = ct.less_eq(l, r, args...);    // l <= r
+bool ok = ct.greater_eq(l, r, args...); // l >= r
 // check that a function throws a given Exception
 bool ok = ct.throw_as<ExceptionType>(function, function_args...);
 // check that a function does not throw
@@ -150,7 +160,7 @@ bool ok = ct.within(l, r, tolerance, args...);
 Otherwise, `Context::near()` checks that two arguments are approximately equal by using a specialization of `cpy::Approx` for the types given.
 
 ```c++
-bool ok = ct.near(left, r, args...);
+bool ok = ct.near(l, r, args...);
 ```
 
 For floating point types, `Approx` defaults to checking `|l - r| < eps * (scale + max(|l|, |r|))` where scale is 1 and eps is the square root of the floating point epsilon. When given two different types for `l` and `r`, the type of less precision is used for the epsilon. `Approx` may be specialized for user types.
@@ -165,58 +175,92 @@ The next macros are defined with `CPY_` prefix if `Macros.h` is included. If not
 #define UNIT_TEST(name, [comment]) ... // complicated; see above for usage
 ```
 
-### Values
-`Value` is a simple wrapper around a `std::variant`.
+Look at `Macros.h` for details, it's pretty simple.
+
+### `Value`
+`Value` is a simple wrapper around a `std::variant` which gives a convenient API:
 
 ```c++
 struct Value {
-    Variant var;
-    bool as_bool() const;
-    Real as_real() const;
-    Integer as_integer() const;
-    std::string_view as_view() const;
-    std::string as_string() const;
+    Variant var; // a typedef of std::variant; see below
+    bool                     as_bool()      const &;
+    Integer                  as_integer()   const &;
+    Real                     as_real()      const &;
+    Complex                  as_complex()   const &;
+    std::string_view         as_view()      const &;
+    std::string              as_string()    const &; // also with signature && (rvalue)
+    Vector<bool>             as_bools()     const &; // also with signature && (rvalue)
+    Vector<Integer>          as_integers()  const &; // also with signature && (rvalue)
+    Vector<Real>             as_reals()     const &; // also with signature && (rvalue)
+    Vector<Complex>          as_complexes() const &; // also with signature && (rvalue)
+    Vector<std::string>      as_strings()   const &; // also with signature && (rvalue)
+    Vector<std::string_view> as_views()     const &; // also with signature && (rvalue)
+    Vector<Value>            as_values()    const &; // also with signature && (rvalue)
+
 };
 ```
 
-The `Value` wrapper provides some convenience functions and also instantiates some `std::variant` templates in the `libcpy` library since `std::variant` can yield a lot of code size. The definition of `Value`  relies on these typedefs:
+This API is particularly suited for the common use case where you know the proper held type of `Value`. Mutable `as_*` functions are not given. Use the underlying member `var` if you need more advanced behavior.
+
+Beyond providing this API, the `Value` wrapper explicitly instantiates some `std::variant` templates (constructors, destructors) in the `libcpy` library since `std::variant` can yield a lot of code size. The definition of `Value`  relies on these typedefs:
 
 ```c++
+// Signed type, often 64 bits, used for signed and unsigned integers
 using Integer = std::ptrdiff_t;
-
+// Floating point type
 using Real = double;
-
+// Complex floating point type
 using Complex = std::complex<double>;
-
+// Container type
 template <class T>
 using Vector = std::vector<T>;
-
+// The hard-coded std::variant
 using Variant = std::variant<
-    std::monostate,
+    std::monostate, // proxy for void() or Python's None
     bool,
     Integer,
     Real,
     Complex,
-    std::string,
-    std::string_view
+    std::string, // this has the highest sizeof() usually due to SSO
+    std::string_view,
+    Vector<bool>, // sigh -- remember to handle this in generic functions
+    Vector<Integer>,
+    Vector<Real>,
+    Vector<Complex>,
+    Vector<std::string>,
+    Vector<std::string_view>,
+    Vector<Value> // C++17 ensures this is OK with forward declared Value
 >;
 ```
+Since `Variant` is hard-coded in `cpy`, it deserves some rationale:
+// Complex type, uncommon but easy and may be useful for quad-precision applications
+- `std::monostate` is a useful default for null/optional concepts.
+- `bool` is included since it is so commonly handled as a special case.
+- `char` is not included since there is not much perceived gain over `Integer`.
+- `std::size_t` and other unsigned types are not included for the same reason.
+- `Complex` is included because it's easy to support and may be useful for quad-precision applications.
+- `std::string_view` is convenient for allocation-less static duration strings, which are common in `cpy`.
+- `std::vector` is adopted since it's common. It's hard to support custom allocators.
+- `Vector<T>` types are included for convenience and performance even though obviously `Vector<Value>` is more general.
+- `Vector<char>` is not included since `std::string` can be used instead.
+- It is being considered whether `std::any` should be included.
+- It is planned to allow user defined macros to change some of the defaults used.
 
 Next, some related structs:
 ```c++
 using ArgPack = Vector<Value>; // A runtime length list of arguments
 struct KeyPair {std::string_view key; Value value;}; // A key value pair used in logging
-using Logs = std::vector<KeyPair>; // Keeps tracked of logged information
+using Logs = Vector<KeyPair>; // Keeps tracked of logged information
 ```
 
-#### `Valuable` and conversion of arbitrary types to `Value`
+#### `ToValue` and conversion of arbitrary types to `Value`
 To make a Value from an arbitrary object, the following function is provided:
 ```c++
 template <class T>
 Value make_value(T &&t);
 ```
 
-This functions does a compile-time lookup of `Valuable<std::decay_t<T>`. If no such struct is defined, `cpy` converts the object to a string via something like the following. The compiler will then error if `operator<<` has no matches.
+This functions does a compile-time lookup of `ToValue<std::decay_t<T>`. If no such struct is defined, `cpy` converts the object to a string via something like the following. The compiler will then error if `operator<<` has no matches.
 ```c++
 std::ostringstream os;
 os << static_cast<T &&>(t);
@@ -225,39 +269,39 @@ Value v = os.str()
 
 Otherwise, this implementation is assumed to be usable:
 ```
-Value v = Valuable<std::decay_t<T>>()(static_cast<T &&>(t));
+Value v = ToValue<std::decay_t<T>>()(static_cast<T &&>(t));
 ```
 
-`Valuable` be specialized as needed. Here are some examples:
+`ToValue` be specialized as needed. Here are some examples:
 
 ```c++
 // The declaration present in cpy
 template <class T, class=void>
-struct Valuable;
+struct ToValue;
 // User example: define the default Value making operation for all objects
 template <class T, class>
-struct Valuable {
+struct ToValue {
     Value operator()(T const &t) const {...}
 };
 // User example: specialize a Value making operation for a specific type
 template <>
-struct Valuable<my_type> {
+struct ToValue<my_type> {
     Value operator()(my_type const &t) const {return "my_type"}
 };
 // User example: specialize a Value making operation for a trait
 template <class T>
-struct Valuable<T, std::enable_if_t<(my_trait<T>::value)> {
+struct ToValue<T, std::enable_if_t<(my_trait<T>::value)> {
     Value operator()(T const &t) const {...}
 };
 ```
 Look up partial specialization, `std::enable_if`, and/or `std::void_t` for background on how this type of thing can be used.
 
-#### `CastVariant` and conversion to `Value`
+#### `FromValue` and conversion from `Value`
 
 The default behavior for casting to a C++ type from a `Value` can also be specialized. The relevant struct to specialize is declared like the following:
 ```c++
 template <class T, class=void> // T, the type to convert to
-struct CastVariant {
+struct FromValue {
     template <class U>
     bool check(U const &); // Return true if type T can be cast from type U
 
@@ -265,6 +309,45 @@ struct CastVariant {
     T operator()(U &u); // Return casted type T from type U if check() returns true
 };
 ```
+
+#### `Glue` and `AddKeyPairs`
+You may want to specialize your own behavior for logging an expression of a given type. This behavior can be modified by specializing `AddKeyPairs`, which is defaulted as follows:
+
+```c++
+template <class T, class=void>
+struct AddKeyPairs {
+    void operator()(Logs &v, T const &t) const {v.emplace_back(KeyPair{{}, make_value(t)});}
+};
+```
+
+This means that calling `ct.info(expr)` will default to making a message with an empty key and a value converted from `expr`. (An empty key is read by the Python handler as signifying a comment.)
+
+In general, the key in a `KeyPair` is expected to be one of a limited set of strings that is recognizable by the registered handlers (hence why the key is of type `std::string_view`). Make sure any custom keys have static storage duration.
+
+A common specialization used in `cpy` is for a key value pair of any types called a `Glue`:
+```c++
+template <class K, class V>
+struct Glue {
+    K key;
+    V value;
+};
+
+template <class K, class V>
+Glue<K, V const &> glue(K k, V const &v) {return {k, v};} // simplification
+```
+
+This class is used, for example, in the `GLUE` macro to glue the string of an expression together with its runtime result. The specialization of `AddKeyPairs` just logs a single `KeyPair`:
+
+```c++
+template <class K, class V>
+struct AddKeyPairs<Glue<K, V>> {
+    void operator()(Logs &v, Glue<K, V> const &g) const {
+        v.emplace_back(KeyPair{g.key, make_value(g.value)});
+    }
+};
+```
+
+A more complicated example is `ComparisonGlue`, which logs the left hand side, right hand side, and operand type as 3 separate `KeyPair`s. This is used in the implementation of the comparison assertions `ct.equal(...)` and the like.
 
 ### Test adaptors
 
@@ -298,8 +381,8 @@ lib.add_value('number-of-threads', 4)
 
 and retrieve it while running tests in C++:
 ```c++
-auto n = get_value("number-of-threads").as_integer(); // preferred, n = 4
-auto n = call("number-of-threads", (Context) ct).as_integer(); // equivalent
+Integer n = get_value("number-of-threads").as_integer(); // preferred, n = 4
+Integer n = call("number-of-threads", (Context) ct).as_integer(); // equivalent
 ```
 
 #### Python function
@@ -336,10 +419,12 @@ By default, events are only counted and not logged. To see more output use:
 
 ```bash
 python -m cpy.cli -a mylib -fe # log information on failures, exceptions
-python -m cpy.cli -a mylib -fset # log information on failures, successes, exceptions, timings
+python -m cpy.cli -a mylib -fsetk # log information on failures, successes, exceptions, timings
 ```
 
 There are a few other reporters written in the Python package, including writing to JUnit XML, a simple JSON format, and streaming TeamCity directives.
+
+In general, command line options which expect an output file path ca take `stderr` and `stdout` as special values which signify that the respective streams should be used.
 
 See the command line help `python -m cpy.cli --help` for other options.
 
@@ -354,7 +439,7 @@ ThreadPool(n_threads).imap(tests, run_test)
 
 If the number of threads (`--jobs`) is set to 0, no threads are spawned, and everything is run in the main thread. This is a little more lightweight, but signals such as `CTRL-C` (`SIGINT`) will not be caught immediately during execution of a test. This parameter therefore has a default of 1.
 
-Also, `cpy` turns off the GIL by default when running tests, but if you are mucking around in CPython bindings too, you may want to keep it on (with `--gil`).
+Also, `cpy` turns off the Python GIL by default when running tests, but if you need to, you can keep it on (with `--gil`). The GIL is re-acquired by the Python handlers as necessary.
 
 ### Writing your own script
 
@@ -364,15 +449,16 @@ It is easy to write your own executable Python script to wrap the one provided. 
 #!/usr/bin/env python3
 from cpy import cli
 
-parser = cli.parser()
-parser.add_argument('--time', type=float, default=float('inf'), help='maximum test time')
+parser = cli.parser(lib='my_lib_name') # redefine the default library name
+parser.add_argument('--time', type=float, default=60, help='max test time in seconds')
 
-args = vars(parser.parse_args())
+kwargs = vars(parser.parse_args())
 
-lib = cli.import_library(args['lib'])
-lib.add_value('max_time', args.pop('time'))
+lib = cli.import_library(kwargs['lib'])
+lib.add_value('max_time', kwargs.pop('time'))
+
 # pop any added arguments before passing to cli.main
-cli.main(**args)
+cli.main(**kwargs)
 ```
 
 ### An example
@@ -380,30 +466,35 @@ cli.main(**args)
 Let's use the `Value` registered above to write a helper to repeat a test until the allowed test time is used up.
 ```c++
 template <class F>
-void repeat_test(Context const &ct, int n, F const &test) {
+void repeat_test(Context const &ct, F const &test) {
     auto max = ct.start_time + std::chrono::duration<Real>(get_value("max_time").as_real());
-    for (int i = 0; i != n; ++i) {
-        if (Clock::now() > max) return;
-        test();
-    }
+    while (Clock::now() < max) test();
 }
 ```
 Then we can write a repetitive test which short-circuits like so:
 ```c++
 UNIT_TEST("my-test") = [](Context ct) {
-    repeat_test(ct, 500, [&] {run_some_random_test(ct);});
+    repeat_test(ct, [&] {run_some_random_test(ct);});
 };
 ```
+You could define further extensions could run the test iterations in parallel. Functionality like `repeat_test` is intentionally left out of the `cpy` API so that users can define their own behavior.
 
-## Callback C++ API
-Events are kept track of via a simple index. It is pretty easy to extend to more event types.
+## `Callback` C++ API
+Events are kept track of via a simple `enum` index. It is relatively easy to extend to more event types.
 
 A callback is registered to be called if a single fixed `Event` is signaled. It is implemented as a `std::function`. If no callback is registered for a given event, nothing is called.
 
 ```c++
-using Event = std::uint32_fast_t;
-Event Failure = 0, Success = 1, Exception = 2, Timing = 3, Skipped = 4;
+enum Event : std::uint_fast32_t {Failure=0, Success=1, Exception=2, Timing=3, Skipped=4};
 using Callback = std::function<bool(Event, Scopes const &, Logs &&)>;
+```
+
+Obviously, try not tp rely explicitly on the `enum` values of `Event` too much.
+
+Since it's so commonly used, `cpy` tracks the number of times each `Event` is signaled by a test whether a handler is registered or not. `Context` has a non-owning reference to a vector of `std::atomic<std::size_t>` to keep these counts in a threadsafe manner. You can query the count for a given `Event`:
+
+```c++
+std::ptrdiff_t n_fail = ct.count(Failure); // const, noexcept; gives -1 if the event type is out of range
 ```
 
 ## `libcpy` Python API

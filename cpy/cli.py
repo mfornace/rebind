@@ -3,14 +3,21 @@ from .common import ExitStack, import_library, test_indices, parametrized_indice
 
 ################################################################################
 
-def parser(prog='cpy', description='Run C++ unit tests from Python with the cpy library', **kwargs):
+def parser(prog='cpy', lib='libcpy', description='Run C++ unit tests from Python with the cpy library', **kwargs):
+    '''
+    Return an ArgumentParser for cpy tests. Parameters:
+        prog: program name that is shown with --help
+        lib: default library path
+        description: description that is shown with --help
+        kwargs: any additional keyword arguments for ArgumentParser
+    '''
     from argparse import ArgumentParser
     o = lambda a, t, m, *args, **kws: a.add_argument(*args, type=t, metavar=m, **kws)
     s = lambda a, *args, **kws: a.add_argument(*args, action='store_true', **kws)
 
     p = ArgumentParser(prog=prog, description=description, **kwargs)
     s(p, '--list',               '-l', help='list all test names')
-    o(p, str, 'PATH', '--lib',   '-a', help="file path for test library (default 'libcpy')", default='libcpy', )
+    o(p, str, 'PATH', '--lib',   '-a', help='file path for test library (default %s)' % repr(lib), default=str(lib))
     o(p, int, 'INT', '--jobs',   '-j', help='number of job threads (default 1; 0 for jobs to run in main thread)', default=1)
     o(p, str, 'STR', '--params', '-p', help='JSON file path or Python eval-able parameter string')
     o(p, str, 'RE',  '--regex',  '-r', help="specify tests with names matching a given regex")
