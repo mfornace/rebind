@@ -16,25 +16,25 @@ enum Event : std::uint_fast32_t {Failure=0, Success=1, Exception=2, Timing=3, Sk
 
 /******************************************************************************/
 
-struct CallbackError : std::exception {
+struct HandlerError : std::exception {
     std::string_view message;
-    explicit CallbackError(std::string_view const &s) noexcept : message(s) {}
-    char const * what() const noexcept override {return message.empty() ? "cpy::CallbackError" : message.data();}
+    explicit HandlerError(std::string_view const &s) noexcept : message(s) {}
+    char const * what() const noexcept override {return message.empty() ? "cpy::HandlerError" : message.data();}
 };
 
 using Scopes = Vector<std::string>;
 
 using Clock = std::chrono::high_resolution_clock;
 
-using Callback = std::function<bool(Event, Scopes const &, Logs &&)>;
+using Handler = std::function<bool(Event, Scopes const &, Logs &&)>;
 
 using Counter = std::atomic<std::size_t>;
 
 /******************************************************************************/
 
 struct Context {
-    /// Vector of Callbacks for each registered Event
-    Vector<Callback> callbacks;
+    /// Vector of Handlers for each registered Event
+    Vector<Handler> handlers;
     /// Vector of strings making up the current Context scope
     Scopes scopes;
     /// Keypairs that have been logged prior to an event being called
@@ -43,18 +43,18 @@ struct Context {
     typename Clock::time_point start_time;
     /// Possibly null handle to a vector of atomic counters for each Event
     std::vector<Counter> *counters = nullptr;
-    /// Metadata for use by callbacks. Test runner has responsibility for allocation/deallocation
+    /// Metadata for use by handlers. Test runner has responsibility for allocation/deallocation
     void *metadata = nullptr;
 
     Context() = default;
 
     /// Opens a Context and sets the start_time to the current time
-    Context(Scopes s, Vector<Callback> h, Vector<Counter> *c=nullptr, void *m=nullptr);
+    Context(Scopes s, Vector<Handler> h, Vector<Counter> *c=nullptr, void *m=nullptr);
 
     /// Opens a new section with a reset start_time
     template <class F, class ...Ts>
     auto section(std::string name, F &&functor, Ts &&...ts) const {
-        Context ctx(scopes, callbacks, counters);
+        Context ctx(scopes, handlers, counters);
         ctx.scopes.push_back(std::move(name));
         return static_cast<F &&>(functor)(ctx, static_cast<Ts &&>(ts)...);
     }
@@ -85,9 +85,9 @@ struct Context {
 
     template <class ...Ts>
     void handle(Event e, Ts &&...ts) {
-        if (e < callbacks.size() && callbacks[e]) {
+        if (e < handlers.size() && handlers[e]) {
             (*this)(static_cast<Ts &&>(ts)...);
-            callbacks[e](e, scopes, std::move(logs));
+            handlers[e](e, scopes, std::move(logs));
         }
         if (counters && e < counters->size())
             (*counters)[e].fetch_add(1u, std::memory_order_relaxed);
@@ -178,7 +178,7 @@ struct Context {
         try {
             std::invoke(static_cast<F &&>(f), static_cast<Args &&>(args)...);
             return require(true);
-        } catch (CallbackError const &e) {
+        } catch (HandlerError const &e) {
             throw e;
         } catch (...) {return require(false);}
     }

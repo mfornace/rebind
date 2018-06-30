@@ -19,7 +19,7 @@ static PyMethodDef cpy_methods[] = {
     {"run_test",     (PyCFunction) cpy_run_test,     METH_VARARGS,
         "Run a unit test. Positional arguments:\n"
         "i (int):             test index\n"
-        "callbacks (tuple):   list of callbacks for each event\n"
+        "handlers (tuple):    list of handlers for each event\n"
         "args (tuple or int): arguments to apply, or index of the already-registered argument pack\n"
         "gil (bool):          whether to keep the Python global interpreter lock on\n"
         "cout (bool):         whether to redirect std::cout\n"

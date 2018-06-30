@@ -78,30 +78,30 @@ bool build_argpack(ArgPack &pack, Object pypack) {
 
 /******************************************************************************/
 
-bool build_callbacks(Vector<Callback> &v, Object calls) {
-    return build_vector(v, calls, [](Object &&o, bool) -> Callback {
+bool build_handlers(Vector<Handler> &v, Object calls) {
+    return build_vector(v, calls, [](Object &&o, bool) -> Handler {
         if (o.ptr == Py_None) return {};
-        return PyCallback{std::move(o)};
+        return PyHandler{std::move(o)};
     });
 }
 
 /******************************************************************************/
 
 Value run_test(double &time, TestCase const &test, bool no_gil,
-               Vector<Counter> &counts, Vector<Callback> callbacks, ArgPack pack) {
+               Vector<Counter> &counts, Vector<Handler> handlers, ArgPack pack) {
     no_gil = no_gil && !test.function.target<PyTestCase>();
     ReleaseGIL lk(no_gil);
-    if (no_gil) for (auto &c : callbacks)
-        if (c) c.target<PyCallback>()->unlock = &lk;
+    if (no_gil) for (auto &c : handlers)
+        if (c) c.target<PyHandler>()->unlock = &lk;
 
     for (auto &c : counts) c.store(0u);
 
-    Context ctx({test.name}, std::move(callbacks), &counts, &lk);
+    Context ctx({test.name}, std::move(handlers), &counts, &lk);
     Timer t(time);
 
     if (!test.function) throw std::runtime_error("Test case has empty std::function");
     try {return test.function(ctx, std::move(pack));}
-    catch (CallbackError const &e) {throw e;}
+    catch (HandlerError const &e) {throw e;}
     catch (...) {return {};} // Silence any other exceptions from inside the test
 }
 
@@ -119,8 +119,8 @@ Object run_test(Py_ssize_t i, Object calls, Object pypack, bool cout, bool cerr,
     auto const test = cpy::get_test(i);
     if (!test) return {};
 
-    Vector<cpy::Callback> callbacks;
-    if (!cpy::build_callbacks(callbacks, std::move(calls))) return {};
+    Vector<cpy::Handler> handlers;
+    if (!cpy::build_handlers(handlers, std::move(calls))) return {};
 
     cpy::ArgPack pack;
     if (+pypack == Py_None) {}
@@ -143,12 +143,12 @@ Object run_test(Py_ssize_t i, Object calls, Object pypack, bool cout, bool cerr,
 
     cpy::Value v;
     double test_time = 0;
-    Vector<cpy::Counter> counters(callbacks.size());
+    Vector<cpy::Counter> counters(handlers.size());
 
     {
         cpy::RedirectStream o(cpy::cout_sync, cout ? out.rdbuf() : nullptr);
         cpy::RedirectStream e(cpy::cerr_sync, cerr ? err.rdbuf() : nullptr);
-        v = cpy::run_test(test_time, *test, no_gil, counters, std::move(callbacks), std::move(pack));
+        v = cpy::run_test(test_time, *test, no_gil, counters, std::move(handlers), std::move(pack));
     }
 
     auto value = cpy::to_python(v);

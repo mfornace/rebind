@@ -7,6 +7,10 @@
     - [Unit test declaration](#unit-test-declaration)
     - [`Context` API](#context-api)
         - [Logging](#logging)
+        - [Test scopes](#test-scopes)
+            - [Sections](#sections)
+            - [Tags](#tags)
+            - [Suites](#suites)
         - [Assertions](#assertions)
         - [Leaving a test early](#leaving-a-test-early)
         - [Timings](#timings)
@@ -25,7 +29,7 @@
     - [Python threads](#python-threads)
     - [Writing your own script](#writing-your-own-script)
     - [An example](#an-example)
-- [`Callback` C++ API](#callback-c-api)
+- [`Handler` C++ API](#handler-c-api)
 - [`libcpy` Python API](#libcpy-python-api)
     - [Exposed Python functions via C API](#exposed-python-functions-via-c-api)
     - [Exposed Python C++ API](#exposed-python-c-api)
@@ -85,35 +89,71 @@ UNIT_TEST("my-test-name", "my test comment") = [](cpy::Context ct, ...) {...};
 
 ### `Context` API
 
-Most methods on `Context` are non-const. However, `Context` is fine to be copied or moved around, so it has approximately the same thread safety as `std::vector` and other STL containers. To run things in parallel within C++, just make multiple copies of your `Context` as needed. However, the registered callbacks must be thread safe when called concurrently for this to work. (The included Python callbacks are thread safe.)
+Most methods on `Context` are non-const. However, `Context` is fine to be copied or moved around, so it has approximately the same thread safety as `std::vector` and other STL containers. A default-constructed `Context` is valid but not very useful; you shouldn't construct it yourself unless you know what you're doing.
+
+To run things in parallel within C++, just make multiple copies of your `Context` as needed. However, the registered handlers must be thread safe when called concurrently for this to work. (The included Python handlers are thread safe.)
 
 #### Logging
+
+Logging works somewhat like in `Catch` or `doctest`. You append to a list of stored messages in `Context` every time you log something, and the stored messages are flushed every time an assertion or other event is called.
 
 ```c++
 // log some information before an assertion.
 ct.info("working...");
-// call ct.info(arg) for each arg in args. returns *this for convenience
-Context &same_as_ct = ct(args...);
-// log source file location
-ct(::cpy::file_line(__FILE__, __LINE__));
-// equivalent macro
-ct(LOCATION);
-// chain statements together if convenient
-ct(LOCATION).require(...);
 // log a single key pair of information before an assertion.
 ct.info("value", 1.5); // key should be char const * or std::string_view
+// call ct.info(arg) for each arg in args. returns *this for convenience
+Context &same_as_ct = ct("a message", "another message", ...);
+// log source file location
+ct(file_line(__FILE__, __LINE__));
+// equivalent macro
+ct(HERE);
+// log a key value pair (key must be implicitly convertible to std::string_view)
+ct(glue("variable", variable), ...);
+// equivalent macro that gets the compile-time string of the expression
+ct(GLUE(variable) ...);
+// chain statements together if convenient
+bool ok = ct(HERE).require(...);
+```
+
+It's generally a focus of `cpy` to make macros small and limited. Whereas a use of `CHECK(...)` might capture the file and line number implicitly in `Catch`, in `cpy` to get the same thing you need `ct(HERE).require(...)`. See [Macros](#macros) for the (short) list of available macros from `cpy`.
+
+The intent is generally to yield more transparent C++ code in this regard. However, you're free to define your own macros if you want.
+
+#### Test scopes
+
+`Context` represents the current scope as a sequence of strings. The default stringification of a scope is to join its parts together with `/`.
+
+##### Sections
+You can open a new section as follows:
+
+```c++
 // open a child scope (functor takes parameters (Context, args...))
 ct.section("section name", functor, args...);
 // if section returns a result you can get it
 auto functor_result = ct.section("section name", functor, args...);
+// an example using a lambda - no type erasure is done.
+double x = ct.section("section name", [](Context ct, auto y) {
+    ct.require(true); return y * 2.5;
+}, 2); // x = 5.0
 ```
+
+The functor you pass in is passed as its first argument a new `Context` with a scope which has been appended to. Clearly, you can make sections within sections as needed.
+
+##### Tags
+
+As for `Catch`-style tags, there aren't any in `cpy` outside of this scoping behavior. However, for example, you can run a subset of tests via a regex on the command line (e.g. `-r "test/numeric/.*"`). Or you can write your own Python code to do something more sophisticated.
+
+##### Suites
+
+`cpy` is really only set up for one suite to be exported from a built module. This suite has static storage (see `Suite.h` for implementation). If you just want subsets of tests, use the above scope functionality.
 
 #### Assertions
 
-In general, you can add on variadic arguments to the end of a test assertion function call. If a callback is registered for the type of `Event` that fires, those arguments will be logged. If not, the arguments will not be logged (which can save computation time).
+In general, you can add on variadic arguments to the end of a test assertion function call. If a handler is registered for the type of `Event` that fires, those arguments will be logged. If not, the arguments will not be logged (which can save computation time).
 
 ```c++
-// handle args if a callback registered for success/failure
+// handle args if a handler registered for success/failure
 bool ok = ct.require(true, args...);
 // check a binary comparison for 2 objects l and r
 bool ok = ct.equal(l, r, args...);      // l == r
@@ -143,10 +183,10 @@ ct.handle(Skipped, "optional message"); return;
 #### Timings
 
 ```c++
-// time a long running computation
+// time a long running computation with function arguments args...
 typename Clock::duration elapsed = ct.timed(function_returning_void, args...);
 auto function_result = ct.timed(function_returning_nonvoid, args...);
-// get the start time of the current unit test or section
+// access the start time of the current unit test or section
 typename Clock::time_point &start = ct.start_time;
 ```
 
@@ -167,12 +207,12 @@ For floating point types, `Approx` defaults to checking `|l - r| < eps * (scale 
 
 ### Macros
 
-The next macros are defined with `CPY_` prefix if `Macros.h` is included. If not already defined, prefix-less macros are also defined there.
+The following macros are defined with `CPY_` prefix if `Macros.h` is included. If not already defined, prefix-less macros are also defined there.
 ```c++
 #define GLUE(x) KeyPair(#x, x) // string of the expression and the expression value
-#define LOCATION file_line(__FILE__, __LINE__) // make a datum with the current file and line
-#define COMMENT(x) comment(x, LOCATION) // a comment with file and line information
-#define UNIT_TEST(name, [comment]) ... // complicated; see above for usage
+#define HERE file_line(__FILE__, __LINE__) // make a FileLine datum with the current file and line
+#define COMMENT(x) comment(x, HERE) // a comment with file and line information
+#define UNIT_TEST(name, [comment]) ... // a little complicated; see above for usage
 ```
 
 Look at `Macros.h` for details, it's pretty simple.
@@ -202,7 +242,7 @@ struct Value {
 
 This API is particularly suited for the common use case where you know the proper held type of `Value`. Mutable `as_*` functions are not given. Use the underlying member `var` if you need more advanced behavior.
 
-Beyond providing this API, the `Value` wrapper explicitly instantiates some `std::variant` templates (constructors, destructors) in the `libcpy` library since `std::variant` can yield a lot of code size. The definition of `Value`  relies on these typedefs:
+Beyond providing this API, the `Value` wrapper explicitly instantiates some `std::variant` templates (constructors, destructor) in the `libcpy` library since `std::variant` can yield a lot of code size. The definition of `Value`  relies on these typedefs:
 
 ```c++
 // Signed type, often 64 bits, used for signed and unsigned integers
@@ -221,7 +261,7 @@ using Variant = std::variant<
     Integer,
     Real,
     Complex,
-    std::string, // this has the highest sizeof() usually due to SSO
+    std::string, // this usually has the highest sizeof() due to SSO
     std::string_view,
     Vector<bool>, // sigh -- remember to handle this in generic functions
     Vector<Integer>,
@@ -241,7 +281,7 @@ Since `Variant` is hard-coded in `cpy`, it deserves some rationale:
 - `Complex` is included because it's easy to support and may be useful for quad-precision applications.
 - `std::string_view` is convenient for allocation-less static duration strings, which are common in `cpy`.
 - `std::vector` is adopted since it's common. It's hard to support custom allocators.
-- `Vector<T>` types are included for convenience and performance even though obviously `Vector<Value>` is more general.
+- `Vector<T>` types are included for convenience and performance even though `Vector<Value>` is more general.
 - `Vector<char>` is not included since `std::string` can be used instead.
 - It is being considered whether `std::any` should be included.
 - It is planned to allow user defined macros to change some of the defaults used.
@@ -250,7 +290,7 @@ Next, some related structs:
 ```c++
 using ArgPack = Vector<Value>; // A runtime length list of arguments
 struct KeyPair {std::string_view key; Value value;}; // A key value pair used in logging
-using Logs = Vector<KeyPair>; // Keeps tracked of logged information
+using Logs = Vector<KeyPair>; // Keeps tracked of logged information in a Context
 ```
 
 #### `ToValue` and conversion of arbitrary types to `Value`
@@ -272,7 +312,7 @@ Otherwise, this implementation is assumed to be usable:
 Value v = ToValue<std::decay_t<T>>()(static_cast<T &&>(t));
 ```
 
-`ToValue` be specialized as needed. Here are some examples:
+`ToValue` may be specialized as needed. Here are some examples:
 
 ```c++
 // The declaration present in cpy
@@ -355,7 +395,7 @@ A more complicated example is `ComparisonGlue`, which logs the left hand side, r
 
 The standard test takes any type of functor and converts it into (more or less) `std::function<Value(Context, ArgPack)>`.
 
-If a C++ exception occurs while running this type of test, the runner generally reports and catches it. However, callbacks may throw instances of `CallbackError` (subclass of `std::exception`), which are not caught.
+If a C++ exception occurs while running this type of test, the runner generally reports and catches it. However, handlers may throw instances of `HandlerError` (subclass of `std::exception`), which are not caught.
 
 This type of test may be called from anywhere in type-erased fashion:
 ```c++
@@ -387,7 +427,7 @@ Integer n = call("number-of-threads", (Context) ct).as_integer(); // equivalent
 
 #### Python function
 
-Or sometimes, you might want to make a type-erased callback to Python.
+Or sometimes, you might want to make a type-erased handler to Python.
 
 ```python
 lib.add_test('number-of-threads', lambda i: i * 2)
@@ -449,7 +489,7 @@ It is easy to write your own executable Python script to wrap the one provided. 
 #!/usr/bin/env python3
 from cpy import cli
 
-parser = cli.parser(lib='my_lib_name') # redefine the default library name
+parser = cli.parser(lib='my_lib_name') # redefine the default library name away from 'libcpy'
 parser.add_argument('--time', type=float, default=60, help='max test time in seconds')
 
 kwargs = vars(parser.parse_args())
@@ -457,7 +497,7 @@ kwargs = vars(parser.parse_args())
 lib = cli.import_library(kwargs['lib'])
 lib.add_value('max_time', kwargs.pop('time'))
 
-# pop any added arguments before passing to cli.main
+# remember to pop any added arguments before passing to cli.main
 cli.main(**kwargs)
 ```
 
@@ -479,19 +519,19 @@ UNIT_TEST("my-test") = [](Context ct) {
 ```
 You could define further extensions could run the test iterations in parallel. Functionality like `repeat_test` is intentionally left out of the `cpy` API so that users can define their own behavior.
 
-## `Callback` C++ API
-Events are kept track of via a simple `enum` index. It is relatively easy to extend to more event types.
+## `Handler` C++ API
+Events are kept track of via a simple integer `enum`. It is relatively easy to extend to more event types.
 
-A callback is registered to be called if a single fixed `Event` is signaled. It is implemented as a `std::function`. If no callback is registered for a given event, nothing is called.
+A handler is registered to be called if a single fixed `Event` is signaled. It is implemented as a `std::function`. If no handler is registered for a given event, nothing is called.
 
 ```c++
 enum Event : std::uint_fast32_t {Failure=0, Success=1, Exception=2, Timing=3, Skipped=4};
-using Callback = std::function<bool(Event, Scopes const &, Logs &&)>;
+using Handler = std::function<bool(Event, Scopes const &, Logs &&)>;
 ```
 
-Obviously, try not tp rely explicitly on the `enum` values of `Event` too much.
+Obviously, try not to rely explicitly on the actual `enum` values of `Event` too much.
 
-Since it's so commonly used, `cpy` tracks the number of times each `Event` is signaled by a test whether a handler is registered or not. `Context` has a non-owning reference to a vector of `std::atomic<std::size_t>` to keep these counts in a threadsafe manner. You can query the count for a given `Event`:
+Since it's so commonly used, `cpy` tracks the number of times each `Event` is signaled by a test, whether a handler is registered or not. `Context` has a non-owning reference to a vector of `std::atomic<std::size_t>` to keep these counts in a threadsafe manner. You can query the count for a given `Event`:
 
 ```c++
 std::ptrdiff_t n_fail = ct.count(Failure); // const, noexcept; gives -1 if the event type is out of range
@@ -499,7 +539,7 @@ std::ptrdiff_t n_fail = ct.count(Failure); // const, noexcept; gives -1 if the e
 
 ## `libcpy` Python API
 
-The `cpy` Python callbacks all use the official CPython API. Doing so is really not too hard beyond managing `PyObject *` lifetimes.
+The `cpy` Python handlers all use the official CPython API. Doing so is really not too hard beyond managing `PyObject *` lifetimes.
 
 ### Exposed Python functions via C API
 
@@ -513,7 +553,7 @@ n_tests()
 add_test(str, callable, [args])
 # Find the index of a test from its name
 find_test(str)
-# Run test given index, callbacks for each event, parameter pack, keep GIL on, capture cerr, capture cout
+# Run test given index, handlers for each event, parameter pack, keep GIL on, capture cerr, capture cout
 run_test(int, tuple, tuple, bool, bool, bool)
 # Return a tuple of the names of all registered tests
 test_names()
@@ -529,7 +569,7 @@ test_info(int)
 
 ### Exposed Python C++ API
 
-There isn't much reason to mess with this API unless you write your own callbacks, but here are some basics:
+There isn't much reason to mess with this API unless you write your own handlers, but here are some basics:
 
 ```c++
 // PyObject * wrapper implementing the reference counting in RAII style
@@ -539,11 +579,11 @@ Object to_python(T); // defined for T each type in Value, for instance
 // Convert a Python object into a Value, return if conversion successful
 bool from_python(Value &v, Object o);
 // A C++ exception which reflects an existing PyErr status
-struct PythonError : CallbackError;
+struct PythonError : HandlerError;
 // RAII managers for the Python global interpreter lock (GIL)
 struct ReleaseGIL; struct AcquireGIL
-// Callback adaptor for a Python object
-struct PyCallback;
+// Handler adaptor for a Python object
+struct PyHandler;
 // RAII managers for std::ostream capturing
 struct RedirectStream; struct StreamSync;
 // Test adaptor for a Python object
@@ -567,7 +607,7 @@ Fix up caching of python include directory.
 
 ### Debugger
 - `break_into_debugger()`
-- Goes in same callback? Not sure. Could be a large frame stack.
+- Goes in same handler? Not sure. Could be a large frame stack.
 - Debugger (hook into LLDB possible?)
 
 ## Done
@@ -576,8 +616,8 @@ Fix up caching of python include directory.
 At the very least put `start_time` into Context.
 Problem with giving the short circuit API is partially that it can be ignored in a test.
 It is fully possible to truncate the test once `start_time` is inside, or any other possible version.
-Possibly `start_time` should be given to callback, or `start_time` and `current_time`.
-Standardize what callback return value means, add skip event if needed.
+Possibly `start_time` should be given to handler, or `start_time` and `current_time`.
+Standardize what handler return value means, add skip event if needed.
 
 ### Variant
 - `complex<Real>` is probably not that useful, but it's included (in Python so whatever)
@@ -613,7 +653,7 @@ The only difference in cost is that
 - It is flushed on every event (maybe should last for multiple events? or is that confusing?)
 
 ### Exceptions
-`CallbackError` and its subclasses are not caught by test runner. All others are.
+`HandlerError` and its subclasses are not caught by test runner. All others are.
 
 ### Signals
 - possible to use `PyErr_SetInterrupt`

@@ -20,8 +20,8 @@ void register_test(TestCase c) {
 // Context & Context::operator=(Context const &) = default;
 // Context & Context::operator=(Context &&) noexcept = default;
 
-Context::Context(Scopes s, Vector<Callback> h, Vector<Counter> *c, void *m)
-    : scopes(std::move(s)), callbacks(std::move(h)), counters(c), metadata(m), start_time(Clock::now()) {}
+Context::Context(Scopes s, Vector<Handler> h, Vector<Counter> *c, void *m)
+    : scopes(std::move(s)), handlers(std::move(h)), counters(c), metadata(m), start_time(Clock::now()) {}
 
 /******************************************************************************/
 

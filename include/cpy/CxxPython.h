@@ -112,8 +112,8 @@ bool build_vector(V &v, Object iterable, F &&f) {
 
 /******************************************************************************/
 
-struct PythonError : CallbackError {
-    PythonError(char const *s) : CallbackError(s) {}
+struct PythonError : HandlerError {
+    PythonError(char const *s) : HandlerError(s) {}
 };
 
 PythonError python_error() noexcept;
@@ -137,7 +137,7 @@ struct AcquireGIL {
     ~AcquireGIL() {if (lock) lock->release();}
 };
 
-struct PyCallback {
+struct PyHandler {
     Object object;
     ReleaseGIL *unlock = nullptr;
 

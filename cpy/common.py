@@ -71,6 +71,10 @@ def import_library(lib, name=None):
     try:
         return importlib.import_module(lib)
     except ImportError as e:
+        if '__Py_' in str(e):
+            raise ImportError('You may be using Python 2 with a library built for Python 3')
+        if '__Py_True' in str(e):
+            raise ImportError('You may be using Python 3 with a library built for Python 2')
         if name is not None and sys.version_info >= (3, 4):
             spec = importlib.util.find_spec(lib)
             if spec is not None:
