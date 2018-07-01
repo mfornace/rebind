@@ -77,14 +77,14 @@ inline Object to_python(std::any const &s) noexcept {
 template <class V, class F=Identity>
 Object to_tuple(V const &v, F const &f={}) noexcept {
     Object out = {PyTuple_New(v.size()), false};
-    if (!out) return out;
+    if (!out) return {};
     for (Py_ssize_t i = 0u; i != v.size(); ++i) {
         Object item = to_python(f(v[i]));
-        if (!item) return item;
+        if (!item) return {};
         Py_INCREF(+item);
         if (PyTuple_SetItem(+out, i, +item)) {
             Py_DECREF(+item);
-            return Object();
+            return {};
         }
     }
     return out;

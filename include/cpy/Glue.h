@@ -111,9 +111,9 @@ ComparisonGlue<X const &, Y const &> comparison_glue(X const &x, Y const &y, cha
 template <class L, class R>
 struct AddKeyPairs<ComparisonGlue<L, R>> {
     void operator()(Logs &v, ComparisonGlue<L, R> const &t) const {
-        v.emplace_back(KeyPair{"lhs", make_value(t.lhs)});
-        v.emplace_back(KeyPair{"rhs", make_value(t.rhs)});
-        v.emplace_back(KeyPair{"op", Value(std::string_view(t.op))});
+        v.emplace_back(KeyPair{"__lhs", make_value(t.lhs)});
+        v.emplace_back(KeyPair{"__rhs", make_value(t.rhs)});
+        v.emplace_back(KeyPair{"__op", Value(std::string_view(t.op))});
     }
 };
 
