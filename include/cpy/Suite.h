@@ -1,12 +1,13 @@
 #pragma once
 
 #include "Test.h"
+#include <deque>
 
 namespace cpy {
 
 /******************************************************************************/
 
-using Suite = Vector<TestCase>;
+using Suite = std::deque<TestCase>;
 
 Suite & suite();
 
@@ -16,6 +17,11 @@ struct Timer {
     Timer(double &d) : start(Clock::now()), duration(d) {}
     ~Timer() {duration = std::chrono::duration<double>(Clock::now() - start).count();}
 };
+
+template <class... Ts>
+void add_test(Ts &&...ts) {
+    suite().emplace_back(static_cast<Ts &&>(ts)...);
+}
 
 /******************************************************************************/
 

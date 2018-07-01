@@ -251,20 +251,16 @@ Look at `Macros.h` for details, it's pretty simple.
 ```c++
 struct Value {
     Variant var; // a typedef of std::variant; see below
-    bool                     as_bool()      const &;
-    Integer                  as_integer()   const &;
-    Real                     as_real()      const &;
-    Complex                  as_complex()   const &;
-    std::string_view         as_view()      const &;
-    std::string              as_string()    const &; // also with signature && (rvalue)
-    Vector<bool>             as_bools()     const &; // also with signature && (rvalue)
-    Vector<Integer>          as_integers()  const &; // also with signature && (rvalue)
-    Vector<Real>             as_reals()     const &; // also with signature && (rvalue)
-    Vector<Complex>          as_complexes() const &; // also with signature && (rvalue)
-    Vector<std::string>      as_strings()   const &; // also with signature && (rvalue)
-    Vector<std::string_view> as_views()     const &; // also with signature && (rvalue)
-    Vector<Value>            as_values()    const &; // also with signature && (rvalue)
+    bool                     as_bool()    const &;
+    Integer                  as_integer() const &;
+    Real                     as_real()    const &;
+    Complex                  as_complex() const &;
+    std::string_view         as_view()    const &;
 
+    std::string              as_string()  const &; // also with signature && (rvalue)
+    Binary                   as_binary()  const &; // also with signature && (rvalue)
+    std::any                 as_any()     const &; // also with signature && (rvalue)
+    Vector<Value>            as_values()  const &; // also with signature && (rvalue)
 };
 ```
 
@@ -291,12 +287,8 @@ using Variant = std::variant<
     Complex,
     std::string, // this usually has the highest sizeof() due to SSO
     std::string_view,
-    Vector<bool>, // sigh -- remember to handle this in generic functions
-    Vector<Integer>,
-    Vector<Real>,
-    Vector<Complex>,
-    Vector<std::string>,
-    Vector<std::string_view>,
+    Binary,
+    std::any,
     Vector<Value> // C++17 ensures this is OK with forward declared Value
 >;
 ```
@@ -309,8 +301,6 @@ Since `Variant` is hard-coded in `cpy`, it deserves some rationale:
 - `Complex` is included because it's easy to support and may be useful for quad-precision applications.
 - `std::string_view` is convenient for allocation-less static duration strings, which are common in `cpy`.
 - `std::vector` is adopted since it's common. It's hard to support custom allocators.
-- `Vector<T>` types are included for convenience and performance even though `Vector<Value>` is more general.
-- `Vector<char>` is not included since `std::string` can be used instead.
 - It is being considered whether `std::any` should be included.
 - It is planned to allow user defined macros to change some of the defaults used.
 

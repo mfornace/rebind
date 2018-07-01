@@ -15,8 +15,8 @@ namespace cpy {
 struct Value;
 
 struct Binary {
-    std::shared_ptr<void const> data;
-    std::size_t size;
+    std::shared_ptr<void> data;
+    std::size_t size = 0;
 };
 
 using Integer = std::ptrdiff_t;
@@ -88,24 +88,13 @@ struct Value {
     std::string_view as_view()    const &;
     std::string      as_string()  const &;
     std::any         as_any()     const &;
+    Vector<Value>    as_vector()  const &;
+    Binary           as_binary()  const &;
 
-    Vector<bool>             as_bools()     const &;
-    Vector<Integer>          as_integers()  const &;
-    Vector<Real>             as_reals()     const &;
-    Vector<Complex>          as_complexes() const &;
-    Vector<std::string>      as_strings()   const &;
-    Vector<std::string_view> as_views()     const &;
-    Vector<Value>            as_values()    const &;
-
-    std::any                 as_any()       &&;
-    std::string              as_string()    &&;
-    Vector<bool>             as_bools()     &&;
-    Vector<Integer>          as_integers()  &&;
-    Vector<Real>             as_reals()     &&;
-    Vector<Complex>          as_complexes() &&;
-    Vector<std::string>      as_strings()   &&;
-    Vector<std::string_view> as_views()     &&;
-    Vector<Value>            as_values()    &&;
+    std::any         as_any()    &&;
+    std::string      as_string() &&;
+    Vector<Value>    as_vector() &&;
+    Binary           as_binary() &&;
 
 };
 

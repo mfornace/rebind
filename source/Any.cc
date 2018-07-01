@@ -42,3 +42,11 @@ static PyTypeObject cpy_AnyType = {
 /******************************************************************************/
 
 }
+
+namespace cpy {
+
+PyObject *to_python(std::any const &a) {
+    return cpy_AnyObject{, a};
+}
+
+}

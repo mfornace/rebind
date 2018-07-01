@@ -36,7 +36,7 @@ inline Object to_python(char const *s) noexcept {
 }
 
 template <class T, std::enable_if_t<(std::is_integral_v<T>), int> = 0>
-inline Object to_python(T t) noexcept {
+Object to_python(T t) noexcept {
     return {PyLong_FromLongLong(static_cast<long long>(t)), false};
 }
 
@@ -64,22 +64,18 @@ inline Object to_python(std::complex<double> const &s) noexcept {
     return {PyComplex_FromDoubles(s.real(), s.imag()), false};
 }
 
-inline Object to_python(Value const &s) noexcept {
-    return std::visit([](auto const &x) {return to_python(x);}, s.var);
+inline Object to_python(Binary const &s) noexcept {
+    return {Py_None, false};
+}
+
+inline Object to_python(std::any const &s) noexcept {
+    return {Py_None, false};
 }
 
 /******************************************************************************/
 
-Object to_python(KeyPair const &p) noexcept {
-    Object key = to_python(p.key);
-    if (!key) return key;
-    Object value = to_python(p.value);
-    if (!value) return value;
-    return {PyTuple_Pack(2u, +key, +value), false};
-}
-
-template <class T, class F=Identity>
-Object to_python(Vector<T> const &v, F const &f={}) noexcept {
+template <class V, class F=Identity>
+Object to_tuple(V const &v, F const &f={}) noexcept {
     Object out = {PyTuple_New(v.size()), false};
     if (!out) return out;
     for (Py_ssize_t i = 0u; i != v.size(); ++i) {
@@ -92,6 +88,22 @@ Object to_python(Vector<T> const &v, F const &f={}) noexcept {
         }
     }
     return out;
+}
+
+template <class T>
+Object to_python(Vector<T> const &v) {return to_tuple(v);}
+
+template <class T, std::enable_if_t<std::is_same_v<T, Value>, int> = 0>
+Object to_python(T const &s) noexcept {
+    return std::visit([](auto const &x) {return to_python(x);}, s.var);
+}
+
+Object to_python(KeyPair const &p) noexcept {
+    Object key = to_python(p.key);
+    if (!key) return key;
+    Object value = to_python(p.value);
+    if (!value) return value;
+    return {PyTuple_Pack(2u, +key, +value), false};
 }
 
 /******************************************************************************/

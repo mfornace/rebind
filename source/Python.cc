@@ -155,7 +155,7 @@ Object run_test(Py_ssize_t i, Object calls, Object pypack, bool cout, bool cerr,
     if (!value) return {};
     auto timed = cpy::to_python(test_time);
     if (!timed) return {};
-    auto counts = cpy::to_python(counters, [](auto const &c) {return c.load(std::memory_order_relaxed);});
+    auto counts = cpy::to_tuple(counters, [](auto const &c) {return c.load(std::memory_order_relaxed);});
     if (!counts) return {};
     auto pyout = cpy::to_python(out.str());
     if (!pyout) return {};
@@ -229,7 +229,7 @@ PyObject *cpy_add_test(PyObject *, PyObject *args) {
                 return pack;
             });
         }
-        cpy::suite().emplace_back(cpy::TestCase{s, {}, cpy::PyTestCase(fun, true), std::move(packs)});
+        cpy::add_test(cpy::TestCase{s, {}, cpy::PyTestCase(fun, true), std::move(packs)});
         return cpy::Object(Py_None, true);
     });
 }
@@ -242,7 +242,7 @@ PyObject *cpy_add_value(PyObject *, PyObject *args) {
     return cpy::return_object([=] {
         cpy::Value val;
         if (!cpy::from_python(val, cpy::Object(obj, true))) return cpy::Object();
-        cpy::suite().emplace_back(cpy::TestCase{s, {}, cpy::ValueAdaptor{std::move(val)}});
+        cpy::add_test(cpy::TestCase{s, {}, cpy::ValueAdaptor{std::move(val)}});
         return cpy::Object(Py_None, true);
     });
 }
@@ -260,7 +260,7 @@ PyObject *cpy_compile_info(PyObject *, PyObject *) {
 
 PyObject *cpy_test_names(PyObject *, PyObject *) {
     return cpy::return_object([] {
-        return cpy::to_python(cpy::suite(),
+        return cpy::to_tuple(cpy::suite(),
             [](auto const &c) -> decltype(c.name) {return c.name;}
         );
     });

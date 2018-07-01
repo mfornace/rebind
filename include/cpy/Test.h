@@ -136,12 +136,12 @@ struct TestCase {
     Vector<ArgPack> parameters;
 };
 
-void register_test(TestCase t);
+void add_test(TestCase t);
 
 template <class F>
-void register_test(std::string name, TestCaseComment c, F const &f, Vector<ArgPack> v={}) {
+void add_test(std::string name, TestCaseComment c, F const &f, Vector<ArgPack> v={}) {
     if (TestSignature<F>::size::value <= 2 && v.empty()) v.emplace_back();
-    register_test(TestCase{std::move(name), std::move(c), TestAdaptor<F>{f}, std::move(v)});
+    add_test(TestCase{std::move(name), std::move(c), TestAdaptor<F>{f}, std::move(v)});
 }
 
 /******************************************************************************/
@@ -154,13 +154,13 @@ struct UnitTest {
 
 template <class F>
 UnitTest<F> unit_test(std::string name, F const &f, Vector<ArgPack> v={}) {
-    register_test(name, TestCaseComment(), f, std::move(v));
+    add_test(name, TestCaseComment(), f, std::move(v));
     return {std::move(name), f};
 }
 
 template <class F>
 UnitTest<F> unit_test(std::string name, TestCaseComment comment, F const &f, Vector<ArgPack> v={}) {
-    register_test(name, std::move(comment), f, std::move(v));
+    add_test(name, std::move(comment), f, std::move(v));
     return {std::move(name), f};
 }
 
@@ -169,7 +169,7 @@ UnitTest<F> unit_test(std::string name, TestCaseComment comment, F const &f, Vec
 /// Same as unit_test() but just returns a meaningless bool instead of a functor object
 template <class F>
 bool anonymous_test(std::string name, TestCaseComment comment, F &&function, Vector<ArgPack> v={}) {
-    register_test(std::move(name), std::move(comment), static_cast<F &&>(function), std::move(v));
+    add_test(std::move(name), std::move(comment), static_cast<F &&>(function), std::move(v));
     return bool();
 }
 
