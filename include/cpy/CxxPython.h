@@ -100,16 +100,16 @@ Object to_python(T const &s) noexcept {
 
 Object to_python(KeyPair const &p) noexcept {
     Object key = to_python(p.key);
-    if (!key) return key;
+    if (!key) return {};
     Object value = to_python(p.value);
-    if (!value) return value;
+    if (!value) return {};
     return {PyTuple_Pack(2u, +key, +value), false};
 }
 
 /******************************************************************************/
 
 template <class V, class F>
-bool build_vector(V &v, Object iterable, F &&f) {
+bool vector_from_iterable(V &v, Object iterable, F &&f) {
     Object iter = {PyObject_GetIter(+iterable), false};
     if (!iter) return false;
 

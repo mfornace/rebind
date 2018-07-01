@@ -15,7 +15,7 @@ namespace cpy {
 struct Value;
 
 struct Binary {
-    std::shared_ptr<void> data;
+    std::shared_ptr<void const> data;
     std::size_t size = 0;
 };
 
