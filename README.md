@@ -56,6 +56,7 @@ The primary hurdles to using `cpy` are that it requires C++17 (most importantly 
 - [`libcpy` Python API](#libcpy-python-api)
     - [Exposed Python functions via C API](#exposed-python-functions-via-c-api)
     - [Exposed Python C++ API](#exposed-python-c-api)
+- [`cpy` Python API](#cpy-python-api)
 - [To do](#to-do)
     - [Package name](#package-name)
     - [CMake](#cmake)
@@ -268,7 +269,7 @@ struct Value {
 };
 ```
 
-This API is particularly suited for the common use case where you know the proper held type of `Value`. Mutable `as_*` functions are not given. Use the underlying member `var` if you need more advanced behavior.
+This API is particularly suited for the common use case where you know the proper held type of `Value`. Mutating `as_*` functions are not given. Use the underlying member `var` if you need more advanced behavior.
 
 Beyond providing this API, the `Value` wrapper explicitly instantiates some `std::variant` templates (constructors, destructor) in the `libcpy` library since `std::variant` can yield a lot of code size. The definition of `Value`  relies on these typedefs:
 
@@ -301,7 +302,6 @@ using Variant = std::variant<
 >;
 ```
 Since `Variant` is hard-coded in `cpy`, it deserves some rationale:
-// Complex type, uncommon but easy and may be useful for quad-precision applications
 - `std::monostate` is a useful default for null/optional concepts.
 - `bool` is included since it is so commonly handled as a special case.
 - `char` is not included since there is not much perceived gain over `Integer`.
@@ -332,7 +332,7 @@ This functions does a compile-time lookup of `ToValue<std::decay_t<T>`. If no su
 ```c++
 std::ostringstream os;
 os << static_cast<T &&>(t);
-Value v = os.str()
+Value v = os.str();
 ```
 
 Otherwise, this implementation is assumed to be usable:
@@ -567,7 +567,7 @@ std::ptrdiff_t n_fail = ct.count(Failure); // const, noexcept; gives -1 if the e
 
 ## `libcpy` Python API
 
-The `cpy` Python handlers all use the official CPython API. Doing so is really not too hard beyond managing `PyObject *` lifetimes.
+`libcpy` refers to the Python extension module being compiled. The `libcpy` Python handlers all use the official CPython API. Doing so is really not too hard beyond managing `PyObject *` lifetimes.
 
 ### Exposed Python functions via C API
 
@@ -619,6 +619,10 @@ struct PyTestCase : Object;
 ```
 
 Look in the code for more detail.
+
+## `cpy` Python API
+
+Write this.
 
 ## To do
 

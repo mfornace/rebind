@@ -23,7 +23,7 @@ auto test1 = unit_test("test-1", COMMENT("This is a test"), [](cpy::Context ct, 
 
     ct.timed(1, []{return 1;});
 
-    ct(LOCATION).near(5, 5.0);
+    ct(HERE).near(5, 5.0);
 
     auto xxx = 5, yyy = 6;
 

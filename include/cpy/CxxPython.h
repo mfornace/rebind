@@ -36,7 +36,7 @@ inline Object to_python(char const *s) noexcept {
 }
 
 template <class T, std::enable_if_t<(std::is_integral_v<T>), int> = 0>
-inline Object to_python(T t) noexcept {
+Object to_python(T t) noexcept {
     return {PyLong_FromLongLong(static_cast<long long>(t)), false};
 }
 
@@ -64,40 +64,41 @@ inline Object to_python(std::complex<double> const &s) noexcept {
     return {PyComplex_FromDoubles(s.real(), s.imag()), false};
 }
 
-inline Object to_python(Value const &s) noexcept {
-    return std::visit([](auto const &x) {return to_python(x);}, s.var);
-}
-
 /******************************************************************************/
-
-Object to_python(KeyPair const &p) noexcept {
-    Object key = to_python(p.key);
-    if (!key) return key;
-    Object value = to_python(p.value);
-    if (!value) return value;
-    return {PyTuple_Pack(2u, +key, +value), false};
-}
 
 template <class T, class F=Identity>
 Object to_python(Vector<T> const &v, F const &f={}) noexcept {
     Object out = {PyTuple_New(v.size()), false};
-    if (!out) return out;
+    if (!out) return {};
     for (Py_ssize_t i = 0u; i != v.size(); ++i) {
         Object item = to_python(f(v[i]));
-        if (!item) return item;
+        if (!item) return {};
         Py_INCREF(+item);
         if (PyTuple_SetItem(+out, i, +item)) {
             Py_DECREF(+item);
-            return Object();
+            return {};
         }
     }
     return out;
 }
 
+template <class T, std::enable_if_t<(std::is_same_v<T, Value>), int> = 0>
+Object to_python(T const &s) noexcept {
+    return std::visit([](auto const &x) {return to_python(x);}, s.var);
+}
+
+inline Object to_python(KeyPair const &p) noexcept {
+    Object key = to_python(p.key);
+    if (!key) return {};
+    Object value = to_python(p.value);
+    if (!value) return {};
+    return {PyTuple_Pack(2u, +key, +value), false};
+}
+
 /******************************************************************************/
 
 template <class V, class F>
-bool build_vector(V &v, Object iterable, F &&f) {
+bool vector_from_iterable(V &v, Object iterable, F &&f) {
     Object iter = {PyObject_GetIter(+iterable), false};
     if (!iter) return false;
 

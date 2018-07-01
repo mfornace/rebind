@@ -7,14 +7,20 @@ except ImportError:
 
 try:
     FileError = FileNotFoundError
-except NameError:
+except NameError: # Python 2
     FileError = IOError
 
 ################################################################################
 
+# Change this if you want a different scope delimiter for display purposes
 DELIMITER = '/'
 
+# Change this global if you can't use Unicode or you don't like it
+TRANSLATE = {'~~': u'\u2248\u2248'}
+
 class Event(enum.IntEnum):
+    '''Enum mirroring the libcpy C++ one'''
+
     failure = 0
     success = 1
     exception = 2
@@ -51,6 +57,7 @@ class Report:
 ################################################################################
 
 def pop_value(key, keys, values, default=None):
+    '''Pop value from values at the index where key is in keys'''
     try:
         idx = keys.index(key)
         keys.pop(idx)
@@ -95,6 +102,7 @@ def open_file(stack, name, mode):
 ################################################################################
 
 def load_parameters(params):
+    '''load parameters from None, eval-able str, JSON file name, or dict-like'''
     if not params:
         return {}
     elif not isinstance(params, str):
@@ -179,6 +187,14 @@ def multireport(reports):
 ################################################################################
 
 def run_test(lib, index, test_masks, args=(), gil=False, cout=False, cerr=False):
+    '''
+    Call lib.run_test() with curated arguments:
+        index: index of test
+        test_masks: iterable of pairs of (reporter, event mask)
+        args: arguments for test
+        gil: keep GIL on
+        cout, cerr: capture std::cout, std::cerr
+    '''
     lists = [[] for _ in Event]
 
     with ExitStack() as stack:
@@ -192,6 +208,7 @@ def run_test(lib, index, test_masks, args=(), gil=False, cout=False, cerr=False)
 
 def readable_header(keys, values, kind, scopes):
     '''Return string with basic event information'''
+    kind = Event.name(kind) if isinstance(kind, int) else kind
     scopes = repr(DELIMITER.join(scopes))
     line, path = (pop_value(k, keys, values) for k in ('line', 'file'))
     if path is None:
@@ -201,20 +218,16 @@ def readable_header(keys, values, kind, scopes):
 
 ################################################################################
 
-OPS = {
-    '~~': u'\u2248\u2248'
-}
-
 def readable_logs(keys, values, indent):
     '''Return readable string of key value pairs'''
     s = io.StringIO()
     while 'comment' in keys: # comments
-        foreach(s.write, indent, 'comment: ', repr(pop_value('comment', keys, values)), '\n')
+        foreach(s.write, indent, 'comment: ', repr(pop_value('__comment', keys, values)), '\n')
 
-    comp = ('lhs', 'op', 'rhs') # comparisons
-    while all(c in keys for c in comp):
+    comp = ('__lhs', '__op', '__rhs') # comparisons
+    while all(map(keys.__contains__, comp)):
         lhs, op, rhs = (pop_value(k, keys, values) for k in comp)
-        foreach(s.write, indent, 'required: {} {} {}\n'.format(lhs, OPS.get(op, op), rhs))
+        foreach(s.write, indent, 'required: {} {} {}\n'.format(lhs, TRANSLATE.get(op, op), rhs))
 
     for k, v in zip(keys, values): # all other logged keys and values
         foreach(s.write, indent, (k + ': ' if k else 'info: '), str(v), '\n')
@@ -224,6 +237,5 @@ def readable_logs(keys, values, indent):
 
 def readable_message(kind, scopes, logs, indent='    '):
     '''Return readable string for a C++ cpy callback'''
-    kind = Event.name(kind) if isinstance(kind, int) else kind
     keys, values = map(list, zip(*logs)) if logs else ((), ())
     return readable_header(keys, values, kind, scopes) + readable_logs(keys, values, indent)

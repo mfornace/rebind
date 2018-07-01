@@ -38,18 +38,16 @@ bool from_python(Value &v, Object o) {
     } else if (PyBool_Check(+o)) {
         v = (+o == Py_True) ? true : false;
     } else if (PyLong_Check(+o)) {
-        long long i = PyLong_AsLongLong(+o);
-        v = static_cast<Integer>(i);
+        v = static_cast<Integer>(PyLong_AsLongLong(+o));
     } else if (PyFloat_Check(+o)) {
-        double d = PyFloat_AsDouble(+o);
-        v = d;
+        v = static_cast<Real>(PyFloat_AsDouble(+o));
     } else if (PyComplex_Check(+o)) {
         v = std::complex<double>{PyComplex_RealAsDouble(+o), PyComplex_ImagAsDouble(+o)};
     } else if (PyBytes_Check(+o)) {
         char *c;
         Py_ssize_t size;
         PyBytes_AsStringAndSize(+o, &c, &size);
-        v = std::string_view(c, size);
+        v = std::string(c, size);
     } else if (PyUnicode_Check(+o)) { // no use of wstring for now.
         Py_ssize_t size;
 #if PY_MAJOR_VERSION > 2
@@ -58,8 +56,12 @@ bool from_python(Value &v, Object o) {
         char *c;
         if (PyString_AsStringAndSize(+o, &c, &size)) return false;
 #endif
-        if (c) v = std::string_view(static_cast<char const *>(c), size);
+        if (c) v = std::string(static_cast<char const *>(c), size);
         else return false;
+    } else if (PyObject_CheckBuffer(+o)) {
+// hmm
+    } else if (PyMemoryView_Check(+o)) {
+// hmm
     } else {
         PyErr_SetString(PyExc_TypeError, "Invalid type for conversion to C++");
     }
@@ -69,7 +71,7 @@ bool from_python(Value &v, Object o) {
 /******************************************************************************/
 
 bool build_argpack(ArgPack &pack, Object pypack) {
-    return cpy::build_vector(pack, pypack, [](cpy::Object &&o, bool &ok) {
+    return cpy::vector_from_iterable(pack, pypack, [](cpy::Object &&o, bool &ok) {
         cpy::Value v;
         ok = ok && cpy::from_python(v, std::move(o));
         return v;
@@ -79,7 +81,7 @@ bool build_argpack(ArgPack &pack, Object pypack) {
 /******************************************************************************/
 
 bool build_handlers(Vector<Handler> &v, Object calls) {
-    return build_vector(v, calls, [](Object &&o, bool) -> Handler {
+    return vector_from_iterable(v, calls, [](Object &&o, bool) -> Handler {
         if (o.ptr == Py_None) return {};
         return PyHandler{std::move(o)};
     });
@@ -223,7 +225,7 @@ PyObject *cpy_add_test(PyObject *, PyObject *args) {
     return cpy::return_object([=] {
         cpy::Vector<cpy::ArgPack> packs;
         if (pypacks) {
-            cpy::build_vector(packs, {pypacks, true}, [](cpy::Object &&o, bool &ok) {
+            cpy::vector_from_iterable(packs, {pypacks, true}, [](cpy::Object &&o, bool &ok) {
                 cpy::ArgPack pack;
                 ok &= cpy::build_argpack(pack, std::move(o));
                 return pack;

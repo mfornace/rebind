@@ -65,6 +65,7 @@ def run_index(lib, masks, out, err, gil, cout, cerr, p):
 ################################################################################
 
 def run_suite(lib, keypairs, masks, gil, cout, cerr, exe=map):
+    '''Run a subset of tests'''
     from io import StringIO
     from functools import partial
 
@@ -83,6 +84,7 @@ def main(run=run_suite, lib='libcpy', list=False, failure=False, success=False, 
     exception=False, timing=False, quiet=False, capture=False, gil=False, exclude=False,
     no_color=False, regex=None, out='stdout', out_mode='w', xml=None, xml_mode='a+b', suite='cpy',
     teamcity=None, json=None, json_indent=None, jobs=0, tests=None, params=None, skip=False):
+    '''Main non-argparse function for running a subset of cpy tests with given options'''
 
     lib = import_library(lib)
     indices = test_indices(lib, exclude, tests, regex)

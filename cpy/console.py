@@ -14,6 +14,8 @@ except ImportError:
 ################################################################################
 
 class Colorer:
+    '''Text styler for console output. Modify or subclass for custom behavior'''
+
     event_colors = ['red', 'green', 'red', 'yellow', 'grey']
 
     def __init__(self, colors, brief, indent='    '):
@@ -27,12 +29,14 @@ class Colorer:
         self.total_duration = self.colored('Total duration', 'yellow')
 
     def events(self):
+        '''Return list of string of representation for each Event'''
         out = list(map(Event.name, Event))
         for i, c in enumerate(self.event_colors):
             out[i] = self.colored(out[i], c)
         return out
 
     def test_name(self, index):
+        '''Format a test index message'''
         return self.colored('Test %d ' % index, 'blue', attrs=['bold'])
 
 ################################################################################
