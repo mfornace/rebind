@@ -66,20 +66,29 @@ struct Context {
         else return -1;
     }
 
-    void info(std::string s) {logs.emplace_back(KeyPair{{}, std::move(s)});}
-
-    void info(char const *s) {logs.emplace_back(KeyPair{{}, std::string_view(s)});}
-
     template <class T>
-    void info(T &&t) {AddKeyPairs<std::decay_t<T>>()(logs, static_cast<T &&>(t));}
+    Context & info(T &&t) {
+        AddKeyPairs<std::decay_t<T>>()(logs, static_cast<T &&>(t));
+        return *this;
+    }
 
     template <class K, class V>
-    void info(K &&k, V &&v) {
+    Context & info(K &&k, V &&v) {
         logs.emplace_back(KeyPair{static_cast<K &&>(k), make_value(static_cast<V &&>(v))});
+        return *this;
     }
 
     template <class ...Ts>
-    Context & operator()(Ts &&...ts) {(info(static_cast<Ts &&>(ts)), ...); return *this;}
+    Context & operator()(Ts &&...ts) {
+        logs.reserve(logs.size() + sizeof...(Ts));
+        (info(static_cast<Ts &&>(ts)), ...);
+        return *this;
+    }
+
+    Context & operator()(std::initializer_list<KeyPair> const &v) {
+        logs.insert(logs.end(), v.begin(), v.end());
+        return *this;
+    }
 
     /**************************************************************************/
 

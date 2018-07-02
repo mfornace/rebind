@@ -40,6 +40,7 @@ The primary hurdles to using `cpy` are that it requires C++17 (most importantly 
         - [Approximate comparison](#approximate-comparison)
     - [Macros](#macros)
     - [`Value`](#value)
+            - [Thoughts](#thoughts)
         - [`ToValue` and conversion of arbitrary types to `Value`](#tovalue-and-conversion-of-arbitrary-types-to-value)
         - [`FromValue` and conversion from `Value`](#fromvalue-and-conversion-from-value)
         - [`Glue` and `AddKeyPairs`](#glue-and-addkeypairs)
@@ -61,6 +62,7 @@ The primary hurdles to using `cpy` are that it requires C++17 (most importantly 
     - [Package name](#package-name)
     - [CMake](#cmake)
     - [Variant](#variant)
+    - [Info](#info)
     - [Debugger](#debugger)
 - [Done](#done)
     - [Breaking out of tests early](#breaking-out-of-tests-early)
@@ -128,7 +130,7 @@ Logging works somewhat like in `Catch` or `doctest`. You append to a list of sto
 
 ```c++
 // log some information before an assertion.
-ct.info("working...");
+Context &same_as_ct = ct.info("working...");
 // log a single key pair of information before an assertion.
 ct.info("value", 1.5); // key should be char const * or std::string_view
 // call ct.info(arg) for each arg in args. returns *this for convenience
@@ -285,7 +287,7 @@ using Variant = std::variant<
     bool,
     Integer,
     Real,
-    Complex,
+    // Complex,
     std::string, // this usually has the highest sizeof() due to SSO
     std::string_view,
     Binary,
@@ -298,11 +300,23 @@ Since `Variant` is hard-coded in `cpy`, it deserves some rationale:
 - `bool` is included since it is so commonly handled as a special case.
 - `char` is not included since there is not much perceived gain over `Integer`.
 - `std::size_t` and other unsigned types are not included for the same reason.
-- `Complex` is included because it's easy to support and may be useful for quad-precision applications. It is perhaps uncommon to use though. Maybe just use `std::aligned_union`?
+- `Complex` is included because it's easy to support and may be useful for quad-precision applications. Would have to be cast there anyway. It is probably uncommon.
 - `std::string_view` is convenient for allocation-less static duration strings, which are common in `cpy`.
 - `std::vector` is adopted since it's common. It's hard to support custom allocators.
-- `std::any` is included, mostly only for calling C++ tests from C++ (i.e. not intended for Python).
+- `std::aligned_union`?
+- `Binary` gives const view of contiguous data
+- `std::any` is included, mostly only for calling C++ tests from C++ and user extensions.
 - It is planned to allow user defined macros to change some of the defaults used.
+
+##### Thoughts
+
+I think `Complex` is silly. No one uses this and the intent is just to give a POD type anyway besides this. Casting `float128` to this is still janky and not type safe.
+
+`std::aligned_union` actually seems useful for conversion of POD types, both from Python and to skip the `std::any` indirection. I would call it `POD` or something. On the other hand it's not type safe either. And `std::any` has some stack space anyway. But it would eliminate some virtual calls probably. I think this is not so useful compared to `std::any`.
+
+I would like `Binary` as `const` data with type-erased destructor I think. Then no unnecessary copies. Should we store a `std::type_index`? Should it be type-specific...I don't think so. Should it in the `std::any`? No, unless everything is.
+
+Should everything be in a `std::any`?
 
 Next, some related structs:
 ```c++
@@ -624,8 +638,24 @@ Fix up caching of python include directory.
 
 ### Variant
 - Should rethink if `variant<..., any>` is better than just `any`.
-- Also would like vector types in the future (`vector<Value>` or `vector<T>...`?)
-- time or timedelta? function?
+- time or timedelta? function? ... no
+
+### Info
+Finalize `info` API. Just made it return self. Accept variadic arguments? Initializer list?
+```c++
+ct({"value", 4});
+```
+That would actually be fine instead of `info()`. Can we make it variadic? No but you can make it take initializer list.
+
+I guess:
+```
+ct.info(1); // single key pair with blank key
+ct.info(1, 2); // single key pair
+ct.info({1, 2}); // single key pair (allow?)
+ct(1, 2); // two key pairs with blank keys
+ct(KeyPair(1, 2), KeyPair(3, 4)); // two key pairs
+ct({1, 2}, {3, 4}); // two key pairs
+```
 
 ### Debugger
 - `break_into_debugger()`

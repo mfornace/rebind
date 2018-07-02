@@ -15,7 +15,7 @@ namespace cpy {
 struct Value;
 
 struct Binary {
-    std::shared_ptr<void const> data;
+    std::shared_ptr<char const> data;
     std::size_t size = 0;
 };
 
@@ -33,7 +33,7 @@ using Variant = std::variant<
     bool,
     Integer,
     Real,
-    Complex,
+    // Complex,
     std::string_view,
     std::string,
     Binary,
@@ -41,19 +41,19 @@ using Variant = std::variant<
     Vector<Value>
 >;
 
-static_assert( 1 == sizeof(bool));
-static_assert( 1 == sizeof(std::monostate));
-static_assert( 8 == sizeof(Integer));
-static_assert( 8 == sizeof(Real));
-static_assert(16 == sizeof(std::complex<double>));
-static_assert(16 == sizeof(std::string_view));
-static_assert(24 == sizeof(std::string));
-static_assert(24 == sizeof(Vector<bool>));
-static_assert(24 == sizeof(Vector<Value>));
-static_assert(32 == sizeof(std::any));
-static_assert(16 == sizeof(std::shared_ptr<void const>));
-static_assert(24 == sizeof(Binary));
-static_assert(40 == sizeof(Variant));
+// static_assert( 1 == sizeof(bool));
+// static_assert( 1 == sizeof(std::monostate));
+// static_assert( 8 == sizeof(Integer));
+// static_assert( 8 == sizeof(Real));
+// static_assert(16 == sizeof(std::complex<double>));
+// static_assert(16 == sizeof(std::string_view));
+// static_assert(24 == sizeof(std::string));
+// static_assert(24 == sizeof(Vector<bool>));
+// static_assert(24 == sizeof(Vector<Value>));
+// static_assert(32 == sizeof(std::any));
+// static_assert(16 == sizeof(std::shared_ptr<void const>));
+// static_assert(24 == sizeof(Binary));
+// static_assert(40 == sizeof(Variant));
 
 struct Value {
     Variant var;
