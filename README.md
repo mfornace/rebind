@@ -298,10 +298,10 @@ Since `Variant` is hard-coded in `cpy`, it deserves some rationale:
 - `bool` is included since it is so commonly handled as a special case.
 - `char` is not included since there is not much perceived gain over `Integer`.
 - `std::size_t` and other unsigned types are not included for the same reason.
-- `Complex` is included because it's easy to support and may be useful for quad-precision applications.
+- `Complex` is included because it's easy to support and may be useful for quad-precision applications. It is perhaps uncommon to use though. Maybe just use `std::aligned_union`?
 - `std::string_view` is convenient for allocation-less static duration strings, which are common in `cpy`.
 - `std::vector` is adopted since it's common. It's hard to support custom allocators.
-- It is being considered whether `std::any` should be included.
+- `std::any` is included, mostly only for calling C++ tests from C++ (i.e. not intended for Python).
 - It is planned to allow user defined macros to change some of the defaults used.
 
 Next, some related structs:
