@@ -85,6 +85,7 @@ UNIT_TEST("test-5") = [](auto ct) {
     test_var({"hmm", 5.5});
     test_var({"hmm", 5.5}, {"hmm", 5.5});
     test_var2({{"hmm", 5.5}, {"hmm", 5.5}});
+    ct.all_equal(std::string(), std::string());
 };
 
 /******************************************************************************/

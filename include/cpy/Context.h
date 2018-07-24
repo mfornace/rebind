@@ -41,9 +41,9 @@ struct Context {
     Logs logs;
     /// Start time of the current test case or section
     typename Clock::time_point start_time;
-    /// Possibly null handle to a vector of atomic counters for each Event
+    /// Possibly null handle to a vector of atomic counters for each Event. Test runner has responsibility for lifetime
     std::vector<Counter> *counters = nullptr;
-    /// Metadata for use by handlers. Test runner has responsibility for allocation/deallocation
+    /// Metadata for use by handlers. Test runner has responsibility for lifetime
     void *metadata = nullptr;
 
     Context() = default;
@@ -128,8 +128,15 @@ struct Context {
     /******************************************************************************/
 
     template <class X, class Y, class ...Ts>
-    bool equal(X const &x, Y const &y, Ts &&...ts) {
+    auto equal(X const &x, Y const &y, Ts &&...ts) {
         return require(unglue(x) == unglue(y), comparison_glue(x, y, "=="), static_cast<Ts &&>(ts)...);
+    }
+
+    template <class X, class Y, class ...Ts>
+    auto all_equal(X const &x, Y const &y, Ts &&...ts) {
+        auto const &x2 = unglue(x);
+        auto const &y2 = unglue(y);
+        return require(std::equal(begin(x2), end(x2), begin(y2), end(y2)), comparison_glue(x, y, "=="), static_cast<Ts &&>(ts)...);
     }
 
     template <class X, class Y, class ...Ts>

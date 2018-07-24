@@ -1,5 +1,3 @@
-#include <cpy/PythonBindings.h>
-
 #include <cpy/Test.h>
 #include <cpy/Macros.h>
 #include <cpy/PythonBindings.h>
@@ -10,6 +8,10 @@
 #ifndef CPY_MODULE
 #   define CPY_MODULE libcpy
 #endif
+
+namespace cpy {
+    bool define_any(PyObject *);
+}
 
 extern "C" {
 
@@ -48,18 +50,16 @@ static PyMethodDef cpy_methods[] = {
 
     PyObject* CPY_CAT(PyInit_, CPY_MODULE)(void) {
         Py_Initialize();
-        // if (PyType_Ready(&cpy_AnyType) < 0) return nullptr;
         auto m = PyModule_Create(&cpy_definition);
-        // Py_INCREF(&cpy_AnyType);
-        // PyModule_AddObject(m, "Any", reinterpret_cast<PyObject *>(&cpy_AnyType));
+        if (!cpy::define_any(m)) return nullptr;
         return m;
     }
 #else
     void CPY_CAT(init, CPY_MODULE)(void) {
-        // if (PyType_Ready(&cpy_AnyType) < 0) return;
+        if (PyType_Ready(&cpy_AnyType) < 0) return;
         auto m = Py_InitModule(CPY_STRING(CPY_MODULE), cpy_methods);
-        // Py_INCREF(&cpy_AnyType);
-        // PyModule_AddObject(m, "Any", reinterpret_cast<PyObject *>(&cpy_AnyType));
+        Py_INCREF(&cpy_AnyType);
+        PyModule_AddObject(m, "Any", reinterpret_cast<PyObject *>(&cpy_AnyType));
     }
 #endif
 

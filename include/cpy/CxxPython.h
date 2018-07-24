@@ -98,7 +98,7 @@ Object to_python(T const &s) noexcept {
     return std::visit([](auto const &x) {return to_python(x);}, s.var);
 }
 
-Object to_python(KeyPair const &p) noexcept {
+inline Object to_python(KeyPair const &p) noexcept {
     Object key = to_python(p.key);
     if (!key) return {};
     Object value = to_python(p.value);
@@ -223,6 +223,28 @@ struct PyTestCase : Object {
         return out;
     }
 };
+
+/******************************************************************************/
+
+template <class F>
+PyObject * return_object(F &&f) noexcept {
+    try {
+        Object o = static_cast<F &&>(f)();
+        Py_XINCREF(+o);
+        return +o;
+    } catch (PythonError const &) {
+        return nullptr;
+    } catch (std::bad_alloc const &e) {
+        PyErr_Format(PyExc_MemoryError, "C++ out of memory with message %s", e.what());
+    } catch (std::exception const &e) {
+        if (!PyErr_Occurred())
+            PyErr_Format(PyExc_RuntimeError, "C++ exception with message %s", e.what());
+    } catch (...) {
+        if (!PyErr_Occurred())
+            PyErr_SetString(PyExc_RuntimeError, "Unknown C++ exception");
+    }
+    return nullptr;
+}
 
 /******************************************************************************/
 

@@ -168,28 +168,6 @@ Object run_test(Py_ssize_t i, Object calls, Object pypack, bool cout, bool cerr,
 
 /******************************************************************************/
 
-template <class F>
-PyObject * return_object(F &&f) noexcept {
-    try {
-        Object o = static_cast<F &&>(f)();
-        Py_XINCREF(+o);
-        return +o;
-    } catch (PythonError const &) {
-        return nullptr;
-    } catch (std::bad_alloc const &e) {
-        PyErr_Format(PyExc_MemoryError, "C++ out of memory with message %s", e.what());
-    } catch (std::exception const &e) {
-        if (!PyErr_Occurred())
-            PyErr_Format(PyExc_RuntimeError, "C++ exception with message %s", e.what());
-    } catch (...) {
-        if (!PyErr_Occurred())
-            PyErr_SetString(PyExc_RuntimeError, "Unknown C++ exception");
-    }
-    return nullptr;
-}
-
-/******************************************************************************/
-
 }
 
 extern "C" {

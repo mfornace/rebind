@@ -33,12 +33,12 @@ using Variant = std::variant<
     bool,
     Integer,
     Real,
-    // Complex,
     std::string_view,
     std::string,
-    Binary,
-    std::any,
-    Vector<Value>
+    // Complex,   // ?
+    Binary,       // ?
+    std::any,     // ?
+    Vector<Value> // ?
 >;
 
 // static_assert( 1 == sizeof(bool));

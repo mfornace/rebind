@@ -46,6 +46,7 @@ target_link_libraries(libcpy PUBLIC cpy_interface)
 set_property(GLOBAL PROPERTY cpy_module_files
     ${CMAKE_CURRENT_SOURCE_DIR}/source/Module.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/source/Python.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/Any.cc
 )
 
 function(cpy_module module_name)

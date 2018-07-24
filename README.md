@@ -300,17 +300,32 @@ Since `Variant` is hard-coded in `cpy`, it deserves some rationale:
 - `bool` is included since it is so commonly handled as a special case.
 - `char` is not included since there is not much perceived gain over `Integer`.
 - `std::size_t` and other unsigned types are not included for the same reason.
-- `Complex` is included because it's easy to support and may be useful for quad-precision applications. Would have to be cast there anyway. It is probably uncommon.
 - `std::string_view` is convenient for allocation-less static duration strings, which are common in `cpy`.
 - `std::vector` is adopted since it's common. It's hard to support custom allocators.
-- `std::aligned_union`?
-- `Binary` gives const view of contiguous data
+
+Next,
+- `Complex` is excluded because although easy to support, it's very uncommonly used.
+- `std::aligned_union`? I don't believe there is much point in this if `std::any` is included. Probably not worth it anyway
+- `Binary` gives const view of contiguous data. Could be useful for passing images, arrays, etc. in as parameters.
 - `std::any` is included, mostly only for calling C++ tests from C++ and user extensions.
 - It is planned to allow user defined macros to change some of the defaults used.
 
+Consider `std::monostate, bool, Integer, Real, std::string, std::string_view` as concept `Scalar`.
+
+Purposes of `Value`:
+- Efficient logging in `Context` without unnecessary conversions (applies to `Scalar` only I think). I can't think of much outside `Scalar` that this is true for. In other cases, C++ conversion to `string` is the fastest option (e.g. compared to conversion to `Vector<Value>`, conversion to `tuple`, conversion to `str`). This is true, it's not a huge performance issue but I like its simplicity.
+- Parametrization of C++ tests from Python. `Scalar` is good here. At this point need at least `Vector<Value>` to hold common inputs. Possibly `Binary` or the like is useful too.
+- Return values of C++ tests to Python. `Any` might be OK here. I'm not sure conversion to Python is useful for unit testing...
+- Parametrization of C++ tests from C++. In this case it seems that `std::any` would be the best option for holding these values. Can probably check types when constructing the `std::any`. Otherwise there's a lot of extra machinery for converting a complicated class to and from `Value`. `Value` is not really type safe once it's being used for non-trivial conversions.
+- Return values of C++ tests to C++. `std::any` makes sense here too I think. If it's hard to figure out return type, test has to be visible.
+
+It seems that there are two use cases, one with `std::any` within C++, one with `Scalar` and maybe a couple other limited types for Python. This would indicate that `Value` should only be used for the test interaction and `std::any` should be used for most C++ to C++ operations. If that's true, the next question would be if `std::any` is useful within `Value`. I don't know if it's very common to pass test results to other tests in Python. Probably not. Would just do it directly in C++. Yeah... seems like `std::any` is not very useful to put in the `Value`.
+
+It does seem OK to put vector and binary types in the `Value`. Even though they're not useful for logging, they're useful for parametrization and return values of tests. However, wouldn't we want `ToValue` to translate a vector to a string for logging but to a vector for output? That might indicate that the logger can accept only `Scalar`...? Or we could keep it as one type and 1) enforce always going to a vector, which is slow but not wrong, or 2) put a bool in the signature for `ToValue` to indicate whether it's just for logging. If we split the type, can't log the return value necessarily (unless it's one of `Scalar`).
+
 ##### Thoughts
 
-I think `Complex` is silly. No one uses this and the intent is just to give a POD type anyway besides this. Casting `float128` to this is still janky and not type safe.
+I think `Complex` is dumb. No one uses this and the intent is just to give a POD type anyway besides this. Casting `float128` to this is still janky and not type safe.
 
 `std::aligned_union` actually seems useful for conversion of POD types, both from Python and to skip the `std::any` indirection. I would call it `POD` or something. On the other hand it's not type safe either. And `std::any` has some stack space anyway. But it would eliminate some virtual calls probably. I think this is not so useful compared to `std::any`.
 

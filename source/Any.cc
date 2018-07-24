@@ -1,3 +1,4 @@
+#include <cpy/CxxPython.h>
 #include <any>
 
 extern "C" {
@@ -23,10 +24,30 @@ PyObject *cpy_any_new(PyTypeObject *subtype, PyObject *, PyObject *) {
     return o;
 }
 
+PyObject * cpy_any_test(PyObject *self, PyObject *args, PyObject *kws) {
+    PyObject *value;
+    char const *keywords[] = {"value", nullptr};
+    if (!PyArg_ParseTupleAndKeywords(args, kws, "O", const_cast<char **>(keywords), &value)) return nullptr;
+    return cpy::return_object([=] {
+        reinterpret_cast<cpy_AnyObject *>(self)->value.reset();
+        return cpy::Object(value, true);
+    });
+}
+
+
 void cpy_any_delete(PyObject *o) {
     reinterpret_cast<cpy_AnyObject *>(o)->~cpy_AnyObject();
     Py_TYPE(o)->tp_free(o);
 }
+
+static PyMethodDef cpy_Any_methods = {
+    .ml_name = "test",
+    .ml_meth = (PyCFunction) cpy_any_test,
+    .ml_flags = METH_VARARGS | METH_KEYWORDS,
+    .ml_doc = "a test method"
+};
+
+static PyMethodDef cpy_methods[] = {cpy_Any_methods, nullptr};
 
 static PyTypeObject cpy_AnyType = {
     PyVarObject_HEAD_INIT(NULL, 0)
@@ -36,7 +57,8 @@ static PyTypeObject cpy_AnyType = {
     .tp_flags = Py_TPFLAGS_DEFAULT,
     .tp_doc = "std::any object",
     .tp_init = cpy_any_init,
-    .tp_new = cpy_any_new
+    .tp_new = cpy_any_new,
+    .tp_methods = cpy_methods
 };
 
 /******************************************************************************/
@@ -45,8 +67,15 @@ static PyTypeObject cpy_AnyType = {
 
 namespace cpy {
 
-PyObject *to_python(std::any const &a) {
-    return cpy_AnyObject{, a};
+bool define_any(PyObject *m) {
+    if (PyType_Ready(&cpy_AnyType) < 0) return false;
+    Py_INCREF(&cpy_AnyType);
+    PyModule_AddObject(m, "Any", reinterpret_cast<PyObject *>(&cpy_AnyType));
+    return true;
 }
+
+// PyObject *to_python(std::any const &a) {
+//     return cpy_AnyObject{, a};
+// }
 
 }
