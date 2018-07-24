@@ -17,7 +17,7 @@ struct Object {
     Object(Object const &o) : ptr(o.ptr) {Py_XINCREF(ptr);}
     Object(Object &&o) noexcept : ptr(std::exchange(o.ptr, nullptr)) {}
     explicit operator bool() const {return ptr;}
-    PyObject * operator+() const {return ptr;}
+    PyObject *operator+() const {return ptr;}
     ~Object() {Py_XDECREF(ptr);}
 };
 

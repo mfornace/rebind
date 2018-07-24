@@ -1,3 +1,95 @@
+## List of good pybind11 features
+
+- possibly pypy
+- static fields, methods (maybe)
+- dynamic attributes
+
+## Class export
+
+Hmm. There are some good features in pybind11.
+
+We want to make it easy to extend Python definitions. Example for `Message<T>`
+
+```c++
+
+template <class T>
+void define(Module &mod, adl<Message<T>> x) {
+    auto cls = mod.open_class(x, "Message");
+    cls("size", {"self"}, [](Message<T> const &m) {
+        return m.size();
+    }, "returns the size of the message");
+}
+
+```
+
+or maybe:
+
+
+```c++
+
+template <class T>
+void define(adl<Message<T>> x) {
+    auto cls = open_class("Message");
+    cls("size", {"self"}, [](Message<T> const &m) {
+        return m.size();
+    }, "returns the size of the message");
+    return cls;
+}
+
+```
+
+Basically `define` would define the converter implementation.
+
+This would then be retrievable at compile time so that the overloading could be done.
+
+This would allow more of a document model. Define the behavior first, then
+pass to the python binder.
+
+The obvious drawback of the document model is that it's not very amenable to messing
+with PyObjects and such directly, which might be required at some point (?).
+
+And at some point the api is pretty bound to python, i.e. defining things like `__call__`. We could wrap some of these concepts (`::call()`). But there are also other things
+like pickling, thread locks, ...
+
+
+
+At least for nupack this defines a python class and possible C++ classes Message.
+
+I think any class can derive from an `any`. Then maybe a `any with members`.
+
+We probably have to store the functor, though not entirely sure where.
+
+We have to decide how much of an intermediate layer there is.
+
+for `std::list` it's more or less
+
+
+```c++
+template <class T>
+void define(adl<std::list<T>> x) {
+    to_tuple(x);
+    from_tuple(x);
+}
+
+```
+
+we can also give a struct hook but the above is probably easier for most uses.
+
+we can think about move, const, qualifiers on the type (`x.move()`).
+
+with the member functions we mostly want to erase type ASAP.
+
+recursive definition? mostly just for classes. I...think it's probably good but not
+completely sure. may be easier to do this stuff with struct, not sure.
+
+so a lot of this looks like the current code. we can type erase more, and probably simplify too.
+
+a lot of the functions look like in `cpy` with the argpack.
+
+one thing I worry about is losing too much type information...
+
+also how to build. have to think about relationship with `cpy`.
+
 ## Summary
 
 `cpy` is a new unit testing library for C++ built on Python bindings. It combines
@@ -344,7 +436,7 @@ struct ToValue {
 // User example: specialize a Value making operation for a specific type
 template <>
 struct ToValue<my_type> {
-    Value operator()(my_type const &t) const {return "my_type"}
+    Value operator()(my_type const &t) const {return "my_type";}
 };
 // User example: specialize a Value making operation for a trait
 template <class T>
