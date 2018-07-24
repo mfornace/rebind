@@ -62,8 +62,30 @@ UNIT_TEST("test-4") = [](auto ct) {
     ct.equal(5, 5);
 };
 
+void each(double) {}
+
+void each(cpy::KeyPair) {}
+
+template <class T=cpy::KeyPair>
+void test_var(T t) {each(t);}
+
+template <class T=cpy::KeyPair, class U=cpy::KeyPair>
+void test_var(T t, U u) {each(t); each(u);}
+
+
+template <class ...Ts>
+void test_var2(Ts ...ts) {(each(ts), ...);}
+
+template <class T=std::initializer_list<cpy::KeyPair>>
+void test_var2(T t) {for (auto i: t) each(std::move(i));}
+
 UNIT_TEST("test-5") = [](auto ct) {
     ct.equal(5, 5);
+    test_var(6, 5.5);
+    test_var({"hmm", 5.5});
+    test_var({"hmm", 5.5}, {"hmm", 5.5});
+    test_var2({{"hmm", 5.5}, {"hmm", 5.5}});
+    ct.all_equal(std::string(), std::string());
 };
 
 /******************************************************************************/

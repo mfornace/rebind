@@ -41,9 +41,9 @@ struct Context {
     Logs logs;
     /// Start time of the current test case or section
     typename Clock::time_point start_time;
-    /// Possibly null handle to a vector of atomic counters for each Event
+    /// Possibly null handle to a vector of atomic counters for each Event. Test runner has responsibility for lifetime
     std::vector<Counter> *counters = nullptr;
-    /// Metadata for use by handlers. Test runner has responsibility for allocation/deallocation
+    /// Metadata for use by handlers. Test runner has responsibility for lifetime
     void *metadata = nullptr;
 
     Context() = default;
@@ -66,20 +66,29 @@ struct Context {
         else return -1;
     }
 
-    void info(std::string s) {logs.emplace_back(KeyPair{{}, std::move(s)});}
-
-    void info(char const *s) {logs.emplace_back(KeyPair{{}, std::string_view(s)});}
-
     template <class T>
-    void info(T &&t) {AddKeyPairs<std::decay_t<T>>()(logs, static_cast<T &&>(t));}
+    Context & info(T &&t) {
+        AddKeyPairs<std::decay_t<T>>()(logs, static_cast<T &&>(t));
+        return *this;
+    }
 
     template <class K, class V>
-    void info(K &&k, V &&v) {
+    Context & info(K &&k, V &&v) {
         logs.emplace_back(KeyPair{static_cast<K &&>(k), make_value(static_cast<V &&>(v))});
+        return *this;
     }
 
     template <class ...Ts>
-    Context & operator()(Ts &&...ts) {(info(static_cast<Ts &&>(ts)), ...); return *this;}
+    Context & operator()(Ts &&...ts) {
+        logs.reserve(logs.size() + sizeof...(Ts));
+        (info(static_cast<Ts &&>(ts)), ...);
+        return *this;
+    }
+
+    Context & operator()(std::initializer_list<KeyPair> const &v) {
+        logs.insert(logs.end(), v.begin(), v.end());
+        return *this;
+    }
 
     /**************************************************************************/
 
@@ -119,8 +128,15 @@ struct Context {
     /******************************************************************************/
 
     template <class X, class Y, class ...Ts>
-    bool equal(X const &x, Y const &y, Ts &&...ts) {
+    auto equal(X const &x, Y const &y, Ts &&...ts) {
         return require(unglue(x) == unglue(y), comparison_glue(x, y, "=="), static_cast<Ts &&>(ts)...);
+    }
+
+    template <class X, class Y, class ...Ts>
+    auto all_equal(X const &x, Y const &y, Ts &&...ts) {
+        auto const &x2 = unglue(x);
+        auto const &y2 = unglue(y);
+        return require(std::equal(begin(x2), end(x2), begin(y2), end(y2)), comparison_glue(x, y, "=="), static_cast<Ts &&>(ts)...);
     }
 
     template <class X, class Y, class ...Ts>

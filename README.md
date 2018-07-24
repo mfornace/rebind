@@ -132,6 +132,7 @@ The primary hurdles to using `cpy` are that it requires C++17 (most importantly 
         - [Approximate comparison](#approximate-comparison)
     - [Macros](#macros)
     - [`Value`](#value)
+            - [Thoughts](#thoughts)
         - [`ToValue` and conversion of arbitrary types to `Value`](#tovalue-and-conversion-of-arbitrary-types-to-value)
         - [`FromValue` and conversion from `Value`](#fromvalue-and-conversion-from-value)
         - [`Glue` and `AddKeyPairs`](#glue-and-addkeypairs)
@@ -153,6 +154,7 @@ The primary hurdles to using `cpy` are that it requires C++17 (most importantly 
     - [Package name](#package-name)
     - [CMake](#cmake)
     - [Variant](#variant)
+    - [Info](#info)
     - [Debugger](#debugger)
 - [Done](#done)
     - [Breaking out of tests early](#breaking-out-of-tests-early)
@@ -220,7 +222,7 @@ Logging works somewhat like in `Catch` or `doctest`. You append to a list of sto
 
 ```c++
 // log some information before an assertion.
-ct.info("working...");
+Context &same_as_ct = ct.info("working...");
 // log a single key pair of information before an assertion.
 ct.info("value", 1.5); // key should be char const * or std::string_view
 // call ct.info(arg) for each arg in args. returns *this for convenience
@@ -377,7 +379,7 @@ using Variant = std::variant<
     bool,
     Integer,
     Real,
-    Complex,
+    // Complex,
     std::string, // this usually has the highest sizeof() due to SSO
     std::string_view,
     Binary,
@@ -390,11 +392,38 @@ Since `Variant` is hard-coded in `cpy`, it deserves some rationale:
 - `bool` is included since it is so commonly handled as a special case.
 - `char` is not included since there is not much perceived gain over `Integer`.
 - `std::size_t` and other unsigned types are not included for the same reason.
-- `Complex` is included because it's easy to support and may be useful for quad-precision applications.
 - `std::string_view` is convenient for allocation-less static duration strings, which are common in `cpy`.
 - `std::vector` is adopted since it's common. It's hard to support custom allocators.
-- It is being considered whether `std::any` should be included.
+
+Next,
+- `Complex` is excluded because although easy to support, it's very uncommonly used.
+- `std::aligned_union`? I don't believe there is much point in this if `std::any` is included. Probably not worth it anyway
+- `Binary` gives const view of contiguous data. Could be useful for passing images, arrays, etc. in as parameters.
+- `std::any` is included, mostly only for calling C++ tests from C++ and user extensions.
 - It is planned to allow user defined macros to change some of the defaults used.
+
+Consider `std::monostate, bool, Integer, Real, std::string, std::string_view` as concept `Scalar`.
+
+Purposes of `Value`:
+- Efficient logging in `Context` without unnecessary conversions (applies to `Scalar` only I think). I can't think of much outside `Scalar` that this is true for. In other cases, C++ conversion to `string` is the fastest option (e.g. compared to conversion to `Vector<Value>`, conversion to `tuple`, conversion to `str`). This is true, it's not a huge performance issue but I like its simplicity.
+- Parametrization of C++ tests from Python. `Scalar` is good here. At this point need at least `Vector<Value>` to hold common inputs. Possibly `Binary` or the like is useful too.
+- Return values of C++ tests to Python. `Any` might be OK here. I'm not sure conversion to Python is useful for unit testing...
+- Parametrization of C++ tests from C++. In this case it seems that `std::any` would be the best option for holding these values. Can probably check types when constructing the `std::any`. Otherwise there's a lot of extra machinery for converting a complicated class to and from `Value`. `Value` is not really type safe once it's being used for non-trivial conversions.
+- Return values of C++ tests to C++. `std::any` makes sense here too I think. If it's hard to figure out return type, test has to be visible.
+
+It seems that there are two use cases, one with `std::any` within C++, one with `Scalar` and maybe a couple other limited types for Python. This would indicate that `Value` should only be used for the test interaction and `std::any` should be used for most C++ to C++ operations. If that's true, the next question would be if `std::any` is useful within `Value`. I don't know if it's very common to pass test results to other tests in Python. Probably not. Would just do it directly in C++. Yeah... seems like `std::any` is not very useful to put in the `Value`.
+
+It does seem OK to put vector and binary types in the `Value`. Even though they're not useful for logging, they're useful for parametrization and return values of tests. However, wouldn't we want `ToValue` to translate a vector to a string for logging but to a vector for output? That might indicate that the logger can accept only `Scalar`...? Or we could keep it as one type and 1) enforce always going to a vector, which is slow but not wrong, or 2) put a bool in the signature for `ToValue` to indicate whether it's just for logging. If we split the type, can't log the return value necessarily (unless it's one of `Scalar`).
+
+##### Thoughts
+
+I think `Complex` is dumb. No one uses this and the intent is just to give a POD type anyway besides this. Casting `float128` to this is still janky and not type safe.
+
+`std::aligned_union` actually seems useful for conversion of POD types, both from Python and to skip the `std::any` indirection. I would call it `POD` or something. On the other hand it's not type safe either. And `std::any` has some stack space anyway. But it would eliminate some virtual calls probably. I think this is not so useful compared to `std::any`.
+
+I would like `Binary` as `const` data with type-erased destructor I think. Then no unnecessary copies. Should we store a `std::type_index`? Should it be type-specific...I don't think so. Should it in the `std::any`? No, unless everything is.
+
+Should everything be in a `std::any`?
 
 Next, some related structs:
 ```c++
@@ -716,8 +745,24 @@ Fix up caching of python include directory.
 
 ### Variant
 - Should rethink if `variant<..., any>` is better than just `any`.
-- Also would like vector types in the future (`vector<Value>` or `vector<T>...`?)
-- time or timedelta? function?
+- time or timedelta? function? ... no
+
+### Info
+Finalize `info` API. Just made it return self. Accept variadic arguments? Initializer list?
+```c++
+ct({"value", 4});
+```
+That would actually be fine instead of `info()`. Can we make it variadic? No but you can make it take initializer list.
+
+I guess:
+```
+ct.info(1); // single key pair with blank key
+ct.info(1, 2); // single key pair
+ct.info({1, 2}); // single key pair (allow?)
+ct(1, 2); // two key pairs with blank keys
+ct(KeyPair(1, 2), KeyPair(3, 4)); // two key pairs
+ct({1, 2}, {3, 4}); // two key pairs
+```
 
 ### Debugger
 - `break_into_debugger()`
