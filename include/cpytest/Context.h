@@ -1,9 +1,9 @@
 #pragma once
 #include "Approx.h"
-#include "Value.h"
-#include "Signature.h"
 #include "Glue.h"
 
+#include <cpy/Signature.h>
+#include <cpy/Value.h>
 #include <functional>
 #include <atomic>
 #include <chrono>
@@ -15,12 +15,6 @@ namespace cpy {
 enum Event : std::uint_fast32_t {Failure=0, Success=1, Exception=2, Timing=3, Skipped=4};
 
 /******************************************************************************/
-
-struct HandlerError : std::exception {
-    std::string_view message;
-    explicit HandlerError(std::string_view const &s) noexcept : message(s) {}
-    char const * what() const noexcept override {return message.empty() ? "cpy::HandlerError" : message.data();}
-};
 
 using Scopes = Vector<std::string>;
 
@@ -194,7 +188,7 @@ struct Context {
         try {
             std::invoke(static_cast<F &&>(f), static_cast<Args &&>(args)...);
             return require(true);
-        } catch (HandlerError const &e) {
+        } catch (ClientError const &e) {
             throw e;
         } catch (...) {return require(false);}
     }

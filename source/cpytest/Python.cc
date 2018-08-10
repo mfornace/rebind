@@ -1,5 +1,6 @@
-#include <cpy/CxxPython.h>
-#include <cpy/Suite.h>
+#include <cpy/PythonAPI.h>
+#include <cpytest/Suite.h>
+#include <cpytest/Binding.h>
 #include <chrono>
 #include <iostream>
 #include <vector>
@@ -32,54 +33,6 @@ PythonError python_error() noexcept {
 
 /******************************************************************************/
 
-bool from_python(Value &v, Object o) {
-    if (+o == Py_None) {
-        v = std::monostate();
-    } else if (PyBool_Check(+o)) {
-        v = (+o == Py_True) ? true : false;
-    } else if (PyLong_Check(+o)) {
-        v = static_cast<Integer>(PyLong_AsLongLong(+o));
-    } else if (PyFloat_Check(+o)) {
-        v = static_cast<Real>(PyFloat_AsDouble(+o));
-    } else if (PyComplex_Check(+o)) {
-        v = std::complex<double>{PyComplex_RealAsDouble(+o), PyComplex_ImagAsDouble(+o)};
-    } else if (PyBytes_Check(+o)) {
-        char *c;
-        Py_ssize_t size;
-        PyBytes_AsStringAndSize(+o, &c, &size);
-        v = std::string(c, size);
-    } else if (PyUnicode_Check(+o)) { // no use of wstring for now.
-        Py_ssize_t size;
-#if PY_MAJOR_VERSION > 2
-        char const *c = PyUnicode_AsUTF8AndSize(+o, &size);
-#else
-        char *c;
-        if (PyString_AsStringAndSize(+o, &c, &size)) return false;
-#endif
-        if (c) v = std::string(static_cast<char const *>(c), size);
-        else return false;
-    } else if (PyObject_CheckBuffer(+o)) {
-// hmm
-    } else if (PyMemoryView_Check(+o)) {
-// hmm
-    } else {
-        PyErr_SetString(PyExc_TypeError, "Invalid type for conversion to C++");
-    }
-    return !PyErr_Occurred();
-};
-
-/******************************************************************************/
-
-bool build_argpack(ArgPack &pack, Object pypack) {
-    return cpy::vector_from_iterable(pack, pypack, [](cpy::Object &&o, bool &ok) {
-        cpy::Value v;
-        ok = ok && cpy::from_python(v, std::move(o));
-        return v;
-    });
-}
-
-/******************************************************************************/
-
 bool build_handlers(Vector<Handler> &v, Object calls) {
     return vector_from_iterable(v, calls, [](Object &&o, bool) -> Handler {
         if (o.ptr == Py_None) return {};
@@ -103,7 +56,7 @@ Value run_test(double &time, TestCase const &test, bool no_gil,
 
     if (!test.function) throw std::runtime_error("Test case has empty std::function");
     try {return test.function(ctx, std::move(pack));}
-    catch (HandlerError const &e) {throw e;}
+    catch (ClientError const &e) {throw e;}
     catch (...) {return {};} // Silence any other exceptions from inside the test
 }
 

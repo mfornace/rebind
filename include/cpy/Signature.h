@@ -1,3 +1,8 @@
+/**
+ * @brief C++ functor signature deduction
+ * @file Signature.h
+ */
+
 #pragma once
 #include <utility>
 

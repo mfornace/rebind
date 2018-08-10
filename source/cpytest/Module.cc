@@ -1,6 +1,6 @@
-#include <cpy/Test.h>
-#include <cpy/Macros.h>
-#include <cpy/PythonBindings.h>
+#include <cpytest/Test.h>
+#include <cpytest/Macros.h>
+#include <cpytest/CFunctions.h>
 #include <chrono>
 #include <iostream>
 #include <vector>
@@ -9,12 +9,34 @@
 #   define CPY_MODULE libcpy
 #endif
 
-namespace cpy {
+namespace cpy
+{
     bool define_any(PyObject *);
 }
+struct Data {
+    int number=5;
+};
+static Data test_int{5};
+static Data * test_int_address = &test_int;
 
 extern "C" {
 
+PyObject *cpy_test_data_function(PyObject *self, PyObject *args) {
+    Py_ssize_t i;
+    if (!PyArg_ParseTuple(args, "n", &i)) return nullptr;
+    auto n = (std::size_t)(self);
+    return Py_BuildValue("n", static_cast<Py_ssize_t>(n));
+}
+
+static PyMethodDef cpy_test_data_meth= {
+    "function_name",
+    cpy_test_data_function,
+    METH_VARARGS,
+    "the doc"
+};
+
+static auto cpy_test_data = PyCFunction_New(&cpy_test_data_meth, nullptr);
+auto x = (getattrfunc) nullptr;
 /******************************************************************************/
 
 static PyMethodDef cpy_methods[] = {
@@ -52,6 +74,7 @@ static PyMethodDef cpy_methods[] = {
         Py_Initialize();
         auto m = PyModule_Create(&cpy_definition);
         if (!cpy::define_any(m)) return nullptr;
+        PyModule_AddObject(m, "test_data", cpy_test_data);
         return m;
     }
 #else

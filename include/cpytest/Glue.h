@@ -1,5 +1,5 @@
 #pragma once
-#include "Value.h"
+#include <cpy/Value.h>
 
 namespace cpy {
 

@@ -1,5 +1,5 @@
-#include <cpy/Test.h>
-#include <cpy/Macros.h>
+#include <cpytest/Test.h>
+#include <cpytest/Macros.h>
 #include <iostream>
 #include <any>
 
@@ -9,14 +9,13 @@ struct goo {
 
 /******************************************************************************/
 
-auto test1 = unit_test("test-1", COMMENT("This is a test"), [](cpy::Context ct, bool b) {
+auto test1 = unit_test("test-1", COMMENT("This is a test"), [](cpy::Context ct) {
     ct("a message");
     int n = ct.section("new-section", [](cpy::Context ct) {
         ct.equal(3, 4);
         return 5;
     });
     ct("hmm");
-    ct(b);
 
     std::cerr << "Hey I am std::cerr 1" << std::endl;
     std::cout << "Hey I am std::cout 1" << std::endl;
@@ -30,7 +29,7 @@ auto test1 = unit_test("test-1", COMMENT("This is a test"), [](cpy::Context ct, 
     ct.equal(xxx, yyy, goo(), COMMENT("x should equal y"));
 
     if (!ct.equal(1, 2)) return;
-}, {{false}});
+});
 
 UNIT_TEST("test-2", "This is a test 2") = [](cpy::Context ct) {
     std::cerr << "Hey I am std::cerr 2" << std::endl;

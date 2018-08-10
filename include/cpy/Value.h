@@ -1,3 +1,8 @@
+/**
+ * @brief C++ type-erased Value object
+ * @file Value.h
+ */
+
 #pragma once
 #include <variant>
 #include <complex>
@@ -12,7 +17,17 @@ namespace cpy {
 
 /******************************************************************************/
 
+struct ClientError : std::exception {
+    std::string_view message;
+    explicit ClientError(std::string_view const &s) noexcept : message(s) {}
+    char const * what() const noexcept override {return message.empty() ? "cpy::ClientError" : message.data();}
+};
+
+/******************************************************************************/
+
 struct Value;
+
+using Function = std::function<Value(std::vector<Value>)>;
 
 struct Binary {
     std::shared_ptr<char const> data;
@@ -37,6 +52,7 @@ using Variant = std::variant<
     std::string,
     // Complex,   // ?
     Binary,       // ?
+    Function,
     std::any,     // ?
     Vector<Value> // ?
 >;

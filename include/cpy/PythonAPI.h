@@ -1,6 +1,16 @@
+/**
+ * @brief Python-related C++ API for cpy
+ * @file PythonAPI.h
+ */
+
 #pragma once
-#include <cpy/PythonBindings.h>
-#include <cpy/Test.h>
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wregister"
+#include <Python.h>
+#pragma GCC diagnostic pop
+
+#include "Value.h"
 #include <mutex>
 
 namespace cpy {
@@ -72,6 +82,8 @@ inline Object to_python(std::any const &s) noexcept {
     return {Py_None, false};
 }
 
+bool build_argpack(ArgPack &pack, Object pypack);
+
 /******************************************************************************/
 
 template <class V, class F=Identity>
@@ -124,8 +136,8 @@ bool vector_from_iterable(V &v, Object iterable, F &&f) {
 
 /******************************************************************************/
 
-struct PythonError : HandlerError {
-    PythonError(char const *s) : HandlerError(s) {}
+struct PythonError : ClientError {
+    PythonError(char const *s) : ClientError(s) {}
 };
 
 PythonError python_error() noexcept;
@@ -147,29 +159,6 @@ struct AcquireGIL {
     ReleaseGIL * const lock; //< ReleaseGIL object; can be nullptr
     AcquireGIL(ReleaseGIL *u) : lock(u) {if (lock) lock->acquire();}
     ~AcquireGIL() {if (lock) lock->release();}
-};
-
-struct PyHandler {
-    Object object;
-    ReleaseGIL *unlock = nullptr;
-
-    bool operator()(Event event, Scopes const &scopes, Logs &&logs) {
-        if (!+object) return false;
-        AcquireGIL lk(unlock); // reacquire the GIL (if it was released)
-
-        Object pyevent = to_python(static_cast<Integer>(event));
-        if (!pyevent) return false;
-
-        Object pyscopes = to_python(scopes);
-        if (!pyscopes) return false;
-
-        Object pylogs = to_python(logs);
-        if (!pylogs) return false;
-
-        Object out = {PyObject_CallFunctionObjArgs(+object, +pyevent, +pyscopes, +pylogs, nullptr), false};
-        if (PyErr_Occurred()) throw python_error();
-        return bool(out);
-    }
 };
 
 /// std::ostream synchronizer for redirection from multiple threads
@@ -208,21 +197,6 @@ struct RedirectStream {
 /******************************************************************************/
 
 bool from_python(Value &v, Object o);
-
-struct PyTestCase : Object {
-    using Object::Object;
-
-    Value operator()(Context ctx, ArgPack const &pack) {
-        AcquireGIL lk(static_cast<ReleaseGIL *>(ctx.metadata));
-        Object args = cpy::to_python(pack);
-        if (!args) throw python_error();
-        Object o = {PyObject_CallObject(Object::ptr, +args), false};
-        if (!o) throw python_error();
-        Value out;
-        if (!cpy::from_python(out, std::move(o))) throw python_error();
-        return out;
-    }
-};
 
 /******************************************************************************/
 

@@ -79,7 +79,7 @@ template <class F>
 struct TestAdaptor {
     F function;
 
-    /// Run C++ functor; logs non-HandlerError and rethrows all exceptions
+    /// Run C++ functor; logs non-ClientError and rethrows all exceptions
     Value operator()(Context &ctx, ArgPack args) {
         try {
             return TestSignature<F>::apply([&](auto return_type, auto context_type, auto ...ts) {
@@ -95,7 +95,7 @@ struct TestAdaptor {
             ctx.info("value", e.message);
             ctx.handle(Skipped);
             throw e;
-        } catch (HandlerError const &e) {
+        } catch (ClientError const &e) {
             throw e;
         } catch (std::exception const &e) {
             ctx.info("value", e.what());
