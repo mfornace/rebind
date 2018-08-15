@@ -12,8 +12,20 @@
 
 #include "Value.h"
 #include <mutex>
+#include <iostream>
 
 namespace cpy {
+
+template <class T>
+struct Holder {
+    PyObject_HEAD // 16 bytes for the ref count and the type object
+    T value; // I think stack is OK because this object is only casted to anyway.
+};
+
+template <class T>
+T & cast_value(PyObject *o) {return reinterpret_cast<Holder<T> *>(o)->value;}
+
+extern PyTypeObject FunctionType, AnyType;
 
 struct Identity {
     template <class T>
@@ -78,11 +90,22 @@ inline Object to_python(Binary const &s) noexcept {
     return {Py_None, false};
 }
 
-inline Object to_python(std::any const &s) noexcept {
-    return {Py_None, false};
+inline Object to_python(Function f) noexcept {
+    Object o{PyObject_CallObject((PyObject *) &FunctionType, nullptr), false};
+    cast_value<Function>(+o) = std::move(f);
+    return o;
 }
 
-bool build_argpack(ArgPack &pack, Object pypack);
+template <class T, std::enable_if_t<std::is_same_v<Any, T>, int> = 0>
+inline Object to_python(T a) noexcept {
+    Object o{PyObject_CallObject((PyObject *) &AnyType, nullptr), false};
+    cast_value<Any>(+o) = std::move(a);
+    return o;
+}
+
+bool put_argpack(ArgPack &pack, Object pypack);
+
+bool get_argpack(ArgPack &pack, Object pypack);
 
 /******************************************************************************/
 
@@ -103,11 +126,19 @@ Object to_tuple(V const &v, F const &f={}) noexcept {
 }
 
 template <class T>
+Object to_python(Vector<T> &&v) {return to_tuple(std::move(v));}
+
+template <class T>
 Object to_python(Vector<T> const &v) {return to_tuple(v);}
 
 template <class T, std::enable_if_t<std::is_same_v<T, Value>, int> = 0>
 Object to_python(T const &s) noexcept {
     return std::visit([](auto const &x) {return to_python(x);}, s.var);
+}
+
+template <class T, std::enable_if_t<std::is_same_v<T, Value>, int> = 0>
+Object to_python(T &&s) noexcept {
+    return std::visit([](auto &x) {return to_python(std::move(x));}, s.var);
 }
 
 inline Object to_python(KeyPair const &p) noexcept {
@@ -120,8 +151,8 @@ inline Object to_python(KeyPair const &p) noexcept {
 
 /******************************************************************************/
 
-template <class V, class F>
-bool vector_from_iterable(V &v, Object iterable, F &&f) {
+template <class F>
+bool map_iterable(Object iterable, F &&f) {
     Object iter = {PyObject_GetIter(+iterable), false};
     if (!iter) return false;
 
@@ -129,7 +160,7 @@ bool vector_from_iterable(V &v, Object iterable, F &&f) {
     while (ok) {
         auto it = Object(PyIter_Next(+iter), false);
         if (!+it) break;
-        v.emplace_back(f(std::move(it), ok));
+        ok = f(std::move(it));
     }
     return ok;
 }
@@ -168,6 +199,9 @@ struct StreamSync {
     std::mutex mutex;
     Vector<std::streambuf *> queue;
 };
+
+extern StreamSync cout_sync;
+extern StreamSync cerr_sync;
 
 /// RAII acquisition of cout or cerr
 struct RedirectStream {

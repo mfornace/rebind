@@ -1,5 +1,6 @@
 #pragma once
 #include "Context.h"
+#include <cpy/Function.h>
 
 namespace cpy {
 
@@ -11,40 +12,6 @@ struct Skip {
     Skip() noexcept : message("Test skipped") {}
     explicit Skip(std::string_view const &m) noexcept : message(m) {}
 };
-
-/******************************************************************************/
-
-static char const *cast_bug_message = "FromValue().check() returned false but FromValue()() was still called";
-
-/// Default behavior for casting a variant to a desired argument type
-template <class T, class=void>
-struct FromValue {
-    // Return true if type T can be cast from type U
-    template <class U>
-    constexpr bool check(U const &) const {
-        return std::is_convertible_v<U &&, T> ||
-            (std::is_same_v<T, std::monostate> && std::is_default_constructible_v<T>);
-    }
-    // Return casted type T from type U
-    template <class U>
-    T operator()(U &u) const {
-        if constexpr(std::is_convertible_v<U &&, T>) return static_cast<T>(std::move(u));
-        else if constexpr(std::is_default_constructible_v<T>) return T(); // only hit if U == std::monostate
-        else throw std::logic_error(cast_bug_message); // never get here
-    }
-};
-
-/// Cast element i of v to type T
-template <class T>
-T cast_index(ArgPack &v, IndexedType<T> i) {
-    return std::visit(FromValue<T>(), v[i.index - 2u].var);
-}
-
-/// Check that element i of v can be cast to type T
-template <class T>
-bool check_cast_index(ArgPack &v, IndexedType<T> i) {
-    return std::visit([](auto const &x) {return FromValue<T>().check(x);}, v[i.index - 2u].var);
-}
 
 /******************************************************************************/
 
@@ -61,17 +28,6 @@ struct TestSignature : Pack<void, Context> {
 template <class F>
 struct TestSignature<F, std::void_t<typename Signature<F>::return_type>> : Signature<F> {};
 
-/// Invoke a function and arguments, storing output in a Value if it doesn't return void
-template <class F, class ...Ts>
-Value value_invoke(F &&f, Ts &&... ts) {
-    if constexpr(std::is_same_v<void, std::invoke_result_t<F, Ts...>>) {
-        std::invoke(static_cast<F &&>(f), static_cast<Ts &&>(ts)...);
-        return {};
-    } else {
-        return make_value(std::invoke(static_cast<F &&>(f), static_cast<Ts &&>(ts)...));
-    }
-}
-
 /******************************************************************************/
 
 /// Basic wrapper to make C++ functor into a type erased std::function
@@ -87,8 +43,8 @@ struct TestAdaptor {
                               "First argument in signature should be of type Context");
                 if (args.size() != sizeof...(ts))
                     throw std::invalid_argument("cpy: wrong number of arguments");
-                if ((... && check_cast_index(args, ts)))
-                    return value_invoke(function, Context(ctx), cast_index(args, ts)...);
+                if ((... && check_cast_index(args, ts, 2)))
+                    return value_invoke(function, Context(ctx), cast_index(args, ts, 2)...);
                 throw std::invalid_argument("cpy: wrong argument types");
             });
         } catch (Skip const &e) {

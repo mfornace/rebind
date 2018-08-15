@@ -12,6 +12,7 @@ template <class T>
 struct IndexedType {
     std::size_t index;
     T operator*() const; // undefined
+    IndexedType<std::remove_cv_t<std::remove_reference_t<T>>> no_qual() const {return {index};}
 };
 
 /******************************************************************************************/

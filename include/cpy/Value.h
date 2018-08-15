@@ -13,7 +13,15 @@
 #include <any>
 #include <memory>
 
+#define CPY_CAT_IMPL(s1, s2) s1##s2
+#define CPY_CAT(s1, s2) CPY_CAT_IMPL(s1, s2)
+
+#define CPY_STRING_IMPL(x) #x
+#define CPY_STRING(x) CPY_STRING_IMPL(x)
+
 namespace cpy {
+
+struct BaseContext {};
 
 /******************************************************************************/
 
@@ -27,7 +35,7 @@ struct ClientError : std::exception {
 
 struct Value;
 
-using Function = std::function<Value(std::vector<Value>)>;
+using Function = std::function<Value(BaseContext &, std::vector<Value> &)>;
 
 struct Binary {
     std::shared_ptr<char const> data;
@@ -39,6 +47,8 @@ using Integer = std::ptrdiff_t;
 using Real = double;
 
 using Complex = std::complex<double>;
+
+using Any = std::any;
 
 template <class T>
 using Vector = std::vector<T>;
@@ -53,7 +63,7 @@ using Variant = std::variant<
     // Complex,   // ?
     Binary,       // ?
     Function,
-    std::any,     // ?
+    Any,     // ?
     Vector<Value> // ?
 >;
 
@@ -66,7 +76,7 @@ using Variant = std::variant<
 // static_assert(24 == sizeof(std::string));
 // static_assert(24 == sizeof(Vector<bool>));
 // static_assert(24 == sizeof(Vector<Value>));
-// static_assert(32 == sizeof(std::any));
+// static_assert(32 == sizeof(Any));
 // static_assert(16 == sizeof(std::shared_ptr<void const>));
 // static_assert(24 == sizeof(Binary));
 // static_assert(40 == sizeof(Variant));
@@ -84,30 +94,24 @@ struct Value {
     Value(bool)              noexcept;
     Value(Integer)           noexcept;
     Value(Real)              noexcept;
-    Value(Complex)           noexcept;
+    // Value(Complex)           noexcept;
     Value(std::string)       noexcept;
     Value(std::string_view)  noexcept;
-
-    Value(Vector<bool>)              noexcept;
-    Value(Vector<Integer>)           noexcept;
-    Value(Vector<Real>)              noexcept;
-    Value(Vector<Complex>)           noexcept;
-    Value(Vector<std::string>)       noexcept;
-    Value(Vector<std::string_view>)  noexcept;
-    Value(std::in_place_t, std::any) noexcept;
+    Value(std::in_place_t, Any) noexcept;
+    Value(Function) noexcept;
     Value(Vector<Value>)             noexcept;
 
     bool             as_bool()    const &;
     Integer          as_integer() const &;
     Real             as_real()    const &;
-    Complex          as_complex() const &;
+    // Complex          as_complex() const &;
     std::string_view as_view()    const &;
     std::string      as_string()  const &;
-    std::any         as_any()     const &;
+    Any              as_any()     const &;
     Vector<Value>    as_vector()  const &;
     Binary           as_binary()  const &;
 
-    std::any         as_any()    &&;
+    Any              as_any()    &&;
     std::string      as_string() &&;
     Vector<Value>    as_vector() &&;
     Binary           as_binary() &&;
@@ -124,7 +128,9 @@ using ArgPack = Vector<Value>;
 /******************************************************************************/
 
 template <class T, class=void>
-struct ToValue; // undefined
+struct ToValue {
+    Value operator()(T t) const {return {std::in_place_t(), Any(std::move(t))};}
+};
 
 template <>
 struct ToValue<bool> {
@@ -134,6 +140,11 @@ struct ToValue<bool> {
 template <>
 struct ToValue<std::string> {
     Value operator()(std::string t) const {return std::move(t);}
+};
+
+template <>
+struct ToValue<Any> {
+    Value operator()(Any t) const {return {std::in_place_t(), std::move(t)};}
 };
 
 template <>
@@ -155,6 +166,16 @@ template <>
 struct ToValue<char const *> {
     Value operator()(char const *t) const {return std::string_view(t);}
 };
+
+template <class T, class Alloc>
+struct ToValue<std::vector<T, Alloc>> {
+    Value operator()(std::vector<T, Alloc> t) const {
+        std::vector<Value> vec;
+        for (auto &&i : t) vec.emplace_back(ToValue<T>()(i));
+        return vec;
+    }
+};
+
 
 /******************************************************************************/
 

@@ -47,9 +47,9 @@ target_link_libraries(libcpy PUBLIC cpy_interface)
 # Module.cc has to be recompiled based on the exported module name
 # Could just build Python.cc as its own library, but here it's built together with Module.cc
 set_property(GLOBAL PROPERTY cpy_module_files
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/cpytest/Module.cc
+    # ${CMAKE_CURRENT_SOURCE_DIR}/source/cpytest/Module.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/source/cpy/Python.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/cpytest/Python.cc
+    # ${CMAKE_CURRENT_SOURCE_DIR}/source/cpytest/Python.cc
 )
 
 function(cpy_module module_name)
@@ -79,3 +79,4 @@ cpy_module(mymodule testcpy)
 
 add_library(erased SHARED EXCLUDE_FROM_ALL source/Erased.cc)
 target_link_libraries(erased PRIVATE libcpy)
+cpy_module(myshared erased)

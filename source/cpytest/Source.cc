@@ -6,7 +6,6 @@ namespace cpy {
 /******************************************************************************/
 
 // Context::Context() = default;
-
 // Context::Context(Context const &) = default;
 // Context::Context(Context &&) noexcept = default;
 // Context & Context::operator=(Context const &) = default;

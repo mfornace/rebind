@@ -13,11 +13,12 @@ Value::Value(std::monostate v)   noexcept : var(v) {}
 Value::Value(bool v)             noexcept : var(v) {}
 Value::Value(Integer v)          noexcept : var(v) {}
 Value::Value(Real v)             noexcept : var(v) {}
-Value::Value(Complex v)          noexcept : var(v) {}
+Value::Value(Function v)         noexcept : var(std::move(v)) {}
+// Value::Value(Complex v)          noexcept : var(v) {}
 Value::Value(std::string v)      noexcept : var(std::move(v)) {}
 Value::Value(std::string_view v) noexcept : var(std::move(v)) {}
 
-Value::Value(std::in_place_t, std::any v) noexcept : var(std::move(v)) {}
+Value::Value(std::in_place_t, Any v) noexcept : var(std::move(v)) {}
 Value::Value(Vector<Value> v)             noexcept : var(std::move(v)) {}
 
 /******************************************************************************/
@@ -32,8 +33,8 @@ std::string_view Value::as_view() const & {return std::get<std::string_view>(var
 
 /******************************************************************************/
 
-std::any Value::as_any() const & {return std::get<std::any>(var);}
-std::any Value::as_any() && {return std::get<std::any>(std::move(var));}
+Any Value::as_any() const & {return std::get<Any>(var);}
+Any Value::as_any() && {return std::get<Any>(std::move(var));}
 
 std::string Value::as_string() const & {
     if (auto s = std::get_if<std::string_view>(&var))

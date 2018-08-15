@@ -9,34 +9,11 @@ namespace cpy {
 
 /******************************************************************************/
 
-StreamSync cout_sync{std::cout, std::cout.rdbuf()};
-StreamSync cerr_sync{std::cerr, std::cerr.rdbuf()};
-
-/******************************************************************************/
-
-PythonError python_error() noexcept {
-    PyObject *type, *value, *traceback;
-    PyErr_Fetch(&type, &value, &traceback);
-    PyObject *str = PyObject_Str(value);
-    char const *c = nullptr;
-    if (str) {
-#       if PY_MAJOR_VERSION > 2
-            c = PyUnicode_AsUTF8(str); // PyErr_Clear
-#       else
-            c = PyString_AsString(str);
-#       endif
-        Py_DECREF(str);
-    }
-    PyErr_Restore(type, value, traceback);
-    return PythonError(c ? c : "Python error with failed str()");
-}
-
-/******************************************************************************/
-
 bool build_handlers(Vector<Handler> &v, Object calls) {
-    return vector_from_iterable(v, calls, [](Object &&o, bool) -> Handler {
-        if (o.ptr == Py_None) return {};
-        return PyHandler{std::move(o)};
+    return map_iterable(calls, [&v](Object o) {
+        if (o.ptr == Py_None) v.emplace_back();
+        v.emplace_back(PyHandler{std::move(o)});
+        return true;
     });
 }
 
@@ -92,7 +69,7 @@ Object run_test(Py_ssize_t i, Object calls, Object pypack, bool cout, bool cerr,
             return {};
         }
         pack = test->parameters[n];
-    } else if (!build_argpack(pack, std::move(pypack))) return {};
+    } else if (!put_argpack(pack, std::move(pypack))) return {};
 
     std::stringstream out, err;
 
@@ -123,10 +100,14 @@ Object run_test(Py_ssize_t i, Object calls, Object pypack, bool cout, bool cerr,
 
 }
 
+// the goal would be for all of these functions below to be wrapped.
+// even if they have calls to python api it would still be nice to type erase the API
+
 extern "C" {
 
 /******************************************************************************/
 
+// can be wrapped
 PyObject *cpy_run_test(PyObject *self, PyObject *args) {
     Py_ssize_t i;
     PyObject *calls, *pack, *cout, *cerr, *gil;
@@ -141,6 +122,7 @@ PyObject *cpy_run_test(PyObject *self, PyObject *args) {
 
 /******************************************************************************/
 
+// can be wrapped
 PyObject *cpy_n_tests(PyObject *, PyObject *args) {
     Py_ssize_t n = cpy::suite().size();
     return Py_BuildValue("n", n);
@@ -148,6 +130,7 @@ PyObject *cpy_n_tests(PyObject *, PyObject *args) {
 
 /******************************************************************************/
 
+// can be wrapped
 PyObject *cpy_add_test(PyObject *, PyObject *args) {
     char const *s;
     PyObject *fun, *pypacks = nullptr;
@@ -156,10 +139,9 @@ PyObject *cpy_add_test(PyObject *, PyObject *args) {
     return cpy::return_object([=] {
         cpy::Vector<cpy::ArgPack> packs;
         if (pypacks) {
-            cpy::vector_from_iterable(packs, {pypacks, true}, [](cpy::Object &&o, bool &ok) {
-                cpy::ArgPack pack;
-                ok &= cpy::build_argpack(pack, std::move(o));
-                return pack;
+            cpy::map_iterable({pypacks, true}, [](cpy::Object o) {
+                packs.emplace_back();
+                return cpy::put_argpack(packs.back(), std::move(o));
             });
         }
         cpy::add_test(cpy::TestCase{s, {}, cpy::PyTestCase(fun, true), std::move(packs)});
@@ -167,6 +149,7 @@ PyObject *cpy_add_test(PyObject *, PyObject *args) {
     });
 }
 
+// can be wrapped
 PyObject *cpy_add_value(PyObject *, PyObject *args) {
     char const *s;
     PyObject *obj;
@@ -182,6 +165,7 @@ PyObject *cpy_add_value(PyObject *, PyObject *args) {
 
 /******************************************************************************/
 
+// can be wrapped
 PyObject *cpy_compile_info(PyObject *, PyObject *) {
     auto v = cpy::to_python(__VERSION__ "");
     auto d = cpy::to_python(__DATE__ "");
@@ -191,6 +175,7 @@ PyObject *cpy_compile_info(PyObject *, PyObject *) {
 
 /******************************************************************************/
 
+// can be wrapped
 PyObject *cpy_test_names(PyObject *, PyObject *) {
     return cpy::return_object([] {
         return cpy::to_tuple(cpy::suite(),
