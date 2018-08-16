@@ -13,6 +13,7 @@
 #include "Value.h"
 #include <mutex>
 #include <iostream>
+#include <typeindex>
 
 namespace cpy {
 
@@ -22,10 +23,9 @@ struct Holder {
     T value; // I think stack is OK because this object is only casted to anyway.
 };
 
-template <class T>
-T & cast_value(PyObject *o) {return reinterpret_cast<Holder<T> *>(o)->value;}
+bool attach_type(PyTypeObject *, PyObject *, char const *) noexcept;
 
-extern PyTypeObject FunctionType, AnyType;
+extern PyTypeObject FunctionType, AnyType, TypeIndexType;
 
 struct Identity {
     template <class T>
@@ -38,68 +38,132 @@ struct Object {
     Object(PyObject *o, bool incref) : ptr(o) {if (incref) Py_INCREF(ptr);}
     Object(Object const &o) : ptr(o.ptr) {Py_XINCREF(ptr);}
     Object(Object &&o) noexcept : ptr(std::exchange(o.ptr, nullptr)) {}
+    Object & operator=(Object o) noexcept {ptr = std::exchange(o.ptr, nullptr); return *this;}
+
     explicit operator bool() const {return ptr;}
     PyObject *operator+() const {return ptr;}
+
+    bool operator<(Object const &o) const {return ptr < o.ptr;}
+    bool operator>(Object const &o) const {return ptr > o.ptr;}
+    bool operator==(Object const &o) const {return ptr == o.ptr;}
+    bool operator!=(Object const &o) const {return ptr != o.ptr;}
+    bool operator<=(Object const &o) const {return ptr <= o.ptr;}
+    bool operator>=(Object const &o) const {return ptr >= o.ptr;}
+    friend void swap(Object &o, Object &p) {std::swap(o.ptr, p.ptr);}
+
     ~Object() {Py_XDECREF(ptr);}
 };
 
+struct NullObject {
+    operator Object() const {return {};}
+};
+
+struct NoLookup {
+    NoLookup() = default;
+
+    template <class T>
+    constexpr NoLookup(T const &) {}
+
+    constexpr NullObject operator()(std::type_info const &) const {return {};}
+};
+
+struct SortedLookup {
+    std::vector<std::pair<std::type_index, Object>> contents;
+
+    Object operator()(std::type_index const &idx) const {
+        auto it = std::lower_bound(contents.begin(), contents.end(), std::make_pair(idx, Object()));
+        return (it != contents.end() && it->first == idx) ? it->second : Object();
+    }
+};
+
+extern SortedLookup GlobalLookup;
+
 /******************************************************************************/
 
-inline Object to_python(std::monostate const &) noexcept {
+template <class T>
+T & cast_object(PyObject *o) {
+    return reinterpret_cast<Holder<T> *>(o)->value;
+}
+
+auto & as_any(PyObject *o) {
+    if (!PyObject_TypeCheck(o, &AnyType)) throw std::invalid_argument("Expected instance of cpy.Any");
+    return cast_object<Any>(o);
+}
+
+auto & as_index(PyObject *o) {
+    if (!PyObject_TypeCheck(o, &TypeIndexType)) throw std::invalid_argument("Expected instance of cpy.TypeIndex");
+    return cast_object<std::type_index>(o);
+}
+
+auto & as_function(PyObject *o) {
+    if (!PyObject_TypeCheck(o, &FunctionType)) throw std::invalid_argument("Expected instance of cpy.Function");
+    return cast_object<Function>(o);
+}
+
+/******************************************************************************/
+
+inline Object to_python(std::monostate const &, NoLookup={}) noexcept {
     return {Py_None, true};
 }
 
-inline Object to_python(bool b) noexcept {
+inline Object to_python(bool b, NoLookup={}) noexcept {
     return {b ? Py_True : Py_False, true};
 }
 
-inline Object to_python(char const *s) noexcept {
+inline Object to_python(char const *s, NoLookup={}) noexcept {
     return {PyUnicode_FromString(s ? s : ""), false};
 }
 
 template <class T, std::enable_if_t<(std::is_integral_v<T>), int> = 0>
-Object to_python(T t) noexcept {
+Object to_python(T t, NoLookup={}) noexcept {
     return {PyLong_FromLongLong(static_cast<long long>(t)), false};
 }
 
-inline Object to_python(double t) noexcept {
+inline Object to_python(double t, NoLookup={}) noexcept {
     return {PyFloat_FromDouble(t), false};
 }
 
-inline Object to_python(std::string const &s) noexcept {
+inline Object to_python(std::string const &s, NoLookup={}) noexcept {
     return {PyUnicode_FromStringAndSize(s.data(), static_cast<Py_ssize_t>(s.size())), false};
 }
 
-inline Object to_python(std::string_view const &s) noexcept {
+inline Object to_python(std::string_view const &s, NoLookup={}) noexcept {
     return {PyUnicode_FromStringAndSize(s.data(), static_cast<Py_ssize_t>(s.size())), false};
 }
 
-inline Object to_python(std::wstring const &s) noexcept {
+inline Object to_python(std::wstring const &s, NoLookup={}) noexcept {
     return {PyUnicode_FromWideChar(s.data(), static_cast<Py_ssize_t>(s.size())), false};
 }
 
-inline Object to_python(std::wstring_view const &s) noexcept {
+inline Object to_python(std::wstring_view const &s, NoLookup={}) noexcept {
     return {PyUnicode_FromWideChar(s.data(), static_cast<Py_ssize_t>(s.size())), false};
 }
 
-inline Object to_python(std::complex<double> const &s) noexcept {
+inline Object to_python(std::complex<double> const &s, NoLookup={}) noexcept {
     return {PyComplex_FromDoubles(s.real(), s.imag()), false};
 }
 
-inline Object to_python(Binary const &s) noexcept {
+inline Object to_python(Binary const &s, NoLookup={}) noexcept {
     return {Py_None, false};
 }
 
-inline Object to_python(Function f) noexcept {
+inline Object to_python(Function f, NoLookup={}) noexcept {
     Object o{PyObject_CallObject((PyObject *) &FunctionType, nullptr), false};
-    cast_value<Function>(+o) = std::move(f);
+    cast_object<Function>(+o) = std::move(f);
     return o;
 }
 
-template <class T, std::enable_if_t<std::is_same_v<Any, T>, int> = 0>
-inline Object to_python(T a) noexcept {
-    Object o{PyObject_CallObject((PyObject *) &AnyType, nullptr), false};
-    cast_value<Any>(+o) = std::move(a);
+inline Object to_python(std::type_index f, NoLookup={}) noexcept {
+    Object o{PyObject_CallObject((PyObject *) &TypeIndexType, nullptr), false};
+    cast_object<std::type_index>(+o) = std::move(f);
+    return o;
+}
+
+template <class T, class F, std::enable_if_t<std::is_same_v<Any, T>, int> = 0>
+inline Object to_python(T a, F &&lookup) noexcept {
+    Object f = lookup(a.type());
+    Object o{PyObject_CallObject(f ? +f : (PyObject *) &AnyType, nullptr), false};
+    cast_object<Any>(+o) = std::move(a);
     return o;
 }
 
@@ -109,12 +173,14 @@ bool get_argpack(ArgPack &pack, Object pypack);
 
 /******************************************************************************/
 
-template <class V, class F=Identity>
-Object to_tuple(V const &v, F const &f={}) noexcept {
+template <class V, class L=NoLookup, class F=Identity>
+Object to_tuple(V &&v, L &&l={}, F const &f={}) noexcept {
     Object out = {PyTuple_New(v.size()), false};
     if (!out) return {};
     for (Py_ssize_t i = 0u; i != v.size(); ++i) {
-        Object item = to_python(f(v[i]));
+        using T = std::conditional_t<std::is_rvalue_reference_v<V>,
+            decltype(v[i]), decltype(std::move(v[i]))>;
+        Object item = to_python(f(static_cast<T>(v[i])), l);
         if (!item) return {};
         Py_INCREF(+item);
         if (PyTuple_SetItem(+out, i, +item)) {
@@ -125,26 +191,27 @@ Object to_tuple(V const &v, F const &f={}) noexcept {
     return out;
 }
 
-template <class T>
-Object to_python(Vector<T> &&v) {return to_tuple(std::move(v));}
+template <class T, class F=NoLookup>
+Object to_python(Vector<T> &&v, F &&f={}) {return to_tuple(std::move(v), f);}
 
-template <class T>
-Object to_python(Vector<T> const &v) {return to_tuple(v);}
+template <class T, class F=NoLookup>
+Object to_python(Vector<T> const &v, F &&f={}) {return to_tuple(v, f);}
 
-template <class T, std::enable_if_t<std::is_same_v<T, Value>, int> = 0>
-Object to_python(T const &s) noexcept {
-    return std::visit([](auto const &x) {return to_python(x);}, s.var);
+template <class T, class F=NoLookup, std::enable_if_t<std::is_same_v<T, Value>, int> = 0>
+Object to_python(T const &s, F &&f={}) noexcept {
+    return std::visit([&](auto const &x) {return to_python(x, f);}, s.var);
 }
 
-template <class T, std::enable_if_t<std::is_same_v<T, Value>, int> = 0>
-Object to_python(T &&s) noexcept {
-    return std::visit([](auto &x) {return to_python(std::move(x));}, s.var);
+template <class T, class F=NoLookup, std::enable_if_t<std::is_same_v<T, Value>, int> = 0>
+Object to_python(T &&s, F &&f={}) noexcept {
+    return std::visit([&](auto &x) {return to_python(std::move(x), f);}, s.var);
 }
 
-inline Object to_python(KeyPair const &p) noexcept {
-    Object key = to_python(p.key);
+template <class F=NoLookup>
+inline Object to_python(KeyPair const &p, F &&f={}) noexcept {
+    Object key = to_python(p.key, f);
     if (!key) return {};
-    Object value = to_python(p.value);
+    Object value = to_python(p.value, f);
     if (!value) return {};
     return {PyTuple_Pack(2u, +key, +value), false};
 }

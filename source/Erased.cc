@@ -11,7 +11,7 @@ struct goo {
     void show() const;
     goo(double xx) : x(xx) {}
     goo(goo const &g) : x(g.x) {std::cout << "copy" << std::endl;}
-    goo(goo &&g) noexcept : x(g.x) {std::cout << "move" << std::endl;}
+    goo(goo &&g) noexcept : x(g.x) {std::cout << "move" << std::endl; g.x = -1;}
     goo & operator=(goo g) {
         x = g.x;
         std::cout << "assign" << std::endl;
@@ -19,7 +19,7 @@ struct goo {
     }
 };
 
-Document & document() {
+Document & document() noexcept {
     static Document static_document;
     return static_document;
 }
@@ -46,6 +46,9 @@ bool make_document() {
     doc.def("goo.show", [](goo const &x) {
         x.show();
     });
+    doc.method("goo", "show", make_function([](goo const &x) {
+        x.show();
+    }));
     doc.type<goo>("goo");
     return bool();
 }

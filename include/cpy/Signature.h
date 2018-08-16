@@ -12,13 +12,16 @@ template <class T>
 struct IndexedType {
     std::size_t index;
     T operator*() const; // undefined
-    IndexedType<std::remove_cv_t<std::remove_reference_t<T>>> no_qual() const {return {index};}
 };
+
+template <class T>
+using no_qualifier = std::remove_cv_t<std::remove_reference_t<T>>;
 
 /******************************************************************************************/
 
 /// A lightweight ordered container of types
 template <class ...Ts> struct Pack {
+    using pack_type = Pack;
     using size = std::integral_constant<std::size_t, sizeof...(Ts)>;
 
     template <class F, std::size_t ...Is>

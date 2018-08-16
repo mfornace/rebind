@@ -28,9 +28,11 @@ struct FromValue {
         else throw std::logic_error(cast_bug_message); // never get here
     }
 
-    bool check(Any const &u) const {return std::any_cast<T>(&u);}
+    bool check(Any const &u) const {return std::any_cast<no_qualifier<T>>(&u);}
 
-    T operator()(Any &&u) const {return std::any_cast<T>(std::move(u));}
+    T operator()(Any &&u) const {
+        return static_cast<T>(std::any_cast<T>(u));
+    }
     T operator()(Any const &u) const {
         throw std::logic_error("shouldn't be used");
     }
@@ -85,26 +87,40 @@ struct FunctionAdaptor {
     F function;
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
-    Value operator()(BaseContext const &, ArgPack &args) {
+    Value operator()(BaseContext const &, ArgPack &args) const {
         Signature<F>::apply([](auto return_type, auto ...ts) {
             (NoMutable<decltype(*ts)>(), ...);
         });
         return Signature<F>::apply([&](auto return_type, auto ...ts) {
             if (args.size() != sizeof...(ts))
                 throw std::invalid_argument("cpy: wrong number of arguments");
-            if ((... && check_cast_index(args, ts.no_qual(), 1)))
-                return value_invoke(function, cast_index(args, ts.no_qual(), 1)...);
+            if ((... && check_cast_index(args, ts, 1)))
+                return value_invoke(function, cast_index(args, ts, 1)...);
             throw std::invalid_argument("cpy: wrong argument types");
         });
     }
 };
+
+// struct OverloadAdaptor {
+//     Vector<Function> overloads;
+
+//     Value operator()(BaseContext &ct, ArgPack &args) const {
+//         if (overloads.empty())
+//             throw std::invalid_argument("cpy: no overloads registered");
+//         for (auto it = overloads.begin(); it != std::prev(overloads.end()); ++it) {
+//             try {return (*it)(ct, args);}
+//             catch (std::invalid_argument const &) {}
+//         }
+//         return overloads.back()(ct, args);
+//     }
+// };
 
 template <class F>
 struct FunctionAdaptor2 {
     F function;
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
-    Value operator()(BaseContext &ct, ArgPack &args) {
+    Value operator()(BaseContext &ct, ArgPack &args) const {
         return Signature<F>::apply([&](auto return_type, auto context_type, auto ...ts) {
             if (args.size() != sizeof...(ts))
                 throw std::invalid_argument("cpy: wrong number of arguments");
@@ -126,7 +142,7 @@ Function make_function2(F f) {return FunctionAdaptor2<F>{std::move(f)};}
 struct Document {
     std::vector<std::pair<std::string, Value>> values;
     std::vector<std::pair<std::type_index, std::string>> types;
-    std::vector<std::pair<std::string, Value>> methods;
+    std::vector<std::tuple<std::string, std::string, Value>> methods;
 
     template <class F>
     void def(char const *s, F &&f) {
@@ -139,8 +155,12 @@ struct Document {
 
     template <class T>
     void type(char const *s) {type(s, std::type_index(typeid(T)));}
+
+    void method(char const *s, char const *n, Value v) {
+        methods.emplace_back(s, n, std::move(v));
+    }
 };
 
-Document & document();
+Document & document() noexcept;
 
 }

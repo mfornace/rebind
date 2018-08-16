@@ -6,6 +6,7 @@
 #include <cpy/Function.h>
 #include <any>
 #include <iostream>
+#include <map>
 
 #ifndef CPY_MODULE
 #   define CPY_MODULE libcpy
@@ -77,9 +78,9 @@ bool from_python(Value &v, Object o) {
         if (c) v = std::string(static_cast<char const *>(c), size);
         else return false;
     } else if (PyObject_TypeCheck(+o, &AnyType)) {
-        v = Value(std::in_place_t(), std::move(cast_value<Any>(+o)));
+        v = Value(std::in_place_t(), std::move(as_any(+o)));
     } else if (PyObject_TypeCheck(+o, &FunctionType)) {
-        v = Value(std::move(cast_value<Function>(+o)));
+        v = Value(std::move(as_function(+o)));
     // } else if (PyObject_CheckBuffer(+o)) {
 // hmm
     // } else if (PyMemoryView_Check(+o)) {
@@ -110,11 +111,11 @@ bool get_argpack(ArgPack &pack, Object pypack) {
     return map_iterable(pypack, [&it](Object o) {
         if (std::holds_alternative<Any>(it->var)) {
             if (!PyObject_TypeCheck(+o, &AnyType)) return false;
-            cast_value<Any>(+o) = std::move(std::get<Any>(it->var));
+            as_any(+o) = std::move(std::get<Any>(it->var));
         }
         if (std::holds_alternative<Function>(it->var)) {
             if (!PyObject_TypeCheck(+o, &FunctionType)) return false;
-            cast_value<Function>(+o) = std::move(std::get<Function>(it->var));
+            as_function(+o) = std::move(std::get<Function>(it->var));
         }
         ++it;
         return true;
@@ -123,23 +124,28 @@ bool get_argpack(ArgPack &pack, Object pypack) {
 
 /******************************************************************************/
 
-PyObject *one_argument(PyObject *args, PyTypeObject *type) {
+PyObject *one_argument(PyObject *args, PyTypeObject *type=nullptr) {
     if (PyTuple_Size(args) != 1) {
         PyErr_SetString(PyExc_TypeError, "Expected single argument");
         return nullptr;
     }
     PyObject *value = PyTuple_GET_ITEM(args, 0);
-    if (!PyObject_TypeCheck(value, type)) {
+    if (type && !PyObject_TypeCheck(value, type)) {
         PyErr_SetString(PyExc_TypeError, "Invalid argument type");
         return nullptr;
     }
     return value;
 }
 
+Object raised(PyObject *exc, char const *message) {
+    PyErr_SetString(exc, message);
+    return {};
+}
+
 template <class T>
 PyObject *tp_new(PyTypeObject *subtype, PyObject *, PyObject *) {
     PyObject* o = subtype->tp_alloc(subtype, 0); // 0 unused
-    new (&cast_value<T>(o)) T; // noexcept
+    new (&cast_object<T>(o)) T; // noexcept
     return o;
 }
 
@@ -152,9 +158,53 @@ void tp_delete(PyObject *o) {
 PyObject * any_move_from(PyObject *self, PyObject *args) {
     PyObject *value = one_argument(args, self->ob_type);
     if (!value) return nullptr;
-    cast_value<Any>(self) = std::move(cast_value<Any>(value)); // noexcept
+    as_any(self) = std::move(as_any(value)); // noexcept
     Py_RETURN_NONE;
 }
+
+/******************************************************************************/
+
+PyObject *type_index_new(PyTypeObject *subtype, PyObject *, PyObject *) {
+    PyObject* o = subtype->tp_alloc(subtype, 0); // 0 unused
+    new (&cast_object<std::type_index>(o)) std::type_index(typeid(void)); // noexcept
+    return o;
+}
+
+long type_index_hash(PyObject *o) {
+    return static_cast<long>(as_index(o).hash_code());
+}
+
+PyObject *type_index_name(PyObject *o) noexcept {
+    return return_object([=] {return (to_python(as_index(o).name()));});
+}
+
+PyObject *type_index_compare(PyObject *self, PyObject *other, int op) {
+    auto const &s = as_index(self);
+    auto const &o = as_index(other);
+    bool out;
+    switch(op) {
+        case(Py_LT): out = s < o;
+        case(Py_LE): out = s <= o;
+        case(Py_EQ): out = s == o;
+        case(Py_NE): out = s != o;
+        case(Py_GT): out = s > o;
+        case(Py_GE): out = s >= o;
+    }
+    if (out) {Py_RETURN_TRUE;} Py_RETURN_FALSE;
+}
+
+PyTypeObject TypeIndexType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "cpy.TypeIndex",
+    .tp_hash = type_index_hash,
+    .tp_str = type_index_name,
+    .tp_richcompare = type_index_compare,
+    .tp_basicsize = sizeof(Holder<std::type_index>),
+    .tp_dealloc = static_cast<destructor>(tp_delete<std::type_index>),
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .tp_doc = "C++ type_index object",
+    .tp_new = type_index_new,
+};
 
 /******************************************************************************/
 
@@ -165,36 +215,62 @@ PyObject * any_move_from(PyObject *self, PyObject *args) {
 // int cpy_any_init(PyObject *self, PyObject *args, PyObject *kws) {
 //     PyObject *value;
 //     if (!PyArg_ParseTupleAndKeywords(args, kws, "|O", const_cast<char **>(keywords), &value)) return -1;
-//     cast_value<Any>(self).reset();
+//     as_any(self).reset();
 //     return 0;
 // }
 
-PyObject * any_copy_from(PyObject *self, PyObject *args) {
+PyObject * any_copy_from(PyObject *self, PyObject *args) noexcept {
     PyObject *value = one_argument(args, self->ob_type);
     if (!value) return nullptr;
     std::cout << "fix copy" << std::endl;
-    cast_value<Any>(self) = cast_value<Any>(value); // not notexcept
+    as_any(self) = as_any(value); // not notexcept
     Py_RETURN_NONE;
 }
 
-int cpy_any_bool(PyObject *self) {
-    return cast_value<Any>(self).has_value(); // noexcept
+int any_bool(PyObject *self) {
+    return as_any(self).has_value(); // noexcept
 }
 
-PyObject * cpy_any_has_value(PyObject *self, PyObject *) {
-    if (cast_value<Any>(self).has_value()) Py_RETURN_TRUE;
-    Py_RETURN_FALSE;
+PyObject * any_cast_to(PyObject *self, PyObject *args) noexcept {
+    return return_object([=]() -> Object {
+        PyObject *type = one_argument(args);
+        // if (!PyType_Check(type))
+            // return raised(PyExc_TypeError, "Expected type object");
+        // if (!PyObject_IsSubclass(type, (PyObject *) &AnyType))
+            // return raised(PyExc_TypeError, "Expected subclass of Any");
+        Object o{PyObject_CallObject(type, nullptr), false};
+        if (!o) return o;
+        as_any(+o) = std::move(as_any(self));
+        // (+o)->ob_type = (PyTypeObject *) type;
+        return o;
+    });
 }
 
-static PyMethodDef cpy_any_methods[] = {
-    {"move_from", static_cast<PyCFunction>(any_move_from), METH_VARARGS, "move it"},
-    {"copy_from", static_cast<PyCFunction>(any_copy_from), METH_VARARGS, "copy it"},
-    {"has_value", static_cast<PyCFunction>(cpy_any_has_value), METH_VARARGS, "has value"},
-    {nullptr, nullptr, 0, nullptr}
-};
+PyObject * any_has_value(PyObject *self, PyObject *) noexcept {
+    return return_object([=] {
+        return to_python(as_any(self).has_value());
+    });
+}
+
+PyObject * any_index(PyObject *self, PyObject *) noexcept {
+    return return_object([=] {
+        Object o{PyObject_CallObject((PyObject *) &TypeIndexType, nullptr), false};
+        as_index(+o) = as_any(self).type();
+        return o;
+    });
+}
 
 PyNumberMethods cpy_any_number = {
-    .nb_bool = static_cast<inquiry>(cpy_any_bool)
+    .nb_bool = static_cast<inquiry>(any_bool)
+};
+
+PyMethodDef AnyTypeMethods[] = {
+    {"index",     static_cast<PyCFunction>(any_index),     METH_NOARGS, "index it"},
+    {"cast_to",   static_cast<PyCFunction>(any_cast_to),   METH_VARARGS, "cast it"},
+    {"move_from", static_cast<PyCFunction>(any_move_from), METH_VARARGS, "move it"},
+    {"copy_from", static_cast<PyCFunction>(any_copy_from), METH_VARARGS, "copy it"},
+    {"has_value", static_cast<PyCFunction>(any_has_value), METH_VARARGS, "has value"},
+    {nullptr, nullptr, 0, nullptr}
 };
 
 PyTypeObject AnyType = {
@@ -206,27 +282,70 @@ PyTypeObject AnyType = {
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
     .tp_doc = "C++ class object",
     .tp_new = tp_new<Any>,
-    // .tp_init = cpy_any_init,  // overload
-    .tp_methods = cpy_any_methods
+    .tp_methods = AnyTypeMethods
 };
 
 /******************************************************************************/
 
-PyObject * function_call(PyObject *self, PyObject *args, PyObject *) {
+template <class V>
+void sort_unique(V &v) {
+    std::sort(v.begin(), v.end());
+    v.erase(std::unique(v.begin(), v.end()), v.end());
+}
+
+Object add_lookup(SortedLookup &v, PyObject *args) {
+    if (PyObject_Length(args) != 2)
+        return raised(PyExc_TypeError, "Expected 2 arguments");
+    PyObject *index = PyTuple_GET_ITEM(args, 0);
+    PyObject *type = PyTuple_GET_ITEM(args, 1);
+    if (!PyCallable_Check(type))
+        return raised(PyExc_TypeError, "Expected callable object");
+    if (!PyObject_TypeCheck(index, &TypeIndexType))
+        return raised(PyExc_TypeError, "Expected TypeIndex");
+    v.contents.emplace_back(as_index(index), Object(type, true));
+    sort_unique(v.contents);
+    return to_python(v.contents.size());
+}
+
+PyObject * function_register(PyObject *self, PyObject *args) noexcept {
+    return return_object([=]() -> Object {
+        return add_lookup(GlobalLookup, args);
+    });
+}
+
+PyMethodDef register_method = {"register", static_cast<PyCFunction>(function_register), METH_VARARGS, "register it"};
+
+// PyObject *function_overload(PyObject *self, PyObject *args) noexcept {
+//     return return_object([=]() -> Object {
+//         auto const &s = as_function(self);
+//         PyObject *f = one_argument(args, &FunctionType);
+//         if (!f) return {};
+//         auto &fun = as_function(f);
+//         Object obj = to_python(s.function);
+//         auto &o = as_function(+obj);
+//         o.dispatch = s.dispatch;
+//         o.dispatch.insert(o.dispatch.end(), fun.dispatch.begin(), fun.dispatch.end());
+//         sort_unique(o.dispatch);
+//         return obj;
+//     });
+// }
+
+PyObject * function_call(PyObject *self, PyObject *args, PyObject *) noexcept {
     std::cout << "add keywords" << std::endl;
-    if (!cast_value<Function>(self)) {
-        PyErr_SetString(PyExc_ValueError, "Invalid C++ function");
-        return nullptr;
-    }
-    return cpy::return_object([=] {
+    return cpy::return_object([=]() -> Object {
+        auto &s = as_function(self);
+        if (!s) {
+            PyErr_SetString(PyExc_ValueError, "Invalid C++ function");
+            return {};
+        }
         cpy::ArgPack pack;
         // this is some collection of arbitrary things that may include Any
-        if (!put_argpack(pack, {args, true})) return cpy::Object();
+        if (!put_argpack(pack, {args, true})) return {};
         // now the Anys have been moved inside the pack, no matter what.
         BaseContext ct;
-        Object out = cpy::to_python(cast_value<Function>(self)(ct, pack));
+        Object out = cpy::to_python(as_function(self)(ct, pack), GlobalLookup);
 
-        if (!get_argpack(pack, {args, true})) return cpy::Object();
+        if (!get_argpack(pack, {args, true})) return {};
         return out;
         // but, now we should put back the Any in case it wasn't moved.
         // the alternative would be to redo Any into some sort of reference type
@@ -240,11 +359,10 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *) {
     });
 }
 
-static PyMethodDef function_method = {
-    .ml_name = "__call__",
-    .ml_meth = (PyCFunction) function_call,
-    .ml_flags = METH_VARARGS | METH_KEYWORDS,
-    .ml_doc = "a test method"
+PyMethodDef FunctionMethods[] = {
+    {"register", static_cast<PyCFunction>(function_register), METH_VARARGS, "register it"},
+    // {"overload", static_cast<PyCFunction>(function_overload), METH_VARARGS, "overload it"},
+    {nullptr, nullptr, 0, nullptr}
 };
 
 PyTypeObject FunctionType = {
@@ -256,19 +374,26 @@ PyTypeObject FunctionType = {
     .tp_doc = "C++ function object",
     .tp_new = tp_new<Function>,
     .tp_call = function_call,  // overload
-    .tp_methods = nullptr // overload
+    .tp_methods = FunctionMethods
 };
 
 /******************************************************************************/
 
-bool define_types(PyObject *m) {
-    if (PyType_Ready(&AnyType) < 0) return false;
-    Py_INCREF(&AnyType);
-    PyModule_AddObject(m, "Any", reinterpret_cast<PyObject *>(&AnyType));
+SortedLookup GlobalLookup;
 
-    if (PyType_Ready(&FunctionType) < 0) return false;
-    Py_INCREF(&FunctionType);
-    PyModule_AddObject(m, "Function", reinterpret_cast<PyObject *>(&FunctionType));
+bool attach_type(PyObject *m, char const *name, PyTypeObject *t) noexcept {
+    if (PyType_Ready(t) < 0) return false;
+    Py_INCREF(t);
+    PyModule_AddObject(m, name, reinterpret_cast<PyObject *>(t));
+    return true;
+}
+
+template <class F>
+bool attach(PyObject *m, char const *name, F &&f) noexcept {
+    PyObject *o = return_object(static_cast<F &&>(f));
+    if (!o) return false;
+    Py_INCREF(o);
+    PyModule_AddObject(m, name, o);
     return true;
 }
 
@@ -288,28 +413,44 @@ extern "C" {
     };
 
     PyObject* CPY_CAT(PyInit_, CPY_MODULE)(void) {
+        auto const &doc = cpy::document();
+
         Py_Initialize();
         auto m = PyModule_Create(&cpy_definition);
-        if (!cpy::define_types(m)) return nullptr;
-        auto const &d = cpy::document();
+        return m
+            && cpy::attach_type(m, "Any", &cpy::AnyType)
+            && cpy::attach_type(m, "Function", &cpy::FunctionType)
+            && cpy::attach_type(m, "TypeIndex", &cpy::TypeIndexType)
+            && cpy::attach(m, "add_lookup", [m]() -> cpy::Object {
+                Py_INCREF(Py_None);
+                return {PyCFunction_NewEx(&cpy::register_method, Py_None, m), false};
+            })
 
-        auto keys = cpy::return_object([&] {
-            return cpy::to_tuple(d.values, [](auto const &i) {return i.first;});
-        });
-        auto values = cpy::return_object([&] {
-            return cpy::to_tuple(d.values, [](auto const &i) {return i.second;});
-        });
-        if (keys && values) {
-            Py_INCREF(+keys);
-            PyModule_AddObject(m, "keys", +keys);
-            Py_INCREF(+values);
-            PyModule_AddObject(m, "values", +values);
-        } else return nullptr;
-        return m;
+            && cpy::attach(m, "type_names", [&] {
+                return cpy::to_tuple(doc.types, {}, [](auto const &i) {return i.second;});
+            })
+            && cpy::attach(m, "type_indices", [&] {
+                return cpy::to_tuple(doc.types, {}, [](auto const &i) {return i.first;});
+            })
+            && cpy::attach(m, "object_names", [&] {
+                return cpy::to_tuple(doc.values, {}, [](auto const &i) {return i.first;});
+            })
+            && cpy::attach(m, "method_scopes", [&] {
+                return cpy::to_tuple(doc.methods, {}, [](auto const &i) {return std::get<0>(i);});
+            })
+            && cpy::attach(m, "method_names", [&] {
+                return cpy::to_tuple(doc.methods, {}, [](auto const &i) {return std::get<1>(i);});
+            })
+            && cpy::attach(m, "objects", [&] {
+                return cpy::to_tuple(doc.values, {}, [](auto const &i) {return i.second;});
+            })
+            && cpy::attach(m, "methods", [&] {
+                return cpy::to_tuple(doc.methods, {}, [](auto const &i) {return std::get<2>(i);});
+            })
+        ? m : nullptr;
     }
 #else
     void CPY_CAT(init, CPY_MODULE)(void) {
-        cpy::define_types(m);
     }
 #endif
 }

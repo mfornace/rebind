@@ -87,7 +87,7 @@ Object run_test(Py_ssize_t i, Object calls, Object pypack, bool cout, bool cerr,
     if (!value) return {};
     auto timed = cpy::to_python(test_time);
     if (!timed) return {};
-    auto counts = cpy::to_tuple(counters, [](auto const &c) {return c.load(std::memory_order_relaxed);});
+    auto counts = cpy::to_tuple(counters, {}, [](auto const &c) {return c.load(std::memory_order_relaxed);});
     if (!counts) return {};
     auto pyout = cpy::to_python(out.str());
     if (!pyout) return {};
@@ -178,7 +178,7 @@ PyObject *cpy_compile_info(PyObject *, PyObject *) {
 // can be wrapped
 PyObject *cpy_test_names(PyObject *, PyObject *) {
     return cpy::return_object([] {
-        return cpy::to_tuple(cpy::suite(),
+        return cpy::to_tuple(cpy::suite(), {},
             [](auto const &c) -> decltype(c.name) {return c.name;}
         );
     });
