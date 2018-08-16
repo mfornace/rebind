@@ -62,6 +62,15 @@ bool from_python(Value &v, Object o) {
         v = static_cast<Real>(PyFloat_AsDouble(+o));
     // } else if (PyComplex_Check(+o)) {
         // v = std::complex<double>{PyComplex_RealAsDouble(+o), PyComplex_ImagAsDouble(+o)};
+    } else if (PyTuple_Check(+o) || PyList_Check(+o)) {
+        Vector<Value> vals;
+        vals.reserve(PyObject_Length(+o));
+        map_iterable(o, [&](Object o) {
+            vals.emplace_back();
+            return from_python(vals.back(), std::move(o));
+        });
+        std::cout << vals.size() << " " << vals[0].var.index() << std::endl;
+        v = std::move(vals);
     } else if (PyBytes_Check(+o)) {
         char *c;
         Py_ssize_t size;
@@ -79,14 +88,17 @@ bool from_python(Value &v, Object o) {
         else return false;
     } else if (PyObject_TypeCheck(+o, &AnyType)) {
         v = Value(std::in_place_t(), std::move(as_any(+o)));
+    } else if (PyObject_TypeCheck(+o, &TypeIndexType)) {
+        v = Value(std::in_place_t(), as_index(+o));
     } else if (PyObject_TypeCheck(+o, &FunctionType)) {
-        v = Value(std::move(as_function(+o)));
+        v = Value(std::move(as_function(+o).function));
     // } else if (PyObject_CheckBuffer(+o)) {
 // hmm
     // } else if (PyMemoryView_Check(+o)) {
 // hmm
     } else {
-        PyErr_SetString(PyExc_TypeError, "Invalid type for conversion to C++");
+        v = Value(std::in_place_t(), std::move(o));
+        // PyErr_SetString(PyExc_TypeError, "Invalid type for conversion to C++");
     }
     return !PyErr_Occurred();
 };
@@ -115,7 +127,7 @@ bool get_argpack(ArgPack &pack, Object pypack) {
         }
         if (std::holds_alternative<Function>(it->var)) {
             if (!PyObject_TypeCheck(+o, &FunctionType)) return false;
-            as_function(+o) = std::move(std::get<Function>(it->var));
+            as_function(+o).function = std::move(std::get<Function>(it->var));
         }
         ++it;
         return true;
@@ -179,18 +191,20 @@ PyObject *type_index_name(PyObject *o) noexcept {
 }
 
 PyObject *type_index_compare(PyObject *self, PyObject *other, int op) {
-    auto const &s = as_index(self);
-    auto const &o = as_index(other);
-    bool out;
-    switch(op) {
-        case(Py_LT): out = s < o;
-        case(Py_LE): out = s <= o;
-        case(Py_EQ): out = s == o;
-        case(Py_NE): out = s != o;
-        case(Py_GT): out = s > o;
-        case(Py_GE): out = s >= o;
-    }
-    if (out) {Py_RETURN_TRUE;} Py_RETURN_FALSE;
+    return return_object([=] {
+        auto const &s = as_index(self);
+        auto const &o = as_index(other);
+        bool out;
+        switch(op) {
+            case(Py_LT): out = s < o;
+            case(Py_GT): out = s > o;
+            case(Py_LE): out = s <= o;
+            case(Py_EQ): out = s == o;
+            case(Py_NE): out = s != o;
+            case(Py_GE): out = s >= o;
+        }
+        return to_python(out);
+    });
 }
 
 PyTypeObject TypeIndexType = {
@@ -205,6 +219,10 @@ PyTypeObject TypeIndexType = {
     .tp_doc = "C++ type_index object",
     .tp_new = type_index_new,
 };
+
+/******************************************************************************/
+
+
 
 /******************************************************************************/
 
@@ -309,7 +327,7 @@ Object add_lookup(SortedLookup &v, PyObject *args) {
 
 PyObject * function_register(PyObject *self, PyObject *args) noexcept {
     return return_object([=]() -> Object {
-        return add_lookup(GlobalLookup, args);
+        return add_lookup(as_function(self).lookup, args);
     });
 }
 
@@ -334,7 +352,7 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *) noexcept {
     std::cout << "add keywords" << std::endl;
     return cpy::return_object([=]() -> Object {
         auto &s = as_function(self);
-        if (!s) {
+        if (!s.function) {
             PyErr_SetString(PyExc_ValueError, "Invalid C++ function");
             return {};
         }
@@ -343,7 +361,7 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *) noexcept {
         if (!put_argpack(pack, {args, true})) return {};
         // now the Anys have been moved inside the pack, no matter what.
         BaseContext ct;
-        Object out = cpy::to_python(as_function(self)(ct, pack), GlobalLookup);
+        Object out = cpy::to_python(s.function(ct, pack), s.lookup);
 
         if (!get_argpack(pack, {args, true})) return {};
         return out;
@@ -368,18 +386,16 @@ PyMethodDef FunctionMethods[] = {
 PyTypeObject FunctionType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name = "cpy.Function",
-    .tp_basicsize = sizeof(Holder<Function>),
-    .tp_dealloc = static_cast<destructor>(tp_delete<Function>),
+    .tp_basicsize = sizeof(Holder<Dispatch>),
+    .tp_dealloc = static_cast<destructor>(tp_delete<Dispatch>),
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
     .tp_doc = "C++ function object",
-    .tp_new = tp_new<Function>,
+    .tp_new = tp_new<Dispatch>,
     .tp_call = function_call,  // overload
     .tp_methods = FunctionMethods
 };
 
 /******************************************************************************/
-
-SortedLookup GlobalLookup;
 
 bool attach_type(PyObject *m, char const *name, PyTypeObject *t) noexcept {
     if (PyType_Ready(t) < 0) return false;
@@ -421,11 +437,27 @@ extern "C" {
             && cpy::attach_type(m, "Any", &cpy::AnyType)
             && cpy::attach_type(m, "Function", &cpy::FunctionType)
             && cpy::attach_type(m, "TypeIndex", &cpy::TypeIndexType)
-            && cpy::attach(m, "add_lookup", [m]() -> cpy::Object {
-                Py_INCREF(Py_None);
-                return {PyCFunction_NewEx(&cpy::register_method, Py_None, m), false};
+            // && cpy::attach(m, "methods_fun", [m]() -> cpy::Object {
+            //     Py_INCREF(Py_None);
+            //     return {PyCFunction_NewEx(&cpy::register_method, Py_None, m), false};
+            // })
+            && cpy::attach(m, "methods", [&] {
+                return cpy::to_python(cpy::make_function([&](cpy::Vector<std::type_index>, cpy::Vector<cpy::Object>) {
+                    return cpy::to_tuple(doc.methods, {}, [](auto const &i) {return std::get<2>(i);});
+                }));
             })
-
+            && cpy::attach(m, "objects", [&] {
+                return cpy::to_python(cpy::make_function([&](cpy::Vector<std::type_index> k, cpy::Vector<cpy::Object> v) {
+                    cpy::SortedLookup lk;
+                    for (int i = 0; i != k.size(); ++i) {
+                        lk.contents.emplace_back(k[i], v[i]);
+                    }
+                    cpy::sort_unique(lk.contents);
+                    return cpy::to_tuple(doc.values, {}, [&](auto const &i) {
+                        return cpy::to_python(i.second, lk);
+                    });
+                }));
+            })
             && cpy::attach(m, "type_names", [&] {
                 return cpy::to_tuple(doc.types, {}, [](auto const &i) {return i.second;});
             })
@@ -440,12 +472,6 @@ extern "C" {
             })
             && cpy::attach(m, "method_names", [&] {
                 return cpy::to_tuple(doc.methods, {}, [](auto const &i) {return std::get<1>(i);});
-            })
-            && cpy::attach(m, "objects", [&] {
-                return cpy::to_tuple(doc.values, {}, [](auto const &i) {return i.second;});
-            })
-            && cpy::attach(m, "methods", [&] {
-                return cpy::to_tuple(doc.methods, {}, [](auto const &i) {return std::get<2>(i);});
             })
         ? m : nullptr;
     }

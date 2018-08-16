@@ -76,9 +76,12 @@ struct SortedLookup {
     }
 };
 
-extern SortedLookup GlobalLookup;
-
 /******************************************************************************/
+
+struct Dispatch {
+    Function function;
+    SortedLookup lookup;
+};
 
 template <class T>
 T & cast_object(PyObject *o) {
@@ -97,10 +100,14 @@ auto & as_index(PyObject *o) {
 
 auto & as_function(PyObject *o) {
     if (!PyObject_TypeCheck(o, &FunctionType)) throw std::invalid_argument("Expected instance of cpy.Function");
-    return cast_object<Function>(o);
+    return cast_object<Dispatch>(o);
 }
 
 /******************************************************************************/
+
+inline Object to_python(Object t, NoLookup={}) noexcept {
+    return t;
+}
 
 inline Object to_python(std::monostate const &, NoLookup={}) noexcept {
     return {Py_None, true};
@@ -147,9 +154,17 @@ inline Object to_python(Binary const &s, NoLookup={}) noexcept {
     return {Py_None, false};
 }
 
-inline Object to_python(Function f, NoLookup={}) noexcept {
+inline Object to_python(Function f, NoLookup lookup={}) noexcept {
     Object o{PyObject_CallObject((PyObject *) &FunctionType, nullptr), false};
-    cast_object<Function>(+o) = std::move(f);
+    cast_object<Dispatch>(+o).function = std::move(f);
+    return o;
+}
+
+inline Object to_python(Function f, SortedLookup const &lookup) noexcept {
+    Object o{PyObject_CallObject((PyObject *) &FunctionType, nullptr), false};
+    auto &d = cast_object<Dispatch>(+o);
+    d.lookup = lookup;
+    d.function = std::move(f);
     return o;
 }
 
@@ -161,6 +176,8 @@ inline Object to_python(std::type_index f, NoLookup={}) noexcept {
 
 template <class T, class F, std::enable_if_t<std::is_same_v<Any, T>, int> = 0>
 inline Object to_python(T a, F &&lookup) noexcept {
+    auto ptr = std::any_cast<Object>(&a);
+    if (ptr) return *ptr;
     Object f = lookup(a.type());
     Object o{PyObject_CallObject(f ? +f : (PyObject *) &AnyType, nullptr), false};
     cast_object<Any>(+o) = std::move(a);

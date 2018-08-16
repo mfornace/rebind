@@ -28,12 +28,39 @@ struct FromValue {
         else throw std::logic_error(cast_bug_message); // never get here
     }
 
-    bool check(Any const &u) const {return std::any_cast<no_qualifier<T>>(&u);}
+    bool check(Any const &u) const {
+        std::cout << "check" << bool(std::any_cast<no_qualifier<T>>(&u)) << std::endl;
+        return std::any_cast<no_qualifier<T>>(&u);}
 
     T operator()(Any &&u) const {
         return static_cast<T>(std::any_cast<T>(u));
     }
     T operator()(Any const &u) const {
+        throw std::logic_error("shouldn't be used");
+    }
+};
+
+template <class T>
+struct FromValue<Vector<T>> {
+    template <class U>
+    bool check(U const &) const {return false;}
+
+    bool check(Vector<Value> const &u) const {
+        return true;
+        // std::cout << "check" << bool(std::any_cast<no_qualifier<T>>(&u)) << std::endl;
+        // return std::any_cast<no_qualifier<T>>(&u);
+    }
+
+    Vector<T> operator()(Vector<Value> &&u) const {
+        Vector<T> out;
+        for (auto &x : u) {
+            std::visit([&](auto &x) {out.emplace_back(FromValue<T>()(std::move(x)));}, x.var);
+        }
+        return out;
+    }
+
+    template <class U>
+    Vector<T> operator()(U const &) const {
         throw std::logic_error("shouldn't be used");
     }
 };
