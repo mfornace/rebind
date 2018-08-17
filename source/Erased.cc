@@ -19,37 +19,36 @@ struct goo {
     }
 };
 
-Document & document() noexcept {
-    static Document static_document;
-    return static_document;
-}
-
 void goo::show() const {std::cout << x << ", " << &x << std::endl;}
 
-// could make this return a document
-bool make_document() {
-    auto &doc = document();
-    doc.def("fun", [](int i, double d) {
-        return i + d;
-    });
-    doc.def("vec", [](double i, double d) {
-        return std::vector<double>{i, i, d};
-    });
-    doc.def("goo.new", [](double x) -> goo {
+void define(Document &doc, Type<goo>) {
+    doc.type<goo>("goo");
+    doc.recurse("goo.new", [](double x) -> goo {
         return x;
     });
-    doc.def("goo.add", [](goo x) {
+    doc.recurse("goo.add", [](goo x) {
         x.x += 4;
         x.show();
         return x;
     });
-    doc.def("goo.show", [](goo const &x) {
+    doc.recurse("goo.show", [](goo const &x) {
         x.show();
     });
     doc.method("goo", "show", make_function([](goo const &x) {
         x.show();
     }));
-    doc.type<goo>("goo");
+}
+
+// could make this return a document
+bool make_document() {
+    auto &doc = document();
+    doc.define("fun", [](int i, double d) {
+        return i + d;
+    });
+    doc.define("vec", [](double i, double d) {
+        return std::vector<double>{i, i, d};
+    });
+    define(doc, Type<goo>());
     return bool();
 }
 

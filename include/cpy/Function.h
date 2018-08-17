@@ -109,6 +109,7 @@ struct NoMutable {
 // if args contains an Any
 // the function may move the Any if it takes Value
 // or the function may leave the Any alone if it takes const &
+
 template <class F>
 struct FunctionAdaptor {
     F function;
@@ -120,27 +121,13 @@ struct FunctionAdaptor {
         });
         return Signature<F>::apply([&](auto return_type, auto ...ts) {
             if (args.size() != sizeof...(ts))
-                throw std::invalid_argument("cpy: wrong number of arguments");
+                throw WrongNumber(sizeof...(ts), args.size());
             if ((... && check_cast_index(args, ts, 1)))
                 return value_invoke(function, cast_index(args, ts, 1)...);
-            throw std::invalid_argument("cpy: wrong argument types");
+            throw WrongTypes(args);
         });
     }
 };
-
-// struct OverloadAdaptor {
-//     Vector<Function> overloads;
-
-//     Value operator()(BaseContext &ct, ArgPack &args) const {
-//         if (overloads.empty())
-//             throw std::invalid_argument("cpy: no overloads registered");
-//         for (auto it = overloads.begin(); it != std::prev(overloads.end()); ++it) {
-//             try {return (*it)(ct, args);}
-//             catch (std::invalid_argument const &) {}
-//         }
-//         return overloads.back()(ct, args);
-//     }
-// };
 
 template <class F>
 struct FunctionAdaptor2 {
@@ -148,15 +135,19 @@ struct FunctionAdaptor2 {
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
     Value operator()(BaseContext &ct, ArgPack &args) const {
+        Signature<F>::apply([](auto return_type, auto context_type, auto ...ts) {
+            (NoMutable<decltype(*ts)>(), ...);
+        });
         return Signature<F>::apply([&](auto return_type, auto context_type, auto ...ts) {
             if (args.size() != sizeof...(ts))
-                throw std::invalid_argument("cpy: wrong number of arguments");
-            if ((... && check_cast_index(args, ts, 1)))
-                return value_invoke(function, ct, cast_index(args, ts, 1)...);
-            throw std::invalid_argument("cpy: wrong argument types");
+                throw WrongNumber(sizeof...(ts), args.size());
+            if ((... && check_cast_index(args, ts, 2)))
+                return value_invoke(function, ct, cast_index(args, ts, 2)...);
+            throw WrongTypes(args);
         });
     }
 };
+
 
 template <class F>
 Function make_function(F f) {return FunctionAdaptor<F>{std::move(f)};}
@@ -171,9 +162,20 @@ struct Document {
     std::vector<std::pair<std::type_index, std::string>> types;
     std::vector<std::tuple<std::string, std::string, Value>> methods;
 
-    template <class F>
-    void def(char const *s, F &&f) {
-        values.emplace_back(s, make_function(static_cast<F &&>(f)));
+    template <class O>
+    void define(char const *s, O &&o) {
+        values.emplace_back(s, make_function(static_cast<O &&>(o)));
+    }
+
+
+    template <class O>
+    void define2(char const *s, O &&o) {
+        values.emplace_back(s, make_function2(static_cast<O &&>(o)));
+    }
+
+    template <class O>
+    void recurse(char const *s, O &&o) {
+        values.emplace_back(s, make_function(static_cast<O &&>(o)));
     }
 
     void type(char const *s, std::type_index t) {
@@ -189,5 +191,61 @@ struct Document {
 };
 
 Document & document() noexcept;
+
+
+
+
+
+
+
+
+
+
+/// std::ostream synchronizer for redirection from multiple threads
+struct StreamSync {
+    std::ostream &stream;
+    std::streambuf *original; // never changed (unless by user)
+    std::mutex mutex;
+    Vector<std::streambuf *> queue;
+};
+
+extern StreamSync cout_sync;
+extern StreamSync cerr_sync;
+
+/// RAII acquisition of cout or cerr
+struct RedirectStream {
+    StreamSync &sync;
+    std::streambuf * const buf;
+
+    RedirectStream(StreamSync &s, std::streambuf *b) : sync(s), buf(b) {
+        if (!buf) return;
+        std::lock_guard<std::mutex> lk(sync.mutex);
+        if (sync.queue.empty()) sync.stream.rdbuf(buf); // take over the stream
+        else sync.queue.push_back(buf); // or add to queue
+    }
+
+    ~RedirectStream() {
+        if (!buf) return;
+        std::lock_guard<std::mutex> lk(sync.mutex);
+        auto it = std::find(sync.queue.begin(), sync.queue.end(), buf);
+        if (it != sync.queue.end()) sync.queue.erase(it); // remove from queue
+        else if (sync.queue.empty()) sync.stream.rdbuf(sync.original); // set to original
+        else { // let next waiting stream take over
+            sync.stream.rdbuf(sync.queue[0]);
+            sync.queue.erase(sync.queue.begin());
+        }
+    }
+};
+
+
+
+
+
+
+
+
+
+
+
 
 }

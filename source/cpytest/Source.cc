@@ -5,6 +5,11 @@ namespace cpy {
 
 /******************************************************************************/
 
+StreamSync cout_sync{std::cout, std::cout.rdbuf()};
+StreamSync cerr_sync{std::cerr, std::cerr.rdbuf()};
+
+/******************************************************************************/
+
 // Context::Context() = default;
 // Context::Context(Context const &) = default;
 // Context::Context(Context &&) noexcept = default;
@@ -21,7 +26,7 @@ Value call(std::string_view s, Context c, ArgPack pack) {
     auto it = std::find_if(cases.begin(), cases.end(), [=](auto const &c) {return c.name == s;});
     if (it == cases.end())
         throw std::runtime_error("Test case \"" + std::string(s) + "\" not found");
-    return it->function(c, std::move(pack));
+    return it->function(c, pack);
 }
 
 Value get_value(std::string_view s) {

@@ -9,6 +9,11 @@
 /******************************************************************************************/
 
 template <class T>
+struct Type {
+    T operator*() const; // undefined
+};
+
+template <class T>
 struct IndexedType {
     std::size_t index;
     T operator*() const; // undefined

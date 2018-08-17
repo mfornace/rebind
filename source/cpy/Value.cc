@@ -1,6 +1,11 @@
-#include <cpy/Value.h>
+#include <cpy/Function.h>
 
 namespace cpy {
+
+Document & document() noexcept {
+    static Document static_document;
+    return static_document;
+}
 
 /******************************************************************************/
 
@@ -14,9 +19,10 @@ Value::Value(bool v)             noexcept : var(v) {}
 Value::Value(Integer v)          noexcept : var(v) {}
 Value::Value(Real v)             noexcept : var(v) {}
 Value::Value(Function v)         noexcept : var(std::move(v)) {}
-// Value::Value(Complex v)          noexcept : var(v) {}
+Value::Value(Binary v)           noexcept : var(std::move(v)) {}
 Value::Value(std::string v)      noexcept : var(std::move(v)) {}
 Value::Value(std::string_view v) noexcept : var(std::move(v)) {}
+Value::Value(std::type_index v)  noexcept : var(std::move(v)) {}
 
 Value::Value(std::in_place_t, Any v) noexcept : var(std::move(v)) {}
 Value::Value(Vector<Value> v)             noexcept : var(std::move(v)) {}
@@ -30,6 +36,7 @@ Integer Value::as_integer() const & {return std::get<Integer>(var);}
 Real Value::as_real() const & {return std::get<Real>(var);}
 
 std::string_view Value::as_view() const & {return std::get<std::string_view>(var);}
+std::type_index Value::as_index() const & {return std::get<std::type_index>(var);}
 
 /******************************************************************************/
 

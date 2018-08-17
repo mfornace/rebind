@@ -23,14 +23,7 @@ struct Holder {
     T value; // I think stack is OK because this object is only casted to anyway.
 };
 
-bool attach_type(PyTypeObject *, PyObject *, char const *) noexcept;
-
 extern PyTypeObject FunctionType, AnyType, TypeIndexType;
-
-struct Identity {
-    template <class T>
-    T const & operator()(T const &t) const {return t;}
-};
 
 struct Object {
     PyObject *ptr = nullptr;
@@ -54,42 +47,42 @@ struct Object {
     ~Object() {Py_XDECREF(ptr);}
 };
 
-struct NullObject {
-    operator Object() const {return {};}
+struct Buffer {
+    Py_buffer view;
+    bool ok;
+
+    Buffer(PyObject *o, int flags) {ok = PyObject_GetBuffer(o, &view, flags) == 0;}
+
+    ~Buffer() {PyBuffer_Release(&view);}
 };
 
-struct SortedLookup {
-    std::vector<std::pair<std::type_index, Object>> contents;
+/******************************************************************************/
 
-    Object operator()(std::type_index const &idx) const {
-        auto it = std::lower_bound(contents.begin(), contents.end(), std::make_pair(idx, Object()));
-        return (it != contents.end() && it->first == idx) ? it->second : Object();
-    }
-};
+inline PyObject * type_object(PyTypeObject &o) noexcept {return reinterpret_cast<PyObject *>(&o);}
 
 /******************************************************************************/
 
 template <class T>
 T & cast_object(PyObject *o) {
+    if constexpr(std::is_same_v<T, Any>) {
+        if (!PyObject_TypeCheck(o, &AnyType)) throw std::invalid_argument("Expected instance of cpy.Any");
+    }
+    if constexpr(std::is_same_v<T, Function>) {
+        if (!PyObject_TypeCheck(o, &FunctionType)) throw std::invalid_argument("Expected instance of cpy.Function");
+    }
+    if constexpr(std::is_same_v<T, std::type_index>) {
+        if (!PyObject_TypeCheck(o, &TypeIndexType)) throw std::invalid_argument("Expected instance of cpy.TypeIndex");
+    }
     return reinterpret_cast<Holder<T> *>(o)->value;
 }
 
-auto & as_any(PyObject *o) {
-    if (!PyObject_TypeCheck(o, &AnyType)) throw std::invalid_argument("Expected instance of cpy.Any");
-    return cast_object<Any>(o);
-}
-
-auto & as_index(PyObject *o) {
-    if (!PyObject_TypeCheck(o, &TypeIndexType)) throw std::invalid_argument("Expected instance of cpy.TypeIndex");
-    return cast_object<std::type_index>(o);
-}
-
-auto & as_function(PyObject *o) {
-    if (!PyObject_TypeCheck(o, &FunctionType)) throw std::invalid_argument("Expected instance of cpy.Function");
-    return cast_object<Function>(o);
-}
-
 /******************************************************************************/
+
+inline std::type_index type_index_of(Value const &v) {
+    return std::visit([](auto const &x) -> std::type_index {
+        return typeid(std::decay_t<decltype(x)>);
+    }, v.var);
+}
 
 inline Object to_python(Object t) noexcept {
     return t;
@@ -137,17 +130,17 @@ inline Object to_python(std::complex<double> const &s) noexcept {
 }
 
 inline Object to_python(Binary const &s) noexcept {
-    return {Py_None, false};
+    return {PyByteArray_FromStringAndSize(s.data(), s.size()), false};
 }
 
 inline Object to_python(Function f) noexcept {
-    Object o{PyObject_CallObject((PyObject *) &FunctionType, nullptr), false};
+    Object o{PyObject_CallObject(type_object(FunctionType), nullptr), false};
     cast_object<Function>(+o) = std::move(f);
     return o;
 }
 
 inline Object to_python(std::type_index f) noexcept {
-    Object o{PyObject_CallObject((PyObject *) &TypeIndexType, nullptr), false};
+    Object o{PyObject_CallObject(type_object(TypeIndexType), nullptr), false};
     cast_object<std::type_index>(+o) = std::move(f);
     return o;
 }
@@ -156,14 +149,14 @@ template <class T, std::enable_if_t<std::is_same_v<Any, T>, int> = 0>
 inline Object to_python(T a) noexcept {
     auto ptr = std::any_cast<Object>(&a);
     if (ptr) return *ptr;
-    Object o{PyObject_CallObject((PyObject *) &AnyType, nullptr), false};
+    Object o{PyObject_CallObject(type_object(AnyType), nullptr), false};
     cast_object<Any>(+o) = std::move(a);
     return o;
 }
 
-bool put_argpack(ArgPack &pack, Object pypack);
+void put_argpack(ArgPack &pack, Object pypack);
 
-bool get_argpack(ArgPack &pack, Object pypack);
+void get_argpack(ArgPack &pack, Object pypack);
 
 /******************************************************************************/
 
@@ -193,12 +186,12 @@ Object to_python(Vector<T> const &v) {return to_tuple(v);}
 
 template <class T, std::enable_if_t<std::is_same_v<T, Value>, int> = 0>
 Object to_python(T const &s) noexcept {
-    return std::visit([&](auto const &x) {return to_python(x);}, s.var);
+    return std::visit([](auto const &x) {return to_python(x);}, s.var);
 }
 
 template <class T, std::enable_if_t<std::is_same_v<T, Value>, int> = 0>
 Object to_python(T &&s) noexcept {
-    return std::visit([&](auto &x) {return to_python(std::move(x));}, s.var);
+    return std::visit([](auto &x) {return to_python(std::move(x));}, s.var);
 }
 
 inline Object to_python(KeyPair const &p) noexcept {
@@ -208,23 +201,6 @@ inline Object to_python(KeyPair const &p) noexcept {
     if (!value) return {};
     return {PyTuple_Pack(2u, +key, +value), false};
 }
-
-/******************************************************************************/
-
-template <class F>
-bool map_iterable(Object iterable, F &&f) {
-    Object iter = {PyObject_GetIter(+iterable), false};
-    if (!iter) return false;
-
-    bool ok = true;
-    while (ok) {
-        auto it = Object(PyIter_Next(+iter), false);
-        if (!+it) break;
-        ok = f(std::move(it));
-    }
-    return ok;
-}
-
 /******************************************************************************/
 
 struct PythonError : ClientError {
@@ -232,6 +208,20 @@ struct PythonError : ClientError {
 };
 
 PythonError python_error() noexcept;
+
+/******************************************************************************/
+
+template <class F>
+void map_iterable(Object iterable, F &&f) {
+    Object iter = {PyObject_GetIter(+iterable), false};
+    if (!iter) throw python_error();
+
+    while (true) {
+        auto it = Object(PyIter_Next(+iter), false);
+        if (!+it) return;
+        f(std::move(it));
+    }
+}
 
 /******************************************************************************/
 
@@ -252,50 +242,42 @@ struct AcquireGIL {
     ~AcquireGIL() {if (lock) lock->release();}
 };
 
-/// std::ostream synchronizer for redirection from multiple threads
-struct StreamSync {
-    std::ostream &stream;
-    std::streambuf *original; // never changed (unless by user)
-    std::mutex mutex;
-    Vector<std::streambuf *> queue;
-};
+/******************************************************************************/
 
-extern StreamSync cout_sync;
-extern StreamSync cerr_sync;
+Value from_python(Object o);
 
-/// RAII acquisition of cout or cerr
-struct RedirectStream {
-    StreamSync &sync;
-    std::streambuf * const buf;
+struct PythonFunction {
+    Object function;
 
-    RedirectStream(StreamSync &s, std::streambuf *b) : sync(s), buf(b) {
-        if (!buf) return;
-        std::lock_guard<std::mutex> lk(sync.mutex);
-        if (sync.queue.empty()) sync.stream.rdbuf(buf); // take over the stream
-        else sync.queue.push_back(buf); // or add to queue
-    }
-
-    ~RedirectStream() {
-        if (!buf) return;
-        std::lock_guard<std::mutex> lk(sync.mutex);
-        auto it = std::find(sync.queue.begin(), sync.queue.end(), buf);
-        if (it != sync.queue.end()) sync.queue.erase(it); // remove from queue
-        else if (sync.queue.empty()) sync.stream.rdbuf(sync.original); // set to original
-        else { // let next waiting stream take over
-            sync.stream.rdbuf(sync.queue[0]);
-            sync.queue.erase(sync.queue.begin());
-        }
+    /// Run C++ functor; logs non-ClientError and rethrows all exceptions
+    Value operator()(BaseContext const &ct, ArgPack &args) const {
+        AcquireGIL lk(static_cast<ReleaseGIL *>(ct.metadata));
+        Object o = to_python(args);
+        if (!o) throw python_error();
+        o = {PyObject_CallObject(+function, +o), false};
+        if (!o) throw python_error();
+        return from_python(std::move(o));
     }
 };
 
 /******************************************************************************/
 
-bool from_python(Value &v, Object o);
-
-/******************************************************************************/
+std::string_view names[] = {
+    "None",
+    "bool",
+    "int",
+    "float",
+    "str",
+    "str",
+    "TypeIndex",
+    "Binary",
+    "Function",
+    "class",
+    "tuple",
+};
 
 template <class F>
-PyObject * return_object(F &&f) noexcept {
+PyObject *raw_object(F &&f) noexcept {
     try {
         Object o = static_cast<F &&>(f)();
         Py_XINCREF(+o);
@@ -303,13 +285,23 @@ PyObject * return_object(F &&f) noexcept {
     } catch (PythonError const &) {
         return nullptr;
     } catch (std::bad_alloc const &e) {
-        PyErr_Format(PyExc_MemoryError, "C++ out of memory with message %s", e.what());
+        PyErr_Format(PyExc_MemoryError, "C++: out of memory: %s", e.what());
+    } catch (WrongNumber const &e) {
+        unsigned int n0 = e.expected, n = e.received;
+        PyErr_Format(PyExc_TypeError, "C++: wrong number of arguments (expected %u, got %u)", n0, n);
+    } catch (WrongTypes const &e) {
+        std::ostringstream os;
+        os << "C++: wrong argument types (";
+        for (auto i : e.indices) os << names[i] << ", ";
+        auto s = std::move(os).str();
+        s.back() = ')';
+        PyErr_SetString(PyExc_TypeError, s.c_str());
     } catch (std::exception const &e) {
         if (!PyErr_Occurred())
-            PyErr_Format(PyExc_RuntimeError, "C++ exception with message %s", e.what());
+            PyErr_Format(PyExc_RuntimeError, "C++: %s", e.what());
     } catch (...) {
         if (!PyErr_Occurred())
-            PyErr_SetString(PyExc_RuntimeError, "Unknown C++ exception");
+            PyErr_SetString(PyExc_RuntimeError, "C++: unknown exception");
     }
     return nullptr;
 }

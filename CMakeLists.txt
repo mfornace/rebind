@@ -70,7 +70,7 @@ endfunction(cpy_module)
 
 ################################################################################
 
-add_library(testcpy SHARED EXCLUDE_FROM_ALL source/Test.cc)
+add_library(testcpy SHARED EXCLUDE_FROM_ALL source/Test.cc source/cpytest/Runner.cc)
 set_property(TARGET testcpy PROPERTY OUTPUT_NAME test)
 target_link_libraries(testcpy PRIVATE libcpy)
 cpy_module(mymodule testcpy)

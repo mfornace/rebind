@@ -4,6 +4,7 @@
  */
 
 #pragma once
+#include <iostream>
 #include <variant>
 #include <complex>
 #include <string>
@@ -12,6 +13,7 @@
 #include <string_view>
 #include <any>
 #include <memory>
+#include <typeindex>
 
 #define CPY_CAT_IMPL(s1, s2) s1##s2
 #define CPY_CAT(s1, s2) CPY_CAT_IMPL(s1, s2)
@@ -21,7 +23,10 @@
 
 namespace cpy {
 
-struct BaseContext {};
+struct BaseContext {
+    std::any context;
+    void *metadata = nullptr;
+};
 
 /******************************************************************************/
 
@@ -37,10 +42,7 @@ struct Value;
 
 using Function = std::function<Value(BaseContext &, std::vector<Value> &)>;
 
-struct Binary {
-    std::shared_ptr<char const> data;
-    std::size_t size = 0;
-};
+using Binary = std::vector<char>;
 
 using Integer = std::ptrdiff_t;
 
@@ -60,7 +62,7 @@ using Variant = std::variant<
     Real,
     std::string_view,
     std::string,
-    // Complex,   // ?
+    std::type_index,
     Binary,       // ?
     Function,
     Any,     // ?
@@ -90,32 +92,32 @@ struct Value {
     Value(Value const &);
     ~Value();
 
-    Value(std::monostate={}) noexcept;
-    Value(bool)              noexcept;
-    Value(Integer)           noexcept;
-    Value(Real)              noexcept;
-    // Value(Complex)           noexcept;
-    Value(std::string)       noexcept;
-    Value(std::string_view)  noexcept;
+    Value(std::monostate={})    noexcept;
+    Value(bool)                 noexcept;
+    Value(Integer)              noexcept;
+    Value(Real)                 noexcept;
+    Value(std::type_index)      noexcept;
+    Value(Binary)               noexcept;
+    Value(std::string)          noexcept;
+    Value(std::string_view)     noexcept;
     Value(std::in_place_t, Any) noexcept;
-    Value(Function) noexcept;
-    Value(Vector<Value>)             noexcept;
+    Value(Function)             noexcept;
+    Value(Vector<Value>)        noexcept;
 
     bool             as_bool()    const &;
     Integer          as_integer() const &;
     Real             as_real()    const &;
-    // Complex          as_complex() const &;
     std::string_view as_view()    const &;
     std::string      as_string()  const &;
     Any              as_any()     const &;
     Vector<Value>    as_vector()  const &;
     Binary           as_binary()  const &;
+    std::type_index  as_index()   const &;
 
     Any              as_any()    &&;
     std::string      as_string() &&;
     Vector<Value>    as_vector() &&;
     Binary           as_binary() &&;
-
 };
 
 struct KeyPair {
@@ -152,6 +154,16 @@ struct ToValue<std::string_view> {
     Value operator()(std::string_view t) const {return std::move(t);}
 };
 
+template <>
+struct ToValue<std::type_index> {
+    Value operator()(std::type_index t) const {return std::move(t);}
+};
+
+template <>
+struct ToValue<Binary> {
+    Value operator()(Binary t) const {return std::move(t);}
+};
+
 template <class T>
 struct ToValue<T, std::enable_if_t<(std::is_floating_point_v<T>)>> {
     Value operator()(T t) const {return static_cast<Real>(t);}
@@ -167,15 +179,23 @@ struct ToValue<char const *> {
     Value operator()(char const *t) const {return std::string_view(t);}
 };
 
+template <>
+struct ToValue<Value>;
+
 template <class T, class Alloc>
 struct ToValue<std::vector<T, Alloc>> {
     Value operator()(std::vector<T, Alloc> t) const {
         std::vector<Value> vec;
+        // std::cout << typeid(T).name() << std::endl;
         for (auto &&i : t) vec.emplace_back(ToValue<T>()(i));
         return vec;
     }
 };
 
+template <>
+struct ToValue<Value> {
+    Value operator()(Value v) const {return v;}
+};
 
 /******************************************************************************/
 
@@ -201,5 +221,39 @@ Value make_value(T &&t) {
 }
 
 /******************************************************************************/
+
+struct Identity {
+    template <class T>
+    T const & operator()(T const &t) const {return t;}
+};
+
+template <class V, class F=Identity>
+Vector<Value> vectorize(V const &v, F &&f) {
+    Vector<Value> out;
+    out.reserve(std::size(v));
+    for (auto &&x : v) out.emplace_back(make_value(f(x)));
+    return out;
+}
+
+/******************************************************************************/
+
+struct DispatchError : std::invalid_argument {
+    using std::invalid_argument::invalid_argument;
+};
+
+struct WrongNumber : DispatchError {
+    unsigned int expected, received;
+    WrongNumber(unsigned int n0, unsigned int n)
+        : DispatchError("wrong number of arguments"), expected(n0), received(n) {}
+};
+
+struct WrongTypes : DispatchError {
+    Vector<unsigned int> indices;
+
+    WrongTypes(ArgPack const &v) : DispatchError("wrong argument types") {
+        indices.reserve(v.size());
+        for (auto const &x : v) indices.emplace_back(x.var.index());
+    }
+};
 
 }

@@ -36,7 +36,7 @@ struct TestAdaptor {
     F function;
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
-    Value operator()(Context &ctx, ArgPack args) {
+    Value operator()(Context &ct, ArgPack args) {
         try {
             return TestSignature<F>::apply([&](auto return_type, auto context_type, auto ...ts) {
                 static_assert(std::is_convertible_v<Context, decltype(*context_type)>,
@@ -44,21 +44,21 @@ struct TestAdaptor {
                 if (args.size() != sizeof...(ts))
                     throw std::invalid_argument("cpy: wrong number of arguments");
                 if ((... && check_cast_index(args, ts, 2)))
-                    return value_invoke(function, Context(ctx), cast_index(args, ts, 2)...);
+                    return value_invoke(function, Context(ct), cast_index(args, ts, 2)...);
                 throw std::invalid_argument("cpy: wrong argument types");
             });
         } catch (Skip const &e) {
-            ctx.info("value", e.message);
-            ctx.handle(Skipped);
+            ct.info("value", e.message);
+            ct.handle(Skipped);
             throw e;
         } catch (ClientError const &e) {
             throw e;
         } catch (std::exception const &e) {
-            ctx.info("value", e.what());
-            ctx.handle(Exception);
+            ct.info("value", e.what());
+            ct.handle(Exception);
             throw e;
         } catch (...) {
-            ctx.handle(Exception);
+            ct.handle(Exception);
             std::rethrow_exception(std::current_exception());
         }
     }
