@@ -19,9 +19,6 @@ struct IndexedType {
     T operator*() const; // undefined
 };
 
-template <class T>
-using no_qualifier = std::remove_cv_t<std::remove_reference_t<T>>;
-
 /******************************************************************************************/
 
 /// A lightweight ordered container of types

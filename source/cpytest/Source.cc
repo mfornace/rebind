@@ -1,5 +1,5 @@
+#include <cpytest/Stream.h>
 #include <cpytest/Suite.h>
-
 
 namespace cpy {
 

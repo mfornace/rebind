@@ -3,7 +3,7 @@
  * @file Python.cc
  */
 #include <cpy/PythonAPI.h>
-#include <cpy/Function.h>
+#include <cpy/Document.h>
 #include <any>
 #include <iostream>
 #include <map>
@@ -17,6 +17,8 @@ namespace cpy {
 
 /******************************************************************************/
 
+// Assuming a Python exception has been raised, fetch its string and put it in
+// a C++ exception type. Does not clear the Python error status.
 PythonError python_error() noexcept {
     PyObject *type, *value, *traceback;
     PyErr_Fetch(&type, &value, &traceback);
@@ -35,18 +37,6 @@ PythonError python_error() noexcept {
 }
 
 /******************************************************************************/
-
-// None
-// bool
-// long
-// float
-// bytes
-// unicode
-// buffer
-// memory view
-// Any
-// Function
-
 
 Value from_python(Object o) {
     if (+o == Py_None) return std::monostate();
@@ -105,13 +95,13 @@ Value from_python(Object o) {
     if (PyObject_CheckBuffer(+o)) {
         Buffer buff(+o, PyBUF_FULL_RO); // Read in the shape but ignore strides, suboffsets
         if (!buff.ok) {
-            PyErr_SetString(PyExc_TypeError, "Could not get buffer");
+            PyErr_SetString(PyExc_TypeError, "Could not get buffer for C++");
             throw python_error();
         }
         Binary bin;
         bin.resize(buff.view.len);
         if (PyBuffer_ToContiguous(bin.data(), &buff.view, bin.size(), 'C') < 0) {
-            PyErr_SetString(PyExc_TypeError, "Could not make contiguous");
+            PyErr_SetString(PyExc_TypeError, "Could not make contiguous buffer for C++");
             throw python_error();
         }
         Vector<Value> shape(buff.view.shape, buff.view.shape + buff.view.ndim);
@@ -150,14 +140,14 @@ void get_argpack(ArgPack &pack, Object pypack) {
 
 /******************************************************************************/
 
-PyObject *one_argument(PyObject *args, PyTypeObject *type=nullptr) {
+PyObject *one_argument(PyObject *args, PyTypeObject *type=nullptr) noexcept {
     Py_ssize_t n = PyTuple_Size(args);
     if (n != 1) {
         PyErr_Format(PyExc_TypeError, "Expected single argument but got %zd", n);
         return nullptr;
     }
     PyObject *value = PyTuple_GET_ITEM(args, 0);
-    if (type && !PyObject_TypeCheck(value, type)) {
+    if (type && !PyObject_TypeCheck(value, type)) { // call repr
         PyErr_Format(PyExc_TypeError, "Invalid argument type for C++: %R", value->ob_type);
         return nullptr;
     }

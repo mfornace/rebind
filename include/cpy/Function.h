@@ -9,64 +9,6 @@ namespace cpy {
 
 /******************************************************************************/
 
-static char const *cast_bug_message = "FromValue().check() returned false but FromValue()() was still called";
-
-/// Default behavior for casting a variant to a desired argument type
-template <class T, class=void>
-struct FromValue {
-    // Return true if type T can be cast from type U
-    template <class U>
-    constexpr bool check(U const &) const {
-        return std::is_convertible_v<U &&, T> ||
-            (std::is_same_v<T, std::monostate> && std::is_default_constructible_v<T>);
-    }
-    // Return casted type T from type U
-    template <class U>
-    T operator()(U &&u) const {
-        if constexpr(std::is_convertible_v<U &&, T>) return static_cast<T>(static_cast<U &&>(u));
-        else if constexpr(std::is_default_constructible_v<T>) return T(); // only hit if U == std::monostate
-        else throw std::logic_error(cast_bug_message); // never get here
-    }
-
-    bool check(Any const &u) const {
-        std::cout << "check" << bool(std::any_cast<no_qualifier<T>>(&u)) << std::endl;
-        return std::any_cast<no_qualifier<T>>(&u);}
-
-    T operator()(Any &&u) const {
-        return static_cast<T>(std::any_cast<T>(u));
-    }
-    T operator()(Any const &u) const {
-        throw std::logic_error("shouldn't be used");
-    }
-};
-
-template <class T>
-struct FromValue<Vector<T>> {
-    template <class U>
-    bool check(U const &) const {return false;}
-
-    bool check(Vector<Value> const &u) const {
-        return true;
-        // std::cout << "check" << bool(std::any_cast<no_qualifier<T>>(&u)) << std::endl;
-        // return std::any_cast<no_qualifier<T>>(&u);
-    }
-
-    Vector<T> operator()(Vector<Value> &&u) const {
-        Vector<T> out;
-        for (auto &x : u) {
-            std::visit([&](auto &x) {out.emplace_back(FromValue<T>()(std::move(x)));}, x.var);
-        }
-        return out;
-    }
-
-    template <class U>
-    Vector<T> operator()(U const &) const {
-        throw std::logic_error("shouldn't be used");
-    }
-};
-
-/******************************************************************************/
-
 /// Invoke a function and arguments, storing output in a Value if it doesn't return void
 template <class F, class ...Ts>
 Value value_invoke(F &&f, Ts &&... ts) {
@@ -124,13 +66,13 @@ struct FunctionAdaptor {
                 throw WrongNumber(sizeof...(ts), args.size());
             if ((... && check_cast_index(args, ts, 1)))
                 return value_invoke(function, cast_index(args, ts, 1)...);
-            throw WrongTypes(args);
+            throw wrong_types(args);
         });
     }
 };
 
 template <class F>
-struct FunctionAdaptor2 {
+struct ContextAdaptor {
     F function;
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
@@ -143,109 +85,23 @@ struct FunctionAdaptor2 {
                 throw WrongNumber(sizeof...(ts), args.size());
             if ((... && check_cast_index(args, ts, 2)))
                 return value_invoke(function, ct, cast_index(args, ts, 2)...);
-            throw WrongTypes(args);
+            throw wrong_types(args);
         });
     }
 };
 
+template <class F, class R, class T, class ...Ts>
+Function make_function(F f, Pack<R, T, Ts...>) {
+    return std::conditional_t<std::is_convertible_v<BaseContext &, T>,
+        ContextAdaptor<F>, FunctionAdaptor<F>>{std::move(f)};
+}
+
+template <class F, class R>
+Function make_function(F f, Pack<R>) {return FunctionAdaptor<F>{std::move(f)};}
 
 template <class F>
-Function make_function(F f) {return FunctionAdaptor<F>{std::move(f)};}
-
-template <class F>
-Function make_function2(F f) {return FunctionAdaptor2<F>{std::move(f)};}
+Function make_function(F f) {return make_function(std::move(f), Signature<F>());}
 
 /******************************************************************************/
-
-struct Document {
-    std::vector<std::pair<std::string, Value>> values;
-    std::vector<std::pair<std::type_index, std::string>> types;
-    std::vector<std::tuple<std::string, std::string, Value>> methods;
-
-    template <class O>
-    void define(char const *s, O &&o) {
-        values.emplace_back(s, make_function(static_cast<O &&>(o)));
-    }
-
-
-    template <class O>
-    void define2(char const *s, O &&o) {
-        values.emplace_back(s, make_function2(static_cast<O &&>(o)));
-    }
-
-    template <class O>
-    void recurse(char const *s, O &&o) {
-        values.emplace_back(s, make_function(static_cast<O &&>(o)));
-    }
-
-    void type(char const *s, std::type_index t) {
-        types.emplace_back(t, s);
-    }
-
-    template <class T>
-    void type(char const *s) {type(s, std::type_index(typeid(T)));}
-
-    void method(char const *s, char const *n, Value v) {
-        methods.emplace_back(s, n, std::move(v));
-    }
-};
-
-Document & document() noexcept;
-
-
-
-
-
-
-
-
-
-
-/// std::ostream synchronizer for redirection from multiple threads
-struct StreamSync {
-    std::ostream &stream;
-    std::streambuf *original; // never changed (unless by user)
-    std::mutex mutex;
-    Vector<std::streambuf *> queue;
-};
-
-extern StreamSync cout_sync;
-extern StreamSync cerr_sync;
-
-/// RAII acquisition of cout or cerr
-struct RedirectStream {
-    StreamSync &sync;
-    std::streambuf * const buf;
-
-    RedirectStream(StreamSync &s, std::streambuf *b) : sync(s), buf(b) {
-        if (!buf) return;
-        std::lock_guard<std::mutex> lk(sync.mutex);
-        if (sync.queue.empty()) sync.stream.rdbuf(buf); // take over the stream
-        else sync.queue.push_back(buf); // or add to queue
-    }
-
-    ~RedirectStream() {
-        if (!buf) return;
-        std::lock_guard<std::mutex> lk(sync.mutex);
-        auto it = std::find(sync.queue.begin(), sync.queue.end(), buf);
-        if (it != sync.queue.end()) sync.queue.erase(it); // remove from queue
-        else if (sync.queue.empty()) sync.stream.rdbuf(sync.original); // set to original
-        else { // let next waiting stream take over
-            sync.stream.rdbuf(sync.queue[0]);
-            sync.queue.erase(sync.queue.begin());
-        }
-    }
-};
-
-
-
-
-
-
-
-
-
-
-
 
 }

@@ -1,4 +1,4 @@
-#include <cpy/Function.h>
+#include <cpy/Document.h>
 
 namespace cpy {
 
@@ -56,6 +56,15 @@ Binary Value::as_binary() const & {return std::get<Binary>(var);}
 Binary Value::as_binary() && {return std::get<Binary>(std::move(var));}
 
 Value::~Value() = default;
+
+/******************************************************************************/
+
+WrongTypes wrong_types(ArgPack const &v) {
+    WrongTypes out;
+    out.indices.reserve(v.size());
+    for (auto const &x : v) out.indices.emplace_back(x.var.index());
+    return out;
+}
 
 /******************************************************************************/
 

@@ -4,6 +4,8 @@
  */
 
 #pragma once
+#include "Error.h"
+
 #include <iostream>
 #include <variant>
 #include <complex>
@@ -23,17 +25,17 @@
 
 namespace cpy {
 
+template <class T>
+using no_qualifier = std::remove_cv_t<std::remove_reference_t<T>>;
+
+struct Identity {
+    template <class T>
+    T const & operator()(T const &t) const {return t;}
+};
+
 struct BaseContext {
     std::any context;
     void *metadata = nullptr;
-};
-
-/******************************************************************************/
-
-struct ClientError : std::exception {
-    std::string_view message;
-    explicit ClientError(std::string_view const &s) noexcept : message(s) {}
-    char const * what() const noexcept override {return message.empty() ? "cpy::ClientError" : message.data();}
 };
 
 /******************************************************************************/
@@ -125,7 +127,11 @@ struct KeyPair {
     Value value;
 };
 
+/******************************************************************************/
+
 using ArgPack = Vector<Value>;
+
+WrongTypes wrong_types(ArgPack const &v);
 
 /******************************************************************************/
 
@@ -175,8 +181,13 @@ struct ToValue<T, std::enable_if_t<(std::is_integral_v<T>)>> {
 };
 
 template <>
+struct ToValue<Vector<Value>> {
+    Value operator()(Vector<Value> t) const {return t;}
+};
+
+template <>
 struct ToValue<char const *> {
-    Value operator()(char const *t) const {return std::string_view(t);}
+    Value operator()(char const *t) const {return std::string(t);}
 };
 
 template <>
@@ -185,8 +196,8 @@ struct ToValue<Value>;
 template <class T, class Alloc>
 struct ToValue<std::vector<T, Alloc>> {
     Value operator()(std::vector<T, Alloc> t) const {
-        std::vector<Value> vec;
-        // std::cout << typeid(T).name() << std::endl;
+        Vector<Value> vec;
+        vec.reserve(t.size());
         for (auto &&i : t) vec.emplace_back(ToValue<T>()(i));
         return vec;
     }
@@ -199,33 +210,31 @@ struct ToValue<Value> {
 
 /******************************************************************************/
 
-template <class T, class=void>
-struct is_valuable
-    : std::false_type {};
+// template <class T, class=void>
+// struct is_valuable
+//     : std::false_type {};
 
-template <class T>
-struct is_valuable<T, std::void_t<decltype(ToValue<T>()(std::declval<T>()))>>
-    : std::true_type {};
+// template <class T>
+// struct is_valuable<T, std::void_t<decltype(ToValue<T>()(std::declval<T>()))>>
+//     : std::true_type {};
 
-template <class T> static constexpr bool is_valuable_v = is_valuable<T>::value;
+// template <class T> static constexpr bool is_valuable_v = is_valuable<T>::value;
 
-template <class T, std::enable_if_t<is_valuable_v<std::decay_t<T>>, int> = 0>
-Value make_value(T &&t) {return ToValue<std::decay_t<T>>()(static_cast<T &&>(t));}
+template <class T>//, std::enable_if_t<is_valuable_v<std::decay_t<T>>, int> = 0>
+Value make_value(T const &t) {return ToValue<T>()(t);}
 
-/// @todo fix
-template <class T, std::enable_if_t<!is_valuable_v<std::decay_t<T>>, int> = 0>
-Value make_value(T &&t) {
-    std::ostringstream os;
-    os << static_cast<T &&>(t);
-    return std::move(os).str();
-}
+template <class T>//, std::enable_if_t<is_valuable_v<std::decay_t<T>>, int> = 0>
+Value make_value(T &&t) {return ToValue<T>()(static_cast<T &&>(t));}
+
+// /// @todo fix
+// template <class T, std::enable_if_t<!is_valuable_v<std::decay_t<T>>, int> = 0>
+// Value make_value(T &&t) {
+//     std::ostringstream os;
+//     os << static_cast<T &&>(t);
+//     return std::move(os).str();
+// }
 
 /******************************************************************************/
-
-struct Identity {
-    template <class T>
-    T const & operator()(T const &t) const {return t;}
-};
 
 template <class V, class F=Identity>
 Vector<Value> vectorize(V const &v, F &&f) {
@@ -237,23 +246,62 @@ Vector<Value> vectorize(V const &v, F &&f) {
 
 /******************************************************************************/
 
-struct DispatchError : std::invalid_argument {
-    using std::invalid_argument::invalid_argument;
-};
+static char const *cast_bug_message = "FromValue().check() returned false but FromValue()() was still called";
 
-struct WrongNumber : DispatchError {
-    unsigned int expected, received;
-    WrongNumber(unsigned int n0, unsigned int n)
-        : DispatchError("wrong number of arguments"), expected(n0), received(n) {}
-};
+/// Default behavior for casting a variant to a desired argument type
+template <class T, class=void>
+struct FromValue {
+    // Return true if type T can be cast from type U
+    template <class U>
+    constexpr bool check(U const &) const {
+        return std::is_convertible_v<U &&, T> ||
+            (std::is_same_v<T, std::monostate> && std::is_default_constructible_v<T>);
+    }
+    // Return casted type T from type U
+    template <class U>
+    T operator()(U &&u) const {
+        if constexpr(std::is_convertible_v<U &&, T>) return static_cast<T>(static_cast<U &&>(u));
+        else if constexpr(std::is_default_constructible_v<T>) return T(); // only hit if U == std::monostate
+        else throw std::logic_error(cast_bug_message); // never get here
+    }
 
-struct WrongTypes : DispatchError {
-    Vector<unsigned int> indices;
+    bool check(Any const &u) const {
+        std::cout << "check" << bool(std::any_cast<no_qualifier<T>>(&u)) << std::endl;
+        return std::any_cast<no_qualifier<T>>(&u);}
 
-    WrongTypes(ArgPack const &v) : DispatchError("wrong argument types") {
-        indices.reserve(v.size());
-        for (auto const &x : v) indices.emplace_back(x.var.index());
+    T operator()(Any &&u) const {
+        return static_cast<T>(std::any_cast<T>(u));
+    }
+    T operator()(Any const &u) const {
+        throw std::logic_error("shouldn't be used");
     }
 };
 
+/******************************************************************************/
+
+template <class T>
+struct FromValue<Vector<T>> {
+    template <class U>
+    bool check(U const &) const {return false;}
+
+    bool check(Vector<Value> const &u) const {
+        for (auto const &x : u) if (!FromValue<T>().check(x)) return false;
+        return true;
+    }
+
+    Vector<T> operator()(Vector<Value> &&u) const {
+        Vector<T> out;
+        for (auto &x : u) {
+            std::visit([&](auto &x) {out.emplace_back(FromValue<T>()(std::move(x)));}, x.var);
+        }
+        return out;
+    }
+
+    template <class U>
+    Vector<T> operator()(U const &) const {
+        throw std::logic_error("shouldn't be used");
+    }
+};
+
+/******************************************************************************/
 }
