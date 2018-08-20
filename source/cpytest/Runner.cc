@@ -9,10 +9,10 @@ struct ValueHandler {
     CallingContext context;
     Function fun;
     bool operator()(Event e, Scopes const &scopes, Logs &&logs) {
-        Vector<Input> s(scopes.begin(), scopes.end());
-        Vector<Input> vals = {Input(Integer(e)), s,
-            mapped<Input>(logs, [](auto &x) {return std::move(x.key);}),
-            mapped<Input>(logs, [](auto &x) {return std::move(x.value);})};
+        Vector<Input> vals = {Input(Integer(e)), Input(Sequence(scopes)),
+            Sequence(mapped<Output>(logs, [](auto &x) {return std::move(x.key);})),
+            Sequence(mapped<Output>(logs, [](auto &x) {return std::move(x.value);}))
+        };
         return fun(context, vals).as_bool();
     }
 };
@@ -33,8 +33,11 @@ Vector<Output> run_test(CallingContext &ct0, std::size_t i, Vector<Function> cal
     ArgPack pack;
     if (std::holds_alternative<Integer>(args.var))
         pack = test.parameters.at(args.as_integer());
-    if (std::holds_alternative<Vector<Input>>(args.var))
-        pack = std::move(args).as_vector();
+    if (std::holds_alternative<Sequence>(args.var)) {
+        auto const &seq = std::get<Sequence>(args.var);
+        pack.reserve(seq.size());
+        seq.scan([&](Output o) {pack.emplace_back(std::move(o));});
+    }
     std::stringstream out, err;
     Output return_value;
     double test_time = 0;

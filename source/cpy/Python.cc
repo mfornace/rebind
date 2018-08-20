@@ -48,12 +48,12 @@ Input from_python(Object o) {
     if (PyFloat_Check(+o)) return static_cast<Real>(PyFloat_AsDouble(+o));
 
     if (PyTuple_Check(+o) || PyList_Check(+o)) {
-        Vector<Input> vals;
+        Vector<Output> vals;
         vals.reserve(PyObject_Length(+o));
         map_iterable(o, [&](Object o) {
             vals.emplace_back(from_python(std::move(o)));
         });
-        return vals;
+        return Sequence(vals);
     }
 
     if (PyBytes_Check(+o)) {
@@ -104,8 +104,8 @@ Input from_python(Object o) {
             PyErr_SetString(PyExc_TypeError, "Could not make contiguous buffer for C++");
             throw python_error();
         }
-        Vector<Input> shape(buff.view.shape, buff.view.shape + buff.view.ndim);
-        return Vector<Input>{std::move(bin), std::move(shape)};
+        Vector<Py_ssize_t> shape(buff.view.shape, buff.view.shape + buff.view.ndim);
+        return Sequence::vector(std::move(bin), std::move(shape));
     }
 
     PyErr_SetString(PyExc_TypeError, "Invalid type for conversion to C++");
@@ -131,8 +131,8 @@ void get_argpack(ArgPack &pack, Object pypack) {
             cast_object<Any>(+o) = std::move(std::get<Any>(it->var));
         } else if (std::holds_alternative<Function>(it->var)) {
             cast_object<Function>(+o) = std::move(std::get<Function>(it->var));
-        } else if (std::holds_alternative<Vector<Input>>(it->var)) {
-            get_argpack(std::get<Vector<Input>>(it->var), o);
+        // } else if (std::holds_alternative<Vector<Input>>(it->var)) {
+            // get_argpack(std::get<Vector<Input>>(it->var), o);
         }
         ++it;
     });

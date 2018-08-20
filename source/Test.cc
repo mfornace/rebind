@@ -35,8 +35,8 @@ auto test1 = unit_test("test-1", COMMENT("This is a test"), [](cpy::Context ct) 
 
     ct.equal(xxx, yyy, goo(), COMMENT("x should equal y"));
 
-    if (!ct.equal(1, 2)) return goo();
-    return goo();
+    if (!ct.equal(1, 2)) return std::vector<goo>(2);
+    return std::vector<goo>(1);
 });
 
 UNIT_TEST("test-2", "This is a test 2") = [](cpy::Context ct) {

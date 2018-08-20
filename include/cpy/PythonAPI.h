@@ -147,8 +147,7 @@ inline Object to_python(std::type_index f) noexcept {
 
 template <class T, std::enable_if_t<std::is_same_v<Any, T>, int> = 0>
 inline Object to_python(T a) noexcept {
-    auto ptr = std::any_cast<Object>(&a);
-    if (ptr) return *ptr;
+    if (a.type() == typeid(Object)) return anycast<Object>(std::move(a));
     Object o{PyObject_CallObject(type_object(AnyType), nullptr), false};
     cast_object<Any>(+o) = std::move(a);
     return o;
@@ -178,13 +177,35 @@ Object to_tuple(V &&v, F const &f={}) noexcept {
     return out;
 }
 
+template <class T, std::enable_if_t<std::is_same_v<T, Output> || std::is_same_v<T, Input>, int> = 0>
+Object to_python(T const &s) noexcept;
+
+Object to_python(Sequence const &s) {
+    auto const n = s.size();
+    Object out = {PyTuple_New(n), false};
+    if (!out) return {};
+    Py_ssize_t i = 0u;
+    bool ok = true;
+    s.scan([&](Output o) {
+        if (!ok) return;
+        Object item = to_python(std::move(o));
+        if (!item) {ok = false; return;}
+        Py_INCREF(+item);
+        if (PyTuple_SetItem(+out, i, +item)) {
+            Py_DECREF(+item);
+            ok = false;
+        }
+        ++i;
+    });
+    return out;
+}
 template <class T>
 Object to_python(Vector<T> &&v) {return to_tuple(std::move(v));}
 
 template <class T>
 Object to_python(Vector<T> const &v) {return to_tuple(v);}
 
-template <class T, std::enable_if_t<std::is_same_v<T, Output> || std::is_same_v<T, Input>, int> = 0>
+template <class T, std::enable_if_t<std::is_same_v<T, Output> || std::is_same_v<T, Input>, int> >
 Object to_python(T const &s) noexcept {
     return std::visit([](auto const &x) {return to_python(x);}, s.var);
 }
@@ -201,6 +222,7 @@ inline Object to_python(KeyPair const &p) noexcept {
     if (!value) return {};
     return {PyTuple_Pack(2u, +key, +value), false};
 }
+
 /******************************************************************************/
 
 struct PythonError : ClientError {
