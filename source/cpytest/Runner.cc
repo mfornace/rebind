@@ -1,6 +1,7 @@
 #include <cpytest/Stream.h>
 #include <cpy/Document.h>
 #include <cpytest/Suite.h>
+#include <sstream>
 
 namespace cpy {
 

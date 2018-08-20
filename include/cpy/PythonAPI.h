@@ -4,16 +4,18 @@
  */
 
 #pragma once
+#include "Value.h"
+#include "Signature.h"
+
+#include <mutex>
+#include <complex>
+#include <iostream>
+#include <typeindex>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wregister"
 #include <Python.h>
 #pragma GCC diagnostic pop
-
-#include "Value.h"
-#include <mutex>
-#include <iostream>
-#include <typeindex>
 
 namespace cpy {
 
@@ -59,6 +61,10 @@ struct Buffer {
 /******************************************************************************/
 
 inline PyObject * type_object(PyTypeObject &o) noexcept {return reinterpret_cast<PyObject *>(&o);}
+
+inline PyTypeObject & type_ref(Type<Function>) {return FunctionType;}
+inline PyTypeObject & type_ref(Type<Any>) {return AnyType;}
+inline PyTypeObject & type_ref(Type<std::type_index>) {return TypeIndexType;}
 
 /******************************************************************************/
 
@@ -305,7 +311,7 @@ PyObject *raw_object(F &&f) noexcept {
     } catch (PythonError const &) {
         return nullptr;
     } catch (std::bad_alloc const &e) {
-        PyErr_Format(PyExc_MemoryError, "C++: out of memory: %s", e.what());
+        PyErr_SetString(PyExc_MemoryError, "C++: out of memory (std::bad_alloc)");
     } catch (WrongNumber const &e) {
         unsigned int n0 = e.expected, n = e.received;
         PyErr_Format(PyExc_TypeError, "C++: wrong number of arguments (expected %u, got %u)", n0, n);

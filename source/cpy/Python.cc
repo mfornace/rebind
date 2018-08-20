@@ -75,7 +75,11 @@ Value from_python(Object o) {
     }
 
     if (PyObject_TypeCheck(+o, &AnyType))
-        return cast_object<Any>(+o);
+        return std::move(cast_object<Any>(+o));
+        // makes a copy! how to detect when to move...
+        // annotate arguments?
+        // make new wrapper type MovedType?
+        // maybe move is default, and use copy() to ensure non-erasure?
 
     if (PyObject_TypeCheck(+o, &TypeIndexType))
         return {std::in_place_t(), cast_object<std::type_index>(+o)};
@@ -147,7 +151,6 @@ Object raised(PyObject *exc, char const *message) noexcept {
 
 template <class T>
 PyObject *tp_new(PyTypeObject *subtype, PyObject *, PyObject *) noexcept {
-    std::cout << __LINE__ << std::endl;
     PyObject *o = subtype->tp_alloc(subtype, 0); // 0 unused
     if (!o) return nullptr;
     static_assert(noexcept(T{}), "Default constructor should be noexcept");
@@ -221,13 +224,25 @@ PyTypeObject TypeIndexType = {
 
 template <class T>
 PyObject * copy_from(PyObject *self, PyObject *args) noexcept {
-    PyObject *value = one_argument(args, self->ob_type);
+    PyObject *value = one_argument(args, &type_ref(Type<T>()));
     if (!value) return nullptr;
     return raw_object([=] {
-        cast_object<Any>(self) = cast_object<Any>(value); // not notexcept
-        return to_python(std::monostate());
+        cast_object<T>(self) = cast_object<T>(value); // not notexcept
+        return Object(Py_None, true);
     });
 }
+
+template <class T>
+PyObject * unary_copy(PyObject *self) noexcept {
+    return raw_object([=] {
+        Object o{PyObject_CallObject(type_object(type_ref(Type<T>())), nullptr), false};
+        cast_object<T>(+o) = cast_object<T>(self); // not notexcept
+        return o;
+    });
+}
+
+template <class T>
+PyObject * make_copy(PyObject *self, PyObject *) noexcept {return unary_copy<T>(self);}
 
 int any_bool(PyObject *self) {
     return cast_object<Any>(self).has_value(); // noexcept
@@ -248,13 +263,15 @@ PyObject * any_index(PyObject *self, PyObject *) noexcept {
 }
 
 PyNumberMethods AnyNumberMethods = {
-    .nb_bool = static_cast<inquiry>(any_bool)
+    .nb_bool = static_cast<inquiry>(any_bool),
+    .nb_positive = static_cast<unaryfunc>(unary_copy<Any>)
 };
 
 PyMethodDef AnyTypeMethods[] = {
     {"index",     static_cast<PyCFunction>(any_index),     METH_NOARGS, "index it"},
     {"move_from", static_cast<PyCFunction>(move_from<Any>), METH_VARARGS, "move it"},
     {"copy_from", static_cast<PyCFunction>(copy_from<Any>), METH_VARARGS, "copy it"},
+    {"ref",       static_cast<PyCFunction>(make_copy<Any>), METH_NOARGS, "copy it"},
     {"has_value", static_cast<PyCFunction>(any_has_value), METH_VARARGS, "has value"},
     {nullptr, nullptr, 0, nullptr}
 };

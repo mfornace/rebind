@@ -8,7 +8,6 @@
 
 #include <iostream>
 #include <variant>
-#include <complex>
 #include <string>
 #include <vector>
 #include <type_traits>
@@ -63,12 +62,12 @@ using Integer = std::ptrdiff_t;
 
 using Real = double;
 
-using Complex = std::complex<double>;
-
-// using Any = std::any;
-
 template <class T>
 using Vector = std::vector<T>;
+
+using ArgPack = Vector<Value>;
+
+using Function = std::function<Value(CallingContext &, ArgPack &)>;
 
 struct SequenceConcept {
     virtual std::unique_ptr<SequenceConcept> clone() const = 0;
@@ -123,10 +122,6 @@ Vector<T> mapped(V const &v, F &&f) {
 }
 
 /******************************************************************************/
-
-using ArgPack = Vector<Value>;
-
-using Function = std::function<Value(CallingContext &, ArgPack &)>;
 
 struct AnyConcept {
     virtual std::shared_ptr<AnyConcept> clone() const = 0;
@@ -207,27 +202,19 @@ using Variant = std::variant<
     /*7*/ Binary,       // ?
     /*8*/ Function,
     /*9*/ Any,     // ?
-          Sequence
-    // /*0*/ Vector<Value> // ?
+    /*0*/ Sequence
 >;
-// One idea for Any is instead to make it
-// shared_ptr<AnyConcept const>
 
-// using AnyRef = Any const *;
-// using BinaryRef = Binary const *;
-
-static_assert(1 ==  sizeof(std::monostate));    // 1
-static_assert(1 ==  sizeof(bool));              // 1
-static_assert(8 ==  sizeof(Integer));           // ptrdiff_t
-static_assert(8 ==  sizeof(Real));              // double
+static_assert(1  == sizeof(std::monostate));    // 1
+static_assert(1  == sizeof(bool));              // 1
+static_assert(8  == sizeof(Integer));           // ptrdiff_t
+static_assert(8  == sizeof(Real));              // double
 static_assert(16 == sizeof(std::string_view)); // start, stop
 static_assert(24 == sizeof(std::string));      // start, stop, buffer
-static_assert(8 ==  sizeof(std::type_index));   // size_t
+static_assert(8  == sizeof(std::type_index));   // size_t
 static_assert(24 == sizeof(Binary));           // 8 start, stop ... buffer?
 static_assert(48 == sizeof(Function));         // 32 buffer + 8 pointer + 8 vtable
 static_assert(24 == sizeof(Any));              // 8 + 24 buffer I think
-// static_assert(8 == sizeof(BinaryRef));         // pointer
-// static_assert(8 == sizeof(AnyRef));            // pointer
 static_assert(24 == sizeof(Vector<Value>));    //
 static_assert(64 == sizeof(Variant));
 static_assert(16 == sizeof(Sequence));
@@ -255,10 +242,7 @@ template <class T, class=void>
 struct ToValue;
 
 template <class T>
-struct InPlace {
-    T value;
-};
-
+struct InPlace {T value;};
 
 struct Value {
     Variant var;
@@ -352,7 +336,6 @@ struct ToValue<std::vector<T, Alloc>> {
 
 static char const *cast_bug_message = "FromValue().check() returned false but FromValue()() was still called";
 
-// should make this into struct of T, U?
 /// Default behavior for casting a variant to a desired argument type
 template <class T, class=void>
 struct FromValue {
@@ -371,11 +354,14 @@ struct FromValue {
         else throw std::logic_error(cast_bug_message); // never get here
     }
 
-    bool check(Any const &u) const {return u.type() == typeid(T);}
+    bool check(Any const &u) const {
+        if (!u.has_value()) throw DispatchError("Empty Any object");
+        return u.type() == typeid(T);
+    }
 
     T operator()(Any &&u) const {
         return static_cast<
-            std::conditional_t<true || std::is_lvalue_reference_v<T>, Any const &, Any &&>
+            std::conditional_t<std::is_lvalue_reference_v<T>, Any const &, Any &&>
         >(u).template cast<no_qualifier<T>>();
     }
 };
@@ -410,8 +396,6 @@ struct FromValue<Vector<T>> {
 
 /******************************************************************************/
 
-
-
 template <class T>
 struct SequenceModel : SequenceConcept {
     T value;
@@ -422,21 +406,15 @@ struct SequenceModel : SequenceConcept {
         return std::make_unique<SequenceModel>(*this);
     }
     virtual void scan(std::function<void(Value)> const &f) const override {
-        for (auto &&v : value) f(Value(v));
+        for (auto &&v : value) f(Value(static_cast<decltype(v) &&>(v)));
     }
     virtual void fill(Value *o, std::size_t n) const override {
         for (auto &&v : value) {
             if (n--) return;
-            *(o++) = Value(v);
+            *(o++) = Value(static_cast<decltype(v) &&>(v));
         }
     }
 };
-
-
-
-
-
-
 
 template <class T>
 Sequence::Sequence(T&&t, std::size_t n) : self(std::make_unique<SequenceModel<no_qualifier<T>>>(t)), m_size(n) {}

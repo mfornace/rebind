@@ -2,6 +2,7 @@
 #include <cpytest/Macros.h>
 #include <iostream>
 #include <any>
+#include <complex>
 
 struct goo {
     friend std::ostream & operator<<(std::ostream &os, goo) {return os << "goo";}
