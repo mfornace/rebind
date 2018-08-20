@@ -38,7 +38,7 @@ PythonError python_error() noexcept {
 
 /******************************************************************************/
 
-Value from_python(Object o) {
+Input from_python(Object o) {
     if (+o == Py_None) return std::monostate();
 
     if (PyBool_Check(+o)) return (+o == Py_True) ? true : false;
@@ -48,7 +48,7 @@ Value from_python(Object o) {
     if (PyFloat_Check(+o)) return static_cast<Real>(PyFloat_AsDouble(+o));
 
     if (PyTuple_Check(+o) || PyList_Check(+o)) {
-        Vector<Value> vals;
+        Vector<Input> vals;
         vals.reserve(PyObject_Length(+o));
         map_iterable(o, [&](Object o) {
             vals.emplace_back(from_python(std::move(o)));
@@ -104,8 +104,8 @@ Value from_python(Object o) {
             PyErr_SetString(PyExc_TypeError, "Could not make contiguous buffer for C++");
             throw python_error();
         }
-        Vector<Value> shape(buff.view.shape, buff.view.shape + buff.view.ndim);
-        return Vector<Value>{std::move(bin), std::move(shape)};
+        Vector<Input> shape(buff.view.shape, buff.view.shape + buff.view.ndim);
+        return Vector<Input>{std::move(bin), std::move(shape)};
     }
 
     PyErr_SetString(PyExc_TypeError, "Invalid type for conversion to C++");
@@ -131,8 +131,8 @@ void get_argpack(ArgPack &pack, Object pypack) {
             cast_object<Any>(+o) = std::move(std::get<Any>(it->var));
         } else if (std::holds_alternative<Function>(it->var)) {
             cast_object<Function>(+o) = std::move(std::get<Function>(it->var));
-        } else if (std::holds_alternative<Vector<Value>>(it->var)) {
-            get_argpack(std::get<Vector<Value>>(it->var), o);
+        } else if (std::holds_alternative<Vector<Input>>(it->var)) {
+            get_argpack(std::get<Vector<Input>>(it->var), o);
         }
         ++it;
     });
@@ -161,6 +161,7 @@ Object raised(PyObject *exc, char const *message) noexcept {
 
 template <class T>
 PyObject *tp_new(PyTypeObject *subtype, PyObject *, PyObject *) noexcept {
+    std::cout << __LINE__ << std::endl;
     PyObject *o = subtype->tp_alloc(subtype, 0); // 0 unused
     if (!o) return nullptr;
     static_assert(noexcept(T{}), "Default constructor should be noexcept");
@@ -286,8 +287,14 @@ PyTypeObject AnyType = {
 
 /******************************************************************************/
 
-PyObject * function_call(PyObject *self, PyObject *args, PyObject *) noexcept {
-    std::cout << "add keywords" << std::endl;
+PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept {
+    bool gil = true;
+    if (kws && PyDict_Check(kws)) {
+        PyObject *g = PyDict_GetItemString(kws, "gil");
+        if (g) gil = PyObject_IsTrue(g);
+    }
+    std::cout << "gil = " << gil << std::endl;
+
     return cpy::raw_object([=]() -> Object {
         auto &fun = cast_object<Function>(self);
         auto py = fun.target<PythonFunction>();
@@ -297,9 +304,8 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *) noexcept {
         // this is some collection of arbitrary things that may include Any
         put_argpack(pack, {args, true});
         // now the Anys have been moved inside the pack, no matter what.
-        bool no_gil = false;
-        ReleaseGIL lk(no_gil);
-        BaseContext ct{&lk};
+        ReleaseGIL lk(!gil);
+        CallingContext ct{&lk};
         Object out = cpy::to_python(fun(ct, pack));
 
         get_argpack(pack, {args, true});
@@ -369,7 +375,7 @@ Object initialize(Document const &doc) {
         //     Py_INCREF(Py_None);
         //     return {PyCFunction_NewEx(&register_method, Py_None, m), false};
         // })
-        && attach(m, "type_index",    to_python(make_function(type_index_of)))
+        // && attach(m, "type_index",    to_python(make_function(type_index_of)))
         && attach(m, "methods",       to_tuple(doc.methods, [](auto const &i) {return std::get<2>(i);}))
         && attach(m, "objects",       to_tuple(doc.values,  [](auto const &i) {return i.second;}))
         && attach(m, "type_names",    to_tuple(doc.types,   [](auto const &i) {return i.second;}))

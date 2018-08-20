@@ -26,7 +26,7 @@ using Counter = std::atomic<std::size_t>;
 
 /******************************************************************************/
 
-struct Context {
+struct Context : CallingContext {
     /// Vector of Handlers for each registered Event
     Vector<Handler> handlers;
     /// Vector of strings making up the current Context scope
@@ -37,18 +37,16 @@ struct Context {
     typename Clock::time_point start_time;
     /// Possibly null handle to a vector of atomic counters for each Event. Test runner has responsibility for lifetime
     std::vector<Counter> *counters = nullptr;
-    /// Metadata for use by handlers. Test runner has responsibility for lifetime
-    void *metadata = nullptr;
 
     Context() = default;
 
     /// Opens a Context and sets the start_time to the current time
-    Context(Scopes s, Vector<Handler> h, Vector<Counter> *c=nullptr, void *m=nullptr);
+    Context(CallingContext ct, Scopes s, Vector<Handler> h, Vector<Counter> *c=nullptr);
 
     /// Opens a new section with a reset start_time
     template <class F, class ...Ts>
     auto section(std::string name, F &&functor, Ts &&...ts) const {
-        Context ctx(scopes, handlers, counters);
+        Context ctx(*this, scopes, handlers, counters);
         ctx.scopes.push_back(std::move(name));
         return static_cast<F &&>(functor)(ctx, static_cast<Ts &&>(ts)...);
     }
@@ -68,7 +66,7 @@ struct Context {
 
     template <class K, class V>
     Context & info(K &&k, V &&v) {
-        logs.emplace_back(KeyPair{static_cast<K &&>(k), make_value(static_cast<V &&>(v))});
+        logs.emplace_back(KeyPair{static_cast<K &&>(k), static_cast<V &&>(v)});
         return *this;
     }
 

@@ -16,12 +16,12 @@ StreamSync cerr_sync{std::cerr, std::cerr.rdbuf()};
 // Context & Context::operator=(Context const &) = default;
 // Context & Context::operator=(Context &&) noexcept = default;
 
-Context::Context(Scopes s, Vector<Handler> h, Vector<Counter> *c, void *m)
-    : scopes(std::move(s)), handlers(std::move(h)), counters(c), metadata(m), start_time(Clock::now()) {}
+Context::Context(CallingContext ct, Scopes s, Vector<Handler> h, Vector<Counter> *c)
+    : CallingContext{std::move(ct)}, scopes(std::move(s)), handlers(std::move(h)), counters(c), start_time(Clock::now()) {}
 
 /******************************************************************************/
 
-Value call(std::string_view s, Context c, ArgPack pack) {
+Output call(std::string_view s, Context c, ArgPack pack) {
     auto const &cases = suite();
     auto it = std::find_if(cases.begin(), cases.end(), [=](auto const &c) {return c.name == s;});
     if (it == cases.end())
@@ -29,7 +29,7 @@ Value call(std::string_view s, Context c, ArgPack pack) {
     return it->function(c, pack);
 }
 
-Value get_value(std::string_view s) {
+Output get_value(std::string_view s) {
     auto const &cases = suite();
     auto it = std::find_if(cases.begin(), cases.end(), [=](auto const &c) {return c.name == s;});
     if (it == cases.end())

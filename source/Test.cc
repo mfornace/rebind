@@ -7,6 +7,13 @@ struct goo {
     friend std::ostream & operator<<(std::ostream &os, goo) {return os << "goo";}
 };
 
+// namespace cpy {
+//     template <>
+//     struct ToOutput<goo> {
+//         Output operator()(goo g) const {return {std::in_place_t(), g};}
+//     };
+// }
+
 /******************************************************************************/
 
 auto test1 = unit_test("test-1", COMMENT("This is a test"), [](cpy::Context ct) {
@@ -28,7 +35,8 @@ auto test1 = unit_test("test-1", COMMENT("This is a test"), [](cpy::Context ct) 
 
     ct.equal(xxx, yyy, goo(), COMMENT("x should equal y"));
 
-    if (!ct.equal(1, 2)) return;
+    if (!ct.equal(1, 2)) return goo();
+    return goo();
 });
 
 UNIT_TEST("test-2", "This is a test 2") = [](cpy::Context ct) {
@@ -44,7 +52,7 @@ UNIT_TEST("test-2", "This is a test 2") = [](cpy::Context ct) {
     std::cout << sizeof(std::complex<cpy::Real>)  << " sizeof(std::complex<Real>) " << std::endl;
     std::cout << sizeof(std::string)  << " sizeof(std::string) " << std::endl;
     std::cout << sizeof(std::string_view) << " sizeof(std::string_view)" << std::endl;
-    std::cout << sizeof(cpy::Value) << " sizeof(Value)" << std::endl;
+    std::cout << sizeof(cpy::Input) << " sizeof(Input)" << std::endl;
 
         return 8.9;
     //return "hello";
@@ -56,7 +64,8 @@ UNIT_TEST("test-3") = [](auto ct) {
     throw std::runtime_error("runtime_error: uh oh");
 };
 
-UNIT_TEST("test-4") = [](auto ct) {
+UNIT_TEST("test-4") = [](cpy::Context ct, goo const &) {
+    return goo();
     throw cpy::Skip("this test is skipped");
     ct.equal(5, 5);
 };

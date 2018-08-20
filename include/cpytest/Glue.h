@@ -19,8 +19,8 @@ decltype(auto) unglue(T const &t) {return Ungluer<T>()(t);}
 
 template <class T, class=void>
 struct AddKeyPairs {
-    void operator()(Logs &v, T const &t) const {v.emplace_back(KeyPair{{}, make_value(t)});}
-    void operator()(Logs &v, T &&t) const {v.emplace_back(KeyPair{{}, make_value(std::move(t))});}
+    void operator()(Logs &v, T const &t) const {v.emplace_back(KeyPair{{}, t});}
+    void operator()(Logs &v, T &&t) const {v.emplace_back(KeyPair{{}, std::move(t)});}
 };
 
 /******************************************************************************/
@@ -56,7 +56,7 @@ struct Ungluer<Glue<K, V>> {
 template <class K, class V>
 struct AddKeyPairs<Glue<K, V>> {
     void operator()(Logs &v, Glue<K, V> const &g) const {
-        v.emplace_back(KeyPair{g.key, make_value(g.value)});
+        v.emplace_back(KeyPair{g.key, g.value});
     }
 };
 
@@ -90,7 +90,7 @@ template <class T>
 struct AddKeyPairs<Comment<T>> {
     void operator()(Logs &v, Comment<T> const &c) const {
         AddKeyPairs<FileLine>()(v, c.location);
-        v.emplace_back(KeyPair{"comment", make_value(c.comment)});
+        v.emplace_back(KeyPair{"comment", c.comment});
     }
 };
 
@@ -111,9 +111,9 @@ ComparisonGlue<X const &, Y const &> comparison_glue(X const &x, Y const &y, cha
 template <class L, class R>
 struct AddKeyPairs<ComparisonGlue<L, R>> {
     void operator()(Logs &v, ComparisonGlue<L, R> const &t) const {
-        v.emplace_back(KeyPair{"__lhs", make_value(t.lhs)});
-        v.emplace_back(KeyPair{"__rhs", make_value(t.rhs)});
-        v.emplace_back(KeyPair{"__op", Value(std::string_view(t.op))});
+        v.emplace_back(KeyPair{"__lhs", t.lhs});
+        v.emplace_back(KeyPair{"__rhs", t.rhs});
+        v.emplace_back(KeyPair{"__op", std::string_view(t.op)});
     }
 };
 

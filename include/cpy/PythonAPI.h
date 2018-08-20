@@ -78,7 +78,7 @@ T & cast_object(PyObject *o) {
 
 /******************************************************************************/
 
-inline std::type_index type_index_of(Value const &v) {
+inline std::type_index type_index_of(Output const &v) {
     return std::visit([](auto const &x) -> std::type_index {
         return typeid(std::decay_t<decltype(x)>);
     }, v.var);
@@ -184,12 +184,12 @@ Object to_python(Vector<T> &&v) {return to_tuple(std::move(v));}
 template <class T>
 Object to_python(Vector<T> const &v) {return to_tuple(v);}
 
-template <class T, std::enable_if_t<std::is_same_v<T, Value>, int> = 0>
+template <class T, std::enable_if_t<std::is_same_v<T, Output> || std::is_same_v<T, Input>, int> = 0>
 Object to_python(T const &s) noexcept {
     return std::visit([](auto const &x) {return to_python(x);}, s.var);
 }
 
-template <class T, std::enable_if_t<std::is_same_v<T, Value>, int> = 0>
+template <class T, std::enable_if_t<std::is_same_v<T, Output> || std::is_same_v<T, Input>, int> = 0>
 Object to_python(T &&s) noexcept {
     return std::visit([](auto &x) {return to_python(std::move(x));}, s.var);
 }
@@ -244,14 +244,14 @@ struct AcquireGIL {
 
 /******************************************************************************/
 
-Value from_python(Object o);
+Input from_python(Object o);
 
 struct PythonFunction {
     Object function;
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
-    Value operator()(BaseContext const &ct, ArgPack &args) const {
-        AcquireGIL lk(static_cast<ReleaseGIL *>(ct.metadata));
+    Output operator()(CallingContext &ct, ArgPack &args) const {
+        AcquireGIL lk(&ct.get<ReleaseGIL>());
         Object o = to_python(args);
         if (!o) throw python_error();
         o = {PyObject_CallObject(+function, +o), false};
