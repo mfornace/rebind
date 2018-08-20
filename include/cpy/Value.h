@@ -54,7 +54,6 @@ public:
 /******************************************************************************/
 
 struct Value;
-struct Value;
 
 using Binary = std::vector<char>;
 
@@ -139,26 +138,13 @@ struct AnyModel : AnyConcept {
     }
 };
 
-struct Any {
+class Any {
     std::shared_ptr<AnyConcept const> self;
     std::type_index m_type = typeid(void);
 
-    std::type_index type() const {return m_type;}
+public:
     Any() = default;
-    Any(Any const &a) : self(a.self ? a.self->clone() : decltype(self)()), m_type(a.m_type) {}
-    Any(Any &&a) noexcept : self(std::move(a.self)), m_type(std::exchange(a.m_type, typeid(void))) {};
-
-    Any & operator=(Any const &a) {
-        if (a.self) self = a.self->clone();
-        else self.reset();
-        m_type = a.m_type;
-        return *this;
-    }
-    Any & operator=(Any &&a) noexcept {
-        self = std::move(a.self);
-        m_type = a.m_type;
-        return *this;
-    }
+    std::type_index type() const {return self ? m_type : typeid(void);}
 
     bool has_value() const {return bool(self);}
 
@@ -169,9 +155,6 @@ struct Any {
 
     template <class T, std::enable_if_t<!(std::is_same_v<no_qualifier<T>, Any>), int> = 0>
     explicit Any(T &&t) : Any(std::in_place_t(), static_cast<T &&>(t)) {}
-
-    // template <class T, class ...Ts>
-    // Any(std::in_place_type_t<T>, Ts &&...ts);
 
     template <class T>
     T cast() && {
@@ -250,20 +233,21 @@ struct Value {
     Value(Value &&v) noexcept : var(std::move(v.var)) {}
     Value(Value const &v) : var(v.var) {}
     Value(Value &v) : var(v.var) {}
+    ~Value() = default;
 
     Value & operator=(Value const &v) {var = v.var; return *this;}
     Value & operator=(Value &&v) noexcept {var = std::move(v.var); return *this;}
 
-    Value(std::monostate v={})   noexcept : var(v) {}
-    Value(bool v)                noexcept : var(v) {}
-    Value(Integer v)             noexcept : var(v) {}
-    Value(Real v)                noexcept : var(v) {}
-    Value(Function v)            noexcept : var(std::move(v)) {}
-    Value(Binary v)              noexcept : var(std::move(v)) {}
-    Value(std::string v)         noexcept : var(std::move(v)) {}
-    Value(std::string_view v)    noexcept : var(std::move(v)) {}
-    Value(std::type_index v)     noexcept : var(std::move(v)) {}
-    Value(Sequence v)            noexcept : var(std::move(v)) {}
+    Value(std::monostate v={}) noexcept : var(v) {}
+    Value(bool v)              noexcept : var(v) {}
+    Value(Integer v)           noexcept : var(v) {}
+    Value(Real v)              noexcept : var(v) {}
+    Value(Function v)          noexcept : var(std::move(v)) {}
+    Value(Binary v)            noexcept : var(std::move(v)) {}
+    Value(std::string v)       noexcept : var(std::move(v)) {}
+    Value(std::string_view v)  noexcept : var(std::move(v)) {}
+    Value(std::type_index v)   noexcept : var(std::move(v)) {}
+    Value(Sequence v)          noexcept : var(std::move(v)) {}
 
     template <class T>
     Value(std::in_place_t, T &&t) noexcept : var(std::in_place_type_t<Any>(), static_cast<T &&>(t)) {}
@@ -279,9 +263,9 @@ struct Value {
     bool as_bool() const {return std::get<bool>(var);}
     Real as_real() const {return std::get<Real>(var);}
     Integer as_integer() const {return std::get<Integer>(var);}
+    std::type_index as_type() const {return std::get<std::type_index>(var);}
 };
     // std::string_view as_view() const & {return std::get<std::string_view>(var);}
-    // std::type_index as_index() const & {return std::get<std::type_index>(var);}
     // Any as_any() const & {return std::get<Any>(var);}
     // Any as_any() && {return std::get<Any>(std::move(var));}
     // std::string as_string() const & {
@@ -289,11 +273,8 @@ struct Value {
     //         return std::string(*s);
     //     return std::get<std::string>(var);
     // }
-    // Vector<Value> as_vector() const & {return std::get<Vector<Value>>(var);}
-    // Vector<Value> as_vector() && {return std::get<Vector<Value>>(std::move(var));}
     // Binary as_binary() const & {return std::get<Binary>(var);}
     // Binary as_binary() && {return std::get<Binary>(std::move(var));}
-    // ~Value() = default;
 
 struct KeyPair {
     std::string_view key;

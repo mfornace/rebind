@@ -10,13 +10,13 @@ struct goo {
 
     void show() const;
     goo(double xx) : x(xx) {}
-    // goo(goo const &g) : x(g.x) {std::cout << "copy" << std::endl;}
-    // goo(goo &&g) noexcept : x(g.x) {std::cout << "move" << std::endl; g.x = -1;}
-    // goo & operator=(goo g) {
-    //     x = g.x;
-    //     std::cout << "assign" << std::endl;
-    //     return *this;
-    // }
+    goo(goo const &g) : x(g.x) { std::cout << "copy" << std::endl;}
+    goo(goo &&g) noexcept : x(g.x) {std::cout << "move" << std::endl; g.x = -1;}
+    goo & operator=(goo g) {
+        x = g.x;
+        std::cout << "assign" << std::endl;
+        return *this;
+    }
 };
 
 void goo::show() const {std::cout << x << ", " << &x << std::endl;}
