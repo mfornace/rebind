@@ -9,16 +9,6 @@ Document & document() noexcept {
 
 /******************************************************************************/
 
-Input::Input(Output &&o) noexcept : var(std::visit([](auto &x) {
-    return InputVariant(std::move(x));
-}, o.var)) {}
-
-Output::Output(Input &&o) noexcept : var(std::visit([](auto &x) {
-    return OutputVariant(std::move(x));
-}, o.var)) {}
-
-/******************************************************************************/
-
 WrongTypes wrong_types(ArgPack const &v) {
     WrongTypes out;
     out.indices.reserve(v.size());

@@ -54,8 +54,8 @@ public:
 
 /******************************************************************************/
 
-struct Output;
-struct Input;
+struct Value;
+struct Value;
 
 using Binary = std::vector<char>;
 
@@ -72,8 +72,8 @@ using Vector = std::vector<T>;
 
 struct SequenceConcept {
     virtual std::unique_ptr<SequenceConcept> clone() const = 0;
-    virtual void scan(std::function<void(Output)> const &) const = 0;
-    virtual void fill(Output *, std::size_t) const = 0;
+    virtual void scan(std::function<void(Value)> const &) const = 0;
+    virtual void fill(Value *, std::size_t) const = 0;
     virtual ~SequenceConcept() {};
 };
 
@@ -102,8 +102,8 @@ public:
         return *this;
     }
 
-    void scan(std::function<void(Output)> const &f) const {if (self) self->scan(f);}
-    void fill(Output *o, std::size_t n) const {if (self) self->fill(o, n);}
+    void scan(std::function<void(Value)> const &f) const {if (self) self->scan(f);}
+    void fill(Value *o, std::size_t n) const {if (self) self->fill(o, n);}
 
     template <class ...Ts>
     static Sequence vector(Ts &&...ts);
@@ -124,9 +124,9 @@ Vector<T> mapped(V const &v, F &&f) {
 
 /******************************************************************************/
 
-using ArgPack = Vector<Input>;
+using ArgPack = Vector<Value>;
 
-using Function = std::function<Output(CallingContext &, ArgPack &)>;
+using Function = std::function<Value(CallingContext &, ArgPack &)>;
 
 struct AnyConcept {
     virtual std::shared_ptr<AnyConcept> clone() const = 0;
@@ -190,7 +190,7 @@ T const & anycast(Any const &a) {
     return static_cast<AnyModel<T> const *>(a.self.get())->value;
 }
 
-using OutputVariant = std::variant<
+using Variant = std::variant<
     /*0*/ std::monostate,
     /*1*/ bool,
     /*2*/ Integer,
@@ -202,7 +202,7 @@ using OutputVariant = std::variant<
     /*8*/ Function,
     /*9*/ Any,     // ?
           Sequence
-    // /*0*/ Vector<Output> // ?
+    // /*0*/ Vector<Value> // ?
 >;
 // One idea for Any is instead to make it
 // shared_ptr<AnyConcept const>
@@ -210,7 +210,7 @@ using OutputVariant = std::variant<
 // using AnyRef = Any const *;
 // using BinaryRef = Binary const *;
 
-using InputVariant = std::variant<
+using Variant = std::variant<
     /*0*/ std::monostate,
     /*1*/ bool,
     /*2*/ Integer,
@@ -238,8 +238,8 @@ static_assert(48 == sizeof(Function));         // 32 buffer + 8 pointer + 8 vtab
 static_assert(24 == sizeof(Any));              // 8 + 24 buffer I think
 // static_assert(8 == sizeof(BinaryRef));         // pointer
 // static_assert(8 == sizeof(AnyRef));            // pointer
-static_assert(24 == sizeof(Vector<Input>));    //
-static_assert(64 == sizeof(InputVariant));
+static_assert(24 == sizeof(Vector<Value>));    //
+static_assert(64 == sizeof(Variant));
 static_assert(16 == sizeof(Sequence));
 
 // SCALAR - get() returns any of:
@@ -251,18 +251,18 @@ static_assert(16 == sizeof(Sequence));
 // - std::type_index,
 
 // Function is probably SCALAR
-// - it satisfies the interfaces [Copy, Move, Output(Context, Input)]
+// - it satisfies the interfaces [Copy, Move, Value(Context, Value)]
 // - it might also have a list of keyword arguments (# required?)
 
 // Any
 // - it satisfies the interface [Copy, Move, .type()]
 
 // Sequence
-// - it satisfies the interface [Copy, Move, begin(), end(), ++it, *it gives Output, ]
+// - it satisfies the interface [Copy, Move, begin(), end(), ++it, *it gives Value, ]
 
 
 template <class T, class=void>
-struct ToOutput;
+struct ToValue;
 
 template <class T>
 struct InPlace {
@@ -270,43 +270,42 @@ struct InPlace {
 };
 
 
-struct Output {
-    OutputVariant var;
+struct Value {
+    Variant var;
 
-    Output(Output &&v) noexcept : var(std::move(v.var)) {}
-    Output(Output const &v) : var(v.var) {}
-    Output(Output &v) : var(v.var) {}
+    Value(Value &&v) noexcept : var(std::move(v.var)) {}
+    Value(Value const &v) : var(v.var) {}
+    Value(Value &v) : var(v.var) {}
 
-    Output & operator=(Output const &v) {var = v.var; return *this;}
-    Output & operator=(Output &&v) noexcept {var = std::move(v.var); return *this;}
+    Value & operator=(Value const &v) {var = v.var; return *this;}
+    Value & operator=(Value &&v) noexcept {var = std::move(v.var); return *this;}
 
-    Output(Input &&)              noexcept;
-    Output(Input const &);
-    Output(std::monostate v={})   noexcept : var(v) {}
-    Output(bool v)                noexcept : var(v) {}
-    Output(Integer v)             noexcept : var(v) {}
-    Output(Real v)                noexcept : var(v) {}
-    Output(Function v)            noexcept : var(std::move(v)) {}
-    Output(Binary v)              noexcept : var(std::move(v)) {}
-    Output(std::string v)         noexcept : var(std::move(v)) {}
-    Output(std::string_view v)    noexcept : var(std::move(v)) {}
-    Output(std::type_index v)     noexcept : var(std::move(v)) {}
-    Output(Sequence v)            noexcept : var(std::move(v)) {}
+    Value(std::monostate v={})   noexcept : var(v) {}
+    Value(bool v)                noexcept : var(v) {}
+    Value(Integer v)             noexcept : var(v) {}
+    Value(Real v)                noexcept : var(v) {}
+    Value(Function v)            noexcept : var(std::move(v)) {}
+    Value(Binary v)              noexcept : var(std::move(v)) {}
+    Value(std::string v)         noexcept : var(std::move(v)) {}
+    Value(std::string_view v)    noexcept : var(std::move(v)) {}
+    Value(std::type_index v)     noexcept : var(std::move(v)) {}
+    Value(Sequence v)            noexcept : var(std::move(v)) {}
 
     template <class T>
-    Output(std::in_place_t, T &&t) noexcept : var(std::in_place_type_t<Any>(), static_cast<T &&>(t)) {}
+    Value(std::in_place_t, T &&t) noexcept : var(std::in_place_type_t<Any>(), static_cast<T &&>(t)) {}
 
     template <class T>
-    Output(InPlace<T> &&t) noexcept : var(std::in_place_type_t<Any>(), static_cast<T>(t.value)) {}
+    Value(InPlace<T> &&t) noexcept : var(std::in_place_type_t<Any>(), static_cast<T>(t.value)) {}
 
-    template <class T, std::enable_if_t<!(std::is_same_v<no_qualifier<T>, Output>), int> = 0>
-    Output(T &&t) : Output(ToOutput<no_qualifier<T>>()(static_cast<T &&>(t))) {}
+    template <class T, std::enable_if_t<!(std::is_same_v<no_qualifier<T>, Value>), int> = 0>
+    Value(T &&t) : Value(ToValue<no_qualifier<T>>()(static_cast<T &&>(t))) {}
 
     /******************************************************************************/
 
-    bool as_bool() const & {return std::get<bool>(var);}
-    Real as_real() const & {return std::get<Real>(var);}
-    // Integer as_integer() const & {return std::get<Integer>(var);}
+    bool as_bool() const {return std::get<bool>(var);}
+    Real as_real() const {return std::get<Real>(var);}
+    Integer as_integer() const {return std::get<Integer>(var);}
+};
     // std::string_view as_view() const & {return std::get<std::string_view>(var);}
     // std::type_index as_index() const & {return std::get<std::type_index>(var);}
     // Any as_any() const & {return std::get<Any>(var);}
@@ -316,51 +315,15 @@ struct Output {
     //         return std::string(*s);
     //     return std::get<std::string>(var);
     // }
-    // Vector<Output> as_vector() const & {return std::get<Vector<Output>>(var);}
-    // Vector<Output> as_vector() && {return std::get<Vector<Output>>(std::move(var));}
+    // Vector<Value> as_vector() const & {return std::get<Vector<Value>>(var);}
+    // Vector<Value> as_vector() && {return std::get<Vector<Value>>(std::move(var));}
     // Binary as_binary() const & {return std::get<Binary>(var);}
     // Binary as_binary() && {return std::get<Binary>(std::move(var));}
-    // ~Output() = default;
-};
-
-struct Input {
-    InputVariant var;
-
-    Input(Output &&) noexcept;
-    Input(Output const &);
-
-    Input(Input &&v) noexcept : var(std::move(v.var)) {}
-    Input(Input const &v) : var(v.var) {}
-    Input & operator=(Input const &v) {var = v.var; return *this;}
-    Input & operator=(Input &&v) noexcept {var = std::move(v.var); return *this;}
-
-    Input(std::monostate v={})   noexcept : var(v) {}
-    Input(bool v)                noexcept : var(v) {}
-    Input(Integer v)             noexcept : var(v) {}
-    Input(Real v)                noexcept : var(v) {}
-    Input(Function v)            noexcept : var(std::move(v)) {}
-    Input(Binary v)              noexcept : var(std::move(v)) {}
-    Input(std::string v)         noexcept : var(std::move(v)) {}
-    Input(std::string_view v)    noexcept : var(std::move(v)) {}
-    Input(std::type_index v)     noexcept : var(std::move(v)) {}
-    Input(Sequence v)            noexcept : var(std::move(v)) {}
-
-    template <class T>
-    Input(InPlace<T> &&t) noexcept : var(std::in_place_type_t<Any>(), static_cast<T &&>(t.value)) {}
-
-    template <class T>
-    Input(std::in_place_t, T &&t) noexcept : var(std::in_place_type_t<Any>(), static_cast<T &&>(t)) {}
-
-    /******************************************************************************/
-
-    bool as_bool() const & {return std::get<bool>(var);}
-    Integer as_integer() const & {return std::get<Integer>(var);}
-    Real as_real() const & {return std::get<Real>(var);}
-};
+    // ~Value() = default;
 
 struct KeyPair {
     std::string_view key;
-    Output value;
+    Value value;
 };
 
 /******************************************************************************/
@@ -370,39 +333,39 @@ WrongTypes wrong_types(ArgPack const &v);
 /******************************************************************************/
 
 template <class T, class>
-struct ToOutput {
+struct ToValue {
     InPlace<T &&> operator()(T &&t) const {return {static_cast<T &&>(t)};}
     InPlace<T const &> operator()(T const &t) const {return {t};}
 };
 
 template <class T>
-struct ToOutput<T, std::enable_if_t<(std::is_floating_point_v<T>)>> {
+struct ToValue<T, std::enable_if_t<(std::is_floating_point_v<T>)>> {
     Real operator()(T t) const {return static_cast<Real>(t);}
 };
 
 template <class T>
-struct ToOutput<T, std::enable_if_t<(std::is_integral_v<T>)>> {
+struct ToValue<T, std::enable_if_t<(std::is_integral_v<T>)>> {
     Integer operator()(T t) const {return static_cast<Integer>(t);}
 };
 
 template <>
-struct ToOutput<char const *> {
+struct ToValue<char const *> {
     std::string operator()(char const *t) const {return std::string(t);}
 };
 
 template <class T, class Alloc>
-struct ToOutput<std::vector<T, Alloc>> {
+struct ToValue<std::vector<T, Alloc>> {
     Sequence operator()(std::vector<T, Alloc> t) const {return Sequence(std::move(t));}
 };
 
 /******************************************************************************/
 
-static char const *cast_bug_message = "FromInput().check() returned false but FromInput()() was still called";
+static char const *cast_bug_message = "FromValue().check() returned false but FromValue()() was still called";
 
 // should make this into struct of T, U?
 /// Default behavior for casting a variant to a desired argument type
 template <class T, class=void>
-struct FromInput {
+struct FromValue {
     // Return true if type T can be cast from type U
     template <class U>
     constexpr bool check(U const &) const {
@@ -420,27 +383,20 @@ struct FromInput {
 
     bool check(Any const &u) const {return u.type() == typeid(T);}
 
-    // bool check(BinaryRef u) const {return std::is_convertible_v<Binary const &, T>;}
-
-    // T operator()(BinaryRef u) const {
-    //     if constexpr(std::is_convertible_v<Binary const &, T>) return static_cast<T>(*u);
-    //     else throw std::logic_error(cast_bug_message);
-    // }
-
     T operator()(Any &&u) const {return anycast<no_qualifier<T>>(u);}
 };
 
 /******************************************************************************/
 
 template <class T>
-struct FromInput<Vector<T>> {
+struct FromValue<Vector<T>> {
     template <class U>
     bool check(U const &) const {return false;}
 
     bool check(Sequence const &u) const {
         bool ok = true;
-        u.scan([&](Output const &x) {
-            ok = ok && std::visit([&](auto &x) {return FromInput<T>().check(x);}, x.var);
+        u.scan([&](Value const &x) {
+            ok = ok && std::visit([&](auto &x) {return FromValue<T>().check(x);}, x.var);
         });
         return ok;
     }
@@ -448,8 +404,8 @@ struct FromInput<Vector<T>> {
     Vector<T> operator()(Sequence &&u) const {
         Vector<T> out;
         out.reserve(u.size());
-        u.scan([&](Output x) {
-            std::visit([&](auto &x) {out.emplace_back(FromInput<T>()(std::move(x)));}, x.var);
+        u.scan([&](Value x) {
+            std::visit([&](auto &x) {out.emplace_back(FromValue<T>()(std::move(x)));}, x.var);
         });
         return out;
     }
@@ -471,13 +427,13 @@ struct SequenceModel : SequenceConcept {
     virtual std::unique_ptr<SequenceConcept> clone() const override {
         return std::make_unique<SequenceModel>(*this);
     }
-    virtual void scan(std::function<void(Output)> const &f) const override {
-        for (auto &&v : value) f(Output(v));
+    virtual void scan(std::function<void(Value)> const &f) const override {
+        for (auto &&v : value) f(Value(v));
     }
-    virtual void fill(Output *o, std::size_t n) const override {
+    virtual void fill(Value *o, std::size_t n) const override {
         for (auto &&v : value) {
             if (n--) return;
-            *(o++) = Output(v);
+            *(o++) = Value(v);
         }
     }
 };
@@ -493,7 +449,7 @@ Sequence::Sequence(T&&t, std::size_t n) : self(std::make_unique<SequenceModel<no
 
 template <class ...Ts>
 Sequence Sequence::vector(Ts &&...ts) {
-    std::vector<Output> vec;
+    std::vector<Value> vec;
     vec.reserve(sizeof...(Ts));
     (vec.emplace_back(static_cast<Ts &&>(ts)), ...);
     return Sequence(std::move(vec));

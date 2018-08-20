@@ -11,7 +11,7 @@ namespace cpy {
 
 /// Invoke a function and arguments, storing output in a Value if it doesn't return void
 template <class F, class ...Ts>
-Output value_invoke(F &&f, Ts &&... ts) {
+Value value_invoke(F &&f, Ts &&... ts) {
     if constexpr(std::is_same_v<void, std::invoke_result_t<F, Ts...>>) {
         std::invoke(static_cast<F &&>(f), static_cast<Ts &&>(ts)...);
         return {};
@@ -25,13 +25,13 @@ Output value_invoke(F &&f, Ts &&... ts) {
 /// Cast element i of v to type T
 template <class T>
 T cast_index(ArgPack &v, IndexedType<T> i, unsigned int offset) {
-    return std::visit(FromInput<T>(), std::move(v[i.index - offset].var));
+    return std::visit(FromValue<T>(), std::move(v[i.index - offset].var));
 }
 
 /// Check that element i of v can be cast to type T
 template <class T>
 bool check_cast_index(ArgPack &v, IndexedType<T> i, unsigned int offset) {
-    return std::visit([](auto const &x) {return FromInput<T>().check(x);}, v[i.index - offset].var);
+    return std::visit([](auto const &x) {return FromValue<T>().check(x);}, v[i.index - offset].var);
 }
 
 /******************************************************************************/
@@ -49,7 +49,7 @@ struct NoMutable {
 // the C++ functor must be callable with (T), (const &) or (&&) parameters
 // we need to take the any class by reference...
 // if args contains an Any
-// the function may move the Any if it takes Input
+// the function may move the Any if it takes Value
 // or the function may leave the Any alone if it takes const &
 
 template <class F>
@@ -57,7 +57,7 @@ struct FunctionAdaptor {
     F function;
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
-    Output operator()(CallingContext const &, ArgPack &args) const {
+    Value operator()(CallingContext const &, ArgPack &args) const {
         Signature<F>::apply([](auto return_type, auto ...ts) {
             (NoMutable<decltype(*ts)>(), ...);
         });
@@ -76,7 +76,7 @@ struct ContextAdaptor {
     F function;
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
-    Output operator()(CallingContext &ct, ArgPack &args) const {
+    Value operator()(CallingContext &ct, ArgPack &args) const {
         Signature<F>::apply([](auto return_type, auto context_type, auto ...ts) {
             (NoMutable<decltype(*ts)>(), ...);
         });

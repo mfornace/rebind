@@ -9,8 +9,8 @@ struct goo {
 
 // namespace cpy {
 //     template <>
-//     struct ToOutput<goo> {
-//         Output operator()(goo g) const {return {std::in_place_t(), g};}
+//     struct ToValue<goo> {
+//         Value operator()(goo g) const {return {std::in_place_t(), g};}
 //     };
 // }
 
@@ -52,7 +52,7 @@ UNIT_TEST("test-2", "This is a test 2") = [](cpy::Context ct) {
     std::cout << sizeof(std::complex<cpy::Real>)  << " sizeof(std::complex<Real>) " << std::endl;
     std::cout << sizeof(std::string)  << " sizeof(std::string) " << std::endl;
     std::cout << sizeof(std::string_view) << " sizeof(std::string_view)" << std::endl;
-    std::cout << sizeof(cpy::Input) << " sizeof(Input)" << std::endl;
+    std::cout << sizeof(cpy::Value) << " sizeof(Value)" << std::endl;
 
         return 8.9;
     //return "hello";

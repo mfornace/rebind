@@ -36,7 +36,7 @@ struct TestAdaptor {
     F function;
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
-    Output operator()(Context &ct, ArgPack args) {
+    Value operator()(Context &ct, ArgPack args) {
         try {
             return TestSignature<F>::apply([&](auto return_type, auto context_type, auto ...ts) {
                 static_assert(std::is_convertible_v<Context, decltype(*context_type)>,
@@ -68,8 +68,8 @@ struct TestAdaptor {
 
 /// Basic wrapper to make a fixed Value into a std::function
 struct ValueAdaptor {
-    Output value;
-    Output operator()(Context &, ArgPack const &) const {return value;}
+    Value value;
+    Value operator()(Context &, ArgPack const &) const {return value;}
 };
 
 /******************************************************************************/
@@ -88,7 +88,7 @@ struct TestCaseComment {
 struct TestCase {
     std::string name;
     TestCaseComment comment;
-    std::function<Output(Context &, ArgPack)> function;
+    std::function<Value(Context &, ArgPack)> function;
     Vector<ArgPack> parameters;
 };
 
@@ -148,17 +148,17 @@ struct AnonymousClosure {
 
 /// Call a registered unit test with type-erased arguments and output
 /// Throw std::runtime_error if test not found or test throws exception
-Output call(std::string_view s, Context c, ArgPack pack);
+Value call(std::string_view s, Context c, ArgPack pack);
 
 /// Call a registered unit test with non-type-erased arguments and output
 template <class ...Ts>
-Output call(std::string_view s, Context c, Ts &&...ts) {
+Value call(std::string_view s, Context c, Ts &&...ts) {
     return call(s, std::move(c), ArgPack{make_output(static_cast<Ts &&>(ts))...});
 }
 
 /// Get a stored value from its unit test name
 /// Throw std::runtime_error if test not found or test does not hold a Value
-Output get_value(std::string_view s);
+Value get_value(std::string_view s);
 
 /******************************************************************************/
 

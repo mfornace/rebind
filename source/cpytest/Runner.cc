@@ -9,9 +9,9 @@ struct ValueHandler {
     CallingContext context;
     Function fun;
     bool operator()(Event e, Scopes const &scopes, Logs &&logs) {
-        Vector<Input> vals = {Input(Integer(e)), Input(Sequence(scopes)),
-            Sequence(mapped<Output>(logs, [](auto &x) {return std::move(x.key);})),
-            Sequence(mapped<Output>(logs, [](auto &x) {return std::move(x.value);}))
+        Vector<Value> vals = {Value(Integer(e)), Value(Sequence(scopes)),
+            Sequence(mapped<Value>(logs, [](auto &x) {return std::move(x.key);})),
+            Sequence(mapped<Value>(logs, [](auto &x) {return std::move(x.value);}))
         };
         return fun(context, vals).as_bool();
     }
@@ -19,15 +19,15 @@ struct ValueHandler {
 
 struct ValueTest {
     Function fun;
-    Output operator()(Context &ct, ArgPack args) const {
+    Value operator()(Context &ct, ArgPack args) const {
         return fun(static_cast<CallingContext &>(ct), args);
     }
 };
 
 /******************************************************************************/
 
-Vector<Output> run_test(CallingContext &ct0, std::size_t i, Vector<Function> calls,
-                        Input args, bool cout, bool cerr) {
+Vector<Value> run_test(CallingContext &ct0, std::size_t i, Vector<Function> calls,
+                        Value args, bool cout, bool cerr) {
     auto const test = suite().at(i);
     if (!test.function) throw std::runtime_error("Test case has invalid Function");
     ArgPack pack;
@@ -35,11 +35,11 @@ Vector<Output> run_test(CallingContext &ct0, std::size_t i, Vector<Function> cal
         pack = test.parameters.at(args.as_integer());
     if (std::holds_alternative<Sequence>(args.var)) {
         auto const &seq = std::get<Sequence>(args.var);
-        pack.reserve(seq.size());
-        seq.scan([&](Output o) {pack.emplace_back(std::move(o));});
+        pack.resize(seq.size());
+        seq.fill(pack.data(), pack.size());
     }
     std::stringstream out, err;
-    Output return_value;
+    Value return_value;
     double test_time = 0;
     Vector<Counter> counts(calls.size());
     for (auto &c : counts) c.store(0u);
@@ -67,7 +67,7 @@ Vector<Output> run_test(CallingContext &ct0, std::size_t i, Vector<Function> cal
         test_time = std::chrono::duration<double>(Clock::now() - start).count();
     }
 
-    return {std::move(return_value), test_time, mapped<Output>(counts, [](auto const &i) {
+    return {std::move(return_value), test_time, mapped<Value>(counts, [](auto const &i) {
         return i.load(std::memory_order_relaxed);
     }), out.str(), err.str()};
 }
@@ -85,10 +85,10 @@ bool make_document() {
     });
 
     doc.define("test_names", [] {
-        return mapped<Output>(suite(), [](auto &&x) {return x.name;});
+        return mapped<Value>(suite(), [](auto &&x) {return x.name;});
     });
 
-    doc.define("test_info", [](std::size_t i) -> Vector<Output> {
+    doc.define("test_info", [](std::size_t i) -> Vector<Value> {
         auto const &c = suite().at(i);
         return {c.name, c.comment.location.file, Integer(c.comment.location.line), c.comment.comment};
     });
@@ -97,11 +97,11 @@ bool make_document() {
         return suite().at(i).parameters.size();
     });
 
-    doc.define("add_value", [](std::string s, Input v) {
+    doc.define("add_value", [](std::string s, Value v) {
         add_test(TestCase{std::move(s), {}, ValueAdaptor{std::move(v)}});
     });
 
-    doc.define("run_test", [](CallingContext &ct, std::size_t i, Vector<Function> calls, Input args, bool cout, bool cerr) {
+    doc.define("run_test", [](CallingContext &ct, std::size_t i, Vector<Function> calls, Value args, bool cout, bool cerr) {
         return run_test(ct, i, std::move(calls), std::move(args), cout, cerr);
     });
 

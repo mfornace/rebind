@@ -38,7 +38,7 @@ PythonError python_error() noexcept {
 
 /******************************************************************************/
 
-Input from_python(Object o) {
+Value from_python(Object o) {
     if (+o == Py_None) return std::monostate();
 
     if (PyBool_Check(+o)) return (+o == Py_True) ? true : false;
@@ -48,7 +48,7 @@ Input from_python(Object o) {
     if (PyFloat_Check(+o)) return static_cast<Real>(PyFloat_AsDouble(+o));
 
     if (PyTuple_Check(+o) || PyList_Check(+o)) {
-        Vector<Output> vals;
+        Vector<Value> vals;
         vals.reserve(PyObject_Length(+o));
         map_iterable(o, [&](Object o) {
             vals.emplace_back(from_python(std::move(o)));
@@ -115,27 +115,14 @@ Input from_python(Object o) {
 /******************************************************************************/
 
 // Store the objects in pypack in pack
-void put_argpack(ArgPack &pack, Object pypack) {
+ArgPack to_argpack(Object pypack) {
     auto n = PyObject_Length(+pypack);
+    ArgPack pack;
     pack.reserve(pack.size() + n);
     map_iterable(std::move(pypack), [&pack](Object o) {
         pack.emplace_back(from_python(std::move(o)));
     });
-}
-
-// If necessary, restore the objects in pack into pypack
-void get_argpack(ArgPack &pack, Object pypack) {
-    auto it = pack.begin();
-    map_iterable(pypack, [&it](Object o) {
-        if (std::holds_alternative<Any>(it->var)) {
-            cast_object<Any>(+o) = std::move(std::get<Any>(it->var));
-        } else if (std::holds_alternative<Function>(it->var)) {
-            cast_object<Function>(+o) = std::move(std::get<Function>(it->var));
-        // } else if (std::holds_alternative<Vector<Input>>(it->var)) {
-            // get_argpack(std::get<Vector<Input>>(it->var), o);
-        }
-        ++it;
-    });
+    return pack;
 }
 
 /******************************************************************************/
@@ -300,17 +287,12 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
         auto py = fun.target<PythonFunction>();
         if (py) return {PyObject_CallObject(+py->function, args), false};
         if (!fun) return raised(PyExc_ValueError, "Invalid C++ function");
-        cpy::ArgPack pack;
         // this is some collection of arbitrary things that may include Any
-        put_argpack(pack, {args, true});
+        auto pack = to_argpack({args, true});
         // now the Anys have been moved inside the pack, no matter what.
         ReleaseGIL lk(!gil);
         CallingContext ct{&lk};
-        Object out = cpy::to_python(fun(ct, pack));
-
-        get_argpack(pack, {args, true});
-        return out;
-        // but, now we should put back the Any in case it wasn't moved.
+        return cpy::to_python(fun(ct, pack));
     });
 }
 

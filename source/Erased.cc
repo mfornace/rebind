@@ -1,5 +1,5 @@
 
-#include <cpy/Function.h>
+#include <cpy/Document.h>
 #include <iostream>
 
 namespace cpy {

@@ -6,7 +6,7 @@ namespace cpy {
 /******************************************************************************/
 
 struct Document {
-    std::vector<std::pair<std::string, Output>> values;
+    std::vector<std::pair<std::string, Value>> values;
     std::vector<std::pair<std::type_index, std::string>> types;
     std::vector<std::tuple<std::string, std::string, Function>> methods;
 
