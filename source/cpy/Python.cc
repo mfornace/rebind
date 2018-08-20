@@ -12,7 +12,6 @@
 #   define CPY_MODULE libcpy
 #endif
 
-
 namespace cpy {
 
 /******************************************************************************/
@@ -76,7 +75,7 @@ Value from_python(Object o) {
     }
 
     if (PyObject_TypeCheck(+o, &AnyType))
-        return {std::in_place_t(), std::move(cast_object<Any>(+o))};
+        return cast_object<Any>(+o);
 
     if (PyObject_TypeCheck(+o, &TypeIndexType))
         return {std::in_place_t(), cast_object<std::type_index>(+o)};
@@ -289,7 +288,6 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
         if (!fun) return raised(PyExc_ValueError, "Invalid C++ function");
         // this is some collection of arbitrary things that may include Any
         auto pack = to_argpack({args, true});
-        // now the Anys have been moved inside the pack, no matter what.
         ReleaseGIL lk(!gil);
         CallingContext ct{&lk};
         return cpy::to_python(fun(ct, pack));

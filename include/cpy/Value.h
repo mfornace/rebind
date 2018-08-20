@@ -151,44 +151,50 @@ struct Any {
     std::type_index type() const {return m_type;}
     Any() = default;
     Any(Any const &a) : self(a.self ? a.self->clone() : decltype(self)()), m_type(a.m_type) {}
+    Any(Any &&a) noexcept : self(std::move(a.self)), m_type(std::exchange(a.m_type, typeid(void))) {};
+
     Any & operator=(Any const &a) {
         if (a.self) self = a.self->clone();
         else self.reset();
         m_type = a.m_type;
         return *this;
     }
-    Any(Any &&a) noexcept = default;
-    Any & operator=(Any &&a) noexcept = default;
+    Any & operator=(Any &&a) noexcept {
+        self = std::move(a.self);
+        m_type = a.m_type;
+        return *this;
+    }
 
     bool has_value() const {return bool(self);}
 
     template <class T>
     Any(std::in_place_t, T &&t)
         : self(std::make_shared<AnyModel<no_qualifier<T>>>(static_cast<T &&>(t))),
-          m_type(typeid(no_qualifier<T>)) {static_assert(!std::is_same_v<no_qualifier<T>, Any>);}
+          m_type(typeid(no_qualifier<T>)) {}
 
-    template <class T>
+    template <class T, std::enable_if_t<!(std::is_same_v<no_qualifier<T>, Any>), int> = 0>
     explicit Any(T &&t) : Any(std::in_place_t(), static_cast<T &&>(t)) {}
 
     // template <class T, class ...Ts>
     // Any(std::in_place_type_t<T>, Ts &&...ts);
+
+    template <class T>
+    T cast() && {
+        static_assert(std::is_same_v<T, no_qualifier<T>>);
+        if (type() != typeid(T)) throw DispatchError("any move");
+        auto ptr = static_cast<AnyModel<T> const *>(self.get());
+        if (!self.unique()) return ptr->value;
+        auto tmp = std::move(*this);
+        return std::move(const_cast<AnyModel<T> *>(ptr)->value);
+    }
+
+    template <class T>
+    T const & cast() const & {
+        static_assert(std::is_same_v<T, no_qualifier<T>>);
+        if (type() != typeid(T)) throw DispatchError("any copy");
+        return static_cast<AnyModel<T> const *>(self.get())->value;
+    }
 };
-
-template <class T>
-T anycast(Any &&a) {
-    static_assert(std::is_same_v<T, no_qualifier<T>>);
-    if (a.type() != typeid(T)) throw DispatchError("any");
-    auto ptr = static_cast<AnyModel<T> const *>(a.self.get());
-    if (!a.self.unique()) return ptr->value;
-    auto tmp = std::move(a);
-    return std::move(const_cast<AnyModel<T> *>(ptr)->value);
-}
-
-template <class T>
-T const & anycast(Any const &a) {
-    static_assert(std::is_same_v<T, no_qualifier<T>>);
-    return static_cast<AnyModel<T> const *>(a.self.get())->value;
-}
 
 using Variant = std::variant<
     /*0*/ std::monostate,
@@ -209,22 +215,6 @@ using Variant = std::variant<
 
 // using AnyRef = Any const *;
 // using BinaryRef = Binary const *;
-
-using Variant = std::variant<
-    /*0*/ std::monostate,
-    /*1*/ bool,
-    /*2*/ Integer,
-    /*3*/ Real,
-    /*4*/ std::string_view,
-    /*5*/ std::string,
-    /*6*/ std::type_index,
-    /*7*/ Binary,       // ?
-    /*8*/ Function,
-    /*9*/ Any,     // ?
-    // /*7*/ BinaryRef,    // ?
-    // /*9*/ AnyRef,  // ?
-    /*0*/ Sequence // ?
->;
 
 static_assert(1 ==  sizeof(std::monostate));    // 1
 static_assert(1 ==  sizeof(bool));              // 1
@@ -383,7 +373,11 @@ struct FromValue {
 
     bool check(Any const &u) const {return u.type() == typeid(T);}
 
-    T operator()(Any &&u) const {return anycast<no_qualifier<T>>(u);}
+    T operator()(Any &&u) const {
+        return static_cast<
+            std::conditional_t<true || std::is_lvalue_reference_v<T>, Any const &, Any &&>
+        >(u).template cast<no_qualifier<T>>();
+    }
 };
 
 /******************************************************************************/

@@ -147,7 +147,7 @@ inline Object to_python(std::type_index f) noexcept {
 
 template <class T, std::enable_if_t<std::is_same_v<Any, T>, int> = 0>
 inline Object to_python(T a) noexcept {
-    if (a.type() == typeid(Object)) return anycast<Object>(std::move(a));
+    if (a.type() == typeid(Object)) return std::move(a).template cast<Object>();
     Object o{PyObject_CallObject(type_object(AnyType), nullptr), false};
     cast_object<Any>(+o) = std::move(a);
     return o;
