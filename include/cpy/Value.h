@@ -5,6 +5,7 @@
 
 #pragma once
 #include "Error.h"
+#include "Signature.h"
 
 #include <iostream>
 #include <variant>
@@ -69,45 +70,35 @@ using ArgPack = Vector<Value>;
 using Function = std::function<Value(CallingContext &, ArgPack &)>;
 
 struct SequenceConcept {
-    virtual std::unique_ptr<SequenceConcept> clone() const = 0;
-    virtual void scan(std::function<void(Value)> const &) const = 0;
-    virtual void fill(Value *, std::size_t) const = 0;
+    virtual char const * shortcut(int &, std::ptrdiff_t &) const {return nullptr;}
+    virtual void scan(std::function<void(Value)> const &) const {}
     virtual ~SequenceConcept() {};
 };
 
-
 class Sequence {
-    std::unique_ptr<SequenceConcept> self;
+    std::shared_ptr<SequenceConcept const> self;
     std::size_t m_size = 0;
 
 public:
     Sequence() = default;
 
-    std::size_t size() const {return m_size;}
+    std::size_t size() const {return self ? m_size : 0;}
 
     template <class T>
     Sequence(T&&t, std::size_t n);
 
-    template <class T>
+    Sequence(std::initializer_list<Value> const &v);
+
+    template <class T, std::enable_if_t<!(std::is_same_v<no_qualifier<T>, Sequence>), int> = 0>
     explicit Sequence(T &&t) : Sequence(static_cast<T &&>(t), std::size(t)) {}
 
-    Sequence(Sequence const &s) : self(s.self ? s.self->clone() : std::unique_ptr<SequenceConcept>()), m_size(s.m_size) {}
+    template <class F>
+    void scan_functor(F &&f) const;
 
-    Sequence & operator=(Sequence const &s) {
-        if (s.self) self = s.self->clone();
-        else self.reset();
-        m_size = s.m_size;
-        return *this;
-    }
-
-    void scan(std::function<void(Value)> const &f) const {if (self) self->scan(f);}
-    void fill(Value *o, std::size_t n) const {if (self) self->fill(o, n);}
+    void scan_function(std::function<void(Value)> const &) const;
 
     template <class ...Ts>
     static Sequence vector(Ts &&...ts);
-
-    Sequence(Sequence &&) noexcept = default;
-    Sequence & operator=(Sequence &&s) noexcept = default;
 };
 
 /******************************************************************************/
@@ -122,24 +113,8 @@ Vector<T> mapped(V const &v, F &&f) {
 
 /******************************************************************************/
 
-struct AnyConcept {
-    virtual std::shared_ptr<AnyConcept> clone() const = 0;
-    virtual ~AnyConcept() {}
-};
-
-template <class T>
-struct AnyModel : AnyConcept {
-    T value;
-    template <class ...Ts>
-    explicit AnyModel(Ts &&...ts) : value(static_cast<Ts &&>(ts)...) {}
-
-    virtual std::shared_ptr<AnyConcept> clone() const override {
-        return std::make_shared<AnyModel>(value);
-    }
-};
-
 class Any {
-    std::shared_ptr<AnyConcept const> self;
+    std::shared_ptr<void const> self;
     std::type_index m_type = typeid(void);
 
 public:
@@ -150,7 +125,7 @@ public:
 
     template <class T>
     Any(std::in_place_t, T &&t)
-        : self(std::make_shared<AnyModel<no_qualifier<T>>>(static_cast<T &&>(t))),
+        : self(std::make_shared<no_qualifier<T>>(static_cast<T &&>(t))),
           m_type(typeid(no_qualifier<T>)) {}
 
     template <class T, std::enable_if_t<!(std::is_same_v<no_qualifier<T>, Any>), int> = 0>
@@ -160,21 +135,39 @@ public:
     T cast() && {
         static_assert(std::is_same_v<T, no_qualifier<T>>);
         if (type() != typeid(T)) throw DispatchError("any move");
-        auto ptr = static_cast<AnyModel<T> const *>(self.get());
-        if (!self.unique()) return ptr->value;
-        auto tmp = std::move(*this);
-        return std::move(const_cast<AnyModel<T> *>(ptr)->value);
+        auto ptr = static_cast<T const *>(self.get());
+        if (self.use_count() > 1) return *ptr;
+        // thread safety here is tricky
+        // weak_ptr is not allowed, so that problem doesn't enter
+        // other owners can't have called a const function after their
+        // delete is registered so that should be fine too.
+        auto tmp = std::move(*this); // so self is destroyed when out of scope
+        return std::move(const_cast<T &>(*ptr));
     }
 
     template <class T>
     T const & cast() const & {
         static_assert(std::is_same_v<T, no_qualifier<T>>);
         if (type() != typeid(T)) throw DispatchError("any copy");
-        return static_cast<AnyModel<T> const *>(self.get())->value;
+        return *static_cast<T const *>(self.get());
     }
 };
 
 using Variant = std::variant<
+    /*0*/ std::monostate,
+    /*1*/ bool,
+    /*2*/ Integer,
+    /*3*/ Real,
+    /*4*/ std::string_view,
+    /*5*/ std::string,
+    /*6*/ std::type_index,
+    /*7*/ Binary,       // ?
+    /*8*/ Function,
+    /*9*/ Any,     // ?
+    /*0*/ Sequence
+>;
+
+using ValuePack = Pack<
     /*0*/ std::monostate,
     /*1*/ bool,
     /*2*/ Integer,
@@ -200,7 +193,7 @@ static_assert(48 == sizeof(Function));         // 32 buffer + 8 pointer + 8 vtab
 static_assert(24 == sizeof(Any));              // 8 + 24 buffer I think
 static_assert(24 == sizeof(Vector<Value>));    //
 static_assert(64 == sizeof(Variant));
-static_assert(16 == sizeof(Sequence));
+static_assert(24 == sizeof(Sequence));
 
 // SCALAR - get() returns any of:
 // - std::monostate,
@@ -356,7 +349,7 @@ struct FromValue<Vector<T>> {
 
     bool check(Sequence const &u) const {
         bool ok = true;
-        u.scan([&](Value const &x) {
+        u.scan_functor([&](Value const &x) {
             ok = ok && std::visit([&](auto &x) {return FromValue<T>().check(x);}, x.var);
         });
         return ok;
@@ -365,7 +358,7 @@ struct FromValue<Vector<T>> {
     Vector<T> operator()(Sequence &&u) const {
         Vector<T> out;
         out.reserve(u.size());
-        u.scan([&](Value x) {
+        u.scan_functor([&](Value x) {
             std::visit([&](auto &x) {out.emplace_back(FromValue<T>()(std::move(x)));}, x.var);
         });
         return out;
@@ -377,37 +370,59 @@ struct FromValue<Vector<T>> {
 
 /******************************************************************************/
 
-template <class T>
-struct SequenceModel : SequenceConcept {
+template <class T, class=void>
+struct SequenceModel final : SequenceConcept {
     T value;
     SequenceModel(T &&t) : value(static_cast<T &&>(t)) {}
     SequenceModel(T const &t) : value(static_cast<T const &>(t)) {}
 
-    virtual std::unique_ptr<SequenceConcept> clone() const override {
-        return std::make_unique<SequenceModel>(*this);
-    }
-    virtual void scan(std::function<void(Value)> const &f) const override {
+    void scan(std::function<void(Value)> const &f) const override {
         for (auto &&v : value) f(Value(static_cast<decltype(v) &&>(v)));
     }
-    virtual void fill(Value *o, std::size_t n) const override {
-        for (auto &&v : value) {
-            if (n--) return;
-            *(o++) = Value(static_cast<decltype(v) &&>(v));
-        }
+};
+
+// Shortcuts for vector of Value using its contiguity
+template <class T, class Alloc>
+struct SequenceModel<std::vector<T, Alloc>, std::enable_if_t<(ValuePack::contains<T> || std::is_same_v<T, Value>)>> final : SequenceConcept {
+    using V = std::vector<T, Alloc>;
+    V value;
+    SequenceModel(V &&v) : value(static_cast<V &&>(v)) {}
+    SequenceModel(V const &v) : value(static_cast<V const &>(v)) {}
+
+    char const * shortcut(int &n, std::ptrdiff_t &stride) const final {
+        n = ValuePack::position<T>;
+        stride = sizeof(T) / sizeof(char);
+        return reinterpret_cast<char const *>(value.data());
     }
 };
 
 template <class T>
-Sequence::Sequence(T&&t, std::size_t n) : self(std::make_unique<SequenceModel<no_qualifier<T>>>(t)), m_size(n) {}
+Sequence::Sequence(T&&t, std::size_t n) : self(std::make_shared<SequenceModel<no_qualifier<T>>>(t)), m_size(n) {}
 
 template <class ...Ts>
 Sequence Sequence::vector(Ts &&...ts) {
-    std::vector<Value> vec;
+    Vector<Value> vec;
     vec.reserve(sizeof...(Ts));
     (vec.emplace_back(static_cast<Ts &&>(ts)), ...);
     return Sequence(std::move(vec));
 }
 
+template <class T, class F>
+void raw_scan(F &&f, char const *p, char const *e, std::ptrdiff_t stride) {
+    for (; p != e; p += stride) f(reinterpret_cast<T const *>(p));
+}
 
+template <class F>
+void Sequence::scan_functor(F &&f) const {
+    if (self) {
+        int idx; std::ptrdiff_t stride;
+        if (auto p = self->shortcut(idx, stride)) {
+            if (idx == -1) raw_scan<Value>(f, p, p + stride * m_size, stride);
+            else ValuePack::for_each([&, i=0](auto t) mutable {
+                if (i++ == idx) raw_scan<decltype(*t)>(f, p, p + stride * m_size, stride);
+            });
+        } else self->scan(static_cast<F &&>(f));
+    }
+}
 
 }

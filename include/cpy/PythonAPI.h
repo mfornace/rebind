@@ -190,7 +190,7 @@ Object to_python(Sequence const &s) {
     if (!out) return {};
     Py_ssize_t i = 0u;
     bool ok = true;
-    s.scan([&](Value o) {
+    s.scan_functor([&](auto o) {
         if (!ok) return;
         Object item = to_python(std::move(o));
         if (!item) {ok = false; return;}

@@ -36,8 +36,8 @@ Vector<Value> run_test(CallingContext &ct0, std::size_t i, Vector<Function> call
         pack = test.parameters.at(args.as_integer());
     if (std::holds_alternative<Sequence>(args.var)) {
         auto const &seq = std::get<Sequence>(args.var);
-        pack.resize(seq.size());
-        seq.fill(pack.data(), pack.size());
+        pack.reserve(seq.size());
+        seq.scan_functor([&](Value o) {pack.emplace_back(std::move(o));});
     }
     std::stringstream out, err;
     Value return_value;

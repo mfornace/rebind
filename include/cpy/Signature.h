@@ -21,10 +21,32 @@ struct IndexedType {
 
 /******************************************************************************************/
 
+template <class U> std::integral_constant<int, -1> index_of_type();
+
+template <class U, class T, class ...Ts, std::enable_if_t<std::is_same_v<U, T>, int> = 0>
+std::integral_constant<int, 0> index_of_type();
+
+template <class U, class T, class ...Ts, std::enable_if_t<!std::is_same_v<U, T>, int> = 0>
+auto index_of_type() {return std::integral_constant<int, decltype(index_of_type<U, Ts...>())::value + 1>();}
+
+template <bool ...Ts>
+struct BoolPack;
+
+template <bool ...Ts>
+static constexpr bool any_of_c = !std::is_same_v<BoolPack<false, Ts...>, BoolPack<Ts..., false>>;
+
+/******************************************************************************************/
+
 /// A lightweight ordered container of types
 template <class ...Ts> struct Pack {
     using pack_type = Pack;
     using size = std::integral_constant<std::size_t, sizeof...(Ts)>;
+
+    template <class T>
+    static constexpr bool contains = any_of_c<std::is_same_v<T, Ts>...>;
+
+    template <class T>
+    static constexpr int position = decltype(index_of_type<Ts...>())::value;
 
     template <class F, std::size_t ...Is>
     static constexpr auto apply(F &&f, std::index_sequence<Is...>) {
