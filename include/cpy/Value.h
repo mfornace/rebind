@@ -6,6 +6,7 @@
 #pragma once
 #include "Error.h"
 #include "Signature.h"
+#include "Common.h"
 
 #include <iostream>
 #include <variant>
@@ -25,44 +26,9 @@
 
 namespace cpy {
 
-template <class T>
-using no_qualifier = std::remove_cv_t<std::remove_reference_t<T>>;
-
-struct Identity {
-    template <class T>
-    T const & operator()(T const &t) const {return t;}
-};
-
-/******************************************************************************/
-
-// Roughly, a type safe version of std::any but simpler and non-owning
-class CallingContext {
-    void *metadata = nullptr;
-    std::type_index index = typeid(void);
-public:
-    CallingContext() = default;
-
-    template <class T>
-    CallingContext(T *t) : metadata(t), index(typeid(T)) {}
-
-    template <class T>
-    T & get() {
-        if (index != typeid(T)) throw DispatchError("invalid context");
-        return *static_cast<T *>(metadata);
-    }
-};
-
 /******************************************************************************/
 
 struct Value;
-
-template <class T, class U>
-static constexpr bool Reinterpretable = (sizeof(T) == sizeof(U)) && alignof(T) == alignof(U);
-
-static_assert(!std::is_same_v<unsigned char, char>);
-static_assert(Reinterpretable<unsigned char, char>);
-// Standard: a char, a signed char, and an unsigned char occupy
-// the same amount of storage and have the same alignment requirements
 
 using Binary = std::basic_string<unsigned char>;
 
@@ -72,12 +38,13 @@ using Integer = std::ptrdiff_t;
 
 using Real = double;
 
-template <class T>
-using Vector = std::vector<T>;
-
 using ArgPack = Vector<Value>;
 
 using Function = std::function<Value(CallingContext &, ArgPack &)>;
+
+using Any = std::any;
+
+/******************************************************************************/
 
 struct SequenceConcept {
     virtual char const * shortcut(int &, std::ptrdiff_t &) const {return nullptr;}
@@ -113,18 +80,6 @@ public:
 
 /******************************************************************************/
 
-template <class T, class V, class F=Identity>
-Vector<T> mapped(V const &v, F &&f) {
-    Vector<T> out;
-    out.reserve(std::size(v));
-    for (auto &&x : v) out.emplace_back(f(x));
-    return out;
-}
-
-/******************************************************************************/
-
-using Any = std::any;
-
 using ValuePack = Pack<
     /*0*/ std::monostate,
     /*1*/ bool,
@@ -140,10 +95,7 @@ using ValuePack = Pack<
     /*1*/ Sequence
 >;
 
-template <class ...Ts>
-std::variant<Ts...> get_variant_type(Pack<Ts...>); // undefined
-
-using Variant = decltype(get_variant_type(ValuePack()));
+using Variant = decltype(variant_type(ValuePack()));
 
 static_assert(1  == sizeof(std::monostate));    // 1
 static_assert(1  == sizeof(bool));              // 1
@@ -159,24 +111,7 @@ static_assert(24 == sizeof(Vector<Value>));    //
 static_assert(64 == sizeof(Variant));
 static_assert(24 == sizeof(Sequence));
 
-// SCALAR - get() returns any of:
-// - std::monostate,
-// - bool,
-// - Integer,
-// - Real,
-// - std::string_view,
-// - std::type_index,
-
-// Function is probably SCALAR
-// - it satisfies the interfaces [Copy, Move, Value(Context, Value)]
-// - it might also have a list of keyword arguments (# required?)
-
-// Any
-// - it satisfies the interface [Copy, Move, .type()]
-
-// Sequence
-// - it satisfies the interface [Copy, Move, begin(), end(), ++it, *it gives Value, ]
-
+/******************************************************************************/
 
 template <class T, class=void>
 struct ToValue;
@@ -222,7 +157,6 @@ struct Value {
     Real as_real() const {return std::get<Real>(var);}
     Integer as_integer() const {return std::get<Integer>(var);}
     std::type_index as_type() const {return std::get<std::type_index>(var);}
-};
     // std::string_view as_view() const & {return std::get<std::string_view>(var);}
     // Any as_any() const & {return std::get<Any>(var);}
     // Any as_any() && {return std::get<Any>(std::move(var));}
@@ -233,6 +167,7 @@ struct Value {
     // }
     // Binary as_binary() const & {return std::get<Binary>(var);}
     // Binary as_binary() && {return std::get<Binary>(std::move(var));}
+};
 
 struct KeyPair {
     std::string_view key;
@@ -378,5 +313,7 @@ void Sequence::scan_functor(F &&f) const {
         } else self->scan(static_cast<F &&>(f));
     }
 }
+
+/******************************************************************************/
 
 }

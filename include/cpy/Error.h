@@ -7,16 +7,6 @@
 
 namespace cpy {
 
-template <class T>
-using SizeOf = std::integral_constant<std::size_t, sizeof(T)>;
-
-template <class V>
-auto binary_lookup(V const &v, typename V::value_type t) {
-    auto it = std::lower_bound(v.begin(), v.end(), t,
-        [](auto const &x, auto const &y) {return x.first < y.first;});
-    return (it != v.end() && it->first != t.first) ? it : v.end();
-}
-
 /******************************************************************************/
 
 struct DispatchError : std::invalid_argument {
