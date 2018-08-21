@@ -111,7 +111,7 @@ inline Object to_python(char const *s) noexcept {
     return {PyUnicode_FromString(s ? s : ""), false};
 }
 
-template <class T, std::enable_if_t<(std::is_integral_v<T>), int> = 0>
+template <class T, std::enable_if_t<(std::is_integral_v<T> && sizeof(T) <= sizeof(long long)), int> = 0>
 Object to_python(T t) noexcept {
     return {PyLong_FromLongLong(static_cast<long long>(t)), false};
 }
@@ -136,12 +136,19 @@ inline Object to_python(std::wstring_view const &s) noexcept {
     return {PyUnicode_FromWideChar(s.data(), static_cast<Py_ssize_t>(s.size())), false};
 }
 
-inline Object to_python(std::complex<double> const &s) noexcept {
+template <class T, std::enable_if_t<(sizeof(T) <= sizeof(double)), int> = 0>
+Object to_python(std::complex<T> const &s) noexcept {
     return {PyComplex_FromDoubles(s.real(), s.imag()), false};
 }
 
-inline Object to_python(Binary const &s) noexcept {
-    return {PyByteArray_FromStringAndSize(s.data(), s.size()), false};
+template <class CharT, class T, class A, std::enable_if_t<Reinterpretable<CharT, char>, int> = 0>
+Object to_python(std::basic_string<CharT, T, A> const &s) noexcept {
+    return {PyByteArray_FromStringAndSize(reinterpret_cast<char const *>(s.data()), s.size()), false};
+}
+
+template <class CharT, class T, std::enable_if_t<Reinterpretable<CharT, char>, int> = 0>
+Object to_python(std::basic_string_view<CharT, T> const &s) noexcept {
+    return {PyByteArray_FromStringAndSize(reinterpret_cast<char const *>(s.data()), s.size()), false};
 }
 
 inline Object to_python(Function f) noexcept {
@@ -165,7 +172,6 @@ inline Object to_python(T a) noexcept {
 }
 
 ArgPack to_argpack(Object pypack);
-void steal_argpack(ArgPack &&pack, Object pypack);
 
 /******************************************************************************/
 

@@ -56,7 +56,17 @@ public:
 
 struct Value;
 
-using Binary = std::vector<char>;
+template <class T, class U>
+static constexpr bool Reinterpretable = (sizeof(T) == sizeof(U)) && alignof(T) == alignof(U);
+
+static_assert(!std::is_same_v<unsigned char, char>);
+static_assert(Reinterpretable<unsigned char, char>);
+// Standard: a char, a signed char, and an unsigned char occupy
+// the same amount of storage and have the same alignment requirements
+
+using Binary = std::basic_string<unsigned char>;
+
+using BinaryView = std::basic_string_view<unsigned char>;
 
 using Integer = std::ptrdiff_t;
 
@@ -113,75 +123,7 @@ Vector<T> mapped(V const &v, F &&f) {
 
 /******************************************************************************/
 
-class Any2 {
-    std::shared_ptr<void const> self;
-    std::type_index m_type = typeid(void);
-    bool m_movable = false;
-
-public:
-    Any2() = default;
-    std::type_index type() const {return self ? m_type : typeid(void);}
-
-    bool has_value() const noexcept {return bool(self);}
-    bool move() noexcept {return std::exchange(m_movable, true);}
-    bool nomove() noexcept {return std::exchange(m_movable, false);}
-    bool movable() const noexcept {return m_movable;}
-
-    template <class T>
-    Any2(std::in_place_t, T &&t)
-        : self(std::make_shared<no_qualifier<T>>(static_cast<T &&>(t))),
-          m_type(typeid(no_qualifier<T>)) {}
-
-    template <class T, std::enable_if_t<!(std::is_same_v<no_qualifier<T>, Any2>), int> = 0>
-    explicit Any2(T &&t) : Any2(std::in_place_t(), static_cast<T &&>(t)) {}
-
-    template <class T>
-    T && cast_move() {
-        static_assert(std::is_same_v<T, no_qualifier<T>>);
-        if (type() != typeid(T)) throw std::runtime_error("any move");
-        auto ptr = static_cast<T const *>(self.get());
-        return std::move(const_cast<T &>(*ptr));
-    }
-
-    template <class T>
-    T cast_value() && {
-        static_assert(std::is_same_v<T, no_qualifier<T>>);
-        if (type() != typeid(T)) throw std::runtime_error("any value");
-        auto ptr = static_cast<T const *>(self.get());
-        return *ptr;
-        // if (!m_movable || self.use_count() > 1) return *ptr;
-        // std::cout << "move!" << std::endl;
-        // // thread safety here is tricky
-        // // weak_ptr is not allowed, so that problem doesn't enter
-        // // other owners can't have called a const function after their
-        // // delete is registered so that should be fine too.
-        // auto tmp = std::move(*this); // so self is destroyed when out of scope
-        // return std::move(const_cast<T &>(*ptr));
-    }
-
-    template <class T>
-    T const & cast_ref() const & {
-        static_assert(std::is_same_v<T, no_qualifier<T>>);
-        if (type() != typeid(T)) throw std::runtime_error("any copy");
-        return *static_cast<T const *>(self.get());
-    }
-};
-
 using Any = std::any;
-
-using Variant = std::variant<
-    /*0*/ std::monostate,
-    /*1*/ bool,
-    /*2*/ Integer,
-    /*3*/ Real,
-    /*4*/ std::string_view,
-    /*5*/ std::string,
-    /*6*/ std::type_index,
-    /*7*/ Binary,       // ?
-    /*8*/ Function,
-    /*9*/ Any,     // ?
-    /*0*/ Sequence
->;
 
 using ValuePack = Pack<
     /*0*/ std::monostate,
@@ -192,10 +134,16 @@ using ValuePack = Pack<
     /*5*/ std::string,
     /*6*/ std::type_index,
     /*7*/ Binary,       // ?
-    /*8*/ Function,
-    /*9*/ Any,     // ?
-    /*0*/ Sequence
+    /*8*/ BinaryView,   // ?
+    /*9*/ Function,
+    /*0*/ Any,     // ?
+    /*1*/ Sequence
 >;
+
+template <class ...Ts>
+std::variant<Ts...> get_variant_type(Pack<Ts...>); // undefined
+
+using Variant = decltype(get_variant_type(ValuePack()));
 
 static_assert(1  == sizeof(std::monostate));    // 1
 static_assert(1  == sizeof(bool));              // 1
@@ -269,6 +217,7 @@ struct Value {
 
     /******************************************************************************/
 
+    friend Value no_view(Value v);
     bool as_bool() const {return std::get<bool>(var);}
     Real as_real() const {return std::get<Real>(var);}
     Integer as_integer() const {return std::get<Integer>(var);}
@@ -333,7 +282,7 @@ struct FromValue {
     T operator()(U &&u) const {
         static_assert(std::is_rvalue_reference_v<U &&>);
         if constexpr(std::is_convertible_v<U &&, T>) return static_cast<T>(static_cast<U &&>(u));
-        else if constexpr(std::is_same_v<T, std::monostate> && std::is_default_constructible_v<T>) return T(); // only hit if U == std::monostate
+        else if constexpr(std::is_same_v<T, std::monostate> && std::is_default_constructible_v<T>) return T();
         message.dest = typeid(T);
         message.source = typeid(U);
         throw WrongTypes(std::move(message));
@@ -342,9 +291,6 @@ struct FromValue {
     T operator()(Any &&u) const {
         auto ptr = &u;
         if (auto p = std::any_cast<std::any *>(&u)) ptr = *p;
-        // if T is const &, then don't move the Any
-        // if T is &&, make sure the Any is unique, and don't move the Any
-        // if T is value, either copy or move the Any
         if (auto p = std::any_cast<no_qualifier<T>>(ptr))
             return static_cast<T>(*p);
         message.scope = u.has_value() ? "mismatched class" : "object was already moved";

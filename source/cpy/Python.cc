@@ -23,6 +23,7 @@ TypeNames type_names = {
     {typeid(std::string), "str"},
     {typeid(std::type_index), "TypeIndex"},
     {typeid(Binary), "Binary"},
+    {typeid(BinaryView), "BinaryView"},
     {typeid(Function), "Function"},
     {typeid(Any), "Any"},
     {typeid(Sequence), "Sequence"},
@@ -79,7 +80,7 @@ std::type_index Buffer::format(std::string_view s) {
 }
 
 Binary Buffer::binary(Py_buffer *view, std::size_t len) {
-    Binary bin(len);
+    Binary bin(len, typename Binary::value_type());
     if (PyBuffer_ToContiguous(bin.data(), view, bin.size(), 'C') < 0) {
         PyErr_SetString(PyExc_TypeError, "Could not make contiguous buffer for C++");
         throw python_error();
@@ -173,20 +174,6 @@ ArgPack to_argpack(Object pypack) {
     });
     return pack;
 }
-
-// Store the objects in pypack in pack
-// void steal_argpack(ArgPack &&pack, Object pypack) {
-//     auto it = pack.begin();
-//     map_iterable(std::move(pypack), [&it](Object o) {
-//         if (PyObject_TypeCheck(+o, &AnyType)) {
-//             std::cout << "Steal1 " << cast_object<Any>(+o).has_value() << std::get<Any>(it->var).has_value() << std::endl;
-//             cast_object<Any>(+o) = std::move(std::get<Any>(it->var));
-//             cast_object<Any>(+o).nomove();
-//             std::cout << "Steal " << cast_object<Any>(+o).has_value() << std::endl;
-//         }
-//         ++it;
-//     });
-// }
 
 /******************************************************************************/
 

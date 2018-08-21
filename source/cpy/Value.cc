@@ -32,6 +32,15 @@ Document & document() noexcept {
 // Integer Value::as_integer() const {return std::get<Integer>(var);}
 // std::type_index Value::as_type() const {return std::get<std::type_index>(var);}
 
+Value no_view(Value v) {
+    return std::visit([](auto &x) -> Value {
+        using T = no_qualifier<decltype(x)>;
+        if constexpr(std::is_same_v<T, BinaryView>) return Binary(x);
+        else if constexpr(std::is_same_v<T, std::string_view>) return std::string(x);
+        else return std::move(x);
+    }, v.var);
+}
+
 Sequence::Sequence(std::initializer_list<Value> const &v)
     : self(std::make_shared<SequenceModel<Vector<Value>>>(v)), m_size(v.size()) {}
 

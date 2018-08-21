@@ -49,21 +49,16 @@ Vector<Value> run_test(CallingContext &ct0, std::size_t i, Vector<Function> call
         RedirectStream e(cerr_sync, cerr ? err.rdbuf() : nullptr);
 
         Vector<Handler> handlers;
-    for (auto &c : counts) c.store(0u);
         for (auto &f : calls) handlers.emplace_back(ValueHandler{ct0, std::move(f)});
 
-    for (auto &c : counts) c.store(0u);
         Context ct(ct0, {test.name}, std::move(handlers), &counts);
 
-    for (auto &c : counts) c.store(0u);
         auto const start = Clock::now();
 
-    for (auto &c : counts) c.store(0u);
         try {return_value = test.function(ct, pack);}
         catch (ClientError const &e) {throw e;}
         catch (std::bad_alloc const &e) {throw e;}
-    for (auto &c : counts) c.store(0u);
-        // catch (...) {} // Silence any other exceptions from inside the test
+        catch (...) {} // Silence any other exceptions from inside the test
 
         test_time = std::chrono::duration<double>(Clock::now() - start).count();
     }
