@@ -51,6 +51,42 @@ PythonError python_error() noexcept {
 
 /******************************************************************************/
 
+std::vector<std::pair<std::string_view, std::type_index>> Buffer::formats = {
+    {"d", typeid(double)},
+    {"f", typeid(float)},
+    {"c", typeid(char)},
+    {"b", typeid(signed char)},
+    {"B", typeid(unsigned char)},
+    {"?", typeid(bool)},
+    {"h", typeid(short)},
+    {"H", typeid(unsigned short)},
+    {"i", typeid(int)},
+    {"I", typeid(unsigned int)},
+    {"l", typeid(long)},
+    {"L", typeid(unsigned long)},
+    {"q", typeid(long long)},
+    {"Q", typeid(unsigned long long)},
+    {"n", typeid(ssize_t)},
+    {"s", typeid(char[])},
+    {"p", typeid(char[])},
+    {"N", typeid(size_t)},
+    {"P", typeid(void *)}
+};
+
+std::type_index Buffer::format(std::string_view s) {
+    auto it = binary_lookup(Buffer::formats, {s, typeid(void)});
+    return it == Buffer::formats.end() ? typeid(void) : it->second;
+}
+
+Binary Buffer::binary(Py_buffer *view, std::size_t len) {
+    Binary bin(len);
+    if (PyBuffer_ToContiguous(bin.data(), view, bin.size(), 'C') < 0) {
+        PyErr_SetString(PyExc_TypeError, "Could not make contiguous buffer for C++");
+        throw python_error();
+    }
+    return bin;
+}
+
 Value from_python(Object o) {
     if (+o == Py_None) return std::monostate();
 
@@ -88,12 +124,11 @@ Value from_python(Object o) {
         return std::string(static_cast<char const *>(c), size);
     }
 
-    if (PyObject_TypeCheck(+o, &AnyType))
-        return std::move(cast_object<Any>(+o));
-        // makes a copy! how to detect when to move...
-        // annotate arguments?
-        // make new wrapper type MovedType?
-        // maybe move is default, and use copy() to ensure non-erasure?
+    if (PyObject_TypeCheck(+o, &AnyType)) {
+        return cast_object<Any>(+o);
+        // if (a.movable()) return std::move(a);
+        // else return a;
+    }
 
     if (PyObject_TypeCheck(+o, &TypeIndexType))
         return {std::in_place_t(), cast_object<std::type_index>(+o)};
@@ -115,14 +150,10 @@ Value from_python(Object o) {
             PyErr_SetString(PyExc_TypeError, "Could not get buffer for C++");
             throw python_error();
         }
-        Binary bin;
-        bin.resize(buff.view.len);
-        if (PyBuffer_ToContiguous(bin.data(), &buff.view, bin.size(), 'C') < 0) {
-            PyErr_SetString(PyExc_TypeError, "Could not make contiguous buffer for C++");
-            throw python_error();
-        }
-        Vector<Py_ssize_t> shape(buff.view.shape, buff.view.shape + buff.view.ndim);
-        return Sequence::vector(std::move(bin), std::move(shape));
+        return Sequence::vector(
+            Buffer::binary(&buff.view, buff.view.len),
+            Buffer::format(buff.view.format ? buff.view.format : ""),
+            Vector<Integer>(buff.view.shape, buff.view.shape + buff.view.ndim));
     }
 
     PyErr_SetString(PyExc_TypeError, "Invalid type for conversion to C++");
@@ -137,10 +168,25 @@ ArgPack to_argpack(Object pypack) {
     ArgPack pack;
     pack.reserve(pack.size() + n);
     map_iterable(std::move(pypack), [&pack](Object o) {
-        pack.emplace_back(from_python(std::move(o)));
+        if (PyObject_TypeCheck(+o, &AnyType)) pack.emplace_back(&cast_object<Any>(+o));
+        else pack.emplace_back(from_python(std::move(o)));
     });
     return pack;
 }
+
+// Store the objects in pypack in pack
+// void steal_argpack(ArgPack &&pack, Object pypack) {
+//     auto it = pack.begin();
+//     map_iterable(std::move(pypack), [&it](Object o) {
+//         if (PyObject_TypeCheck(+o, &AnyType)) {
+//             std::cout << "Steal1 " << cast_object<Any>(+o).has_value() << std::get<Any>(it->var).has_value() << std::endl;
+//             cast_object<Any>(+o) = std::move(std::get<Any>(it->var));
+//             cast_object<Any>(+o).nomove();
+//             std::cout << "Steal " << cast_object<Any>(+o).has_value() << std::endl;
+//         }
+//         ++it;
+//     });
+// }
 
 /******************************************************************************/
 
@@ -246,18 +292,6 @@ PyObject * copy_from(PyObject *self, PyObject *args) noexcept {
     });
 }
 
-template <class T>
-PyObject * unary_copy(PyObject *self) noexcept {
-    return raw_object([=] {
-        Object o{PyObject_CallObject(type_object(type_ref(Type<T>())), nullptr), false};
-        cast_object<T>(+o) = cast_object<T>(self); // not notexcept
-        return o;
-    });
-}
-
-template <class T>
-PyObject * make_copy(PyObject *self, PyObject *) noexcept {return unary_copy<T>(self);}
-
 int any_bool(PyObject *self) {
     return cast_object<Any>(self).has_value(); // noexcept
 }
@@ -276,16 +310,36 @@ PyObject * any_index(PyObject *self, PyObject *) noexcept {
     });
 }
 
+// PyObject * any_move_unary(PyObject *self) {
+//     return raw_object([=] {
+//         cast_object<Any>(self).move();
+//         return Object(self, true);
+//     });
+// }
+
+
+// PyObject * any_movable(PyObject *self, PyObject *) {
+//     return raw_object([=] {
+//         return to_python(cast_object<Any>(self).movable());
+//     });
+// }
+
+// PyObject * any_move(PyObject *self, PyObject *) {return any_move_unary(self);}
+//     return raw_object([=] {
+//         return to_python(cast_object<Any>(self).move());
+//     });
+// }
+
 PyNumberMethods AnyNumberMethods = {
     .nb_bool = static_cast<inquiry>(any_bool),
-    .nb_positive = static_cast<unaryfunc>(unary_copy<Any>)
+    // .nb_invert = static_cast<unaryfunc>(any_move_unary)
 };
 
 PyMethodDef AnyTypeMethods[] = {
     {"index",     static_cast<PyCFunction>(any_index),     METH_NOARGS, "index it"},
+    // {"movable",   static_cast<PyCFunction>(any_movable), METH_NOARGS, "move it"},
     {"move_from", static_cast<PyCFunction>(move_from<Any>), METH_VARARGS, "move it"},
     {"copy_from", static_cast<PyCFunction>(copy_from<Any>), METH_VARARGS, "copy it"},
-    {"ref",       static_cast<PyCFunction>(make_copy<Any>), METH_NOARGS, "copy it"},
     {"has_value", static_cast<PyCFunction>(any_has_value), METH_VARARGS, "has value"},
     {nullptr, nullptr, 0, nullptr}
 };
@@ -319,9 +373,13 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
         if (!fun) return raised(PyExc_ValueError, "Invalid C++ function");
         // this is some collection of arbitrary things that may include Any
         auto pack = to_argpack({args, true});
-        ReleaseGIL lk(!gil);
-        CallingContext ct{&lk};
-        return cpy::to_python(fun(ct, pack));
+        Value out;
+        {
+            ReleaseGIL lk(!gil);
+            CallingContext ct{&lk};
+            out = fun(ct, pack);
+        }
+        return cpy::to_python(std::move(out));
     });
 }
 
@@ -381,6 +439,7 @@ Object initialize(Document const &doc) {
     std::cout << "initialize" << std::endl;
     type_names.insert(type_names.end(), doc.types.begin(), doc.types.end());
     std::sort(type_names.begin(), type_names.end());
+    std::sort(Buffer::formats.begin(), Buffer::formats.end());
 
     bool ok = attach_type(m, "Any", &AnyType)
         && attach_type(m, "Function", &FunctionType)

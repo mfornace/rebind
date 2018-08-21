@@ -49,11 +49,16 @@ struct Object {
     ~Object() {Py_XDECREF(ptr);}
 };
 
+
 struct Buffer {
+    static std::vector<std::pair<std::string_view, std::type_index>> formats;
     Py_buffer view;
     bool ok;
 
     Buffer(PyObject *o, int flags) {ok = PyObject_GetBuffer(o, &view, flags) == 0;}
+
+    static std::type_index format(std::string_view s);
+    static Binary binary(Py_buffer *view, std::size_t len);
 
     ~Buffer() {PyBuffer_Release(&view);}
 };
@@ -153,13 +158,14 @@ inline Object to_python(std::type_index f) noexcept {
 
 template <class T, std::enable_if_t<std::is_same_v<Any, T>, int> = 0>
 inline Object to_python(T a) noexcept {
-    if (a.type() == typeid(Object)) return std::move(a).template cast<Object>();
+    if (auto t = std::any_cast<Object>(&a)) return *t;
     Object o{PyObject_CallObject(type_object(AnyType), nullptr), false};
     cast_object<Any>(+o) = std::move(a);
     return o;
 }
 
 ArgPack to_argpack(Object pypack);
+void steal_argpack(ArgPack &&pack, Object pypack);
 
 /******************************************************************************/
 
@@ -312,9 +318,8 @@ PyObject *raw_object(F &&f) noexcept {
         PyErr_Format(PyExc_TypeError, "C++: wrong number of arguments (expected %u, got %u)", n0, n);
     } catch (WrongTypes const &e) {
         std::ostringstream os;
-        os << "C++: " << e.what() << " ("
-           << get_type_name(e.source) << " \u2192 " << get_type_name(e.dest)
-           << ", #" << e.index;
+        os << "C++: " << e.what() << " (#" << e.index << ", "
+           << get_type_name(e.source) << " \u2192 " << get_type_name(e.dest);
         if (!e.indices.empty()) {
             os << ", scopes=[";
             for (auto i : e.indices) os << i << ", ";

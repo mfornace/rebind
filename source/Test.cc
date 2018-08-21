@@ -3,6 +3,14 @@
 #include <iostream>
 #include <any>
 #include <complex>
+#include <shared_mutex>
+
+template <class T>
+using SizeOf = std::integral_constant<std::size_t, sizeof(T)>;
+
+// static_assert(SizeOf<std::shared_ptr<void>>() == 16); // 64
+// static_assert(SizeOf<std::mutex>() == 64); // 64
+// static_assert(SizeOf<std::shared_mutex>() == 168); // 168
 
 struct goo {
     friend std::ostream & operator<<(std::ostream &os, goo) {return os << "goo";}

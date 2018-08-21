@@ -113,45 +113,61 @@ Vector<T> mapped(V const &v, F &&f) {
 
 /******************************************************************************/
 
-class Any {
+class Any2 {
     std::shared_ptr<void const> self;
     std::type_index m_type = typeid(void);
+    bool m_movable = false;
 
 public:
-    Any() = default;
+    Any2() = default;
     std::type_index type() const {return self ? m_type : typeid(void);}
 
-    bool has_value() const {return bool(self);}
+    bool has_value() const noexcept {return bool(self);}
+    bool move() noexcept {return std::exchange(m_movable, true);}
+    bool nomove() noexcept {return std::exchange(m_movable, false);}
+    bool movable() const noexcept {return m_movable;}
 
     template <class T>
-    Any(std::in_place_t, T &&t)
+    Any2(std::in_place_t, T &&t)
         : self(std::make_shared<no_qualifier<T>>(static_cast<T &&>(t))),
           m_type(typeid(no_qualifier<T>)) {}
 
-    template <class T, std::enable_if_t<!(std::is_same_v<no_qualifier<T>, Any>), int> = 0>
-    explicit Any(T &&t) : Any(std::in_place_t(), static_cast<T &&>(t)) {}
+    template <class T, std::enable_if_t<!(std::is_same_v<no_qualifier<T>, Any2>), int> = 0>
+    explicit Any2(T &&t) : Any2(std::in_place_t(), static_cast<T &&>(t)) {}
 
     template <class T>
-    T cast() && {
+    T && cast_move() {
         static_assert(std::is_same_v<T, no_qualifier<T>>);
         if (type() != typeid(T)) throw std::runtime_error("any move");
         auto ptr = static_cast<T const *>(self.get());
-        if (self.use_count() > 1) return *ptr;
-        // thread safety here is tricky
-        // weak_ptr is not allowed, so that problem doesn't enter
-        // other owners can't have called a const function after their
-        // delete is registered so that should be fine too.
-        auto tmp = std::move(*this); // so self is destroyed when out of scope
         return std::move(const_cast<T &>(*ptr));
     }
 
     template <class T>
-    T const & cast() const & {
+    T cast_value() && {
+        static_assert(std::is_same_v<T, no_qualifier<T>>);
+        if (type() != typeid(T)) throw std::runtime_error("any value");
+        auto ptr = static_cast<T const *>(self.get());
+        return *ptr;
+        // if (!m_movable || self.use_count() > 1) return *ptr;
+        // std::cout << "move!" << std::endl;
+        // // thread safety here is tricky
+        // // weak_ptr is not allowed, so that problem doesn't enter
+        // // other owners can't have called a const function after their
+        // // delete is registered so that should be fine too.
+        // auto tmp = std::move(*this); // so self is destroyed when out of scope
+        // return std::move(const_cast<T &>(*ptr));
+    }
+
+    template <class T>
+    T const & cast_ref() const & {
         static_assert(std::is_same_v<T, no_qualifier<T>>);
         if (type() != typeid(T)) throw std::runtime_error("any copy");
         return *static_cast<T const *>(self.get());
     }
 };
+
+using Any = std::any;
 
 using Variant = std::variant<
     /*0*/ std::monostate,
@@ -190,7 +206,7 @@ static_assert(24 == sizeof(std::string));      // start, stop, buffer
 static_assert(8  == sizeof(std::type_index));   // size_t
 static_assert(24 == sizeof(Binary));           // 8 start, stop ... buffer?
 static_assert(48 == sizeof(Function));         // 32 buffer + 8 pointer + 8 vtable
-static_assert(24 == sizeof(Any));              // 8 + 24 buffer I think
+static_assert(32 == sizeof(Any));              // 8 + 24 buffer I think
 static_assert(24 == sizeof(Vector<Value>));    //
 static_assert(64 == sizeof(Variant));
 static_assert(24 == sizeof(Sequence));
@@ -324,10 +340,13 @@ struct FromValue {
     }
 
     T operator()(Any &&u) const {
-        if (u.type() == typeid(T))
-            return static_cast<
-                std::conditional_t<std::is_lvalue_reference_v<T>, Any const &, Any &&>
-            >(u).template cast<no_qualifier<T>>();
+        auto ptr = &u;
+        if (auto p = std::any_cast<std::any *>(&u)) ptr = *p;
+        // if T is const &, then don't move the Any
+        // if T is &&, make sure the Any is unique, and don't move the Any
+        // if T is value, either copy or move the Any
+        if (auto p = std::any_cast<no_qualifier<T>>(ptr))
+            return static_cast<T>(*p);
         message.scope = u.has_value() ? "mismatched class" : "object was already moved";
         message.dest = typeid(T);
         message.source = u.type();

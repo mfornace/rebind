@@ -27,8 +27,9 @@ struct Document {
     template <class T>
     void type(char const *s) {type(s, std::type_index(typeid(T)));}
 
-    void method(char const *s, char const *n, Function v) {
-        methods.emplace_back(s, n, std::move(v));
+    template <class F>
+    void method(char const *s, char const *n, F &&f) {
+        methods.emplace_back(s, n, make_function(static_cast<F &&>(f)));
     }
 };
 
