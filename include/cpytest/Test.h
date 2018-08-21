@@ -42,10 +42,9 @@ struct TestAdaptor {
                 static_assert(std::is_convertible_v<Context, decltype(*context_type)>,
                               "First argument in signature should be of type Context");
                 if (args.size() != sizeof...(ts))
-                    throw std::invalid_argument("cpy: wrong number of arguments");
-                if ((... && check_cast_index(args, ts, 2)))
-                    return value_invoke(function, Context(ct), cast_index(args, ts, 2)...);
-                throw std::invalid_argument("cpy: wrong argument types");
+                    throw WrongNumber(sizeof...(ts), args.size());
+                DispatchMessage msg("mismatched test argument");
+                return value_invoke(function, Context(ct), cast_index(args, msg, ts, 2)...);
             });
         } catch (Skip const &e) {
             ct.info("value", e.message);

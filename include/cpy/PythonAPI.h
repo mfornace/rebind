@@ -288,19 +288,14 @@ struct PythonFunction {
 
 /******************************************************************************/
 
-std::string_view names[] = {
-    "None",
-    "bool",
-    "int",
-    "float",
-    "str",
-    "str",
-    "TypeIndex",
-    "Binary",
-    "Function",
-    "class",
-    "tuple",
-};
+using TypeNames = std::vector<std::pair<std::type_index, std::string_view>>;
+extern TypeNames type_names;
+
+std::string_view get_type_name(std::type_index idx) {
+    auto it = std::lower_bound(type_names.begin(), type_names.end(), std::make_pair(idx, std::string_view()));
+    if (it == type_names.end() || it->first != idx) return idx.name();
+    else return it->second;
+}
 
 template <class F>
 PyObject *raw_object(F &&f) noexcept {
@@ -317,10 +312,16 @@ PyObject *raw_object(F &&f) noexcept {
         PyErr_Format(PyExc_TypeError, "C++: wrong number of arguments (expected %u, got %u)", n0, n);
     } catch (WrongTypes const &e) {
         std::ostringstream os;
-        os << "C++: wrong argument types (";
-        for (auto i : e.indices) os << names[i] << ", ";
+        os << "C++: " << e.what() << " ("
+           << get_type_name(e.source) << " \u2192 " << get_type_name(e.dest)
+           << ", #" << e.index;
+        if (!e.indices.empty()) {
+            os << ", scopes=[";
+            for (auto i : e.indices) os << i << ", ";
+        };
+        os << ')';
         auto s = std::move(os).str();
-        s.back() = ')';
+        if (!e.indices.empty()) s.end()[-2] = ']';
         PyErr_SetString(PyExc_TypeError, s.c_str());
     } catch (std::exception const &e) {
         if (!PyErr_Occurred())

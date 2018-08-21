@@ -9,15 +9,6 @@ Document & document() noexcept {
 
 /******************************************************************************/
 
-WrongTypes wrong_types(ArgPack const &v) {
-    WrongTypes out;
-    out.indices.reserve(v.size());
-    for (auto const &x : v) out.indices.emplace_back(x.var.index());
-    return out;
-}
-
-/******************************************************************************/
-
 // Value::Value(Value &&v) noexcept : var(std::move(v.var)) {}
 // Value::Value(Value const &v) : var(v.var) {}
 // Value::Value(Value &v) : var(v.var) {}

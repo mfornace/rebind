@@ -24,14 +24,9 @@ Value value_invoke(F &&f, Ts &&... ts) {
 
 /// Cast element i of v to type T
 template <class T>
-T cast_index(ArgPack &v, IndexedType<T> i, unsigned int offset) {
-    return std::visit(FromValue<T>(), std::move(v[i.index - offset].var));
-}
-
-/// Check that element i of v can be cast to type T
-template <class T>
-bool check_cast_index(ArgPack &v, IndexedType<T> i, unsigned int offset) {
-    return std::visit([](auto const &x) {return FromValue<T>().check(x);}, v[i.index - offset].var);
+T cast_index(ArgPack &v, DispatchMessage &msg, IndexedType<T> i, unsigned int offset) {
+    msg.index = i.index - offset;
+    return std::visit(FromValue<T>{msg}, std::move(v[i.index - offset].var));
 }
 
 /******************************************************************************/
@@ -64,9 +59,8 @@ struct FunctionAdaptor {
         return Signature<F>::apply([&](auto return_type, auto ...ts) {
             if (args.size() != sizeof...(ts))
                 throw WrongNumber(sizeof...(ts), args.size());
-            if ((... && check_cast_index(args, ts, 1)))
-                return value_invoke(function, cast_index(args, ts, 1)...);
-            throw wrong_types(args);
+            DispatchMessage msg("mismatched type");
+            return value_invoke(function, cast_index(args, msg, ts, 1)...);
         });
     }
 };
@@ -83,8 +77,8 @@ struct ContextAdaptor {
         return Signature<F>::apply([&](auto return_type, auto context_type, auto ...ts) {
             if (args.size() != sizeof...(ts))
                 throw WrongNumber(sizeof...(ts), args.size());
-            if ((... && check_cast_index(args, ts, 2)))
-                return value_invoke(function, ct, cast_index(args, ts, 2)...);
+            DispatchMessage msg("mismatched type");
+            return value_invoke(function, ct, cast_index(args, msg, ts, 2)...);
             throw wrong_types(args);
         });
     }

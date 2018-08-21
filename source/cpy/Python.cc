@@ -6,13 +6,27 @@
 #include <cpy/Document.h>
 #include <any>
 #include <iostream>
-#include <map>
 
 #ifndef CPY_MODULE
 #   define CPY_MODULE libcpy
 #endif
 
 namespace cpy {
+
+TypeNames type_names = {
+    {typeid(void), "void"},
+    {typeid(std::monostate), "void"},
+    {typeid(bool), "bool"},
+    {typeid(Integer), "int"},
+    {typeid(Real), "float"},
+    {typeid(std::string_view), "str"},
+    {typeid(std::string), "str"},
+    {typeid(std::type_index), "TypeIndex"},
+    {typeid(Binary), "Binary"},
+    {typeid(Function), "Function"},
+    {typeid(Any), "Any"},
+    {typeid(Sequence), "Sequence"},
+};
 
 /******************************************************************************/
 
@@ -365,6 +379,9 @@ bool attach(Object const &m, char const *name, Object o) noexcept {
 Object initialize(Document const &doc) {
     Object m{PyDict_New(), false};
     std::cout << "initialize" << std::endl;
+    type_names.insert(type_names.end(), doc.types.begin(), doc.types.end());
+    std::sort(type_names.begin(), type_names.end());
+
     bool ok = attach_type(m, "Any", &AnyType)
         && attach_type(m, "Function", &FunctionType)
         && attach_type(m, "TypeIndex", &TypeIndexType)

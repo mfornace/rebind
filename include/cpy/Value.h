@@ -47,7 +47,7 @@ public:
 
     template <class T>
     T & get() {
-        if (index != typeid(T)) throw DispatchError("Invalid context");
+        if (index != typeid(T)) throw DispatchError("invalid context");
         return *static_cast<T *>(metadata);
     }
 };
@@ -134,7 +134,7 @@ public:
     template <class T>
     T cast() && {
         static_assert(std::is_same_v<T, no_qualifier<T>>);
-        if (type() != typeid(T)) throw DispatchError("any move");
+        if (type() != typeid(T)) throw std::runtime_error("any move");
         auto ptr = static_cast<T const *>(self.get());
         if (self.use_count() > 1) return *ptr;
         // thread safety here is tricky
@@ -148,7 +148,7 @@ public:
     template <class T>
     T const & cast() const & {
         static_assert(std::is_same_v<T, no_qualifier<T>>);
-        if (type() != typeid(T)) throw DispatchError("any copy");
+        if (type() != typeid(T)) throw std::runtime_error("any copy");
         return *static_cast<T const *>(self.get());
     }
 };
@@ -308,35 +308,30 @@ struct ToValue<std::vector<T, Alloc>> {
 
 /******************************************************************************/
 
-static char const *cast_bug_message = "FromValue().check() returned false but FromValue()() was still called";
-
 /// Default behavior for casting a variant to a desired argument type
 template <class T, class=void>
 struct FromValue {
-    // Return true if type T can be cast from type U
-    template <class U>
-    constexpr bool check(U const &) const {
-        return std::is_convertible_v<U &&, T> ||
-            (std::is_same_v<T, std::monostate> && std::is_default_constructible_v<T>);
-    }
+    DispatchMessage &message;
     // Return casted type T from type U
     template <class U>
     T operator()(U &&u) const {
         static_assert(std::is_rvalue_reference_v<U &&>);
         if constexpr(std::is_convertible_v<U &&, T>) return static_cast<T>(static_cast<U &&>(u));
-        else if constexpr(std::is_default_constructible_v<T>) return T(); // only hit if U == std::monostate
-        else throw std::logic_error(cast_bug_message); // never get here
-    }
-
-    bool check(Any const &u) const {
-        if (!u.has_value()) throw DispatchError("Empty Any object");
-        return u.type() == typeid(T);
+        else if constexpr(std::is_same_v<T, std::monostate> && std::is_default_constructible_v<T>) return T(); // only hit if U == std::monostate
+        message.dest = typeid(T);
+        message.source = typeid(U);
+        throw WrongTypes(std::move(message));
     }
 
     T operator()(Any &&u) const {
-        return static_cast<
-            std::conditional_t<std::is_lvalue_reference_v<T>, Any const &, Any &&>
-        >(u).template cast<no_qualifier<T>>();
+        if (u.type() == typeid(T))
+            return static_cast<
+                std::conditional_t<std::is_lvalue_reference_v<T>, Any const &, Any &&>
+            >(u).template cast<no_qualifier<T>>();
+        message.scope = u.has_value() ? "mismatched class" : "object was already moved";
+        message.dest = typeid(T);
+        message.source = u.type();
+        throw WrongTypes(std::move(message));
     }
 };
 
@@ -344,28 +339,22 @@ struct FromValue {
 
 template <class T>
 struct FromValue<Vector<T>> {
-    template <class U>
-    bool check(U const &) const {return false;}
-
-    bool check(Sequence const &u) const {
-        bool ok = true;
-        u.scan_functor([&](Value const &x) {
-            ok = ok && std::visit([&](auto &x) {return FromValue<T>().check(x);}, x.var);
-        });
-        return ok;
-    }
+    DispatchMessage &message;
 
     Vector<T> operator()(Sequence &&u) const {
         Vector<T> out;
         out.reserve(u.size());
+        message.indices.emplace_back(0);
         u.scan_functor([&](Value x) {
-            std::visit([&](auto &x) {out.emplace_back(FromValue<T>()(std::move(x)));}, x.var);
+            std::visit([&](auto &x) {out.emplace_back(FromValue<T>{message}(std::move(x)));}, x.var);
+            ++message.indices.back();
         });
+        message.indices.pop_back();
         return out;
     }
 
     template <class U>
-    Vector<T> operator()(U const &) const {throw std::logic_error("shouldn't be used");}
+    Vector<T> operator()(U const &) const {throw std::logic_error("expected vector");}
 };
 
 /******************************************************************************/

@@ -2,6 +2,7 @@
 #include <stdexcept>
 #include <string_view>
 #include <vector>
+#include <typeindex>
 
 namespace cpy {
 
@@ -30,10 +31,24 @@ struct ClientError : std::exception {
 
 /******************************************************************************/
 
+struct DispatchMessage {
+    std::vector<unsigned int> indices;
+    std::type_index source = typeid(void);
+    std::type_index dest = typeid(void);
+    char const *scope;
+    unsigned int index;
+
+    DispatchMessage(char const *s) : scope(s) {indices.reserve(4);}
+};
+
 struct WrongTypes : DispatchError {
     std::vector<unsigned int> indices;
+    std::type_index source;
+    std::type_index dest;
+    unsigned int index;
 
-    WrongTypes() : DispatchError("wrong argument types") {}
+    WrongTypes(DispatchMessage &&m)
+        : DispatchError(m.scope), indices(std::move(m.indices)), dest(m.dest), source(m.source), index(m.index) {}
 };
 
 /******************************************************************************/
