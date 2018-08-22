@@ -4,13 +4,12 @@
  */
 
 #pragma once
-#include "Value.h"
-#include "Signature.h"
+#include "Document.h"
 
 #include <mutex>
 #include <complex>
 #include <iostream>
-#include <typeindex>
+#include <unordered_map>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wregister"
@@ -51,7 +50,7 @@ struct Object {
 
 
 struct Buffer {
-    static std::vector<std::pair<std::string_view, std::type_index>> formats;
+    static Zip<std::string_view, std::type_index> formats;
     Py_buffer view;
     bool ok;
 
@@ -74,6 +73,17 @@ inline PyTypeObject & type_ref(Type<std::type_index>) {return TypeIndexType;}
 /******************************************************************************/
 
 template <class T>
+T * cast_if(PyObject *o) {
+    if constexpr(std::is_same_v<T, Any>)
+        if (!PyObject_TypeCheck(o, &AnyType)) return nullptr;
+    if constexpr(std::is_same_v<T, Function>)
+        if (!PyObject_TypeCheck(o, &FunctionType)) return nullptr;
+    if constexpr(std::is_same_v<T, std::type_index>)
+        if (!PyObject_TypeCheck(o, &TypeIndexType)) return nullptr;
+    return std::addressof(reinterpret_cast<Holder<T> *>(o)->value);
+}
+
+template <class T>
 T & cast_object(PyObject *o) {
     if constexpr(std::is_same_v<T, Any>) {
         if (!PyObject_TypeCheck(o, &AnyType)) throw std::invalid_argument("Expected instance of cpy.Any");
@@ -89,9 +99,10 @@ T & cast_object(PyObject *o) {
 
 /******************************************************************************/
 
-inline std::type_index type_index_of(Value const &v) {
+inline std::type_index type_index_of(Value v) {
     return std::visit([](auto const &x) -> std::type_index {
-        return typeid(std::decay_t<decltype(x)>);
+        if constexpr(std::is_same_v<decltype(x), Any const &>) return x.type();
+        else return typeid(std::decay_t<decltype(x)>);
     }, v.var);
 }
 
@@ -175,20 +186,68 @@ ArgPack to_argpack(Object pypack);
 
 /******************************************************************************/
 
-template <class V, class F=Identity>
-Object to_tuple(V &&v, F const &f={}) noexcept {
-    Object out = {PyTuple_New(v.size()), false};
+template <class V>
+Object to_tuple(V &&v) noexcept {
+    Object out = {PyTuple_New(std::size(v)), false};
     if (!out) return {};
-    for (Py_ssize_t i = 0u; i != v.size(); ++i) {
+    auto it = std::begin(v);
+    for (Py_ssize_t i = 0u; i != std::size(v); ++i, ++it) {
         using T = std::conditional_t<std::is_rvalue_reference_v<V>,
-            decltype(v[i]), decltype(std::move(v[i]))>;
-        Object item = to_python(f(static_cast<T>(v[i])));
+            decltype(*it), decltype(std::move(*it))>;
+        Object item = to_python(static_cast<T>(*it));
         if (!item) return {};
         Py_INCREF(+item);
         if (PyTuple_SetItem(+out, i, +item)) {
             Py_DECREF(+item);
             return {};
         }
+    }
+    return out;
+}
+
+template <class T, std::size_t ...Is>
+Object to_tuple(T &&t, std::index_sequence<Is...>) {
+    Object out = {PyTuple_New(sizeof...(Is)), false};
+    if (!out) return {};
+    bool ok = true;
+    auto go = [&](auto i, auto &&x) {
+        if (!ok) return;
+        Object item = to_python(x);
+        if (!item) {ok = false; return;}
+        Py_INCREF(+item);
+        if (PyTuple_SetItem(+out, i, +item)) {
+            Py_DECREF(+item);
+            ok = false;
+        }
+    };
+    (go(Is, std::get<Is>(static_cast<T &&>(t))), ...);
+    return ok ? out : Object();
+}
+
+template <class ...Ts>
+Object to_python(std::tuple<Ts...> const &t) {
+    return to_tuple(t, std::make_index_sequence<sizeof...(Ts)>());
+}
+
+template <class T, class U>
+Object to_python(std::pair<T, U> const &t) {
+    return to_tuple(t, std::make_index_sequence<2>());
+}
+
+Object to_python(Methods const &m) {
+    return to_python(std::tie(m.name, m.methods));
+}
+
+template <class V>
+Object to_dict(V const &v) noexcept {
+    Object out = {PyDict_New(), false};
+    if (!out) return {};
+    for (auto const &x : v) {
+        Object key = to_python(std::get<0>(x));
+        if (!key) return {};
+        Object value = to_python(std::get<1>(x));
+        if (!value) return {};
+        if (PyDict_SetItem(+out, +key, +value) != 0) return {};
     }
     return out;
 }
@@ -215,8 +274,6 @@ Object to_python(Sequence const &s) {
     });
     return out;
 }
-template <class T>
-Object to_python(Vector<T> &&v) {return to_tuple(std::move(v));}
 
 template <class T>
 Object to_python(Vector<T> const &v) {return to_tuple(v);}
@@ -288,9 +345,9 @@ struct PythonFunction {
     Object function;
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
-    Value operator()(CallingContext &ct, ArgPack &args) const {
+    Value operator()(CallingContext &ct, ArgPack args) const {
         AcquireGIL lk(&ct.get<ReleaseGIL>());
-        Object o = to_python(args);
+        Object o = to_python(std::move(args));
         if (!o) throw python_error();
         o = {PyObject_CallObject(+function, +o), false};
         if (!o) throw python_error();
@@ -300,12 +357,11 @@ struct PythonFunction {
 
 /******************************************************************************/
 
-using TypeNames = std::vector<std::pair<std::type_index, std::string_view>>;
-extern TypeNames type_names;
+extern std::unordered_map<std::type_index, std::string_view> type_names;
 
 std::string_view get_type_name(std::type_index idx) {
-    auto it = std::lower_bound(type_names.begin(), type_names.end(), std::make_pair(idx, std::string_view()));
-    if (it == type_names.end() || it->first != idx) return idx.name();
+    auto it = type_names.find(idx);
+    if (it == type_names.end() || it->second.empty()) return idx.name();
     else return it->second;
 }
 

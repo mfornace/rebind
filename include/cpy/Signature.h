@@ -5,18 +5,25 @@
 
 #pragma once
 #include <utility>
+#include <typeindex>
+
+template <class T>
+using no_qualifier = std::remove_cv_t<std::remove_reference_t<T>>;
 
 /******************************************************************************************/
 
 template <class T>
-struct Type {
+struct Type  {
     T operator*() const; // undefined
+    constexpr Type<no_qualifier<T>> operator+() const {return {};}
+    operator std::type_index() const {return typeid(T);}
 };
 
 template <class T>
 struct IndexedType {
     std::size_t index;
     T operator*() const; // undefined
+    constexpr Type<no_qualifier<T>> operator+() const {return {};}
 };
 
 /******************************************************************************************/

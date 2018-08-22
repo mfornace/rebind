@@ -55,7 +55,7 @@ Vector<Value> run_test(CallingContext &ct0, std::size_t i, Vector<Function> call
 
         auto const start = Clock::now();
 
-        try {return_value = test.function(ct, pack);}
+        try {return_value = test.function(ct, std::move(pack));}
         catch (ClientError const &e) {throw e;}
         catch (std::bad_alloc const &e) {throw e;}
         catch (...) {} // Silence any other exceptions from inside the test

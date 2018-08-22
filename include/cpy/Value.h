@@ -40,7 +40,36 @@ using Real = double;
 
 using ArgPack = Vector<Value>;
 
-using Function = std::function<Value(CallingContext &, ArgPack &)>;
+struct Function {
+    std::function<Value(CallingContext &, ArgPack)> call;
+
+    using function_type = std::function<Value(CallingContext &, ArgPack)>;
+    Function() = default;
+
+    template <class F, class ...Ts>
+    Function(F fun, Pack<Ts...>, unsigned int required=0);
+
+    template <class F>
+    explicit Function(F fun) : Function(fun, Signature<F>()) {}
+
+    std::vector<std::string> keywords;
+
+    bool has_value() const {return bool(call);}
+
+    Value operator()(CallingContext &ct, ArgPack v) const;
+
+    void reset(function_type &&f, std::int32_t l, std::int32_t r) {
+        call = std::move(call);
+        m_length = l;
+        m_required = r;
+    }
+
+    auto length() const {return m_length;}
+    auto required() const {return m_required;}
+private:
+
+    std::int32_t m_length=-1, m_required=-1;
+};
 
 using Any = std::any;
 
@@ -81,18 +110,18 @@ public:
 /******************************************************************************/
 
 using ValuePack = Pack<
-    /*0*/ std::monostate,
-    /*1*/ bool,
-    /*2*/ Integer,
-    /*3*/ Real,
-    /*4*/ std::string_view,
-    /*5*/ std::string,
-    /*6*/ std::type_index,
-    /*7*/ Binary,       // ?
-    /*8*/ BinaryView,   // ?
-    /*9*/ Function,
-    /*0*/ Any,     // ?
-    /*1*/ Sequence
+    /* 0 */ std::monostate,
+    /* 1 */ bool,
+    /* 2 */ Integer,
+    /* 3 */ Real,
+    /* 4 */ std::string_view,
+    /* 5 */ std::string,
+    /* 6 */ std::type_index,
+    /* 7 */ Binary,       // ?
+    /* 8 */ BinaryView,   // ?
+    /* 9 */ Function,
+    /* 0 */ Any,     // ?
+    /* 1 */ Sequence
 >;
 
 using Variant = decltype(variant_type(ValuePack()));
@@ -105,10 +134,10 @@ static_assert(16 == sizeof(std::string_view)); // start, stop
 static_assert(24 == sizeof(std::string));      // start, stop, buffer
 static_assert(8  == sizeof(std::type_index));   // size_t
 static_assert(24 == sizeof(Binary));           // 8 start, stop ... buffer?
-static_assert(48 == sizeof(Function));         // 32 buffer + 8 pointer + 8 vtable
+static_assert(80 == sizeof(Function));         // 32 buffer + 8 pointer + 8 vtable
 static_assert(32 == sizeof(Any));              // 8 + 24 buffer I think
 static_assert(24 == sizeof(Vector<Value>));    //
-static_assert(64 == sizeof(Variant));
+static_assert(96 == sizeof(Variant));
 static_assert(24 == sizeof(Sequence));
 
 /******************************************************************************/
@@ -173,10 +202,6 @@ struct KeyPair {
     std::string_view key;
     Value value;
 };
-
-/******************************************************************************/
-
-WrongTypes wrong_types(ArgPack const &v);
 
 /******************************************************************************/
 
@@ -313,6 +338,8 @@ void Sequence::scan_functor(F &&f) const {
         } else self->scan(static_cast<F &&>(f));
     }
 }
+
+inline Value Function::operator()(CallingContext &ct, ArgPack v) const {return call(ct, std::move(v));}
 
 /******************************************************************************/
 

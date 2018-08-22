@@ -4,11 +4,12 @@
 
 namespace cpy {
 
+/******************************************************************************/
+
 //remove iostream
 struct goo {
     double x=1000;
 
-    void show() const;
     goo(double xx) : x(xx) {}
     goo(goo const &g) : x(g.x) {std::cout << "copy" << std::endl;}
     goo(goo &&g) noexcept : x(g.x) {std::cout << "move" << std::endl; g.x = -1;}
@@ -21,25 +22,13 @@ struct goo {
         if (xx < 0) throw std::runtime_error("cannot be negative");
         else x += xx;
     }
+    void show() const {std::cout << x << ", " << &x << std::endl;}
 };
 
-void goo::show() const {std::cout << x << ", " << &x << std::endl;}
+/******************************************************************************/
 
-
-template <class F, class C, class ...Ts>
-auto mutate(F &&f, Pack<void, C, Ts...>) {
-    return [f] (no_qualifier<C> &&self, Ts ...ts) {
-        f(self, static_cast<decltype(ts) &&>(ts)...);
-        return Value(std::move(self));
-    };
-}
-
-template <class F>
-auto mutate(F &&f) {return mutate(static_cast<F &&>(f), Signature<no_qualifier<F>>());}
-
-
-void define(Document &doc, Type<goo>) {
-    doc.type<goo>("goo");
+void render(Document &doc, Type<goo> t) {
+    doc.type(t, "goo");
     doc.recurse("goo.new", [](double x) -> goo {
         return x;
     });
@@ -51,7 +40,7 @@ void define(Document &doc, Type<goo>) {
     doc.recurse("goo.show", [](goo const &x) {
         x.show();
     });
-    doc.method("goo", "show", [](goo const &x) {
+    doc.method(t, "show", [](goo const &x) {
         x.show();
     });
     doc.recurse("goo.test_throw", mutate([](goo &g, double x) {
@@ -69,7 +58,7 @@ bool make_document() {
     doc.define("vec", [](double i, double d) {
         return std::vector<double>{i, i, d};
     });
-    define(doc, Type<goo>());
+    doc.render(Type<goo>());
     return bool();
 }
 

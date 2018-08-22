@@ -38,6 +38,13 @@ auto test1 = unit_test("test-1", COMMENT("This is a test"), [](cpy::Context ct) 
 
     ct.timed(1, []{return 1;});
 
+    ct.timed(1, [] {
+        std::vector<double> x;
+        for (int i = 0; i != 100000; ++i) {
+            if (std::find(x.begin(), x.end(), i) == x.end()) x.emplace_back(i);
+        }
+    });
+
     ct(HERE).near(5, 5.0);
 
     auto xxx = 5, yyy = 6;

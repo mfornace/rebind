@@ -11,17 +11,14 @@ template <class T>
 using SizeOf = std::integral_constant<std::size_t, sizeof(T)>;
 
 template <class V>
-auto binary_lookup(V const &v, typename V::value_type t) {
+auto binary_search(V const &v, typename V::value_type::first_type t) {
     auto it = std::lower_bound(v.begin(), v.end(), t,
-        [](auto const &x, auto const &y) {return x.first < y.first;});
-    return (it != v.end() && it->first != t.first) ? it : v.end();
+        [](auto const &x, auto const &t) {return x.first < t;});
+    return (it != v.end() && it->first == t) ? it : v.end();
 }
 
 template <class ...Ts>
 std::variant<Ts...> variant_type(Pack<Ts...>); // undefined
-
-template <class T>
-using no_qualifier = std::remove_cv_t<std::remove_reference_t<T>>;
 
 struct Identity {
     template <class T>
@@ -42,6 +39,9 @@ static_assert(Reinterpretable<unsigned char, char>);
 
 template <class T>
 using Vector = std::vector<T>;
+
+template <class T, class U>
+using Zip = Vector<std::pair<T, U>>;
 
 template <class T, class V, class F=Identity>
 Vector<T> mapped(V const &v, F &&f) {
