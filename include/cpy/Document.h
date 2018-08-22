@@ -22,7 +22,22 @@ template <>
 struct Opaque<void> : std::true_type {};
 
 template <>
+struct Opaque<std::string> : std::true_type {};
+
+template <>
+struct Opaque<std::string_view> : std::true_type {};
+
+template <>
+struct Opaque<Function> : std::true_type {};
+
+template <>
 struct Opaque<Value> : std::true_type {};
+
+template <class T>
+struct Opaque<Vector<T>> : Opaque<T> {};
+
+template <>
+struct Opaque<CallingContext> : std::true_type {};
 
 /******************************************************************************/
 
@@ -48,22 +63,22 @@ struct Document {
         return types.emplace(typeid(T), true).second ? Renderer<T>()(*this), true : false;
     }
 
-    template <class O>
-    void define(char const *s, O &&o) {
-        values.emplace_back(s, Function(static_cast<O &&>(o)));
-    }
+    // template <class O, class ...Ts>
+    // void define(char const *s, O &&o, Ts &&...ts) {
+    //     values.emplace_back(s, Function(static_cast<O &&>(o), static_cast<Ts &&>(ts)...));
+    // }
 
     template <class O>
-    void recurse(char const *s, O &&o) {
+    void recurse(char const *s, O &&o, Vector<std::string> v={}) {
         Signature<no_qualifier<O>>::for_each([&](auto t) {render(+t);});
-        values.emplace_back(s, Function(static_cast<O &&>(o)));
+        values.emplace_back(s, Function(static_cast<O &&>(o), v));
     }
 
     void type(std::type_index t, std::string s) {types[t].name = std::move(s);}
 
-    template <class F>
-    void method(std::type_index t, std::string name, F &&f) {
-        types[t].methods.emplace_back(std::move(name), Function(static_cast<F &&>(f)));
+    template <class F, class ...Ts>
+    void method(std::type_index t, std::string name, F &&f, Ts &&...ts) {
+        types[t].methods.emplace_back(std::move(name), static_cast<F &&>(f), static_cast<Ts &&>(ts)...);
     }
 };
 
@@ -74,7 +89,17 @@ struct Renderer<void> {
     void operator()(Document &) const {}
 };
 
-inline void render(Document &, Type<Value>) {}
+// template <class T>
+// struct Renderer<Vector<T>, std::enable_if_t> {
+//     void operator()(Document &doc) const {Renderer<T>()(doc);}
+// };
+
+template <class T, std::enable_if_t<Opaque<T>::value>>
+void render(Document &doc, Type<T>) {}
+
+template <class T, std::enable_if_t<!Opaque<T>::value>>
+void render(Document &doc, Type<Vector<T>>) {doc.render(Type<T>());}
+
 
 template <class T, class>
 struct Renderer {

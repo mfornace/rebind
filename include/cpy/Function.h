@@ -99,8 +99,8 @@ template <class F, class R>
 auto make_function(F f, Pack<R>) {return FunctionAdaptor<F>{std::move(f)};}
 
 template <class F, class ...Ts>
-Function::Function(F f, Pack<Ts...> p, unsigned int req)
-    : call(make_function(std::move(f), p)), m_length(sizeof...(Ts)), m_required(req ? req : sizeof...(Ts)) {}
+Function::Function(F f, Pack<Ts...> p, Vector<std::string> kws, std::int32_t req)
+    : call(make_function(std::move(f), p)), keywords(std::move(kws)), m_length(sizeof...(Ts)), m_required(req == -1 ? req : sizeof...(Ts)) {}
 
 /******************************************************************************/
 

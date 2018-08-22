@@ -40,6 +40,8 @@ using Real = double;
 
 using ArgPack = Vector<Value>;
 
+/******************************************************************************/
+
 struct Function {
     std::function<Value(CallingContext &, ArgPack)> call;
 
@@ -47,12 +49,13 @@ struct Function {
     Function() = default;
 
     template <class F, class ...Ts>
-    Function(F fun, Pack<Ts...>, unsigned int required=0);
+    Function(F fun, Pack<Ts...>, Vector<std::string> kws={}, std::int32_t required=-1);
 
     template <class F>
-    explicit Function(F fun) : Function(fun, Signature<F>()) {}
+    explicit Function(F fun, Vector<std::string> kws={}, std::int32_t required=-1)
+        : Function(fun, Signature<F>(), std::move(kws), required) {}
 
-    std::vector<std::string> keywords;
+    Vector<std::string> keywords;
 
     bool has_value() const {return bool(call);}
 
@@ -66,6 +69,8 @@ struct Function {
 
     auto length() const {return m_length;}
     auto required() const {return m_required;}
+
+    std::type_index type() const {return call.target_type();}
 private:
 
     std::int32_t m_length=-1, m_required=-1;

@@ -31,18 +31,13 @@ void render(Document &doc, Type<goo> t) {
     doc.type(t, "goo");
     doc.recurse("goo.new", [](double x) -> goo {
         return x;
-    });
+    }, {"x"});
     doc.recurse("goo.add", [](goo x) {
         x.x += 4;
         x.show();
         return x;
     });
-    doc.recurse("goo.show", [](goo const &x) {
-        x.show();
-    });
-    doc.method(t, "show", [](goo const &x) {
-        x.show();
-    });
+    doc.method(t, "show", &goo::show);
     doc.recurse("goo.test_throw", mutate([](goo &g, double x) {
         std::cout << "before throw " << g.x << std::endl;
         g.test_throw(x);
@@ -52,10 +47,10 @@ void render(Document &doc, Type<goo> t) {
 // could make this return a document
 bool make_document() {
     auto &doc = document();
-    doc.define("fun", [](int i, double d) {
+    doc.recurse("fun", [](int i, double d) {
         return i + d;
     });
-    doc.define("vec", [](double i, double d) {
+    doc.recurse("vec", [](double i, double d) {
         return std::vector<double>{i, i, d};
     });
     doc.render(Type<goo>());

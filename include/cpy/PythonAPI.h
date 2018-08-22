@@ -99,7 +99,7 @@ T & cast_object(PyObject *o) {
 
 /******************************************************************************/
 
-inline std::type_index type_index_of(Value v) {
+inline std::type_index type_in_value(Value v) {
     return std::visit([](auto const &x) -> std::type_index {
         if constexpr(std::is_same_v<decltype(x), Any const &>) return x.type();
         else return typeid(std::decay_t<decltype(x)>);
@@ -182,7 +182,7 @@ inline Object to_python(T a) noexcept {
     return o;
 }
 
-ArgPack to_argpack(Object pypack);
+void put_positional_args(ArgPack &, Object pypack);
 
 /******************************************************************************/
 
@@ -339,7 +339,7 @@ struct AcquireGIL {
 
 /******************************************************************************/
 
-Value from_python(Object o);
+Value from_python(Object const &o, bool view);
 
 struct PythonFunction {
     Object function;
@@ -351,7 +351,7 @@ struct PythonFunction {
         if (!o) throw python_error();
         o = {PyObject_CallObject(+function, +o), false};
         if (!o) throw python_error();
-        return from_python(std::move(o));
+        return from_python(o, false);
     }
 };
 

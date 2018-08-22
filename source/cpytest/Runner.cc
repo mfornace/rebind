@@ -72,36 +72,36 @@ Vector<Value> run_test(CallingContext &ct0, std::size_t i, Vector<Function> call
 
 bool make_document() {
     auto &doc = document();
-    doc.define("n_tests", [] {
+    doc.recurse("n_tests", [] {
         return suite().size();
     });
 
-    doc.define("compile_info", []() -> Vector<std::string_view> {
+    doc.recurse("compile_info", []() -> Vector<std::string_view> {
         return {__VERSION__ "", __DATE__ "", __TIME__ ""};
     });
 
-    doc.define("test_names", [] {
+    doc.recurse("test_names", [] {
         return mapped<Value>(suite(), [](auto &&x) {return x.name;});
     });
 
-    doc.define("test_info", [](std::size_t i) -> Vector<Value> {
+    doc.recurse("test_info", [](std::size_t i) -> Vector<Value> {
         auto const &c = suite().at(i);
         return {c.name, c.comment.location.file, Integer(c.comment.location.line), c.comment.comment};
     });
 
-    doc.define("n_parameters", [](std::size_t i) {
+    doc.recurse("n_parameters", [](std::size_t i) {
         return suite().at(i).parameters.size();
     });
 
-    doc.define("add_value", [](std::string s, Value v) {
+    doc.recurse("add_value", [](std::string s, Value v) {
         add_test(TestCase{std::move(s), {}, ValueAdaptor{std::move(v)}});
     });
 
-    doc.define("run_test", [](CallingContext &ct, std::size_t i, Vector<Function> calls, Value args, bool cout, bool cerr) {
+    doc.recurse("run_test", [](CallingContext &ct, std::size_t i, Vector<Function> calls, Value args, bool cout, bool cerr) {
         return run_test(ct, i, std::move(calls), std::move(args), cout, cerr);
     });
 
-    doc.define("add_test", [](std::string s, Function f, Vector<ArgPack> params) {
+    doc.recurse("add_test", [](std::string s, Function f, Vector<ArgPack> params) {
         add_test(TestCase{std::move(s), {}, ValueTest{f}, std::move(params)});
     });
 

@@ -89,7 +89,19 @@ Binary Buffer::binary(Py_buffer *view, std::size_t len) {
     return bin;
 }
 
-Value from_python(Object o) {
+std::string_view as_string_view(PyObject *o) {
+    Py_ssize_t size;
+#if PY_MAJOR_VERSION > 2
+    char const *c = PyUnicode_AsUTF8AndSize(o, &size);
+#else
+    char *c;
+    if (PyString_AsStringAndSize(o, &c, &size)) throw python_error();
+#endif
+    if (!c) throw python_error();
+    return std::string_view(static_cast<char const *>(c), size);
+}
+
+Value from_python(Object const &o, bool view) {
     if (+o == Py_None) return std::monostate();
 
     if (PyBool_Check(+o)) return (+o == Py_True) ? true : false;
@@ -102,7 +114,7 @@ Value from_python(Object o) {
         Vector<Value> vals;
         vals.reserve(PyObject_Length(+o));
         map_iterable(o, [&](Object o) {
-            vals.emplace_back(from_python(std::move(o)));
+            vals.emplace_back(from_python(o, view));
         });
         return Sequence(vals);
     }
@@ -111,39 +123,33 @@ Value from_python(Object o) {
         char *c;
         Py_ssize_t size;
         PyBytes_AsStringAndSize(+o, &c, &size);
-        return std::string(c, size);
+        if (view) return std::string_view(c, size);
+        else return std::string(c, size);
     }
 
-    if (PyUnicode_Check(+o)) { // no use of wstring for now.
-        Py_ssize_t size;
-#if PY_MAJOR_VERSION > 2
-        char const *c = PyUnicode_AsUTF8AndSize(+o, &size);
-#else
-        char *c;
-        if (PyString_AsStringAndSize(+o, &c, &size)) throw python_error();
-#endif
-        if (!c) throw python_error();
-        return std::string(static_cast<char const *>(c), size);
+    if (PyUnicode_Check(+o)) {
+        auto v = as_string_view(+o);
+        if (view) return v;
+        else return std::string(v);
     }
 
     if (PyObject_TypeCheck(+o, &AnyType)) {
-        return cast_object<Any>(+o);
-        // if (a.movable()) return std::move(a);
-        // else return a;
+        if (view) return Any(std::addressof(cast_object<Any>(+o)));
+        else return cast_object<Any>(+o);
     }
 
-    if (PyObject_TypeCheck(+o, &TypeIndexType))
-        return {std::in_place_t(), cast_object<std::type_index>(+o)};
+    if (PyObject_TypeCheck(+o, &TypeIndexType)) return cast_object<std::type_index>(+o);
 
-    if (PyObject_TypeCheck(+o, &FunctionType))
-        return cast_object<Function>(+o);
+    if (PyObject_TypeCheck(+o, &FunctionType)) return cast_object<Function>(+o);
 
     if (PyComplex_Check(+o))
         return {std::in_place_t(), std::complex<double>{PyComplex_RealAsDouble(+o), PyComplex_ImagAsDouble(+o)}};
 
     if (PyByteArray_Check(+o)) {
-        char const *data = PyByteArray_AsString(+o);
-        return Binary(data, data + PyByteArray_Size(+o) - 1); // ignore null byte at end
+        char const *data = PyByteArray_AS_STRING(+o);
+        auto const len = PyByteArray_GET_SIZE(+o) - 1;
+        if (view) return BinaryView(reinterpret_cast<unsigned char const *>(data), len);
+        else return Binary(data, data + len); // ignore null byte at end
     }
 
     if (PyObject_CheckBuffer(+o)) {
@@ -164,16 +170,30 @@ Value from_python(Object o) {
 
 /******************************************************************************/
 
-// Store the objects in pypack in pack
-ArgPack to_argpack(Object pypack) {
-    auto n = PyObject_Length(+pypack);
-    ArgPack pack;
-    pack.reserve(pack.size() + n);
-    map_iterable(std::move(pypack), [&pack](Object o) {
-        if (PyObject_TypeCheck(+o, &AnyType)) pack.emplace_back(&cast_object<Any>(+o));
-        else pack.emplace_back(from_python(std::move(o)));
+// Store the objects in args in pack
+void put_positional_args(ArgPack &pack, Object args) {
+    map_iterable(std::move(args), [&pack](Object o) {
+        pack.emplace_back(from_python(o, true));
     });
-    return pack;
+}
+
+// Store the objects in kws in pack
+void put_keyword_args(ArgPack &args, Vector<std::string> const &names, Object kws) {
+    PyObject *key, *value;
+    Py_ssize_t pos = 0;
+    auto const left = names.begin() + args.size();
+    args.resize(names.size());
+
+    while (PyDict_Next(+kws, &pos, &key, &value)) {
+        auto s = as_string_view(key);
+        std::cout << key << std::endl;
+        if (s == "gil") continue;
+        auto it = std::find(left, names.end(), s);
+        if (it == names.end()) {
+            PyErr_Format(PyExc_TypeError, "C++: got an unexpected keyword argument '%s'", s.data());
+            throw python_error();
+        } else args[it - names.begin()] = from_python(Object(value, false), true);
+    }
 }
 
 /******************************************************************************/
@@ -307,25 +327,13 @@ PyObject * type_method(PyObject *self, PyObject *) noexcept {
     });
 }
 
-PyObject *any_name(PyObject *o) noexcept {
-    Any const *p = cast_if<Any>(o);
-    if (p) {
-        std::type_index t = p->type();
-        auto it = type_names.find(t);
-        return PyUnicode_FromFormat("Any('%s')", it == type_names.end() ? t.name() : it->second.data());
-    }
-    PyErr_SetString(PyExc_TypeError, "Expected instance of cpy.Any");
-    return nullptr;
-}
-
 PyNumberMethods AnyNumberMethods = {
     .nb_bool = static_cast<inquiry>(has_value_bool<Any>),
     // .nb_invert = static_cast<unaryfunc>(any_move_unary)
 };
 
 PyMethodDef AnyTypeMethods[] = {
-    {"index",     static_cast<PyCFunction>(type_method<Any>), METH_NOARGS, "index it"},
-    // {"movable",   static_cast<PyCFunction>(any_movable), METH_NOARGS, "move it"},
+    {"type",      static_cast<PyCFunction>(type_method<Any>), METH_NOARGS, "index it"},
     {"move_from", static_cast<PyCFunction>(move_from<Any>), METH_VARARGS, "move it"},
     {"copy_from", static_cast<PyCFunction>(copy_from<Any>), METH_VARARGS, "copy it"},
     {"has_value", static_cast<PyCFunction>(has_value<Any>), METH_VARARGS, "has value"},
@@ -341,8 +349,6 @@ PyTypeObject AnyType = {
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
     .tp_doc = "C++ class object",
     .tp_new = tp_new<Any>,
-    .tp_str = any_name,
-    .tp_repr = any_name,
     .tp_methods = AnyTypeMethods
 };
 
@@ -361,8 +367,20 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
         auto py = fun.call.target<PythonFunction>();
         if (py) return {PyObject_CallObject(+py->function, args), false};
         if (!fun.has_value()) return raised(PyExc_ValueError, "Invalid C++ function");
+
         // this is some collection of arbitrary things that may include Any
-        auto pack = to_argpack({args, true});
+        // std::vector<char *> keywords;
+        // PyArg_ParseTupleAndKeywords(args, kws, "OOOOO", keywords.data())
+        ArgPack pack;
+        if (kws && PyObject_Length(kws)) {
+            pack.reserve(fun.length());
+            put_positional_args(pack, {args, true});
+            put_keyword_args(pack, fun.keywords, {kws, true});
+        } else {
+            put_positional_args(pack, {args, true});
+            pack.reserve(PyObject_Length(+args));
+        }
+
         Value out;
         {
             ReleaseGIL lk(!gil);
@@ -374,10 +392,10 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
 }
 
 PyMethodDef FunctionTypeMethods[] = {
-    // {"index",     static_cast<PyCFunction>(any_index),     METH_NOARGS, "index it"},
-    {"move_from", static_cast<PyCFunction>(move_from<Function>), METH_VARARGS, "move it"},
-    {"copy_from", static_cast<PyCFunction>(copy_from<Function>), METH_VARARGS, "copy it"},
-    // {"has_value", static_cast<PyCFunction>(any_has_value), METH_VARARGS, "has value"},
+    {"index",     static_cast<PyCFunction>(type_method<Function>), METH_NOARGS, "index it"},
+    {"move_from", static_cast<PyCFunction>(move_from<Function>),   METH_VARARGS, "move it"},
+    {"copy_from", static_cast<PyCFunction>(copy_from<Function>),   METH_VARARGS, "copy it"},
+    {"has_value", static_cast<PyCFunction>(has_value<Function>),   METH_VARARGS, "has value"},
     {nullptr, nullptr, 0, nullptr}
 };
 
@@ -425,21 +443,17 @@ bool attach(Object const &m, char const *name, Object o) noexcept {
 Object initialize(Document const &doc) {
     Object m{PyDict_New(), false};
     std::cout << "initialize" << std::endl;
-    for (auto const &p : doc.types) type_names.emplace(p.first, p.second.name);
+    for (auto const &p : doc.types) type_names.insert_or_assign(p.first, p.second.name);
 
     bool ok = attach_type(m, "Any", &AnyType)
         && attach_type(m, "Function", &FunctionType)
         && attach_type(m, "TypeIndex", &TypeIndexType)
-        // && attach(m, "methods_fun", [m]() -> Object {
-        //     Py_INCREF(Py_None);
-        //     return {PyCFunction_NewEx(&register_method, Py_None, m), false};
-        // })
-        && attach(m, "add_names", to_python(Function([](Zip<std::type_index, std::string_view> v) {
-            for (auto &p : v) type_names.emplace(std::move(p));
-        })))
-        && attach(m, "type_index", to_python(Function(type_index_of)))
+        && attach(m, "value_type", to_python(Function(type_in_value)))
         && attach(m, "objects", to_tuple(doc.values))
-        && attach(m, "types",   to_dict(doc.types));
+        && attach(m, "types",   to_dict(doc.types))
+        && attach(m, "set_type_names", to_python(Function([](Zip<std::type_index, std::string_view> v) {
+            for (auto const &p : v) type_names.insert_or_assign(p.first, p.second);
+        })));
     return ok ? m : Object();
 }
 
