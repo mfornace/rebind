@@ -77,7 +77,7 @@ void visit_packs(F const f) {f();}
 
 template <class F, class T, class ...Ts>
 void visit_packs(F const f, T, Ts ...) {
-    T::for_each([f](auto t) {visit_packs([f](auto ...us) {f(t, us...);}, Ts()...);}
+    T::for_each([f](auto t) {visit_packs([f](auto ...us) {f(decltype(t)(), us...);}, Ts()...);});
 }
 
 /******************************************************************************************/
