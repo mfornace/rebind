@@ -32,6 +32,17 @@ struct ClientError : std::exception {
 
 /******************************************************************************/
 
+struct WrongTypes : DispatchError {
+    std::vector<unsigned int> indices;
+    std::type_index source;
+    std::type_index dest;
+    unsigned int index;
+
+    WrongTypes(char const *n, std::vector<unsigned int> &&v, std::type_index s, std::type_index d, unsigned int i)
+        noexcept : DispatchError(n), indices(std::move(v)), source(s), dest(d), index(i) {}
+};
+
+
 struct DispatchMessage {
     std::vector<unsigned int> indices;
     std::type_index source = typeid(void);
@@ -39,17 +50,11 @@ struct DispatchMessage {
     char const *scope;
     unsigned int index;
 
+    WrongTypes error() noexcept {
+        return {scope, std::move(indices), source, dest, index};
+    }
+
     DispatchMessage(char const *s) : scope(s) {indices.reserve(4);}
-};
-
-struct WrongTypes : DispatchError {
-    std::vector<unsigned int> indices;
-    std::type_index source;
-    std::type_index dest;
-    unsigned int index;
-
-    WrongTypes(DispatchMessage &&m)
-        : DispatchError(m.scope), indices(std::move(m.indices)), dest(m.dest), source(m.source), index(m.index) {}
 };
 
 /******************************************************************************/

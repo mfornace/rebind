@@ -71,23 +71,15 @@ struct Document {
 
 Document & document() noexcept;
 
-template <>
-struct Renderer<void> {
-    void operator()(Document &) const {}
+struct NoRender {void operator()(Document &) const {}};
+
+// Opaque never handled because of short-circuiting above
+template <class T>
+struct Renderer<Vector<T>, std::enable_if_t<!Opaque<T>::value>> {
+    void operator()(Document &doc, Type<Vector<T>>) {doc.render(Type<T>());}
 };
 
-// template <class T>
-// struct Renderer<Vector<T>, std::enable_if_t> {
-//     void operator()(Document &doc) const {Renderer<T>()(doc);}
-// };
-
-template <class T, std::enable_if_t<Opaque<T>::value, int> = 0>
-void render(Document &doc, Type<T>) {}
-
-template <class T, std::enable_if_t<!Opaque<T>::value, int> = 0>
-void render(Document &doc, Type<Vector<T>>) {doc.render(Type<T>());}
-
-
+/// The default implementation is to call render(Document &, Type<T>) via ADL
 template <class T, class>
 struct Renderer {
     void operator()(Document &doc) const {render(doc, Type<T>());}

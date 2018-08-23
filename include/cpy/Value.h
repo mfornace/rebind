@@ -38,7 +38,7 @@ using Integer = std::ptrdiff_t;
 
 using Real = double;
 
-using ArgPack = Vector<Value>;
+using ArgPack = SmallVec<Value>;
 
 /******************************************************************************/
 
@@ -173,10 +173,19 @@ struct KeyPair {
 
 /******************************************************************************/
 
+/// The default implementation is to serialize to Any
 template <class T, class>
 struct ToValue {
     InPlace<T &&> operator()(T &&t) const {return {static_cast<T &&>(t)};}
     InPlace<T const &> operator()(T const &t) const {return {t};}
+};
+
+void to_value(std::nullptr_t);
+
+template <class T>
+struct ToValue<T, std::void_t<decltype(to_value(Type<T>(), std::declval<T const &>()))>> {
+    decltype(auto) operator()(T &&t) const {return to_value(Type<T>(), static_cast<T &&>(t));}
+    decltype(auto) operator()(T const &t) const {return to_value(Type<T>(), t);}
 };
 
 template <class T>
@@ -201,7 +210,7 @@ struct ToValue<std::vector<T, Alloc>> {
 
 /******************************************************************************/
 
-/// Default behavior for casting a variant to a desired argument type
+/// The default implementation is to accept convertible arguments or Any of the exact typeid match
 template <class T, class=void>
 struct FromValue {
     DispatchMessage &message;
@@ -213,7 +222,7 @@ struct FromValue {
         else if constexpr(std::is_same_v<T, std::monostate> && std::is_default_constructible_v<T>) return T();
         message.dest = typeid(T);
         message.source = typeid(U);
-        throw WrongTypes(std::move(message));
+        throw message.error();
     }
 
     T operator()(Any &&u) const {
@@ -223,18 +232,43 @@ struct FromValue {
         message.scope = u.has_value() ? "mismatched class" : "object was already moved";
         message.dest = typeid(T);
         message.source = u.type();
-        throw WrongTypes(std::move(message));
+        throw message.error();
+    }
+};
+
+template <class T>
+struct FromValue<T, std::void_t<decltype(from_value(+Type<T>(), Sequence(), std::declval<DispatchMessage &>()))>> {
+    DispatchMessage &message;
+    using O = std::remove_const_t<
+        decltype(1 ? std::declval<T>() : from_value(+Type<T>(), std::declval<Any &&>(), std::declval<DispatchMessage &>()))
+    >;
+
+    O operator()(Any &&u) const {
+        auto ptr = &u;
+        if (auto p = std::any_cast<std::any *>(&u)) ptr = *p;
+        auto p = std::any_cast<no_qualifier<T>>(ptr);
+        message.source = u.type();
+        message.dest = typeid(T);
+        return p ? static_cast<T>(*p) : from_value(+Type<T>(), std::move(*ptr), message);
+    }
+
+    template <class U>
+    O operator()(U &&u) const {
+        message.source = typeid(U);
+        message.dest = typeid(T);
+        return from_value(+Type<T>(), static_cast<U &&>(u), message);
     }
 };
 
 /******************************************************************************/
 
-template <class T>
-struct FromValue<Vector<T>> {
+template <class V>
+struct ContiguousFromValue {
+    using T = typename V::value_type;
     DispatchMessage &message;
 
-    Vector<T> operator()(Sequence &&u) const {
-        Vector<T> out;
+    V operator()(Sequence &&u) const {
+        V out;
         out.reserve(u.size());
         message.indices.emplace_back(0);
         u.scan_functor([&](Value x) {
@@ -246,8 +280,16 @@ struct FromValue<Vector<T>> {
     }
 
     template <class U>
-    Vector<T> operator()(U const &) const {throw std::logic_error("expected vector");}
+    V operator()(U const &) const {
+        message.scope = "expected sequence";
+        message.dest = typeid(V);
+        message.source = typeid(U);
+        throw message.error();
+    }
 };
+
+template <class T>
+struct FromValue<Vector<T>> : ContiguousFromValue<Vector<T>> {};
 
 /******************************************************************************/
 
@@ -262,9 +304,9 @@ struct SequenceModel {
 };
 
 // Shortcuts for vector of Value using its contiguity
-template <class T, class Alloc>
-struct SequenceModel<std::vector<T, Alloc>, std::enable_if_t<(ValuePack::contains<T> || std::is_same_v<T, Value>)>> {
-    using V = std::vector<T, Alloc>;
+template <class V>
+struct ContiguousValueModel {
+    using T = no_qualifier<decltype(*std::begin(std::declval<V>()))>;
     V value;
 
     char const * operator()(std::function<void(Value)> const &, int &n, std::ptrdiff_t &stride) const {
@@ -273,6 +315,11 @@ struct SequenceModel<std::vector<T, Alloc>, std::enable_if_t<(ValuePack::contain
         return reinterpret_cast<char const *>(value.data());
     }
 };
+
+template <class T, class Alloc>
+struct SequenceModel<std::vector<T, Alloc>,
+    std::enable_if_t<(ValuePack::contains<T> || std::is_same_v<T, Value>)>>
+    : ContiguousValueModel<std::vector<T, Alloc>> {};
 
 template <class T>
 Sequence::Sequence(T &&t, std::size_t n)

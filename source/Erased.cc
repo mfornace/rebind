@@ -12,6 +12,17 @@ struct Blah {
     void dump() const {std::cout << name << std::endl;}
 };
 
+auto to_value(Type<Blah>, Blah b) {return std::move(b.name);}
+
+template <class T>
+Blah from_value(Type<Blah>, T &&, DispatchMessage &msg) {
+    if constexpr(std::is_same_v<no_qualifier<T>, std::string>)
+        return Blah("haha");
+    throw msg.error();
+}
+// void from_value(Type<Blah>) {}
+// void from_value(Type<Blah const &>) { static_assert(T::aaa); }
+
 //remove iostream
 struct Goo {
     double x=1000;

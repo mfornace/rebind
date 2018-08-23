@@ -24,7 +24,7 @@ Value value_invoke(F &&f, Ts &&... ts) {
 
 /// Cast element i of v to type T
 template <class T, std::enable_if_t<!(std::is_convertible_v<Value &, T>), int> = 0>
-T cast_index(ArgPack &v, DispatchMessage &msg, IndexedType<T> i, unsigned int offset) {
+decltype(auto) cast_index(ArgPack &v, DispatchMessage &msg, IndexedType<T> i, unsigned int offset) {
     msg.index = i.index - offset;
     return std::visit(FromValue<T>{msg}, std::move(v[i.index - offset].var));
 }

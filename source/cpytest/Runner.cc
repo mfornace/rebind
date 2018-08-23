@@ -10,7 +10,7 @@ struct ValueHandler {
     CallingContext context;
     Function fun;
     bool operator()(Event e, Scopes const &scopes, Logs &&logs) {
-        Vector<Value> vals = {Value(Integer(e)), Value(Sequence(scopes)),
+        SmallVec<Value> vals = {Value(Integer(e)), Value(Sequence(scopes)),
             Sequence(mapped<Value>(logs, [](auto &x) {return std::move(x.key);})),
             Sequence(mapped<Value>(logs, [](auto &x) {return std::move(x.value);}))
         };
@@ -27,7 +27,7 @@ struct ValueTest {
 
 /******************************************************************************/
 
-Vector<Value> run_test(CallingContext &ct0, std::size_t i, Vector<Function> calls,
+SmallVec<Value> run_test(CallingContext &ct0, std::size_t i, SmallVec<Function> calls,
                         Value args, bool cout, bool cerr) {
     auto const test = suite().at(i);
     if (!test.function) throw std::runtime_error("Test case has invalid Function");

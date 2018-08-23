@@ -161,7 +161,7 @@ Value from_python(Object const &o, bool view) {
         return Sequence::vector(
             Buffer::binary(&buff.view, buff.view.len),
             Buffer::format(buff.view.format ? buff.view.format : ""),
-            Vector<Integer>(buff.view.shape, buff.view.shape + buff.view.ndim));
+            SmallVec<Integer>(buff.view.shape, buff.view.shape + buff.view.ndim));
     }
 
     PyErr_Format(PyExc_TypeError, "C++: Object of type %R cannot be converted to a Value", (+o)->ob_type);
