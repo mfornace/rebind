@@ -81,10 +81,10 @@ struct Renderer<void> {
 //     void operator()(Document &doc) const {Renderer<T>()(doc);}
 // };
 
-template <class T, std::enable_if_t<Opaque<T>::value>>
+template <class T, std::enable_if_t<Opaque<T>::value, int> = 0>
 void render(Document &doc, Type<T>) {}
 
-template <class T, std::enable_if_t<!Opaque<T>::value>>
+template <class T, std::enable_if_t<!Opaque<T>::value, int> = 0>
 void render(Document &doc, Type<Vector<T>>) {doc.render(Type<T>());}
 
 
