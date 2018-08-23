@@ -106,30 +106,20 @@ inline std::type_index type_in_value(Value v) {
     }, v.var);
 }
 
-inline Object to_python(Object t) noexcept {
-    return t;
-}
+inline Object to_python(Object t) noexcept {return t;}
 
-inline Object to_python(std::monostate const &) noexcept {
-    return {Py_None, true};
-}
+inline Object to_python(std::monostate const &) noexcept {return {Py_None, true};}
 
-inline Object to_python(bool b) noexcept {
-    return {b ? Py_True : Py_False, true};
-}
+inline Object to_python(bool b) noexcept {return {b ? Py_True : Py_False, true};}
 
 inline Object to_python(char const *s) noexcept {
     return {PyUnicode_FromString(s ? s : ""), false};
 }
 
 template <class T, std::enable_if_t<(std::is_integral_v<T> && sizeof(T) <= sizeof(long long)), int> = 0>
-Object to_python(T t) noexcept {
-    return {PyLong_FromLongLong(static_cast<long long>(t)), false};
-}
+Object to_python(T t) noexcept {return {PyLong_FromLongLong(static_cast<long long>(t)), false};}
 
-inline Object to_python(double t) noexcept {
-    return {PyFloat_FromDouble(t), false};
-}
+inline Object to_python(double t) noexcept {return {PyFloat_FromDouble(t), false};}
 
 inline Object to_python(std::string const &s) noexcept {
     return {PyUnicode_FromStringAndSize(s.data(), static_cast<Py_ssize_t>(s.size())), false};
@@ -174,11 +164,11 @@ inline Object to_python(std::type_index f) noexcept {
     return o;
 }
 
-template <class T, std::enable_if_t<std::is_same_v<Any, T>, int> = 0>
-inline Object to_python(T a) noexcept {
+template <class T, std::enable_if_t<std::is_same_v<Any, no_qualifier<T>>, int> = 0>
+inline Object to_python(T &&a) noexcept {
     if (auto t = std::any_cast<Object>(&a)) return *t;
     Object o{PyObject_CallObject(type_object(AnyType), nullptr), false};
-    cast_object<Any>(+o) = std::move(a);
+    cast_object<Any>(+o) = static_cast<T &&>(a);
     return o;
 }
 
@@ -197,10 +187,7 @@ Object to_tuple(V &&v) noexcept {
         Object item = to_python(static_cast<T>(*it));
         if (!item) return {};
         Py_INCREF(+item);
-        if (PyTuple_SetItem(+out, i, +item)) {
-            Py_DECREF(+item);
-            return {};
-        }
+        if (PyTuple_SetItem(+out, i, +item)) {Py_DECREF(+item); return {};}
     }
     return out;
 }
@@ -215,10 +202,7 @@ Object to_tuple(T &&t, std::index_sequence<Is...>) {
         Object item = to_python(x);
         if (!item) {ok = false; return;}
         Py_INCREF(+item);
-        if (PyTuple_SetItem(+out, i, +item)) {
-            Py_DECREF(+item);
-            ok = false;
-        }
+        if (PyTuple_SetItem(+out, i, +item)) {Py_DECREF(+item); ok = false;}
     };
     (go(Is, std::get<Is>(static_cast<T &&>(t))), ...);
     return ok ? out : Object();
@@ -266,10 +250,7 @@ Object to_python(Sequence const &s) {
         Object item = to_python(std::move(o));
         if (!item) {ok = false; return;}
         Py_INCREF(+item);
-        if (PyTuple_SetItem(+out, i, +item)) {
-            Py_DECREF(+item);
-            ok = false;
-        }
+        if (PyTuple_SetItem(+out, i, +item)) {Py_DECREF(+item); ok = false;}
         ++i;
     });
     return out;

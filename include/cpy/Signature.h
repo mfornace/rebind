@@ -72,6 +72,14 @@ template <class ...Ts> struct Pack {
     static void for_each(F &&f) {for_each(f, std::make_index_sequence<sizeof...(Ts)>());}
 };
 
+template <class F>
+void visit_packs(F const f) {f();}
+
+template <class F, class T, class ...Ts>
+void visit_packs(F const f, T, Ts ...) {
+    T::for_each([f](auto t) {visit_packs([f](auto ...us) {f(t, us...);}, Ts()...);}
+}
+
 /******************************************************************************************/
 
 template <class F, class=void>

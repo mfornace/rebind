@@ -101,8 +101,8 @@ static_assert(8  == sizeof(Real));              // double
 static_assert(16 == sizeof(std::string_view)); // start, stop
 static_assert(24 == sizeof(std::string));      // start, stop, buffer
 static_assert(8  == sizeof(std::type_index));   // size_t
-static_assert(24 == sizeof(Binary));           // 8 start, stop ... buffer?
-static_assert(48 == sizeof(Function));         // 32 buffer + 8 pointer + 8 vtable
+static_assert(24 == sizeof(Binary));           // start, stop buffer?
+static_assert(48 == sizeof(Function));         // 24 buffer + 8 pointer + 8 vtable?
 static_assert(32 == sizeof(Any));              // 8 + 24 buffer I think
 static_assert(24 == sizeof(Vector<Value>));    //
 static_assert(80 == sizeof(Variant));
@@ -219,8 +219,7 @@ struct FromValue {
     T operator()(Any &&u) const {
         auto ptr = &u;
         if (auto p = std::any_cast<std::any *>(&u)) ptr = *p;
-        if (auto p = std::any_cast<no_qualifier<T>>(ptr))
-            return static_cast<T>(*p);
+        if (auto p = std::any_cast<no_qualifier<T>>(ptr)) return static_cast<T>(*p);
         message.scope = u.has_value() ? "mismatched class" : "object was already moved";
         message.dest = typeid(T);
         message.source = u.type();
