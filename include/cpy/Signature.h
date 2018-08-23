@@ -7,6 +7,8 @@
 #include <utility>
 #include <typeindex>
 
+namespace cpy {
+
 template <class T>
 using no_qualifier = std::remove_cv_t<std::remove_reference_t<T>>;
 
@@ -126,3 +128,5 @@ struct FunctorSignature;
 
 template <class F>
 struct Signature<F, std::void_t<decltype(&F::operator())>> : FunctorSignature<decltype(&F::operator())> {};
+
+}
