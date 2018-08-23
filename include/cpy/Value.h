@@ -48,20 +48,15 @@ using Any = std::any;
 
 /******************************************************************************/
 
-struct SequenceConcept {
-    virtual char const * shortcut(int &, std::ptrdiff_t &) const {return nullptr;}
-    virtual void scan(std::function<void(Value)> const &) const {}
-    virtual ~SequenceConcept() {};
-};
-
 class Sequence {
-    std::shared_ptr<SequenceConcept const> self;
+    std::function<char const *(std::function<void(Value)> const &, int &, std::ptrdiff_t &)> scan;
     std::size_t m_size = 0;
 
 public:
+    using scan_type = decltype(scan);
     Sequence() = default;
 
-    std::size_t size() const {return self ? m_size : 0;}
+    std::size_t size() const {return scan ? m_size : 0;}
 
     template <class T>
     Sequence(T&&t, std::size_t n);
@@ -110,8 +105,8 @@ static_assert(24 == sizeof(Binary));           // 8 start, stop ... buffer?
 static_assert(48 == sizeof(Function));         // 32 buffer + 8 pointer + 8 vtable
 static_assert(32 == sizeof(Any));              // 8 + 24 buffer I think
 static_assert(24 == sizeof(Vector<Value>));    //
-static_assert(64 == sizeof(Variant));
-static_assert(24 == sizeof(Sequence));
+static_assert(80 == sizeof(Variant));
+static_assert(64 == sizeof(Sequence));
 
 /******************************************************************************/
 
@@ -258,25 +253,22 @@ struct FromValue<Vector<T>> {
 /******************************************************************************/
 
 template <class T, class=void>
-struct SequenceModel final : SequenceConcept {
+struct SequenceModel {
     T value;
-    SequenceModel(T &&t) : value(static_cast<T &&>(t)) {}
-    SequenceModel(T const &t) : value(static_cast<T const &>(t)) {}
 
-    void scan(std::function<void(Value)> const &f) const override {
+    char const * operator()(std::function<void(Value)> const &f, int const &, std::ptrdiff_t const &) const {
         for (auto &&v : value) f(Value(static_cast<decltype(v) &&>(v)));
+        return nullptr;
     }
 };
 
 // Shortcuts for vector of Value using its contiguity
 template <class T, class Alloc>
-struct SequenceModel<std::vector<T, Alloc>, std::enable_if_t<(ValuePack::contains<T> || std::is_same_v<T, Value>)>> final : SequenceConcept {
+struct SequenceModel<std::vector<T, Alloc>, std::enable_if_t<(ValuePack::contains<T> || std::is_same_v<T, Value>)>> {
     using V = std::vector<T, Alloc>;
     V value;
-    SequenceModel(V &&v) : value(static_cast<V &&>(v)) {}
-    SequenceModel(V const &v) : value(static_cast<V const &>(v)) {}
 
-    char const * shortcut(int &n, std::ptrdiff_t &stride) const final {
+    char const * operator()(std::function<void(Value)> const &, int &n, std::ptrdiff_t &stride) const {
         n = ValuePack::position<T>;
         stride = sizeof(T) / sizeof(char);
         return reinterpret_cast<char const *>(value.data());
@@ -284,7 +276,8 @@ struct SequenceModel<std::vector<T, Alloc>, std::enable_if_t<(ValuePack::contain
 };
 
 template <class T>
-Sequence::Sequence(T&&t, std::size_t n) : self(std::make_shared<SequenceModel<no_qualifier<T>>>(t)), m_size(n) {}
+Sequence::Sequence(T &&t, std::size_t n)
+    : scan(SequenceModel<no_qualifier<T>>{static_cast<T &&>(t)}), m_size(n) {}
 
 template <class ...Ts>
 Sequence Sequence::vector(Ts &&...ts) {
@@ -301,14 +294,16 @@ void raw_scan(F &&f, char const *p, char const *e, std::ptrdiff_t stride) {
 
 template <class F>
 void Sequence::scan_functor(F &&f) const {
-    if (self) {
+    if (scan) {
         int idx; std::ptrdiff_t stride;
-        if (auto p = self->shortcut(idx, stride)) {
-            if (idx == -1) raw_scan<Value>(f, p, p + stride * m_size, stride);
+        auto const data = scan(static_cast<F &&>(f), idx, stride);
+        if (data) {
+            auto const end = data + stride * m_size;
+            if (idx == -1) raw_scan<Value>(f, data, end, stride);
             else ValuePack::for_each([&, i=0](auto t) mutable {
-                if (i++ == idx) raw_scan<decltype(*t)>(f, p, p + stride * m_size, stride);
+                if (i++ == idx) raw_scan<decltype(*t)>(f, data, end, stride);
             });
-        } else self->scan(static_cast<F &&>(f));
+        }
     }
 }
 

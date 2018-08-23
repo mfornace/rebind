@@ -42,7 +42,7 @@ Value no_view(Value v) {
 }
 
 Sequence::Sequence(std::initializer_list<Value> const &v)
-    : self(std::make_shared<SequenceModel<Vector<Value>>>(v)), m_size(v.size()) {}
+    : scan(SequenceModel<Vector<Value>>{v}), m_size(v.size()) {}
 
 void Sequence::scan_function(std::function<void(Value)> const &f) const {scan_functor(f);}
 
