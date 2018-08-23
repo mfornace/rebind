@@ -79,4 +79,4 @@ cpy_module(mymodule testcpy)
 
 add_library(erased SHARED EXCLUDE_FROM_ALL source/Erased.cc)
 target_link_libraries(erased PRIVATE libcpy)
-cpy_module(myshared erased)
+cpy_module(cpp erased)

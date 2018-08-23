@@ -83,7 +83,7 @@ std::type_index Buffer::format(std::string_view s) {
 Binary Buffer::binary(Py_buffer *view, std::size_t len) {
     Binary bin(len, typename Binary::value_type());
     if (PyBuffer_ToContiguous(bin.data(), view, bin.size(), 'C') < 0) {
-        PyErr_SetString(PyExc_TypeError, "Could not make contiguous buffer for C++");
+        PyErr_SetString(PyExc_TypeError, "C++: could not make contiguous buffer");
         throw python_error();
     }
     return bin;
@@ -155,7 +155,7 @@ Value from_python(Object const &o, bool view) {
     if (PyObject_CheckBuffer(+o)) {
         Buffer buff(+o, PyBUF_FULL_RO); // Read in the shape but ignore strides, suboffsets
         if (!buff.ok) {
-            PyErr_SetString(PyExc_TypeError, "Could not get buffer for C++");
+            PyErr_SetString(PyExc_TypeError, "C++: could not get buffer");
             throw python_error();
         }
         return Sequence::vector(
@@ -171,29 +171,13 @@ Value from_python(Object const &o, bool view) {
 /******************************************************************************/
 
 // Store the objects in args in pack
-void put_positional_args(ArgPack &pack, Object args) {
+ArgPack positional_args(Object const &args) {
+    ArgPack pack;
+    pack.reserve(PyObject_Length(+args));
     map_iterable(std::move(args), [&pack](Object o) {
         pack.emplace_back(from_python(o, true));
     });
-}
-
-// Store the objects in kws in pack
-void put_keyword_args(ArgPack &args, Vector<std::string> const &names, Object kws) {
-    PyObject *key, *value;
-    Py_ssize_t pos = 0;
-    auto const left = names.begin() + args.size();
-    args.resize(names.size());
-
-    while (PyDict_Next(+kws, &pos, &key, &value)) {
-        auto s = as_string_view(key);
-        std::cout << key << std::endl;
-        if (s == "gil") continue;
-        auto it = std::find(left, names.end(), s);
-        if (it == names.end()) {
-            PyErr_Format(PyExc_TypeError, "C++: got an unexpected keyword argument '%s'", s.data());
-            throw python_error();
-        } else args[it - names.begin()] = from_python(Object(value, false), true);
-    }
+    return pack;
 }
 
 /******************************************************************************/
@@ -307,36 +291,32 @@ PyObject * copy_from(PyObject *self, PyObject *args) noexcept {
     });
 }
 
-template <class T>
 int has_value_bool(PyObject *self) noexcept {
-    auto t = cast_if<T>(self);
+    auto t = cast_if<Any>(self);
     return t ? t->has_value() : PyObject_IsTrue(self);
 }
 
-template <class T>
-PyObject * has_value(PyObject *self, PyObject *) noexcept {
-    return raw_object([=] {return to_python(cast_object<T>(self).has_value());});
+PyObject * any_has_value(PyObject *self, PyObject *) noexcept {
+    return raw_object([=] {return to_python(cast_object<Any>(self).has_value());});
 }
 
-template <class T>
-PyObject * type_method(PyObject *self, PyObject *) noexcept {
+PyObject * any_type_index(PyObject *self, PyObject *) noexcept {
     return raw_object([=] {
         Object o{PyObject_CallObject(type_object(TypeIndexType), nullptr), false};
-        cast_object<std::type_index>(+o) = cast_object<T>(self).type();
+        cast_object<std::type_index>(+o) = cast_object<Any>(self).type();
         return o;
     });
 }
 
 PyNumberMethods AnyNumberMethods = {
-    .nb_bool = static_cast<inquiry>(has_value_bool<Any>),
-    // .nb_invert = static_cast<unaryfunc>(any_move_unary)
+    .nb_bool = static_cast<inquiry>(has_value_bool),
 };
 
 PyMethodDef AnyTypeMethods[] = {
-    {"type",      static_cast<PyCFunction>(type_method<Any>), METH_NOARGS, "index it"},
+    {"type",      static_cast<PyCFunction>(any_type_index), METH_NOARGS, "index it"},
     {"move_from", static_cast<PyCFunction>(move_from<Any>), METH_VARARGS, "move it"},
     {"copy_from", static_cast<PyCFunction>(copy_from<Any>), METH_VARARGS, "copy it"},
-    {"has_value", static_cast<PyCFunction>(has_value<Any>), METH_VARARGS, "has value"},
+    {"has_value", static_cast<PyCFunction>(any_has_value), METH_VARARGS, "has value"},
     {nullptr, nullptr, 0, nullptr}
 };
 
@@ -359,28 +339,19 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
     if (kws && PyDict_Check(kws)) {
         PyObject *g = PyDict_GetItemString(kws, "gil");
         if (g) gil = PyObject_IsTrue(g);
+        if (bool(g) != PyObject_Length(kws)) {
+            PyErr_SetString(PyExc_ValueError, "Invalid keyword");
+            return nullptr;
+        }
     }
     std::cout << "gil = " << gil << " " << Py_REFCNT(self) << Py_REFCNT(args) << std::endl;
 
     return cpy::raw_object([=]() -> Object {
         auto &fun = cast_object<Function>(self);
-        auto py = fun.call.target<PythonFunction>();
+        auto py = fun.target<PythonFunction>();
         if (py) return {PyObject_CallObject(+py->function, args), false};
-        if (!fun.has_value()) return raised(PyExc_ValueError, "Invalid C++ function");
-
-        // this is some collection of arbitrary things that may include Any
-        // std::vector<char *> keywords;
-        // PyArg_ParseTupleAndKeywords(args, kws, "OOOOO", keywords.data())
-        ArgPack pack;
-        if (kws && PyObject_Length(kws)) {
-            pack.reserve(fun.length());
-            put_positional_args(pack, {args, true});
-            put_keyword_args(pack, fun.keywords, {kws, true});
-        } else {
-            put_positional_args(pack, {args, true});
-            pack.reserve(PyObject_Length(+args));
-        }
-
+        if (!fun) return raised(PyExc_ValueError, "Invalid C++ function");
+        auto pack = positional_args({args, true});
         Value out;
         {
             ReleaseGIL lk(!gil);
@@ -392,10 +363,10 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
 }
 
 PyMethodDef FunctionTypeMethods[] = {
-    {"index",     static_cast<PyCFunction>(type_method<Function>), METH_NOARGS, "index it"},
+    // {"index",     static_cast<PyCFunction>(type_method<Function>), METH_NOARGS, "index it"},
     {"move_from", static_cast<PyCFunction>(move_from<Function>),   METH_VARARGS, "move it"},
     {"copy_from", static_cast<PyCFunction>(copy_from<Function>),   METH_VARARGS, "copy it"},
-    {"has_value", static_cast<PyCFunction>(has_value<Function>),   METH_VARARGS, "has value"},
+    // {"has_value", static_cast<PyCFunction>(has_value<Function>),   METH_VARARGS, "has value"},
     {nullptr, nullptr, 0, nullptr}
 };
 
@@ -409,7 +380,7 @@ int function_init(PyObject *self, PyObject *args, PyObject *kws) noexcept {
         PyErr_Format(PyExc_TypeError, "Expected callable type but got: %R", fun->ob_type);
         return -1;
     }
-    cast_object<Function>(self).reset(PythonFunction{Object(fun, true)}, -1, -1);
+    cast_object<Function>(self) = PythonFunction{Object(fun, true)};
     return 0;
 }
 
@@ -442,16 +413,16 @@ bool attach(Object const &m, char const *name, Object o) noexcept {
 
 Object initialize(Document const &doc) {
     Object m{PyDict_New(), false};
-    std::cout << "initialize" << std::endl;
-    for (auto const &p : doc.types) type_names.insert_or_assign(p.first, p.second.name);
+    for (auto const &p : doc.types)
+        type_names.insert_or_assign(p.first, p.second.name);
 
     bool ok = attach_type(m, "Any", &AnyType)
         && attach_type(m, "Function", &FunctionType)
         && attach_type(m, "TypeIndex", &TypeIndexType)
-        && attach(m, "value_type", to_python(Function(type_in_value)))
+        && attach(m, "value_type", to_python(function(type_in_value)))
         && attach(m, "objects", to_tuple(doc.values))
         && attach(m, "types",   to_dict(doc.types))
-        && attach(m, "set_type_names", to_python(Function([](Zip<std::type_index, std::string_view> v) {
+        && attach(m, "set_type_names", to_python(function([](Zip<std::type_index, std::string_view> v) {
             for (auto const &p : v) type_names.insert_or_assign(p.first, p.second);
         })));
     return ok ? m : Object();

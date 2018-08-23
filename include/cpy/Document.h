@@ -12,32 +12,19 @@ struct Renderer;
 template <class T, class=void>
 struct Opaque : std::false_type {};
 
+template <> struct Opaque<char const *>     : std::true_type {};
+template <> struct Opaque<void>             : std::true_type {};
+template <> struct Opaque<std::string>      : std::true_type {};
+template <> struct Opaque<std::string_view> : std::true_type {};
+template <> struct Opaque<Function>         : std::true_type {};
+template <> struct Opaque<Value>            : std::true_type {};
+template <> struct Opaque<CallingContext>   : std::true_type {};
+
 template <class T>
 struct Opaque<T, std::enable_if_t<(std::is_arithmetic_v<T>)>> : std::true_type {};
 
-template <>
-struct Opaque<char const *> : std::true_type {};
-
-template <>
-struct Opaque<void> : std::true_type {};
-
-template <>
-struct Opaque<std::string> : std::true_type {};
-
-template <>
-struct Opaque<std::string_view> : std::true_type {};
-
-template <>
-struct Opaque<Function> : std::true_type {};
-
-template <>
-struct Opaque<Value> : std::true_type {};
-
 template <class T>
 struct Opaque<Vector<T>> : Opaque<T> {};
-
-template <>
-struct Opaque<CallingContext> : std::true_type {};
 
 /******************************************************************************/
 
@@ -63,22 +50,22 @@ struct Document {
         return types.emplace(typeid(T), true).second ? Renderer<T>()(*this), true : false;
     }
 
-    // template <class O, class ...Ts>
-    // void define(char const *s, O &&o, Ts &&...ts) {
-    //     values.emplace_back(s, Function(static_cast<O &&>(o), static_cast<Ts &&>(ts)...));
-    // }
+    template <class O, class ...Ts>
+    void define(std::string_view s, O &&o) {
+        values.emplace_back(s, Function(static_cast<O &&>(o)));
+    }
 
     template <class O>
-    void recurse(char const *s, O &&o, Vector<std::string> v={}) {
+    void recurse(std::string_view s, O &&o) {
         Signature<no_qualifier<O>>::for_each([&](auto t) {render(+t);});
-        values.emplace_back(s, Function(static_cast<O &&>(o), v));
+        values.emplace_back(s, function(static_cast<O &&>(o)));
     }
 
     void type(std::type_index t, std::string s) {types[t].name = std::move(s);}
 
     template <class F, class ...Ts>
-    void method(std::type_index t, std::string name, F &&f, Ts &&...ts) {
-        types[t].methods.emplace_back(std::move(name), static_cast<F &&>(f), static_cast<Ts &&>(ts)...);
+    void method(std::type_index t, std::string name, F f) {
+        types[t].methods.emplace_back(std::move(name), function(std::move(f), Signature<F>()));
     }
 };
 
@@ -105,11 +92,6 @@ template <class T, class>
 struct Renderer {
     void operator()(Document &doc) const {render(doc, Type<T>());}
 };
-
-
-// template <class T, class>
-// struct Renderer {
-// };
 
 /******************************************************************************/
 

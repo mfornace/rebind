@@ -42,39 +42,7 @@ using ArgPack = Vector<Value>;
 
 /******************************************************************************/
 
-struct Function {
-    std::function<Value(CallingContext &, ArgPack)> call;
-
-    using function_type = std::function<Value(CallingContext &, ArgPack)>;
-    Function() = default;
-
-    template <class F, class ...Ts>
-    Function(F fun, Pack<Ts...>, Vector<std::string> kws={}, std::int32_t required=-1);
-
-    template <class F>
-    explicit Function(F fun, Vector<std::string> kws={}, std::int32_t required=-1)
-        : Function(fun, Signature<F>(), std::move(kws), required) {}
-
-    Vector<std::string> keywords;
-
-    bool has_value() const {return bool(call);}
-
-    Value operator()(CallingContext &ct, ArgPack v) const;
-
-    void reset(function_type &&f, std::int32_t l, std::int32_t r) {
-        call = std::move(call);
-        m_length = l;
-        m_required = r;
-    }
-
-    auto length() const {return m_length;}
-    auto required() const {return m_required;}
-
-    std::type_index type() const {return call.target_type();}
-private:
-
-    std::int32_t m_length=-1, m_required=-1;
-};
+using Function = std::function<Value(CallingContext &, ArgPack)>;
 
 using Any = std::any;
 
@@ -139,10 +107,10 @@ static_assert(16 == sizeof(std::string_view)); // start, stop
 static_assert(24 == sizeof(std::string));      // start, stop, buffer
 static_assert(8  == sizeof(std::type_index));   // size_t
 static_assert(24 == sizeof(Binary));           // 8 start, stop ... buffer?
-static_assert(80 == sizeof(Function));         // 32 buffer + 8 pointer + 8 vtable
+static_assert(48 == sizeof(Function));         // 32 buffer + 8 pointer + 8 vtable
 static_assert(32 == sizeof(Any));              // 8 + 24 buffer I think
 static_assert(24 == sizeof(Vector<Value>));    //
-static_assert(96 == sizeof(Variant));
+static_assert(64 == sizeof(Variant));
 static_assert(24 == sizeof(Sequence));
 
 /******************************************************************************/
@@ -246,7 +214,7 @@ struct FromValue {
     template <class U>
     T operator()(U &&u) const {
         static_assert(std::is_rvalue_reference_v<U &&>);
-        if constexpr(std::is_convertible_v<U &&, T>) return static_cast<T>(static_cast<U &&>(u));
+        if constexpr(std::is_constructible_v<T, U &&>) return static_cast<T>(static_cast<U &&>(u));
         else if constexpr(std::is_same_v<T, std::monostate> && std::is_default_constructible_v<T>) return T();
         message.dest = typeid(T);
         message.source = typeid(U);
@@ -343,8 +311,6 @@ void Sequence::scan_functor(F &&f) const {
         } else self->scan(static_cast<F &&>(f));
     }
 }
-
-inline Value Function::operator()(CallingContext &ct, ArgPack v) const {return call(ct, std::move(v));}
 
 /******************************************************************************/
 

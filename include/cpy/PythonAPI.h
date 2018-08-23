@@ -182,7 +182,7 @@ inline Object to_python(T a) noexcept {
     return o;
 }
 
-void put_positional_args(ArgPack &, Object pypack);
+ArgPack positional_args(Object const &pypack);
 
 /******************************************************************************/
 

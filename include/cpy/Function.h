@@ -90,17 +90,16 @@ struct ContextAdaptor {
 };
 
 template <class F, class R, class T, class ...Ts>
-auto make_function(F f, Pack<R, T, Ts...>) {
+Function function(F f, Pack<R, T, Ts...>) {
     return std::conditional_t<std::is_convertible_v<T, CallingContext &>,
         ContextAdaptor<F>, FunctionAdaptor<F>>{std::move(f)};
 }
 
 template <class F, class R>
-auto make_function(F f, Pack<R>) {return FunctionAdaptor<F>{std::move(f)};}
+Function function(F f, Pack<R>) {return FunctionAdaptor<F>{std::move(f)};}
 
-template <class F, class ...Ts>
-Function::Function(F f, Pack<Ts...> p, Vector<std::string> kws, std::int32_t req)
-    : call(make_function(std::move(f), p)), keywords(std::move(kws)), m_length(sizeof...(Ts)), m_required(req == -1 ? req : sizeof...(Ts)) {}
+template <class F>
+Function function(F f) {return function(std::move(f), Signature<F>());}
 
 /******************************************************************************/
 
@@ -124,5 +123,10 @@ template <class F>
 auto mutate(F &&f) {return mutate(static_cast<F &&>(f), Signature<no_qualifier<F>>());}
 
 /******************************************************************************/
+
+template <class R, class ...Ts>
+struct Construct {
+    constexpr R operator()(Ts &&...ts) const {return R{static_cast<Ts>(ts)...};}
+};
 
 }

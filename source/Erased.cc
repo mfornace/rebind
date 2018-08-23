@@ -6,14 +6,20 @@ namespace cpy {
 
 /******************************************************************************/
 
+struct Blah {
+    std::string name;
+    Blah(std::string s) : name(s) {}
+    void dump() const {std::cout << name << std::endl;}
+};
+
 //remove iostream
-struct goo {
+struct Goo {
     double x=1000;
 
-    goo(double xx) : x(xx) {}
-    goo(goo const &g) : x(g.x) {std::cout << "copy" << std::endl;}
-    goo(goo &&g) noexcept : x(g.x) {std::cout << "move" << std::endl; g.x = -1;}
-    goo & operator=(goo g) {
+    Goo(double xx) : x(xx) {}
+    Goo(Goo const &g) : x(g.x) {std::cout << "copy" << std::endl;}
+    Goo(Goo &&g) noexcept : x(g.x) {std::cout << "move" << std::endl; g.x = -1;}
+    Goo & operator=(Goo g) {
         x = g.x;
         std::cout << "assign" << std::endl;
         return *this;
@@ -27,18 +33,23 @@ struct goo {
 
 /******************************************************************************/
 
-void render(Document &doc, Type<goo> t) {
-    doc.type(t, "goo");
-    doc.recurse("goo.new", [](double x) -> goo {
-        return x;
-    }, {"x"});
-    doc.recurse("goo.add", [](goo x) {
+void render(Document &doc, Type<Blah> t) {
+    doc.type(t, "submodule.Blah");
+    doc.method(t, "new", Construct<Blah, std::string>());
+    doc.method(t, "dump", &Blah::dump);
+}
+
+void render(Document &doc, Type<Goo> t) {
+    doc.type(t, "Goo");
+    doc.render(Type<Blah>());
+    doc.method(t, "new", [](double x) -> Goo {return x;});
+    doc.method(t, "add", [](Goo x) {
         x.x += 4;
         x.show();
         return x;
     });
-    doc.method(t, "show", &goo::show);
-    doc.recurse("goo.test_throw", mutate([](goo &g, double x) {
+    doc.method(t, "show", &Goo::show);
+    doc.method(t, "test_throw", mutate([](Goo &g, double x) {
         std::cout << "before throw " << g.x << std::endl;
         g.test_throw(x);
     }));
@@ -50,10 +61,13 @@ bool make_document() {
     doc.recurse("fun", [](int i, double d) {
         return i + d;
     });
+    doc.recurse("submodule.fun", [](int i, double d) {
+        return i + d;
+    });
     doc.recurse("vec", [](double i, double d) {
         return std::vector<double>{i, i, d};
     });
-    doc.render(Type<goo>());
+    doc.render(Type<Goo>());
     return bool();
 }
 
