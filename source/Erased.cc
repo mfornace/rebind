@@ -20,8 +20,6 @@ Blah from_value(Type<Blah>, T &&, DispatchMessage &msg) {
         return Blah("haha");
     throw msg.error();
 }
-// void from_value(Type<Blah>) {}
-// void from_value(Type<Blah const &>) { static_assert(T::aaa); }
 
 //remove iostream
 struct Goo {

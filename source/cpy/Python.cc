@@ -134,7 +134,7 @@ Value from_python(Object const &o, bool view) {
     }
 
     if (PyObject_TypeCheck(+o, &AnyType)) {
-        if (view) return Any(std::addressof(cast_object<Any>(+o)));
+        if (view) return Any(AnyReference(cast_object<Any>(+o)));
         else return cast_object<Any>(+o);
     }
 

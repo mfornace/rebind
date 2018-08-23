@@ -46,6 +46,13 @@ using Function = std::function<Value(CallingContext &, ArgPack)>;
 
 using Any = std::any;
 
+class AnyReference {
+    Any *self;
+public:
+    AnyReference(Any &s) noexcept : self(&s) {}
+    Any *get() const noexcept {return self;}
+};
+
 /******************************************************************************/
 
 class Sequence {
@@ -227,7 +234,7 @@ struct FromValue {
 
     T operator()(Any &&u) const {
         auto ptr = &u;
-        if (auto p = std::any_cast<std::any *>(&u)) ptr = *p;
+        if (auto p = std::any_cast<AnyReference>(&u)) ptr = p->get();
         if (auto p = std::any_cast<no_qualifier<T>>(ptr)) return static_cast<T>(*p);
         message.scope = u.has_value() ? "mismatched class" : "object was already moved";
         message.dest = typeid(T);
@@ -239,13 +246,13 @@ struct FromValue {
 template <class T>
 struct FromValue<T, std::void_t<decltype(from_value(+Type<T>(), Sequence(), std::declval<DispatchMessage &>()))>> {
     DispatchMessage &message;
-    using O = std::remove_const_t<
-        decltype(1 ? std::declval<T>() : from_value(+Type<T>(), std::declval<Any &&>(), std::declval<DispatchMessage &>()))
-    >;
+    // The common return type between the following 2 visitor member functions
+    using out_type = std::remove_const_t<decltype(false ? std::declval<T>() :
+        from_value(+Type<T>(), std::declval<Any &&>(), std::declval<DispatchMessage &>()))>;
 
-    O operator()(Any &&u) const {
+    out_type operator()(Any &&u) const {
         auto ptr = &u;
-        if (auto p = std::any_cast<std::any *>(&u)) ptr = *p;
+        if (auto p = std::any_cast<AnyReference>(&u)) ptr = p->get();
         auto p = std::any_cast<no_qualifier<T>>(ptr);
         message.source = u.type();
         message.dest = typeid(T);
@@ -253,7 +260,7 @@ struct FromValue<T, std::void_t<decltype(from_value(+Type<T>(), Sequence(), std:
     }
 
     template <class U>
-    O operator()(U &&u) const {
+    out_type operator()(U &&u) const {
         message.source = typeid(U);
         message.dest = typeid(T);
         return from_value(+Type<T>(), static_cast<U &&>(u), message);
