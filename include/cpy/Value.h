@@ -38,7 +38,22 @@ using Integer = std::ptrdiff_t;
 
 using Real = double;
 
-using ArgPack = SmallVec<Value>;
+struct Sequence {
+    Vector<Value> contents;
+    Vector<std::size_t> shape;
+
+    Sequence() = default;
+
+    Sequence(std::initializer_list<Value> const &v) : contents(v) {}
+
+    template <class ...Ts>
+    static Sequence from_values(Ts &&...);
+
+    template <class V>
+    explicit Sequence(V &&);
+};
+
+using ArgPack = Vector<Value>;
 
 /******************************************************************************/
 
@@ -51,35 +66,6 @@ class AnyReference {
 public:
     AnyReference(Any &s) noexcept : self(&s) {}
     Any *get() const noexcept {return self;}
-};
-
-/******************************************************************************/
-
-class Sequence {
-    std::function<char const *(std::function<void(Value)> const &, int &, std::ptrdiff_t &)> scan;
-    std::size_t m_size = 0;
-
-public:
-    using scan_type = decltype(scan);
-    Sequence() = default;
-
-    std::size_t size() const {return scan ? m_size : 0;}
-
-    template <class T>
-    Sequence(T&&t, std::size_t n);
-
-    Sequence(std::initializer_list<Value> const &v);
-
-    template <class T, std::enable_if_t<!(std::is_same_v<no_qualifier<T>, Sequence>), int> = 0>
-    explicit Sequence(T &&t) : Sequence(static_cast<T &&>(t), std::size(t)) {}
-
-    template <class F>
-    void scan_functor(F &&f) const;
-
-    void scan_function(std::function<void(Value)> const &) const;
-
-    template <class ...Ts>
-    static Sequence vector(Ts &&...ts);
 };
 
 /******************************************************************************/
@@ -112,8 +98,8 @@ static_assert(24 == sizeof(Binary));           // start, stop buffer?
 static_assert(48 == sizeof(Function));         // 24 buffer + 8 pointer + 8 vtable?
 static_assert(32 == sizeof(Any));              // 8 + 24 buffer I think
 static_assert(24 == sizeof(Vector<Value>));    //
-static_assert(80 == sizeof(Variant));
-static_assert(64 == sizeof(Sequence));
+static_assert(64 == sizeof(Variant));
+static_assert(48 == sizeof(Sequence));
 
 /******************************************************************************/
 
@@ -156,7 +142,7 @@ struct Value {
 
     /******************************************************************************/
 
-    friend Value no_view(Value v);
+    Value & no_view();
     bool as_bool() const {return std::get<bool>(var);}
     Real as_real() const {return std::get<Real>(var);}
     Integer as_integer() const {return std::get<Integer>(var);}
@@ -220,26 +206,23 @@ struct ToValue<std::vector<T, Alloc>> {
 /// The default implementation is to accept convertible arguments or Any of the exact typeid match
 template <class T, class=void>
 struct FromValue {
+    static_assert(!std::is_reference_v<T>);
+
     DispatchMessage &message;
     // Return casted type T from type U
     template <class U>
-    T operator()(U &&u) const {
+    T && operator()(U &&u) const {
         static_assert(std::is_rvalue_reference_v<U &&>);
-        if constexpr(std::is_constructible_v<T, U &&>) return static_cast<T>(static_cast<U &&>(u));
+        if constexpr(std::is_constructible_v<T, U &&>) return static_cast<T &&>(static_cast<U &&>(u));
         else if constexpr(std::is_same_v<T, std::monostate> && std::is_default_constructible_v<T>) return T();
-        message.dest = typeid(T);
-        message.source = typeid(U);
-        throw message.error();
+        throw message.error(typeid(U), typeid(T));
     }
 
-    T operator()(Any &&u) const {
+    T && operator()(Any &&u) const {
         auto ptr = &u;
         if (auto p = std::any_cast<AnyReference>(&u)) ptr = p->get();
-        if (auto p = std::any_cast<no_qualifier<T>>(ptr)) return static_cast<T>(*p);
-        message.scope = u.has_value() ? "mismatched class" : "object was already moved";
-        message.dest = typeid(T);
-        message.source = u.type();
-        throw message.error();
+        if (auto p = std::any_cast<no_qualifier<T>>(ptr)) return static_cast<T &&>(*p);
+        throw message.error(u.has_value() ? "mismatched class" : "object was already moved", u.type(), typeid(T));
     }
 };
 
@@ -247,8 +230,8 @@ template <class T>
 struct FromValue<T, std::void_t<decltype(from_value(+Type<T>(), Sequence(), std::declval<DispatchMessage &>()))>> {
     DispatchMessage &message;
     // The common return type between the following 2 visitor member functions
-    using out_type = std::remove_const_t<decltype(false ? std::declval<T>() :
-        from_value(+Type<T>(), std::declval<Any &&>(), std::declval<DispatchMessage &>()))>;
+    using out_type = std::remove_const_t<decltype(false ? std::declval<T &&>() :
+        from_value(Type<T>(), std::declval<Any &&>(), std::declval<DispatchMessage &>()))>;
 
     out_type operator()(Any &&u) const {
         auto ptr = &u;
@@ -270,96 +253,49 @@ struct FromValue<T, std::void_t<decltype(from_value(+Type<T>(), Sequence(), std:
 /******************************************************************************/
 
 template <class V>
-struct ContiguousFromValue {
+struct VectorFromValue {
     using T = typename V::value_type;
     DispatchMessage &message;
 
     V operator()(Sequence &&u) const {
         V out;
-        out.reserve(u.size());
+        out.reserve(u.contents.size());
         message.indices.emplace_back(0);
-        u.scan_functor([&](Value x) {
-            std::visit([&](auto &x) {out.emplace_back(FromValue<T>{message}(std::move(x)));}, x.var);
+        for (auto &x : u.contents) {
+            std::visit([&](auto &x) {
+                out.emplace_back(FromValue<T>{message}(std::move(x)));
+            }, x.var);
             ++message.indices.back();
-        });
+        }
         message.indices.pop_back();
         return out;
     }
 
     template <class U>
     V operator()(U const &) const {
-        message.scope = "expected sequence";
-        message.dest = typeid(V);
-        message.source = typeid(U);
-        throw message.error();
+        throw message.error("expected sequence", typeid(U), typeid(V));
     }
 };
 
 template <class T>
-struct FromValue<Vector<T>> : ContiguousFromValue<Vector<T>> {};
+struct FromValue<Vector<T>> : VectorFromValue<Vector<T>> {};
 
 /******************************************************************************/
-
-template <class T, class=void>
-struct SequenceModel {
-    T value;
-
-    char const * operator()(std::function<void(Value)> const &f, int const &, std::ptrdiff_t const &) const {
-        for (auto &&v : value) f(Value(static_cast<decltype(v) &&>(v)));
-        return nullptr;
-    }
-};
-
-// Shortcuts for vector of Value using its contiguity
-template <class V>
-struct ContiguousValueModel {
-    using T = no_qualifier<decltype(*std::begin(std::declval<V>()))>;
-    V value;
-
-    char const * operator()(std::function<void(Value)> const &, int &n, std::ptrdiff_t &stride) const {
-        n = ValuePack::position<T>;
-        stride = sizeof(T) / sizeof(char);
-        return reinterpret_cast<char const *>(value.data());
-    }
-};
-
-template <class T, class Alloc>
-struct SequenceModel<std::vector<T, Alloc>,
-    std::enable_if_t<(ValuePack::contains<T> || std::is_same_v<T, Value>)>>
-    : ContiguousValueModel<std::vector<T, Alloc>> {};
-
-template <class T>
-Sequence::Sequence(T &&t, std::size_t n)
-    : scan(SequenceModel<no_qualifier<T>>{static_cast<T &&>(t)}), m_size(n) {}
 
 template <class ...Ts>
-Sequence Sequence::vector(Ts &&...ts) {
-    Vector<Value> vec;
-    vec.reserve(sizeof...(Ts));
-    (vec.emplace_back(static_cast<Ts &&>(ts)), ...);
-    return Sequence(std::move(vec));
-}
-
-template <class T, class F>
-void raw_scan(F &&f, char const *p, char const *e, std::ptrdiff_t stride) {
-    for (; p != e; p += stride) f(reinterpret_cast<T const *>(p));
-}
-
-template <class F>
-void Sequence::scan_functor(F &&f) const {
-    if (scan) {
-        int idx; std::ptrdiff_t stride;
-        auto const data = scan(static_cast<F &&>(f), idx, stride);
-        if (data) {
-            auto const end = data + stride * m_size;
-            if (idx == -1) raw_scan<Value>(f, data, end, stride);
-            else ValuePack::for_each([&, i=0](auto t) mutable {
-                if (i++ == idx) raw_scan<decltype(*t)>(f, data, end, stride);
-            });
-        }
-    }
+Sequence Sequence::from_values(Ts &&...ts) {
+    Sequence out;
+    out.contents.reserve(sizeof...(Ts));
+    (out.contents.emplace_back(static_cast<Ts &&>(ts)), ...);
+    return out;
 }
 
 /******************************************************************************/
+
+template <class V>
+Sequence::Sequence(V &&v) {
+    contents.reserve(std::size(v));
+    for (auto &&x : v) contents.emplace_back(static_cast<decltype(x) &&>(x));
+}
 
 }

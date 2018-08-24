@@ -1202,3 +1202,38 @@ The only difference in cost is that
 - problem then is, e.g. for std::any -- user would have to use std::is_copyable -- but then ambiguous with all their other overloads.
 - option 2: define but static_assert(false) in it -- that's bad I think
 - option 4: define a void_t stream operator. but then very hard to override
+
+### Canonical codes
+- `new`: constructor
+- `()`: class call operator
+
+### FromValue specialization
+
+Valid target types are `T`, `T &&`, `T const &`.
+Input types are always `V &&` with `V` one of the variant types.
+
+#### Case 0: a value type (like `float128`)
+- `std::any(T)` -> `T`      (convertible to T, T const &, T &&)
+- `std::any(T *)` -> `T &&` (convertible to T, T const &, T &&)
+- `Real` -> `T`             (convertible to T, T const &, T &&)
+
+#### Case 1: a container type (like `std::list<T>`)
+- `std::any(T)` -> `T`      (convertible to T, T const &, T &&)
+- `std::any(T *)` -> `T &&` (convertible to T, T const &, T &&)
+- `Sequence` -> `T`         (convertible to T, T const &, T &&)
+
+#### Case 2: a class that is convertible from another type
+- `std::any(T)` -> `T`      (convertible to T, T const &, T &&)
+- `std::any(T *)` -> `T &&` (convertible to T, T const &, T &&)
+- `std::any(U)` -> `T`         (convertible to T, T const &, T &&)
+
+
+### Implementing a base class mutating method
+```python
+a = b.slice(A.type()) # calls std::move() on the A slice of B, to make a new A
+try:
+    a.move_from(a.mutate()) # calls A mutator
+finally:
+    b.slice_from(a) # calls std::move of a into b
+```
+It's not pretty.

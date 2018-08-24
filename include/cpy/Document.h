@@ -73,10 +73,17 @@ Document & document() noexcept;
 
 struct NoRender {void operator()(Document &) const {}};
 
+template <class ...Ts>
+struct Renderer<Pack<Ts...>> {
+    void operator()(Document &doc) {
+        (doc.render(Type<std::conditional_t<Opaque<Ts>::value, void, Ts>>()), ...);
+    }
+};
+
 // Opaque never handled because of short-circuiting above
 template <class T>
 struct Renderer<Vector<T>, std::enable_if_t<!Opaque<T>::value>> {
-    void operator()(Document &doc, Type<Vector<T>>) {doc.render(Type<T>());}
+    void operator()(Document &doc) {doc.render(Type<T>());}
 };
 
 /// The default implementation is to call render(Document &, Type<T>) via ADL

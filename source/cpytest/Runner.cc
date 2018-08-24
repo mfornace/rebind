@@ -10,7 +10,7 @@ struct ValueHandler {
     CallingContext context;
     Function fun;
     bool operator()(Event e, Scopes const &scopes, Logs &&logs) {
-        SmallVec<Value> vals = {Value(Integer(e)), Value(Sequence(scopes)),
+        Vector<Value> vals = {Value(Integer(e)), Value(Sequence(scopes)),
             Sequence(mapped<Value>(logs, [](auto &x) {return std::move(x.key);})),
             Sequence(mapped<Value>(logs, [](auto &x) {return std::move(x.value);}))
         };
@@ -27,7 +27,7 @@ struct ValueTest {
 
 /******************************************************************************/
 
-SmallVec<Value> run_test(CallingContext &ct0, std::size_t i, SmallVec<Function> calls,
+Vector<Value> run_test(CallingContext &ct0, std::size_t i, Vector<Function> calls,
                         Value args, bool cout, bool cerr) {
     auto const test = suite().at(i);
     if (!test.function) throw std::runtime_error("Test case has invalid Function");
@@ -35,9 +35,9 @@ SmallVec<Value> run_test(CallingContext &ct0, std::size_t i, SmallVec<Function> 
     if (std::holds_alternative<Integer>(args.var))
         pack = test.parameters.at(args.as_integer());
     if (std::holds_alternative<Sequence>(args.var)) {
-        auto const &seq = std::get<Sequence>(args.var);
-        pack.reserve(seq.size());
-        seq.scan_functor([&](Value o) {pack.emplace_back(std::move(o));});
+        auto &seq = std::get<Sequence>(args.var);
+        if (!seq.shape.empty()) throw std::runtime_error("Non 1-dimensional Sequence");
+        pack = std::move(seq.contents);
     }
     std::stringstream out, err;
     Value return_value;
@@ -109,12 +109,5 @@ bool make_document() {
 }
 
 bool blah = make_document();
-
-
-void ggg() {
-    auto g = Sequence(std::vector<int>());
-    auto h = g;
-    auto j = std::move(g);
-}
 
 }

@@ -26,7 +26,7 @@ Value value_invoke(F &&f, Ts &&... ts) {
 template <class T, std::enable_if_t<!(std::is_convertible_v<Value &, T>), int> = 0>
 decltype(auto) cast_index(ArgPack &v, DispatchMessage &msg, IndexedType<T> i, unsigned int offset) {
     msg.index = i.index - offset;
-    return std::visit(FromValue<T>{msg}, std::move(v[i.index - offset].var));
+    return std::visit(FromValue<no_qualifier<T>>{msg}, std::move(v[i.index - offset].var));
 }
 
 template <class T, std::enable_if_t<(std::is_convertible_v<Value &, T>), int> = 0>
@@ -89,6 +89,8 @@ struct ContextAdaptor {
     }
 };
 
+/******************************************************************************/
+
 template <class F, class R, class T, class ...Ts>
 Function function(F f, Pack<R, T, Ts...>) {
     return std::conditional_t<std::is_convertible_v<T, CallingContext &>,
@@ -98,8 +100,22 @@ Function function(F f, Pack<R, T, Ts...>) {
 template <class F, class R>
 Function function(F f, Pack<R>) {return FunctionAdaptor<F>{std::move(f)};}
 
+/******************************************************************************/
+
+template <class F, class=void>
+struct Simplify {
+    constexpr std::decay_t<F> operator()(F f) const {return f;}
+};
+
 template <class F>
-Function function(F f) {return function(std::move(f), Signature<F>());}
+struct Simplify<F, std::void_t<decltype(false ? nullptr : std::declval<F>())>> {
+    constexpr auto operator()(F f) const {return false ? nullptr : f;}
+};
+
+template <class F>
+Function function(F f) {
+    return function(Simplify<F>()(f), Signature<decltype(Simplify<F>()(f))>());
+}
 
 /******************************************************************************/
 
@@ -115,7 +131,7 @@ template <class F, class R, class C, class ...Ts, std::enable_if_t<!std::is_same
 auto mutate(F &&f, Pack<R, C, Ts...>) {
     return [f] (no_qualifier<C> &&self, Ts ...ts) {
         auto x = f(self, static_cast<decltype(ts) &&>(ts)...);
-        return Sequence::vector(std::move(self), std::move(x));
+        return Sequence::from_values(std::move(self), std::move(x));
     };
 }
 

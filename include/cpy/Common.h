@@ -42,9 +42,6 @@ static_assert(Reinterpretable<unsigned char, char>);
 template <class T>
 using Vector = std::vector<T>;
 
-template <class T>
-using SmallVec = std::vector<T>;
-
 template <class T, class U>
 using Zip = Vector<std::pair<T, U>>;
 

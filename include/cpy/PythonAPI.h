@@ -240,19 +240,17 @@ template <class T, std::enable_if_t<std::is_same_v<T, Value> || std::is_same_v<T
 Object to_python(T const &s) noexcept;
 
 Object to_python(Sequence const &s) {
-    auto const n = s.size();
+    auto const n = s.contents.size();
     Object out = {PyTuple_New(n), false};
     if (!out) return {};
     Py_ssize_t i = 0u;
-    bool ok = true;
-    s.scan_functor([&](auto o) {
-        if (!ok) return;
-        Object item = to_python(std::move(o));
-        if (!item) {ok = false; return;}
+    for (auto const &x : s.contents) {
+        Object item = to_python(x);
+        if (!item) return {};
         Py_INCREF(+item);
-        if (PyTuple_SetItem(+out, i, +item)) {Py_DECREF(+item); ok = false;}
+        if (PyTuple_SetItem(+out, i, +item)) {Py_DECREF(+item); return {};}
         ++i;
-    });
+    }
     return out;
 }
 
@@ -338,12 +336,26 @@ struct PythonFunction {
 
 /******************************************************************************/
 
-extern std::unordered_map<std::type_index, std::string_view> type_names;
+extern std::unordered_map<std::type_index, std::string> type_names;
 
-std::string_view get_type_name(std::type_index idx) {
+inline std::string_view get_type_name(std::type_index idx) noexcept {
     auto it = type_names.find(idx);
     if (it == type_names.end() || it->second.empty()) return idx.name();
     else return it->second;
+}
+
+inline std::string wrong_types_message(WrongTypes const &e) {
+    std::ostringstream os;
+    os << "C++: " << e.what() << " (#" << e.index << ", "
+        << get_type_name(e.source) << " \u2192 " << get_type_name(e.dest);
+    if (!e.indices.empty()) {
+        os << ", scopes=[";
+        for (auto i : e.indices) os << i << ", ";
+    };
+    os << ')';
+    auto s = std::move(os).str();
+    if (!e.indices.empty()) {s.end()[-3] = ']'; s.end()[-2] = ')'; s.pop_back();}
+    return s;
 }
 
 template <class F>
@@ -360,17 +372,8 @@ PyObject *raw_object(F &&f) noexcept {
         unsigned int n0 = e.expected, n = e.received;
         PyErr_Format(PyExc_TypeError, "C++: wrong number of arguments (expected %u, got %u)", n0, n);
     } catch (WrongTypes const &e) {
-        std::ostringstream os;
-        os << "C++: " << e.what() << " (#" << e.index << ", "
-           << get_type_name(e.source) << " \u2192 " << get_type_name(e.dest);
-        if (!e.indices.empty()) {
-            os << ", scopes=[";
-            for (auto i : e.indices) os << i << ", ";
-        };
-        os << ')';
-        auto s = std::move(os).str();
-        if (!e.indices.empty()) s.end()[-2] = ']';
-        PyErr_SetString(PyExc_TypeError, s.c_str());
+        try {PyErr_SetString(PyExc_TypeError, wrong_types_message(e).c_str());}
+        catch(...) {PyErr_SetString(PyExc_TypeError, e.what());}
     } catch (std::exception const &e) {
         if (!PyErr_Occurred())
             PyErr_Format(PyExc_RuntimeError, "C++: %s", e.what());

@@ -28,7 +28,7 @@ using Counter = std::atomic<std::size_t>;
 
 struct Context : CallingContext {
     /// Vector of Handlers for each registered Event
-    SmallVec<Handler> handlers;
+    Vector<Handler> handlers;
     /// Vector of strings making up the current Context scope
     Scopes scopes;
     /// Keypairs that have been logged prior to an event being called
@@ -36,12 +36,12 @@ struct Context : CallingContext {
     /// Start time of the current test case or section
     typename Clock::time_point start_time;
     /// Possibly null handle to a vector of atomic counters for each Event. Test runner has responsibility for lifetime
-    SmallVec<Counter> *counters = nullptr;
+    Vector<Counter> *counters = nullptr;
 
     Context() = default;
 
     /// Opens a Context and sets the start_time to the current time
-    Context(CallingContext ct, Scopes s, SmallVec<Handler> h, SmallVec<Counter> *c=nullptr);
+    Context(CallingContext ct, Scopes s, Vector<Handler> h, Vector<Counter> *c=nullptr);
 
     /// Opens a new section with a reset start_time
     template <class F, class ...Ts>

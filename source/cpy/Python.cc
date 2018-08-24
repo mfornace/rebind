@@ -13,20 +13,25 @@
 
 namespace cpy {
 
-std::unordered_map<std::type_index, std::string_view> type_names = {
-    {typeid(void), "void"},
-    {typeid(std::monostate), "void"},
-    {typeid(bool), "bool"},
-    {typeid(Integer), "int"},
-    {typeid(Real), "float"},
+std::unordered_map<std::type_index, std::string> type_names = {
+    {typeid(void),             "void"},
+    {typeid(std::monostate),   "void"},
+    {typeid(bool),             "bool"},
+    {typeid(Integer),          "int"},
+    {typeid(Real),             "float"},
     {typeid(std::string_view), "str"},
-    {typeid(std::string), "str"},
-    {typeid(std::type_index), "TypeIndex"},
-    {typeid(Binary), "Binary"},
-    {typeid(BinaryView), "BinaryView"},
-    {typeid(Function), "Function"},
-    {typeid(Any), "Any"},
-    {typeid(Sequence), "Sequence"},
+    {typeid(std::string),      "str"},
+    {typeid(std::type_index),  "TypeIndex"},
+    {typeid(Binary),           "Binary"},
+    {typeid(BinaryView),       "BinaryView"},
+    {typeid(Function),         "Function"},
+    {typeid(Any),              "Any"},
+    {typeid(Sequence),         "Sequence"},
+
+    {typeid(std::uint32_t),    "uint32"},
+    {typeid(std::int32_t),     "int32"},
+    {typeid(int),              "int32"},
+    {typeid(float),            "float32"}
 };
 
 /******************************************************************************/
@@ -158,10 +163,10 @@ Value from_python(Object const &o, bool view) {
             PyErr_SetString(PyExc_TypeError, "C++: could not get buffer");
             throw python_error();
         }
-        return Sequence::vector(
+        return Sequence::from_values(
             Buffer::binary(&buff.view, buff.view.len),
             Buffer::format(buff.view.format ? buff.view.format : ""),
-            SmallVec<Integer>(buff.view.shape, buff.view.shape + buff.view.ndim));
+            Vector<Integer>(buff.view.shape, buff.view.shape + buff.view.ndim));
     }
 
     PyErr_Format(PyExc_TypeError, "C++: Object of type %R cannot be converted to a Value", (+o)->ob_type);
@@ -240,10 +245,7 @@ long type_index_hash(PyObject *o) noexcept {
 
 PyObject *type_index_name(PyObject *o) noexcept {
     std::type_index const *p = cast_if<std::type_index>(o);
-    if (p) {
-        auto it = type_names.find(*p);
-        return PyUnicode_FromFormat("TypeIndex('%s')", it == type_names.end() ? p->name() : it->second.data());
-    }
+    if (p) return PyUnicode_FromFormat("TypeIndex('%s')", get_type_name(*p).data());
     PyErr_SetString(PyExc_TypeError, "Expected instance of cpy.TypeIndex");
     return nullptr;
 }
@@ -414,7 +416,7 @@ bool attach(Object const &m, char const *name, Object o) noexcept {
 Object initialize(Document const &doc) {
     Object m{PyDict_New(), false};
     for (auto const &p : doc.types)
-        type_names.insert_or_assign(p.first, p.second.name);
+        type_names.emplace(p.first, p.second.name);
 
     bool ok = attach_type(m, "Any", &AnyType)
         && attach_type(m, "Function", &FunctionType)

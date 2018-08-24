@@ -1,5 +1,6 @@
 
 #include <cpy/Document.h>
+#include <cpy/Standard.h>
 #include <iostream>
 
 namespace cpy {
@@ -72,6 +73,14 @@ bool make_document() {
     });
     doc.recurse("submodule.fun", [](int i, double d) {
         return i + d;
+    });
+    doc.recurse("test_pair", [](std::pair<int, double> p) {
+        p.first += 3;
+        p.second += 0.5;
+        return p;
+    });
+    doc.recurse("test_tuple", [](std::tuple<int, float> p) {
+        return std::get<1>(p);
     });
     doc.recurse("vec", [](double i, double d) {
         return std::vector<double>{i, i, d};

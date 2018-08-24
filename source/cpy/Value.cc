@@ -32,18 +32,13 @@ Document & document() noexcept {
 // Integer Value::as_integer() const {return std::get<Integer>(var);}
 // std::type_index Value::as_type() const {return std::get<std::type_index>(var);}
 
-Value no_view(Value v) {
-    return std::visit([](auto &x) -> Value {
+Value & Value::no_view() {
+    std::visit([&](auto &x) {
         using T = no_qualifier<decltype(x)>;
-        if constexpr(std::is_same_v<T, BinaryView>) return Binary(x);
-        else if constexpr(std::is_same_v<T, std::string_view>) return std::string(x);
-        else return std::move(x);
-    }, v.var);
+        if constexpr(std::is_same_v<T, BinaryView>) var = Binary(x);
+        if constexpr(std::is_same_v<T, std::string_view>) var = std::string(x);
+    }, var);
+    return *this;
 }
-
-Sequence::Sequence(std::initializer_list<Value> const &v)
-    : scan(SequenceModel<Vector<Value>>{v}), m_size(v.size()) {}
-
-void Sequence::scan_function(std::function<void(Value)> const &f) const {scan_functor(f);}
 
 }
