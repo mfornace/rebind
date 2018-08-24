@@ -18,7 +18,7 @@ template <> struct Opaque<std::string>      : std::true_type {};
 template <> struct Opaque<std::string_view> : std::true_type {};
 template <> struct Opaque<Function>         : std::true_type {};
 template <> struct Opaque<Value>            : std::true_type {};
-template <> struct Opaque<CallingContext>   : std::true_type {};
+template <> struct Opaque<Caller>   : std::true_type {};
 
 template <class T>
 struct Opaque<T, std::enable_if_t<(std::is_arithmetic_v<T>)>> : std::true_type {};
@@ -65,7 +65,7 @@ struct Document {
 
     template <class F, class ...Ts>
     void method(std::type_index t, std::string name, F f) {
-        types[t].methods.emplace_back(std::move(name), function(std::move(f), Signature<F>()));
+        types[t].methods.emplace_back(std::move(name), function(std::move(f)));
     }
 };
 

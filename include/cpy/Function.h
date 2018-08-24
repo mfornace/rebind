@@ -11,28 +11,34 @@ namespace cpy {
 
 /// Invoke a function and arguments, storing output in a Value if it doesn't return void
 template <class F, class ...Ts>
-Value value_invoke(F &&f, Ts &&... ts) {
+Value value_invoke(F const &f, Ts &&... ts) {
     if constexpr(std::is_same_v<void, std::invoke_result_t<F, Ts...>>) {
-        std::invoke(static_cast<F &&>(f), static_cast<Ts &&>(ts)...);
-        return {};
+        std::invoke(f, static_cast<Ts &&>(ts)...);
+        return std::monostate();
     } else {
-        return std::invoke(static_cast<F &&>(f), static_cast<Ts &&>(ts)...);
+        return std::invoke(f, static_cast<Ts &&>(ts)...);
     }
+}
+
+template <bool B, class F, class ...Ts>
+Value context_invoke(F const &f, Caller &c, Ts &&...ts) {
+    if constexpr(B) return value_invoke(f, c, static_cast<Ts &&>(ts)...);
+    else return value_invoke(f, static_cast<Ts &&>(ts)...);
 }
 
 /******************************************************************************/
 
 /// Cast element i of v to type T
 template <class T, std::enable_if_t<!(std::is_convertible_v<Value &, T>), int> = 0>
-decltype(auto) cast_index(ArgPack &v, DispatchMessage &msg, IndexedType<T> i, unsigned int offset) {
-    msg.index = i.index - offset;
-    return std::visit(FromValue<no_qualifier<T>>{msg}, std::move(v[i.index - offset].var));
+decltype(auto) cast_index(ArgPack &v, Dispatch &msg, IndexedType<T> i) {
+    msg.index = i.index;
+    return std::visit(FromValue<no_qualifier<T>>{msg}, std::move(v[i.index].var));
 }
 
 template <class T, std::enable_if_t<(std::is_convertible_v<Value &, T>), int> = 0>
-T cast_index(ArgPack &v, DispatchMessage &msg, IndexedType<T> i, unsigned int offset) {
-    msg.index = i.index - offset;
-    return static_cast<T>(v[i.index - offset]);
+T cast_index(ArgPack &v, Dispatch &msg, IndexedType<T> i) {
+    msg.index = i.index;
+    return static_cast<T>(v[i.index]);
 }
 
 /******************************************************************************/
@@ -42,7 +48,7 @@ struct NoMutable {
     static_assert(
         !std::is_lvalue_reference_v<T> ||
         std::is_const_v<std::remove_reference_t<T>>,
-        "Mutable lvalue references not allowed in function signature"
+        "Mutable lvalue references are not allowed in function signature"
     );
 };
 
@@ -53,52 +59,74 @@ struct NoMutable {
 // the function may move the Any if it takes Value
 // or the function may leave the Any alone if it takes const &
 
-template <class F>
+template <int N, class R, class ...Ts, std::enable_if_t<N == 1, int> = 0>
+Pack<Ts...> skip_head(Pack<R, Ts...>);
+
+template <int N, class R, class C, class ...Ts, std::enable_if_t<N == 2, int> = 0>
+Pack<Ts...> skip_head(Pack<R, C, Ts...>);
+
+template <class R>
+std::false_type has_context(Pack<R>);
+
+template <class R, class T, class ...Ts>
+std::is_convertible<T, Caller &> has_context(Pack<R, T, Ts...>);
+
+template <std::size_t N, class F>
 struct FunctionAdaptor {
     F function;
+    using Ctx = decltype(has_context(Signature<F>()));
+    using Sig = decltype(skip_head<1 + int(Ctx::value)>(Signature<F>()));
 
-    /// Run C++ functor; logs non-ClientError and rethrows all exceptions
-    Value operator()(CallingContext const &, ArgPack args) const {
-        Signature<F>::apply([](auto return_type, auto ...ts) {
+    template <class P>
+    void call_each(P, Value &out, Caller &c, Dispatch &msg, ArgPack &args) const {
+        P::apply([&](auto ...ts) {
+            out = context_invoke<Ctx::value>(function, c, cast_index(args, msg, ts)...);
+        });
+    }
+
+    template <std::size_t ...Is>
+    Value call(ArgPack &args, Caller &c, Dispatch &msg, std::index_sequence<Is...>) const {
+        Value out;
+        ((args.size() == N - Is - 1 ? call_each(Sig::template slice<0, N - Is - 1>(), out, c, msg, args) : void()), ...);
+        return out;
+    }
+
+    Value operator()(Caller &c, ArgPack args) const {
+        Sig::apply([](auto ...ts) {
             (NoMutable<decltype(*ts)>(), ...);
         });
-        return Signature<F>::apply([&](auto return_type, auto ...ts) {
-            if (args.size() != sizeof...(ts))
-                throw WrongNumber(sizeof...(ts), args.size());
-            DispatchMessage msg("mismatched type");
-            return value_invoke(function, cast_index(args, msg, ts, 1)...);
-        });
+        Dispatch msg;
+        if (args.size() == Sig::size)
+            return Sig::apply([&](auto ...ts) {
+                return context_invoke<Ctx::value>(function, c, cast_index(args, msg, ts)...);
+            });
+        if (args.size() < Sig::size - N)
+            throw WrongNumber(Sig::size - N, args.size());
+        if (args.size() > Sig::size)
+            throw WrongNumber(Sig::size, args.size());
+        return call(args, c, msg, std::make_index_sequence<N>());
     }
 };
 
 template <class F>
-struct ContextAdaptor {
+struct FunctionAdaptor<0, F> {
     F function;
+    using Ctx = decltype(has_context(Signature<F>()));
+    using Sig = decltype(skip_head<1 + int(Ctx::value)>(Signature<F>()));
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
-    Value operator()(CallingContext &ct, ArgPack args) const {
-        Signature<F>::apply([](auto return_type, auto context_type, auto ...ts) {
+    Value operator()(Caller &c, ArgPack args) const {
+        Sig::apply([](auto ...ts) {
             (NoMutable<decltype(*ts)>(), ...);
         });
-        return Signature<F>::apply([&](auto return_type, auto context_type, auto ...ts) {
-            if (args.size() != sizeof...(ts))
-                throw WrongNumber(sizeof...(ts), args.size());
-            DispatchMessage msg("mismatched type");
-            return value_invoke(function, ct, cast_index(args, msg, ts, 2)...);
+        if (args.size() != Sig::size)
+            throw WrongNumber(Sig::size, args.size());
+        return Sig::apply([&](auto ...ts) {
+            Dispatch msg;
+            return context_invoke<Ctx::value>(function, c, cast_index(args, msg, ts)...);
         });
     }
 };
-
-/******************************************************************************/
-
-template <class F, class R, class T, class ...Ts>
-Function function(F f, Pack<R, T, Ts...>) {
-    return std::conditional_t<std::is_convertible_v<T, CallingContext &>,
-        ContextAdaptor<F>, FunctionAdaptor<F>>{std::move(f)};
-}
-
-template <class F, class R>
-Function function(F f, Pack<R>) {return FunctionAdaptor<F>{std::move(f)};}
 
 /******************************************************************************/
 
@@ -112,9 +140,12 @@ struct Simplify<F, std::void_t<decltype(false ? nullptr : std::declval<F>())>> {
     constexpr auto operator()(F f) const {return false ? nullptr : f;}
 };
 
-template <class F>
+/******************************************************************************/
+
+template <int N = -1, class F>
 Function function(F f) {
-    return function(Simplify<F>()(f), Signature<decltype(Simplify<F>()(f))>());
+    auto fun = Simplify<F>()(std::move(f));
+    return FunctionAdaptor<(N == -1 ? 0 : Signature<decltype(fun)>::size - 1 - N), decltype(fun)>{std::move(fun)};
 }
 
 /******************************************************************************/
@@ -144,5 +175,8 @@ template <class R, class ...Ts>
 struct Construct {
     constexpr R operator()(Ts &&...ts) const {return R{static_cast<Ts>(ts)...};}
 };
+
+template <class R, class ...Ts>
+Construct<R, Ts...> construct(Type<R> t={}) {return {};}
 
 }

@@ -30,14 +30,6 @@ struct IndexedType {
 
 /******************************************************************************************/
 
-template <class U> std::integral_constant<int, 1> index_of_type();
-
-template <class U, class T, class ...Ts, std::enable_if_t<std::is_same_v<U, T>, int> = 0>
-std::integral_constant<int, 0> index_of_type();
-
-template <class U, class T, class ...Ts, std::enable_if_t<!std::is_same_v<U, T>, int> = 0>
-auto index_of_type() {return std::integral_constant<int, decltype(index_of_type<U, Ts...>())::value + 1>();}
-
 template <bool ...Ts>
 struct BoolPack;
 
@@ -46,16 +38,48 @@ static constexpr bool any_of_c = !std::is_same_v<BoolPack<false, Ts...>, BoolPac
 
 /******************************************************************************************/
 
+struct NotFound {};
+
+NotFound operator|(NotFound, NotFound);
+
+template <class T>
+T operator|(NotFound, T);
+
+template <class T>
+T operator|(T, NotFound);
+
 /// A lightweight ordered container of types
 template <class ...Ts> struct Pack {
     using pack_type = Pack;
-    using size = std::integral_constant<std::size_t, sizeof...(Ts)>;
+
+    static constexpr auto size = sizeof...(Ts);
+    using indices = decltype(std::make_index_sequence<sizeof...(Ts)>());
 
     template <class T>
-    static constexpr bool contains = any_of_c<std::is_same_v<T, Ts>...>;
+    static constexpr bool contains = (std::is_same_v<T, Ts> || ...);
+
+    template <std::size_t N, std::size_t ...Is>
+    static constexpr auto at_sequence(std::index_sequence<Is...>) {
+        return decltype((std::conditional_t<N == Is, Type<Ts>, NotFound>() | ...))();
+    }
+
+    template <std::size_t N>
+    static constexpr auto at() {return at_sequence<N>(indices());}
+
+    template <class T, std::size_t ...Is>
+    static constexpr auto position_impl(std::index_sequence<Is...>) {
+        return decltype((std::conditional_t<std::is_same_v<T, Ts>,
+            std::integral_constant<std::size_t, Is>, NotFound>() | ...))();
+    }
 
     template <class T>
-    static constexpr int position = decltype(index_of_type<Ts...>())::value == sizeof...(Ts) ? -1 : decltype(index_of_type<Ts...>())::value;
+    static constexpr auto position(Type<T> t={}) {return position_impl<T>(indices());}
+
+    template <std::size_t B, std::size_t ...Is>
+    static constexpr auto slice_sequence(std::index_sequence<Is...>) {return Pack<decltype(at<B + Is>())...>();}
+
+    template <std::size_t B, std::size_t E>
+    static constexpr auto slice() {return slice<B>(std::make_index_sequence<E - B>());}
 
     template <class F, std::size_t ...Is>
     static constexpr auto apply(F &&f, std::index_sequence<Is...>) {
@@ -63,15 +87,10 @@ template <class ...Ts> struct Pack {
     }
 
     template <class F>
-    static constexpr auto apply(F &&f) {
-        return apply(static_cast<F &&>(f), std::make_index_sequence<sizeof...(Ts)>());
-    }
-
-    template <class F, std::size_t ...Is>
-    static void for_each(F &&f, std::index_sequence<Is...>) {(f(IndexedType<Ts>{Is}), ...);}
+    static constexpr auto apply(F &&f) {return apply(static_cast<F &&>(f), indices());}
 
     template <class F>
-    static void for_each(F &&f) {for_each(f, std::make_index_sequence<sizeof...(Ts)>());}
+    static void for_each(F &&f) {(f(Type<Ts>()), ...);}
 };
 
 template <class F>

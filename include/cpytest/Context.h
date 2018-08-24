@@ -26,7 +26,7 @@ using Counter = std::atomic<std::size_t>;
 
 /******************************************************************************/
 
-struct Context : CallingContext {
+struct Context : Caller {
     /// Vector of Handlers for each registered Event
     Vector<Handler> handlers;
     /// Vector of strings making up the current Context scope
@@ -41,7 +41,7 @@ struct Context : CallingContext {
     Context() = default;
 
     /// Opens a Context and sets the start_time to the current time
-    Context(CallingContext ct, Scopes s, Vector<Handler> h, Vector<Counter> *c=nullptr);
+    Context(Caller ct, Scopes s, Vector<Handler> h, Vector<Counter> *c=nullptr);
 
     /// Opens a new section with a reset start_time
     template <class F, class ...Ts>

@@ -57,7 +57,7 @@ using ArgPack = Vector<Value>;
 
 /******************************************************************************/
 
-using Function = std::function<Value(CallingContext &, ArgPack)>;
+using Function = std::function<Value(Caller &, ArgPack)>;
 
 using Any = std::any;
 
@@ -208,7 +208,7 @@ template <class T, class=void>
 struct FromValue {
     static_assert(!std::is_reference_v<T>);
 
-    DispatchMessage &message;
+    Dispatch &message;
     // Return casted type T from type U
     template <class U>
     T && operator()(U &&u) const {
@@ -227,11 +227,11 @@ struct FromValue {
 };
 
 template <class T>
-struct FromValue<T, std::void_t<decltype(from_value(+Type<T>(), Sequence(), std::declval<DispatchMessage &>()))>> {
-    DispatchMessage &message;
+struct FromValue<T, std::void_t<decltype(from_value(+Type<T>(), Sequence(), std::declval<Dispatch &>()))>> {
+    Dispatch &message;
     // The common return type between the following 2 visitor member functions
     using out_type = std::remove_const_t<decltype(false ? std::declval<T &&>() :
-        from_value(Type<T>(), std::declval<Any &&>(), std::declval<DispatchMessage &>()))>;
+        from_value(Type<T>(), std::declval<Any &&>(), std::declval<Dispatch &>()))>;
 
     out_type operator()(Any &&u) const {
         auto ptr = &u;
@@ -255,7 +255,7 @@ struct FromValue<T, std::void_t<decltype(from_value(+Type<T>(), Sequence(), std:
 template <class V>
 struct VectorFromValue {
     using T = typename V::value_type;
-    DispatchMessage &message;
+    Dispatch &message;
 
     V operator()(Sequence &&u) const {
         V out;

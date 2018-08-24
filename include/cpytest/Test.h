@@ -21,7 +21,7 @@ struct TestSignature : Pack<void, Context> {
     static_assert(std::is_invocable<F, Context>(),
         "Functor is not callable with implicit signature void(Context). "
         "Specialize cpy::Signature<T> for your function or use a functor with a "
-        "deducable (i.e. non-templated) signature");
+        "deducable (i.e. non-template, no auto) signature");
 };
 
 /// Otherwise TestSignature assumes the deduced Signature
@@ -34,17 +34,16 @@ struct TestSignature<F, std::void_t<typename Signature<F>::return_type>> : Signa
 template <class F>
 struct TestAdaptor {
     F function;
+    using Sig = decltype(skip_head<2>(TestSignature<F>()));
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
     Value operator()(Context &ct, ArgPack args) {
         try {
-            return TestSignature<F>::apply([&](auto return_type, auto context_type, auto ...ts) {
-                static_assert(std::is_convertible_v<Context, decltype(*context_type)>,
-                              "First argument in signature should be of type Context");
-                if (args.size() != sizeof...(ts))
-                    throw WrongNumber(sizeof...(ts), args.size());
-                DispatchMessage msg("mismatched test argument");
-                return value_invoke(function, Context(ct), cast_index(args, msg, ts, 2)...);
+            if (args.size() != Sig::size)
+                throw WrongNumber(Sig::size, args.size());
+            return Sig::apply([&](auto ...ts) {
+                Dispatch msg("mismatched test argument");
+                return value_invoke(function, Context(ct), cast_index(args, msg, ts)...);
             });
         } catch (Skip const &e) {
             ct.info("value", e.message);
@@ -95,7 +94,7 @@ void add_test(TestCase t);
 
 template <class F>
 void add_test(std::string name, TestCaseComment c, F const &f, Vector<ArgPack> v={}) {
-    if (TestSignature<F>::size::value <= 2 && v.empty()) v.emplace_back();
+    if (TestSignature<F>::size <= 2 && v.empty()) v.emplace_back();
     add_test(TestCase{std::move(name), std::move(c), TestAdaptor<F>{f}, std::move(v)});
 }
 

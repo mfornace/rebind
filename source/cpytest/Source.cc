@@ -16,8 +16,8 @@ StreamSync cerr_sync{std::cerr, std::cerr.rdbuf()};
 // Context & Context::operator=(Context const &) = default;
 // Context & Context::operator=(Context &&) noexcept = default;
 
-Context::Context(CallingContext ct, Scopes s, Vector<Handler> h, Vector<Counter> *c)
-    : CallingContext{std::move(ct)}, scopes(std::move(s)), handlers(std::move(h)), counters(c), start_time(Clock::now()) {}
+Context::Context(Caller ct, Scopes s, Vector<Handler> h, Vector<Counter> *c)
+    : Caller{std::move(ct)}, scopes(std::move(s)), handlers(std::move(h)), counters(c), start_time(Clock::now()) {}
 
 /******************************************************************************/
 

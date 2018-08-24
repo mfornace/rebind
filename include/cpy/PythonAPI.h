@@ -324,8 +324,8 @@ struct PythonFunction {
     Object function;
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
-    Value operator()(CallingContext &ct, ArgPack args) const {
-        AcquireGIL lk(&ct.get<ReleaseGIL>());
+    Value operator()(Caller &ct, ArgPack args) const {
+        AcquireGIL lk(&ct.cast<ReleaseGIL>());
         Object o = to_python(std::move(args));
         if (!o) throw python_error();
         o = {PyObject_CallObject(+function, +o), false};

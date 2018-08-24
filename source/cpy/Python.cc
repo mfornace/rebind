@@ -357,7 +357,7 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
         Value out;
         {
             ReleaseGIL lk(!gil);
-            CallingContext ct{&lk};
+            Caller ct{&lk};
             out = fun(ct, std::move(pack));
         }
         return cpy::to_python(std::move(out));

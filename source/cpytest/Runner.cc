@@ -7,7 +7,7 @@ namespace cpy {
 
 // NOTE: this involves double erasure...
 struct ValueHandler {
-    CallingContext context;
+    Caller context;
     Function fun;
     bool operator()(Event e, Scopes const &scopes, Logs &&logs) {
         Vector<Value> vals = {Value(Integer(e)), Value(Sequence(scopes)),
@@ -21,13 +21,13 @@ struct ValueHandler {
 struct ValueTest {
     Function fun;
     Value operator()(Context &ct, ArgPack args) const {
-        return fun(static_cast<CallingContext &>(ct), args);
+        return fun(static_cast<Caller &>(ct), args);
     }
 };
 
 /******************************************************************************/
 
-Vector<Value> run_test(CallingContext &ct0, std::size_t i, Vector<Function> calls,
+Vector<Value> run_test(Caller &ct0, std::size_t i, Vector<Function> calls,
                         Value args, bool cout, bool cerr) {
     auto const test = suite().at(i);
     if (!test.function) throw std::runtime_error("Test case has invalid Function");
@@ -97,7 +97,7 @@ bool make_document() {
         add_test(TestCase{std::move(s), {}, ValueAdaptor{std::move(v)}});
     });
 
-    doc.recurse("run_test", [](CallingContext &ct, std::size_t i, Vector<Function> calls, Value args, bool cout, bool cerr) {
+    doc.recurse("run_test", [](Caller &ct, std::size_t i, Vector<Function> calls, Value args, bool cout, bool cerr) {
         return run_test(ct, i, std::move(calls), std::move(args), cout, cerr);
     });
 

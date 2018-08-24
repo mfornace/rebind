@@ -45,7 +45,7 @@ struct ToValue<std::tuple<Ts...>> {
 
 template <class V>
 struct CompiledSequenceFromValue {
-    DispatchMessage &message;
+    Dispatch &message;
 
     template <class U>
     V operator()(U &&u) const {

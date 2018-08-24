@@ -47,7 +47,7 @@ struct WrongTypes : DispatchError {
 
 /******************************************************************************/
 
-struct DispatchMessage {
+struct Dispatch {
     std::string scope;
     std::vector<unsigned int> indices;
     std::type_index source = typeid(void);
@@ -70,7 +70,7 @@ struct DispatchMessage {
         return {scope2, std::move(indices), s, d, index, e, r};
     }
 
-    DispatchMessage(char const *s) : scope(s) {indices.reserve(4);}
+    Dispatch(char const *s="mismatched type") : scope(s) {indices.reserve(8);}
 };
 
 /******************************************************************************/

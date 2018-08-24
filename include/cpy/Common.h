@@ -56,18 +56,18 @@ Vector<T> mapped(V const &v, F &&f) {
 /******************************************************************************/
 
 // Roughly, a type safe version of std::any but simpler and non-owning
-class CallingContext {
+class Caller {
     void *metadata = nullptr;
     std::type_index index = typeid(void);
 public:
-    CallingContext() = default;
+    Caller() = default;
 
     template <class T>
-    CallingContext(T *t) : metadata(t), index(typeid(T)) {}
+    Caller(T *t) : metadata(t), index(typeid(T)) {}
 
     template <class T>
-    T & get() {
-        if (index != typeid(T)) throw DispatchError("invalid context");
+    T & cast(Type<T> = {}) {
+        if (index != typeid(T)) throw DispatchError("invalid Caller cast");
         return *static_cast<T *>(metadata);
     }
 };
