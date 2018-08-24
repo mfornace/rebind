@@ -31,7 +31,7 @@ struct ToValue<std::optional<T>> {
 
 template <class T>
 struct FromValue<std::optional<T>> {
-    DispatchMessage &message;
+    Dispatch &message;
     template <class U>
     std::optional<T> operator()(U &&u) const {
         if (std::holds_alternative<std::monostate>(u)) return {};
@@ -41,19 +41,34 @@ struct FromValue<std::optional<T>> {
 
 template <class ...Ts>
 struct ToValue<std::variant<Ts...>> {
-    Value operator()(std::variant<T> t) const {
+    Value operator()(std::variant<Ts...> t) const {
         return std::visit([](auto &t) -> Value {return std::move(t);}, t);
     }
 };
 
-template <class T>
-struct FromValue<std::optional<T>> {
-    DispatchMessage &message;
+
+template <class T, class ...Ts>
+struct FromValue<std::variant<T, Ts...>> {
+    Dispatch &message;
+
+    template <class V1, class U>
+    std::variant<T, Ts...> scan(Pack<V1>, U &u, Dispatch &msg) const {
+        try {return FromValue<V1>(msg)(std::move(u));}
+        catch (DispatchError const &err) {}
+        throw message.error("no conversions succeeded", typeid(std::variant<T, Ts...>), typeid(U));
+    }
+
+    template <class V1, class V2, class U, class ...Vs>
+    std::variant<T, Ts...> scan(Pack<V1, V2, Vs...>, U &u, Dispatch &msg) const {
+        try {return FromValue<V1>(msg)(std::move(u));}
+        catch (DispatchError const &err) {}
+        return scan(Pack<V2, Vs...>(), u);
+    }
 
     template <class U>
-    std::optional<T> operator()(U &&u) const {
-        if (std::holds_alternative<std::monostate>(u)) return {};
-        return FromValue<T>(message)(static_cast<U &&>(u));
+    std::variant<Ts...> operator()(U &&u) const {
+        Dispatch msg = message;
+        return scan_from_value(Pack<T, Ts...>(), u, msg);
     }
 };
 

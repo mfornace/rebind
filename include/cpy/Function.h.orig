@@ -176,16 +176,17 @@ struct Construct {
     constexpr R operator()(Ts &&...ts) const {return R{static_cast<Ts>(ts)...};}
 };
 
+<<<<<<< HEAD
 template <class R, class ...Ts>
 Construct<R, Ts...> construct(Type<R> t={}) {return {};}
-
+=======
 /******************************************************************************/
 
 template <class R, class ...Ts>
 class Callback {
     Function fun;
 
-    Callback(Function f, Caller &c) : fun(std::move(f), caller(&c)) {}
+    Callback(Function f, Caller &c) : fun(std::move(f), call(&c)) {}
 
     R operator()(Ts &&...ts) const {
         ArgPack pack;
@@ -195,9 +196,10 @@ class Callback {
     }
 
 private:
-    Caller *caller;
+    Caller *call;
 };
 
 /******************************************************************************/
+>>>>>>> fff5ff6f4f3bbe3e83f3fccb7f8e70b80286d573
 
 }
