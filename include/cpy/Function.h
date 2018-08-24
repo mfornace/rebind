@@ -179,4 +179,25 @@ struct Construct {
 template <class R, class ...Ts>
 Construct<R, Ts...> construct(Type<R> t={}) {return {};}
 
+/******************************************************************************/
+
+template <class R, class ...Ts>
+class Callback {
+    Function fun;
+
+    Callback(Function f, Caller &c) : fun(std::move(f), call(&c)) {}
+
+    R operator()(Ts &&...ts) const {
+        ArgPack pack;
+        pack.reserve(sizeof...(Ts));
+        (pack.emplace_back(static_cast<Ts &&>(ts)), ...);
+        return FromValue<R>()(fun(caller, std::move(pack)));
+    }
+
+private:
+    Caller *call;
+};
+
+/******************************************************************************/
+
 }

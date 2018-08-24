@@ -3,6 +3,7 @@
 #include <tuple>
 #include <utility>
 #include <array>
+#include <optional>
 
 namespace cpy {
 
@@ -15,6 +16,47 @@ struct Renderer<std::tuple<Ts...>> : Renderer<Pack<no_qualifier<Ts>...>> {};
 template <class T, std::size_t N>
 struct Renderer<std::array<T, N>> : Renderer<Pack<no_qualifier<T>>> {};
 
+template <class T>
+struct Renderer<std::optional<T>> : Renderer<Pack<no_qualifier<T>>> {};
+
+/******************************************************************************/
+
+template <class T>
+struct ToValue<std::optional<T>> {
+    Value operator()(std::optional<T> t) const {
+        if (!t) return std::monostate();
+        else return *t;
+    }
+};
+
+template <class T>
+struct FromValue<std::optional<T>> {
+    DispatchMessage &message;
+    template <class U>
+    std::optional<T> operator()(U &&u) const {
+        if (std::holds_alternative<std::monostate>(u)) return {};
+        return FromValue<T>(message)(static_cast<U &&>(u));
+    }
+};
+
+template <class ...Ts>
+struct ToValue<std::variant<Ts...>> {
+    Value operator()(std::variant<T> t) const {
+        return std::visit([](auto &t) -> Value {return std::move(t);}, t);
+    }
+};
+
+template <class T>
+struct FromValue<std::optional<T>> {
+    DispatchMessage &message;
+
+    template <class U>
+    std::optional<T> operator()(U &&u) const {
+        if (std::holds_alternative<std::monostate>(u)) return {};
+        return FromValue<T>(message)(static_cast<U &&>(u));
+    }
+};
+
 /******************************************************************************/
 
 template <class T, class U>
@@ -26,6 +68,7 @@ struct ToValue<std::pair<T, U>> {
         return Sequence::from_values(std::move(p.first), std::move(p.second));
     }
 };
+
 
 template <class ...Ts>
 struct ToValue<std::tuple<Ts...>> {

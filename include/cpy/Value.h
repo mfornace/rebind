@@ -213,7 +213,7 @@ struct FromValue {
     template <class U>
     T && operator()(U &&u) const {
         static_assert(std::is_rvalue_reference_v<U &&>);
-        if constexpr(std::is_constructible_v<T, U &&>) return static_cast<T &&>(static_cast<U &&>(u));
+        if constexpr(std::is_constructible_v<T &&, U &&>) return static_cast<T &&>(static_cast<U &&>(u));
         else if constexpr(std::is_same_v<T, std::monostate> && std::is_default_constructible_v<T>) return T();
         throw message.error(typeid(U), typeid(T));
     }

@@ -80,6 +80,8 @@ struct Renderer<Pack<Ts...>> {
     }
 };
 
+void render(int, int); // undefined
+
 // Opaque never handled because of short-circuiting above
 template <class T>
 struct Renderer<Vector<T>, std::enable_if_t<!Opaque<T>::value>> {
