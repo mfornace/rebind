@@ -3,8 +3,6 @@
 #include <vector>
 #include <variant>
 
-#include <boost/container/vector.hpp>
-
 namespace cpy {
 
 /******************************************************************************/

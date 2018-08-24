@@ -145,4 +145,25 @@ struct Construct {
     constexpr R operator()(Ts &&...ts) const {return R{static_cast<Ts>(ts)...};}
 };
 
+/******************************************************************************/
+
+template <class R, class ...Ts>
+class Callback {
+    Function fun;
+
+    Callback(Function f, Caller &c) : fun(std::move(f), call(&c)) {}
+
+    R operator()(Ts &&...ts) const {
+        ArgPack pack;
+        pack.reserve(sizeof...(Ts));
+        (pack.emplace_back(static_cast<Ts &&>(ts)), ...);
+        return FromValue<R>()(fun(caller, std::move(pack)));
+    }
+
+private:
+    Caller *call;
+};
+
+/******************************************************************************/
+
 }
