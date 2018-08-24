@@ -57,7 +57,7 @@ struct Document {
 
     template <class O>
     void recurse(std::string_view s, O &&o) {
-        Signature<no_qualifier<O>>::for_each([&](auto t) {render(+t);});
+        Signature<no_qualifier<O>>::for_each([this](auto t) {this->render(+t);});
         values.emplace_back(s, function(static_cast<O &&>(o)));
     }
 
