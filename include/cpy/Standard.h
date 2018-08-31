@@ -5,6 +5,13 @@
 #include <array>
 #include <optional>
 
+namespace boost {
+    namespace container {
+        template <class T, std::size_t N, class Alloc>
+        class small_vector;
+    }
+}
+
 namespace cpy {
 
 template <class T, class U>
@@ -18,6 +25,19 @@ struct Renderer<std::array<T, N>> : Renderer<Pack<no_qualifier<T>>> {};
 
 template <class T>
 struct Renderer<std::optional<T>> : Renderer<Pack<no_qualifier<T>>> {};
+
+template <class ...Ts>
+struct Renderer<std::variant<Ts...>> : Renderer<Pack<no_qualifier<Ts>...>> {};
+
+/******************************************************************************/
+
+template <class T, std::size_t N, class A>
+struct Opaque<boost::container::small_vector<T, N, A>> : Opaque<T> {};
+
+template <class T, std::size_t N, class A>
+struct Renderer<boost::container::small_vector<T, N, A>, std::enable_if_t<!Opaque<T>::value>> {
+    void operator()(Document &doc) {doc.render(Type<T>());}
+};
 
 /******************************************************************************/
 
@@ -53,22 +73,22 @@ struct FromValue<std::variant<T, Ts...>> {
 
     template <class V1, class U>
     std::variant<T, Ts...> scan(Pack<V1>, U &u, Dispatch &msg) const {
-        try {return FromValue<V1>(msg)(std::move(u));}
+        try {return FromValue<V1>{msg}(std::move(u));}
         catch (DispatchError const &err) {}
         throw message.error("no conversions succeeded", typeid(std::variant<T, Ts...>), typeid(U));
     }
 
     template <class V1, class V2, class U, class ...Vs>
     std::variant<T, Ts...> scan(Pack<V1, V2, Vs...>, U &u, Dispatch &msg) const {
-        try {return FromValue<V1>(msg)(std::move(u));}
+        try {return FromValue<V1>{msg}(std::move(u));}
         catch (DispatchError const &err) {}
-        return scan(Pack<V2, Vs...>(), u);
+        return scan(Pack<V2, Vs...>(), u, msg);
     }
 
     template <class U>
-    std::variant<Ts...> operator()(U &&u) const {
+    std::variant<T, Ts...> operator()(U &&u) const {
         Dispatch msg = message;
-        return scan_from_value(Pack<T, Ts...>(), u, msg);
+        return scan(Pack<T, Ts...>(), u, msg);
     }
 };
 
@@ -87,7 +107,7 @@ struct ToValue<std::pair<T, U>> {
 
 template <class ...Ts>
 struct ToValue<std::tuple<Ts...>> {
-    static_assert(!any_of_c<std::is_reference_v<Ts>...>);
+    static_assert(!((std::is_reference_v<Ts>) || ...));
 
     template <std::size_t ...Is>
     Sequence get(std::tuple<Ts...> &&t, std::index_sequence<Is...>) const {

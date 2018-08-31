@@ -79,7 +79,7 @@ struct FunctionAdaptor {
 
     template <class P>
     void call_each(P, Value &out, Caller &c, Dispatch &msg, ArgPack &args) const {
-        P::apply([&](auto ...ts) {
+        P::indexed([&](auto ...ts) {
             out = context_invoke<Ctx::value>(function, c, cast_index(args, msg, ts)...);
         });
     }
@@ -92,12 +92,12 @@ struct FunctionAdaptor {
     }
 
     Value operator()(Caller &c, ArgPack args) const {
-        Sig::apply([](auto ...ts) {
+        Sig::apply2([](auto ...ts) {
             (NoMutable<decltype(*ts)>(), ...);
         });
         Dispatch msg;
         if (args.size() == Sig::size)
-            return Sig::apply([&](auto ...ts) {
+            return Sig::indexed([&](auto ...ts) {
                 return context_invoke<Ctx::value>(function, c, cast_index(args, msg, ts)...);
             });
         if (args.size() < Sig::size - N)
@@ -116,12 +116,12 @@ struct FunctionAdaptor<0, F> {
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
     Value operator()(Caller &c, ArgPack args) const {
-        Sig::apply([](auto ...ts) {
+        Sig::apply2([](auto ...ts) {
             (NoMutable<decltype(*ts)>(), ...);
         });
         if (args.size() != Sig::size)
             throw WrongNumber(Sig::size, args.size());
-        return Sig::apply([&](auto ...ts) {
+        return Sig::indexed([&](auto ...ts) {
             Dispatch msg;
             return context_invoke<Ctx::value>(function, c, cast_index(args, msg, ts)...);
         });
@@ -143,7 +143,7 @@ struct Simplify<F, std::void_t<decltype(false ? nullptr : std::declval<F>())>> {
 /******************************************************************************/
 
 template <int N = -1, class F>
-Function function(F f) {
+Function make_function(F f) {
     auto fun = Simplify<F>()(std::move(f));
     return FunctionAdaptor<(N == -1 ? 0 : Signature<decltype(fun)>::size - 1 - N), decltype(fun)>{std::move(fun)};
 }
@@ -176,8 +176,8 @@ struct Construct {
     constexpr R operator()(Ts &&...ts) const {return R{static_cast<Ts>(ts)...};}
 };
 
-template <class R, class ...Ts>
-Construct<R, Ts...> construct(Type<R> t={}) {return {};}
+template <class ...Ts, class R>
+Construct<R, Ts...> construct(Type<R> t) {return {};}
 
 /******************************************************************************/
 

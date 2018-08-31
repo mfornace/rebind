@@ -30,14 +30,6 @@ struct IndexedType {
 
 /******************************************************************************************/
 
-template <bool ...Ts>
-struct BoolPack;
-
-template <bool ...Ts>
-static constexpr bool any_of_c = !std::is_same_v<BoolPack<false, Ts...>, BoolPack<Ts..., false>>;
-
-/******************************************************************************************/
-
 struct NotFound {};
 
 NotFound operator|(NotFound, NotFound);
@@ -79,27 +71,37 @@ template <class ...Ts> struct Pack {
     static constexpr auto slice_sequence(std::index_sequence<Is...>) {return Pack<decltype(at<B + Is>())...>();}
 
     template <std::size_t B, std::size_t E>
-    static constexpr auto slice() {return slice<B>(std::make_index_sequence<E - B>());}
+    static constexpr auto slice() {return slice_sequence<B>(std::make_index_sequence<E - B>());}
 
     template <class F, std::size_t ...Is>
-    static constexpr auto apply(F &&f, std::index_sequence<Is...>) {
+    static constexpr auto indexed(F &&f, std::index_sequence<Is...>) {
         return static_cast<F &&>(f)(IndexedType<Ts>{Is}...);
     }
 
     template <class F>
-    static constexpr auto apply(F &&f) {return apply(static_cast<F &&>(f), indices());}
+    static constexpr auto indexed(F &&f) {return indexed(static_cast<F &&>(f), indices());}
+
+    template <class F>
+    static constexpr auto apply2(F &&f) {f(Type<Ts>()...);}
 
     template <class F>
     static void for_each(F &&f) {(f(Type<Ts>()), ...);}
+
+    using no_qualifier = Pack<std::remove_cv_t<std::remove_reference_t<Ts>>...>;
 };
 
-template <class F>
-void visit_packs(F const f) {f();}
+/******************************************************************************************/
 
-template <class F, class T, class ...Ts>
-void visit_packs(F const f, T, Ts ...) {
-    T::for_each([f](auto t) {visit_packs([f](auto ...us) {f(decltype(t)(), us...);}, Ts()...);});
+template <class F, class ...Ts>
+void scan_packs(Pack<Ts...>, F const &f) {f(Type<Ts>()...);}
+
+template <class F, class P, class ...Ts, class ...Us, class ...Fs>
+void scan_packs(Pack<Ts...>, Pack<Us...>, P const &p, Fs const &...fs) {
+    (scan_packs(Pack<Ts..., Us>(), p, fs...), ...);
 }
+
+template <class ...Ts, class ...Fs>
+void scan(Pack<Ts...> p, Fs const &...fs) {return scan_packs(Pack<>(), p, fs...);}
 
 /******************************************************************************************/
 
@@ -107,18 +109,14 @@ template <class F, class=void>
 struct Signature;
 
 template <class R, class ...Ts>
-struct Signature<R(Ts...)> : Pack<R, Ts...> {
-    using return_type = R;
-};
+struct Signature<R(Ts...)> : Pack<R, Ts...> {};
 
 template <class R, class ...Ts>
 struct Signature<R(*)(Ts...)> : Signature<R(Ts...)> {};
 
 #define CPY_TMP(C, Q, C2) \
     template <class R, class C, class ...Ts> \
-    struct Signature<R (C::* )(Ts...) Q> : Pack<R, C2, Ts...> { \
-        using return_type = R; \
-    };
+    struct Signature<R (C::* )(Ts...) Q> : Pack<R, C2, Ts...> {};
 
     CPY_TMP(C, , C &);
     CPY_TMP(C, const, C const &);
@@ -127,6 +125,9 @@ struct Signature<R(*)(Ts...)> : Signature<R(Ts...)> {};
     CPY_TMP(C, &&, C &&);
     CPY_TMP(C, const &&, C const &&);
 #undef CPY_TMP
+
+template <class R, class C>
+struct Signature<R C::*> : Pack<R, C> {};
 
 /******************************************************************************************/
 

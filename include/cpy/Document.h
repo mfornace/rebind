@@ -38,6 +38,8 @@ struct Document {
     Zip<std::string, Value> values;
     std::map<std::type_index, Methods> types;
 
+    void type(std::type_index t, std::string s) {types[t].name = std::move(s);}
+
     template <class T, std::enable_if_t<Opaque<T>::value, int> = 0>
     bool render(Type<T> t={}) {
         static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
@@ -50,22 +52,29 @@ struct Document {
         return types.emplace(typeid(T), true).second ? Renderer<T>()(*this), true : false;
     }
 
-    template <class O, class ...Ts>
-    void define(std::string_view s, O &&o) {
-        values.emplace_back(s, Function(static_cast<O &&>(o)));
+    template <class ...Ts>
+    void render(Pack<Ts...>) {(render(Type<Ts>()), ...);}
+
+    template <class T>
+    void object(std::string_view s, T value) {
+        render(Type<T>());
+        values.emplace_back(s, std::move(value));
     }
 
-    template <class O>
-    void recurse(std::string_view s, O &&o) {
-        Signature<no_qualifier<O>>::for_each([this](auto t) {this->render(+t);});
-        values.emplace_back(s, function(static_cast<O &&>(o)));
+    /// Export function and its signature
+    template <class F>
+    void function(std::string_view s, F functor) {
+        render(typename Signature<F>::no_qualifier());
+        values.emplace_back(s, make_function(std::move(functor)));
     }
 
-    void type(std::type_index t, std::string s) {types[t].name = std::move(s);}
-
+    /// Always a function - no vagueness here
     template <class F, class ...Ts>
     void method(std::type_index t, std::string name, F f) {
-        types[t].methods.emplace_back(std::move(name), function(std::move(f)));
+        // Signature<F>::no_qualifier::apply2([&](auto r, auto c, auto ...ts) {
+        //     render(r); (render(ts), ...);
+        // });
+        types[t].methods.emplace_back(std::move(name), make_function(std::move(f)));
     }
 };
 
@@ -97,3 +106,5 @@ struct Renderer {
 /******************************************************************************/
 
 }
+
+#include "Standard.h"

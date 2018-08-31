@@ -41,7 +41,7 @@ struct TestAdaptor {
         try {
             if (args.size() != Sig::size)
                 throw WrongNumber(Sig::size, args.size());
-            return Sig::apply([&](auto ...ts) {
+            return Sig::indexed([&](auto ...ts) {
                 Dispatch msg("mismatched test argument");
                 return value_invoke(function, Context(ct), cast_index(args, msg, ts)...);
             });

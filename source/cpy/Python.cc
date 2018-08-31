@@ -421,10 +421,10 @@ Object initialize(Document const &doc) {
     bool ok = attach_type(m, "Any", &AnyType)
         && attach_type(m, "Function", &FunctionType)
         && attach_type(m, "TypeIndex", &TypeIndexType)
-        && attach(m, "value_type", to_python(function(type_in_value)))
+        && attach(m, "value_type", to_python(make_function(type_in_value)))
         && attach(m, "objects", to_tuple(doc.values))
         && attach(m, "types",   to_dict(doc.types))
-        && attach(m, "set_type_names", to_python(function([](Zip<std::type_index, std::string_view> v) {
+        && attach(m, "set_type_names", to_python(make_function([](Zip<std::type_index, std::string_view> v) {
             for (auto const &p : v) type_names.insert_or_assign(p.first, p.second);
         })));
     return ok ? m : Object();

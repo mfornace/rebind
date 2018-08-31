@@ -34,7 +34,11 @@ using Binary = std::basic_string<unsigned char>;
 
 using BinaryView = std::basic_string_view<unsigned char>;
 
+#ifdef INTPTR_MAX
+using Integer = std::intptr_t;
+#else
 using Integer = std::ptrdiff_t;
+#endif
 
 using Real = double;
 
@@ -71,19 +75,25 @@ public:
 /******************************************************************************/
 
 using ValuePack = Pack<
-    /* 0 */ std::monostate,
-    /* 1 */ bool,
-    /* 2 */ Integer,
-    /* 3 */ Real,
-    /* 4 */ std::string_view,
-    /* 5 */ std::string,
-    /* 6 */ std::type_index,
-    /* 7 */ Binary,       // ?
-    /* 8 */ BinaryView,   // ?
-    /* 9 */ Function,
-    /* 0 */ Any,     // ?
-    /* 1 */ Sequence
+    /* 0 */ std::monostate,    // immutable is fine
+    /* 1 */ bool,              // could be mutable but easy if not, no move
+    /* 2 */ Integer,           // could be mutable but easy if not, no move
+    /* 3 */ Real,              // could be mutable but easy if not, no move
+    /* 9 */ Function,          // immutable is fine, move is nice but easy to exclude
+    /* 5 */ std::string,       // a bit of usecase since it allows moving strings
+    /* 4 */ std::string_view,  // mutable would be better
+    /* 6 */ std::type_index,   // immutable
+    /* 7 */ Binary,            // ... there is not much usecase because I don't know how to move the allocation
+    /* 8 */ BinaryView,        // mutable would be better
+    /* 0 */ Any,               // mutable would be better
+    /* 1 */ Sequence           // container is immutable, items could be mutated though
 >;
+
+// string
+// could conceivably want string, string_view, mutable_string_view
+// binary
+// mostly want binary_view, mutable_binary_view, but binary would be ok
+// could conceivably want any, any_view, any_mut_view
 
 using Variant = decltype(variant_type(ValuePack()));
 
@@ -109,55 +119,56 @@ struct ToValue;
 template <class T>
 struct InPlace {T value;};
 
-struct Value {
-    Variant var;
+using Value = Any;
+// struct Value {
+//     Variant var;
 
-    Value(Value &&v) noexcept : var(std::move(v.var)) {}
-    Value(Value const &v) : var(v.var) {}
-    Value(Value &v) : var(v.var) {}
-    ~Value() = default;
+//     Value(Value &&v) noexcept : var(std::move(v.var)) {}
+//     Value(Value const &v) : var(v.var) {}
+//     Value(Value &v) : var(v.var) {}
+//     ~Value() = default;
 
-    Value & operator=(Value const &v) {var = v.var; return *this;}
-    Value & operator=(Value &&v) noexcept {var = std::move(v.var); return *this;}
+//     Value & operator=(Value const &v) {var = v.var; return *this;}
+//     Value & operator=(Value &&v) noexcept {var = std::move(v.var); return *this;}
 
-    Value(std::monostate v={}) noexcept : var(v) {}
-    Value(bool v)              noexcept : var(v) {}
-    Value(Integer v)           noexcept : var(v) {}
-    Value(Real v)              noexcept : var(v) {}
-    Value(Function v)          noexcept : var(std::move(v)) {}
-    Value(Binary v)            noexcept : var(std::move(v)) {}
-    Value(std::string v)       noexcept : var(std::move(v)) {}
-    Value(std::string_view v)  noexcept : var(std::move(v)) {}
-    Value(std::type_index v)   noexcept : var(std::move(v)) {}
-    Value(Sequence v)          noexcept : var(std::move(v)) {}
+//     Value(std::monostate v={}) noexcept : var(v) {}
+//     Value(bool v)              noexcept : var(v) {}
+//     Value(Integer v)           noexcept : var(v) {}
+//     Value(Real v)              noexcept : var(v) {}
+//     Value(Function v)          noexcept : var(std::move(v)) {}
+//     Value(Binary v)            noexcept : var(std::move(v)) {}
+//     Value(std::string v)       noexcept : var(std::move(v)) {}
+//     Value(std::string_view v)  noexcept : var(std::move(v)) {}
+//     Value(std::type_index v)   noexcept : var(std::move(v)) {}
+//     Value(Sequence v)          noexcept : var(std::move(v)) {}
 
-    template <class T>
-    Value(std::in_place_t, T &&t) noexcept : var(std::in_place_type_t<Any>(), static_cast<T &&>(t)) {}
+//     template <class T>
+//     Value(std::in_place_t, T &&t) noexcept : var(std::in_place_type_t<Any>(), static_cast<T &&>(t)) {}
 
-    template <class T>
-    Value(InPlace<T> &&t) noexcept : var(std::in_place_type_t<Any>(), static_cast<T>(t.value)) {}
+//     template <class T>
+//     Value(InPlace<T> &&t) noexcept : var(std::in_place_type_t<Any>(), static_cast<T>(t.value)) {}
 
-    template <class T, std::enable_if_t<!(std::is_same_v<no_qualifier<T>, Value>), int> = 0>
-    Value(T &&t) : Value(ToValue<no_qualifier<T>>()(static_cast<T &&>(t))) {}
+//     template <class T, std::enable_if_t<!(std::is_same_v<no_qualifier<T>, Value>), int> = 0>
+//     Value(T &&t) : Value(ToValue<no_qualifier<T>>()(static_cast<T &&>(t))) {}
 
-    /******************************************************************************/
+//     /******************************************************************************/
 
-    Value & no_view();
-    bool as_bool() const {return std::get<bool>(var);}
-    Real as_real() const {return std::get<Real>(var);}
-    Integer as_integer() const {return std::get<Integer>(var);}
-    std::type_index as_type() const {return std::get<std::type_index>(var);}
-    // std::string_view as_view() const & {return std::get<std::string_view>(var);}
-    // Any as_any() const & {return std::get<Any>(var);}
-    // Any as_any() && {return std::get<Any>(std::move(var));}
-    // std::string as_string() const & {
-    //     if (auto s = std::get_if<std::string_view>(&var))
-    //         return std::string(*s);
-    //     return std::get<std::string>(var);
-    // }
-    // Binary as_binary() const & {return std::get<Binary>(var);}
-    // Binary as_binary() && {return std::get<Binary>(std::move(var));}
-};
+//     Value & no_view();
+//     bool as_bool() const {return std::get<bool>(var);}
+//     Real as_real() const {return std::get<Real>(var);}
+//     Integer as_integer() const {return std::get<Integer>(var);}
+//     std::type_index as_type() const {return std::get<std::type_index>(var);}
+//     // std::string_view as_view() const & {return std::get<std::string_view>(var);}
+//     // Any as_any() const & {return std::get<Any>(var);}
+//     // Any as_any() && {return std::get<Any>(std::move(var));}
+//     // std::string as_string() const & {
+//     //     if (auto s = std::get_if<std::string_view>(&var))
+//     //         return std::string(*s);
+//     //     return std::get<std::string>(var);
+//     // }
+//     // Binary as_binary() const & {return std::get<Binary>(var);}
+//     // Binary as_binary() && {return std::get<Binary>(std::move(var));}
+// };
 
 struct KeyPair {
     std::string_view key;
