@@ -1,9 +1,8 @@
 import sys, types, importlib, functools, inspect
 from .cpp import document
 
-Any = document['Any']
+Value = document['Value']
 TypeIndex = document['TypeIndex']
-value_type = document['value_type']
 set_type_names = document['set_type_names']
 
 class Function(document['Function']):
@@ -69,8 +68,8 @@ def set_global_type(name, methods):
         def __init__(self, *args, _new=new, **kwargs):
             self.move_from(new(*args, **kwargs))
         props['__init__'] = __init__
-    cls = type(name, (Any,), props)
-    print('new class!', scope, name)
+    cls = type(name, (Value,), props)
+    print('new class:', scope, name)
     setattr(mod, name, cls)
     return cls
 
@@ -86,6 +85,7 @@ def dispatch(fun, old):
         return functools.update_wrapper(bound, old)
 
 def set_global_object(k, v):
+    print('new', k, v)
     # put in the module level functions and objects
     mod, key = ('package.' + k).rsplit('.', maxsplit=1)
     mod = importlib.import_module(mod)
@@ -93,7 +93,9 @@ def set_global_object(k, v):
     if isinstance(v, types.FunctionType):
         v = dispatch(v, old)
     else:
+        print(k, v, old)
         assert old is None
+    print('new object:', mod.__name__, key, v)
     setattr(mod, key, v)
     return v
 

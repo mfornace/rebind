@@ -68,21 +68,21 @@ void render(Document &doc, Type<Goo> t) {
 // could make this return a document
 bool make_document() {
     auto &doc = document();
-    doc.recurse("fun", [](int i, double d) {
+    doc.function("fun", [](int i, double d) {
         return i + d;
     });
-    doc.recurse("submodule.fun", [](int i, double d) {
+    doc.function("submodule.fun", [](int i, double d) {
         return i + d;
     });
-    doc.recurse("test_pair", [](std::pair<int, double> p) {
+    doc.function("test_pair", [](std::pair<int, double> p) {
         p.first += 3;
         p.second += 0.5;
         return p;
     });
-    doc.recurse("test_tuple", [](std::tuple<int, float> p) {
+    doc.function("test_tuple", [](std::tuple<int, float> p) {
         return std::get<1>(p);
     });
-    doc.recurse("vec", [](double i, double d) {
+    doc.function("vec", [](double i, double d) {
         return std::vector<double>{i, i, d};
     });
     doc.render(Type<Goo>());

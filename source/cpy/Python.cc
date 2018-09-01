@@ -15,7 +15,6 @@ namespace cpy {
 
 std::unordered_map<std::type_index, std::string> type_names = {
     {typeid(void),             "void"},
-    {typeid(std::monostate),   "void"},
     {typeid(bool),             "bool"},
     {typeid(Integer),          "int"},
     {typeid(Real),             "float"},
@@ -25,7 +24,7 @@ std::unordered_map<std::type_index, std::string> type_names = {
     {typeid(Binary),           "Binary"},
     {typeid(BinaryView),       "BinaryView"},
     {typeid(Function),         "Function"},
-    {typeid(Any),              "Any"},
+    {typeid(Value),            "Value"},
     {typeid(Sequence),         "Sequence"},
 
     {typeid(std::uint32_t),    "uint32"},
@@ -107,7 +106,7 @@ std::string_view as_string_view(PyObject *o) {
 }
 
 Value from_python(Object const &o, bool view) {
-    if (+o == Py_None) return std::monostate();
+    if (+o == Py_None) return {};
 
     if (PyBool_Check(+o)) return (+o == Py_True) ? true : false;
 
@@ -121,7 +120,7 @@ Value from_python(Object const &o, bool view) {
         map_iterable(o, [&](Object o) {
             vals.emplace_back(from_python(o, view));
         });
-        return Sequence(vals);
+        return Sequence(std::move(vals));
     }
 
     if (PyBytes_Check(+o)) {
@@ -138,9 +137,9 @@ Value from_python(Object const &o, bool view) {
         else return std::string(v);
     }
 
-    if (PyObject_TypeCheck(+o, &AnyType)) {
-        if (view) return Any(AnyReference(cast_object<Any>(+o)));
-        else return cast_object<Any>(+o);
+    if (PyObject_TypeCheck(+o, &ValueType)) {
+        if (view) return Value(Reference<Value &>(cast_object<Value>(+o)));
+        else return cast_object<Value>(+o);
     }
 
     if (PyObject_TypeCheck(+o, &TypeIndexType)) return cast_object<std::type_index>(+o);
@@ -148,7 +147,7 @@ Value from_python(Object const &o, bool view) {
     if (PyObject_TypeCheck(+o, &FunctionType)) return cast_object<Function>(+o);
 
     if (PyComplex_Check(+o))
-        return {std::in_place_t(), std::complex<double>{PyComplex_RealAsDouble(+o), PyComplex_ImagAsDouble(+o)}};
+        return std::complex<double>{PyComplex_RealAsDouble(+o), PyComplex_ImagAsDouble(+o)};
 
     if (PyByteArray_Check(+o)) {
         char const *data = PyByteArray_AS_STRING(+o);
@@ -294,18 +293,18 @@ PyObject * copy_from(PyObject *self, PyObject *args) noexcept {
 }
 
 int has_value_bool(PyObject *self) noexcept {
-    auto t = cast_if<Any>(self);
+    auto t = cast_if<Value>(self);
     return t ? t->has_value() : PyObject_IsTrue(self);
 }
 
 PyObject * any_has_value(PyObject *self, PyObject *) noexcept {
-    return raw_object([=] {return to_python(cast_object<Any>(self).has_value());});
+    return raw_object([=] {return to_python(cast_object<Value>(self).has_value());});
 }
 
 PyObject * any_type_index(PyObject *self, PyObject *) noexcept {
     return raw_object([=] {
         Object o{PyObject_CallObject(type_object(TypeIndexType), nullptr), false};
-        cast_object<std::type_index>(+o) = cast_object<Any>(self).type();
+        cast_object<std::type_index>(+o) = cast_object<Value>(self).type();
         return o;
     });
 }
@@ -314,24 +313,24 @@ PyNumberMethods AnyNumberMethods = {
     .nb_bool = static_cast<inquiry>(has_value_bool),
 };
 
-PyMethodDef AnyTypeMethods[] = {
+PyMethodDef ValueTypeMethods[] = {
     {"type",      static_cast<PyCFunction>(any_type_index), METH_NOARGS, "index it"},
-    {"move_from", static_cast<PyCFunction>(move_from<Any>), METH_VARARGS, "move it"},
-    {"copy_from", static_cast<PyCFunction>(copy_from<Any>), METH_VARARGS, "copy it"},
+    {"move_from", static_cast<PyCFunction>(move_from<Value>), METH_VARARGS, "move it"},
+    {"copy_from", static_cast<PyCFunction>(copy_from<Value>), METH_VARARGS, "copy it"},
     {"has_value", static_cast<PyCFunction>(any_has_value), METH_VARARGS, "has value"},
     {nullptr, nullptr, 0, nullptr}
 };
 
-PyTypeObject AnyType = {
+PyTypeObject ValueType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "cpy.Any",
+    .tp_name = "cpy.Value",
     .tp_as_number = &AnyNumberMethods,
-    .tp_basicsize = sizeof(Holder<Any>),
-    .tp_dealloc = tp_delete<Any>,
+    .tp_basicsize = sizeof(Holder<Value>),
+    .tp_dealloc = tp_delete<Value>,
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
     .tp_doc = "C++ class object",
-    .tp_new = tp_new<Any>,
-    .tp_methods = AnyTypeMethods
+    .tp_new = tp_new<Value>,
+    .tp_methods = ValueTypeMethods
 };
 
 /******************************************************************************/
@@ -418,10 +417,9 @@ Object initialize(Document const &doc) {
     for (auto const &p : doc.types)
         type_names.emplace(p.first, p.second.name);
 
-    bool ok = attach_type(m, "Any", &AnyType)
+    bool ok = attach_type(m, "Value", &ValueType)
         && attach_type(m, "Function", &FunctionType)
         && attach_type(m, "TypeIndex", &TypeIndexType)
-        && attach(m, "value_type", to_python(make_function(type_in_value)))
         && attach(m, "objects", to_tuple(doc.values))
         && attach(m, "types",   to_dict(doc.types))
         && attach(m, "set_type_names", to_python(make_function([](Zip<std::type_index, std::string_view> v) {

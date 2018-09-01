@@ -24,7 +24,7 @@ struct Holder {
     T value; // I think stack is OK because this object is only casted to anyway.
 };
 
-extern PyTypeObject FunctionType, AnyType, TypeIndexType;
+extern PyTypeObject FunctionType, ValueType, TypeIndexType;
 
 struct Object {
     PyObject *ptr = nullptr;
@@ -67,15 +67,15 @@ struct Buffer {
 inline PyObject * type_object(PyTypeObject &o) noexcept {return reinterpret_cast<PyObject *>(&o);}
 
 inline PyTypeObject & type_ref(Type<Function>) {return FunctionType;}
-inline PyTypeObject & type_ref(Type<Any>) {return AnyType;}
+inline PyTypeObject & type_ref(Type<Value>) {return ValueType;}
 inline PyTypeObject & type_ref(Type<std::type_index>) {return TypeIndexType;}
 
 /******************************************************************************/
 
 template <class T>
 T * cast_if(PyObject *o) {
-    if constexpr(std::is_same_v<T, Any>)
-        if (!PyObject_TypeCheck(o, &AnyType)) return nullptr;
+    if constexpr(std::is_same_v<T, Value>)
+        if (!PyObject_TypeCheck(o, &ValueType)) return nullptr;
     if constexpr(std::is_same_v<T, Function>)
         if (!PyObject_TypeCheck(o, &FunctionType)) return nullptr;
     if constexpr(std::is_same_v<T, std::type_index>)
@@ -85,8 +85,8 @@ T * cast_if(PyObject *o) {
 
 template <class T>
 T & cast_object(PyObject *o) {
-    if constexpr(std::is_same_v<T, Any>) {
-        if (!PyObject_TypeCheck(o, &AnyType)) throw std::invalid_argument("Expected instance of cpy.Any");
+    if constexpr(std::is_same_v<T, Value>) {
+        if (!PyObject_TypeCheck(o, &ValueType)) throw std::invalid_argument("Expected instance of cpy.Value");
     }
     if constexpr(std::is_same_v<T, Function>) {
         if (!PyObject_TypeCheck(o, &FunctionType)) throw std::invalid_argument("Expected instance of cpy.Function");
@@ -99,16 +99,7 @@ T & cast_object(PyObject *o) {
 
 /******************************************************************************/
 
-inline std::type_index type_in_value(Value v) {
-    return std::visit([](auto const &x) -> std::type_index {
-        if constexpr(std::is_same_v<decltype(x), Any const &>) return x.type();
-        else return typeid(std::decay_t<decltype(x)>);
-    }, v.var);
-}
-
 inline Object to_python(Object t) noexcept {return t;}
-
-inline Object to_python(std::monostate const &) noexcept {return {Py_None, true};}
 
 inline Object to_python(bool b) noexcept {return {b ? Py_True : Py_False, true};}
 
@@ -164,11 +155,27 @@ inline Object to_python(std::type_index f) noexcept {
     return o;
 }
 
-template <class T, std::enable_if_t<std::is_same_v<Any, no_qualifier<T>>, int> = 0>
-inline Object to_python(T &&a) noexcept {
-    if (auto t = std::any_cast<Object>(&a)) return *t;
-    Object o{PyObject_CallObject(type_object(AnyType), nullptr), false};
-    cast_object<Any>(+o) = static_cast<T &&>(a);
+
+template <class ...Ts>
+Object to_python(std::tuple<Ts...> const &t);
+
+template <class T, class U>
+Object to_python(std::pair<T, U> const &t);
+
+template <class T, std::enable_if_t<std::is_same_v<T, Value>, int> = 0>
+Object to_python(T const &a) {
+    if (!a.has_value()) return {Py_None, true};
+    std::type_index const t = a.type();
+    if (t == typeid(Object))           return cast<Object>(a);
+    if (t == typeid(bool))             return to_python(cast<bool>(a));
+    if (t == typeid(Integer))          return to_python(cast<Integer>(a));
+    if (t == typeid(Real))             return to_python(cast<Real>(a));
+    if (t == typeid(std::string_view)) return to_python(cast<std::string_view>(a));
+    if (t == typeid(std::string))      return to_python(cast<std::string>(a));
+    if (t == typeid(Function))         return to_python(cast<Function>(a));
+    if (t == typeid(Sequence))         return to_python(cast<Sequence>(a));
+    Object o{PyObject_CallObject(type_object(ValueType), nullptr), false};
+    cast_object<Value>(+o) = a;
     return o;
 }
 
@@ -236,8 +243,8 @@ Object to_dict(V const &v) noexcept {
     return out;
 }
 
-template <class T, std::enable_if_t<std::is_same_v<T, Value> || std::is_same_v<T, Value>, int> = 0>
-Object to_python(T const &s) noexcept;
+// template <class T, std::enable_if_t<std::is_same_v<T, Value> || std::is_same_v<T, Value>, int> = 0>
+// Object to_python(T const &s) noexcept;
 
 Object to_python(Sequence const &s) {
     auto const n = s.contents.size();
@@ -256,16 +263,6 @@ Object to_python(Sequence const &s) {
 
 template <class T>
 Object to_python(Vector<T> const &v) {return to_tuple(v);}
-
-template <class T, std::enable_if_t<std::is_same_v<T, Value> || std::is_same_v<T, Value>, int> >
-Object to_python(T const &s) noexcept {
-    return std::visit([](auto const &x) {return to_python(x);}, s.var);
-}
-
-template <class T, std::enable_if_t<std::is_same_v<T, Value> || std::is_same_v<T, Value>, int> = 0>
-Object to_python(T &&s) noexcept {
-    return std::visit([](auto &x) {return to_python(std::move(x));}, s.var);
-}
 
 inline Object to_python(KeyPair const &p) noexcept {
     Object key = to_python(p.key);

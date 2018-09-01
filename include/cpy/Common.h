@@ -1,7 +1,6 @@
 #pragma once
 #include "Signature.h"
 #include <vector>
-#include <variant>
 
 namespace cpy {
 
@@ -16,9 +15,6 @@ auto binary_search(V const &v, typename V::value_type::first_type t) {
         [](auto const &x, auto const &t) {return x.first < t;});
     return (it != v.end() && it->first == t) ? it : v.end();
 }
-
-template <class ...Ts>
-std::variant<Ts...> variant_type(Pack<Ts...>); // undefined
 
 struct Identity {
     template <class T>

@@ -9,7 +9,6 @@
 #include "Common.h"
 
 #include <iostream>
-#include <variant>
 #include <string>
 #include <vector>
 #include <type_traits>
@@ -28,8 +27,6 @@ namespace cpy {
 
 /******************************************************************************/
 
-struct Value;
-
 using Binary = std::basic_string<unsigned char>;
 
 using BinaryView = std::basic_string_view<unsigned char>;
@@ -41,6 +38,55 @@ using Integer = std::ptrdiff_t;
 #endif
 
 using Real = double;
+
+
+template <class T, class=void>
+struct ToValue;
+
+
+struct Value {
+    std::any any;
+    constexpr Value() = default;
+
+    template <class T>
+    Value(std::in_place_t, T &&t) : any(static_cast<T &&>(t)) {
+        if (any.type() == typeid(Value)) throw std::runtime_error("ugh1");
+    }
+
+    Value(std::in_place_t, Value &&t) : Value(std::move(t)) {
+        if (any.type() == typeid(Value)) throw std::runtime_error("ugh5");
+
+    }
+
+    Value(std::in_place_t, Value const &t) : Value(t) {
+        if (any.type() == typeid(Value)) throw std::runtime_error("ugh4");
+
+    }
+
+
+    template <class T, std::enable_if_t<!std::is_same_v<no_qualifier<T>, Value>, int> = 0>
+    Value(T &&t) : Value(std::in_place_t(), ToValue<no_qualifier<T>>()(static_cast<T &&>(t))) {}
+
+    Value(std::any &&a) : any(std::move(a)) {
+        if (any.type() == typeid(Value)) throw std::runtime_error("ugh2");
+    }
+
+    Value(std::any const &a) : any(a) {
+        if (any.type() == typeid(Value)) throw std::runtime_error("ugh3");
+    }
+
+    std::type_index type() const {return any.type();}
+    bool has_value() const {return any.has_value();}
+};
+
+template <class T>
+T cast(Value const &v) {return std::any_cast<T>(v.any);}
+
+template <class T>
+T const * cast(Value const *v) {return std::any_cast<T>(&v->any);}
+
+template <class T>
+T * cast(Value *v) {return std::any_cast<T>(&v->any);}
 
 struct Sequence {
     Vector<Value> contents;
@@ -63,112 +109,23 @@ using ArgPack = Vector<Value>;
 
 using Function = std::function<Value(Caller &, ArgPack)>;
 
-using Any = std::any;
-
-class AnyReference {
-    Any *self;
+template <class T>
+class Reference {
+    static_assert(std::is_reference_v<T>, "Only reference types can be wrapped");
+    std::remove_reference_t<T> *self;
 public:
-    AnyReference(Any &s) noexcept : self(&s) {}
-    Any *get() const noexcept {return self;}
+    Reference(T t) noexcept : self(std::addressof(t)) {}
+    T &&get() const noexcept {return static_cast<T &&>(*self);}
 };
 
 /******************************************************************************/
 
-using ValuePack = Pack<
-    /* 0 */ std::monostate,    // immutable is fine
-    /* 1 */ bool,              // could be mutable but easy if not, no move
-    /* 2 */ Integer,           // could be mutable but easy if not, no move
-    /* 3 */ Real,              // could be mutable but easy if not, no move
-    /* 9 */ Function,          // immutable is fine, move is nice but easy to exclude
-    /* 5 */ std::string,       // a bit of usecase since it allows moving strings
-    /* 4 */ std::string_view,  // mutable would be better
-    /* 6 */ std::type_index,   // immutable
-    /* 7 */ Binary,            // ... there is not much usecase because I don't know how to move the allocation
-    /* 8 */ BinaryView,        // mutable would be better
-    /* 0 */ Any,               // mutable would be better
-    /* 1 */ Sequence           // container is immutable, items could be mutated though
->;
-
-// string
-// could conceivably want string, string_view, mutable_string_view
-// binary
-// mostly want binary_view, mutable_binary_view, but binary would be ok
-// could conceivably want any, any_view, any_mut_view
-
-using Variant = decltype(variant_type(ValuePack()));
-
-static_assert(1  == sizeof(std::monostate));    // 1
-static_assert(1  == sizeof(bool));              // 1
-static_assert(8  == sizeof(Integer));           // ptrdiff_t
-static_assert(8  == sizeof(Real));              // double
-static_assert(16 == sizeof(std::string_view)); // start, stop
-static_assert(24 == sizeof(std::string));      // start, stop, buffer
-static_assert(8  == sizeof(std::type_index));   // size_t
-static_assert(24 == sizeof(Binary));           // start, stop buffer?
-static_assert(48 == sizeof(Function));         // 24 buffer + 8 pointer + 8 vtable?
-static_assert(32 == sizeof(Any));              // 8 + 24 buffer I think
-static_assert(24 == sizeof(Vector<Value>));    //
-static_assert(64 == sizeof(Variant));
-static_assert(48 == sizeof(Sequence));
+static_assert(32 == sizeof(Value));              // 8 + 24 buffer I think
 
 /******************************************************************************/
 
-template <class T, class=void>
-struct ToValue;
-
-template <class T>
-struct InPlace {T value;};
-
-using Value = Any;
-// struct Value {
-//     Variant var;
-
-//     Value(Value &&v) noexcept : var(std::move(v.var)) {}
-//     Value(Value const &v) : var(v.var) {}
-//     Value(Value &v) : var(v.var) {}
-//     ~Value() = default;
-
-//     Value & operator=(Value const &v) {var = v.var; return *this;}
-//     Value & operator=(Value &&v) noexcept {var = std::move(v.var); return *this;}
-
-//     Value(std::monostate v={}) noexcept : var(v) {}
-//     Value(bool v)              noexcept : var(v) {}
-//     Value(Integer v)           noexcept : var(v) {}
-//     Value(Real v)              noexcept : var(v) {}
-//     Value(Function v)          noexcept : var(std::move(v)) {}
-//     Value(Binary v)            noexcept : var(std::move(v)) {}
-//     Value(std::string v)       noexcept : var(std::move(v)) {}
-//     Value(std::string_view v)  noexcept : var(std::move(v)) {}
-//     Value(std::type_index v)   noexcept : var(std::move(v)) {}
-//     Value(Sequence v)          noexcept : var(std::move(v)) {}
-
-//     template <class T>
-//     Value(std::in_place_t, T &&t) noexcept : var(std::in_place_type_t<Any>(), static_cast<T &&>(t)) {}
-
-//     template <class T>
-//     Value(InPlace<T> &&t) noexcept : var(std::in_place_type_t<Any>(), static_cast<T>(t.value)) {}
-
-//     template <class T, std::enable_if_t<!(std::is_same_v<no_qualifier<T>, Value>), int> = 0>
-//     Value(T &&t) : Value(ToValue<no_qualifier<T>>()(static_cast<T &&>(t))) {}
-
-//     /******************************************************************************/
-
-//     Value & no_view();
-//     bool as_bool() const {return std::get<bool>(var);}
-//     Real as_real() const {return std::get<Real>(var);}
-//     Integer as_integer() const {return std::get<Integer>(var);}
-//     std::type_index as_type() const {return std::get<std::type_index>(var);}
-//     // std::string_view as_view() const & {return std::get<std::string_view>(var);}
-//     // Any as_any() const & {return std::get<Any>(var);}
-//     // Any as_any() && {return std::get<Any>(std::move(var));}
-//     // std::string as_string() const & {
-//     //     if (auto s = std::get_if<std::string_view>(&var))
-//     //         return std::string(*s);
-//     //     return std::get<std::string>(var);
-//     // }
-//     // Binary as_binary() const & {return std::get<Binary>(var);}
-//     // Binary as_binary() && {return std::get<Binary>(std::move(var));}
-// };
+// template <class T>
+// struct InPlace {T value;};
 
 struct KeyPair {
     std::string_view key;
@@ -177,17 +134,20 @@ struct KeyPair {
 
 /******************************************************************************/
 
-/// The default implementation is to serialize to Any
+/// The default implementation is to serialize to Value
 template <class T, class>
 struct ToValue {
-    InPlace<T &&> operator()(T &&t) const {return {static_cast<T &&>(t)};}
-    InPlace<T const &> operator()(T const &t) const {return {t};}
+    static_assert(!std::is_same_v<T, Value>);
+    std::any operator()(T &&t) const {return {static_cast<T &&>(t)};}
+    std::any operator()(T const &t) const {return {t};}
 };
 
-void to_value(std::nullptr_t);
+
+
+inline std::any to_value(std::nullptr_t) {return {};}
 
 template <class T>
-struct ToValue<T, std::void_t<decltype(to_value(Type<T>(), std::declval<T const &>()))>> {
+struct ToValue<T, std::void_t<decltype(to_value(Type<T>(), std::declval<T>()))>> {
     decltype(auto) operator()(T &&t) const {return to_value(Type<T>(), static_cast<T &&>(t));}
     decltype(auto) operator()(T const &t) const {return to_value(Type<T>(), t);}
 };
@@ -214,50 +174,43 @@ struct ToValue<std::vector<T, Alloc>> {
 
 /******************************************************************************/
 
-/// The default implementation is to accept convertible arguments or Any of the exact typeid match
+/// The default implementation is to accept convertible arguments or Value of the exact typeid match
 template <class T, class=void>
 struct FromValue {
     static_assert(!std::is_reference_v<T>);
 
-    Dispatch &message;
     // Return casted type T from type U
-    template <class U>
-    T && operator()(U &&u) const {
-        static_assert(std::is_rvalue_reference_v<U &&>);
-        if constexpr(std::is_constructible_v<T &&, U &&>) return static_cast<T &&>(static_cast<U &&>(u));
-        else if constexpr(std::is_same_v<T, std::monostate> && std::is_default_constructible_v<T>) return T();
-        throw message.error(typeid(U), typeid(T));
-    }
-
-    T && operator()(Any &&u) const {
-        auto ptr = &u;
-        if (auto p = std::any_cast<AnyReference>(&u)) ptr = p->get();
-        if (auto p = std::any_cast<no_qualifier<T>>(ptr)) return static_cast<T &&>(*p);
+    T && operator()(Value &&u, Dispatch &message) const {
+        // if (auto p = cast<Reference<T>>(&u)) ptr = p->get();
+        if (auto p = cast<no_qualifier<T>>(&u)) return static_cast<T &&>(*p);
         throw message.error(u.has_value() ? "mismatched class" : "object was already moved", u.type(), typeid(T));
     }
 };
 
 template <class T>
+struct FromValue<T, std::enable_if_t<std::is_arithmetic_v<T>>> {
+    T operator()(Value const &u, Dispatch &message) const {
+        auto t = u.type();
+        if (t == typeid(bool)) return static_cast<T>(cast<bool>(u));
+        if (t == typeid(Integer)) return static_cast<T>(cast<Integer>(u));
+        if (t == typeid(Real)) return static_cast<T>(cast<Real>(u));
+        throw message.error("not convertible to arithmetic value", u.type(), typeid(T));
+    }
+};
+
+template <class T>
 struct FromValue<T, std::void_t<decltype(from_value(+Type<T>(), Sequence(), std::declval<Dispatch &>()))>> {
-    Dispatch &message;
     // The common return type between the following 2 visitor member functions
     using out_type = std::remove_const_t<decltype(false ? std::declval<T &&>() :
-        from_value(Type<T>(), std::declval<Any &&>(), std::declval<Dispatch &>()))>;
+        from_value(Type<T>(), std::declval<Value &&>(), std::declval<Dispatch &>()))>;
 
-    out_type operator()(Any &&u) const {
+    out_type operator()(Value &&u, Dispatch &message) const {
         auto ptr = &u;
-        if (auto p = std::any_cast<AnyReference>(&u)) ptr = p->get();
-        auto p = std::any_cast<no_qualifier<T>>(ptr);
+        // if (auto p = cast<Reference>(&u)) ptr = p->get();
+        auto p = cast<no_qualifier<T>>(ptr);
         message.source = u.type();
         message.dest = typeid(T);
         return p ? static_cast<T>(*p) : from_value(+Type<T>(), std::move(*ptr), message);
-    }
-
-    template <class U>
-    out_type operator()(U &&u) const {
-        message.source = typeid(U);
-        message.dest = typeid(T);
-        return from_value(+Type<T>(), static_cast<U &&>(u), message);
     }
 };
 
@@ -265,26 +218,19 @@ struct FromValue<T, std::void_t<decltype(from_value(+Type<T>(), Sequence(), std:
 
 template <class V>
 struct VectorFromValue {
-    using T = typename V::value_type;
-    Dispatch &message;
+    using T = no_qualifier<typename V::value_type>;
 
-    V operator()(Sequence &&u) const {
+    V operator()(Value &&u, Dispatch &message) const {
+        auto &&cts = cast<Sequence>(std::move(u)).contents;
         V out;
-        out.reserve(u.contents.size());
+        out.reserve(cts.size());
         message.indices.emplace_back(0);
-        for (auto &x : u.contents) {
-            std::visit([&](auto &x) {
-                out.emplace_back(FromValue<T>{message}(std::move(x)));
-            }, x.var);
+        for (auto &x : cts) {
+            out.emplace_back(FromValue<T>()(std::move(x), message));
             ++message.indices.back();
         }
         message.indices.pop_back();
         return out;
-    }
-
-    template <class U>
-    V operator()(U const &) const {
-        throw message.error("expected sequence", typeid(U), typeid(V));
     }
 };
 

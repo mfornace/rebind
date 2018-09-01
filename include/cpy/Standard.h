@@ -4,6 +4,7 @@
 #include <utility>
 #include <array>
 #include <optional>
+#include <variant>
 
 namespace boost {
     namespace container {
@@ -44,51 +45,47 @@ struct Renderer<boost::container::small_vector<T, N, A>, std::enable_if_t<!Opaqu
 template <class T>
 struct ToValue<std::optional<T>> {
     Value operator()(std::optional<T> t) const {
-        if (!t) return std::monostate();
+        if (!t) return {};
         else return *t;
     }
 };
 
 template <class T>
 struct FromValue<std::optional<T>> {
-    Dispatch &message;
-    template <class U>
-    std::optional<T> operator()(U &&u) const {
-        if (std::holds_alternative<std::monostate>(u)) return {};
-        return FromValue<T>(message)(static_cast<U &&>(u));
+    std::optional<T> operator()(Value &&u, Dispatch &message) const {
+        if (!u.has_value()) return {};
+        return FromValue<T>(message)(std::move(u));
     }
 };
 
 template <class ...Ts>
 struct ToValue<std::variant<Ts...>> {
     Value operator()(std::variant<Ts...> t) const {
-        return std::visit([](auto &t) -> Value {return std::move(t);}, t);
+        return std::visit([](auto &t) -> Value {return ToValue<no_qualifier<decltype(t)>>(std::move(t));}, t);
     }
 };
 
 
 template <class T, class ...Ts>
 struct FromValue<std::variant<T, Ts...>> {
-    Dispatch &message;
-
     template <class V1, class U>
-    std::variant<T, Ts...> scan(Pack<V1>, U &u, Dispatch &msg) const {
-        try {return FromValue<V1>{msg}(std::move(u));}
+    std::variant<T, Ts...> scan(Pack<V1>, U &u, Dispatch &tmp, Dispatch &msg) const {
+        try {return FromValue<V1>{tmp}(std::move(u));}
         catch (DispatchError const &err) {}
-        throw message.error("no conversions succeeded", typeid(std::variant<T, Ts...>), typeid(U));
+        throw msg.error("no conversions succeeded", typeid(std::variant<T, Ts...>), typeid(U));
     }
 
     template <class V1, class V2, class U, class ...Vs>
-    std::variant<T, Ts...> scan(Pack<V1, V2, Vs...>, U &u, Dispatch &msg) const {
-        try {return FromValue<V1>{msg}(std::move(u));}
+    std::variant<T, Ts...> scan(Pack<V1, V2, Vs...>, U &u, Dispatch &tmp, Dispatch &msg) const {
+        try {return FromValue<V1>{tmp}(std::move(u));}
         catch (DispatchError const &err) {}
-        return scan(Pack<V2, Vs...>(), u, msg);
+        return scan(Pack<V2, Vs...>(), u, tmp, msg);
     }
 
     template <class U>
-    std::variant<T, Ts...> operator()(U &&u) const {
-        Dispatch msg = message;
-        return scan(Pack<T, Ts...>(), u, msg);
+    std::variant<T, Ts...> operator()(U &&u, Dispatch &msg) const {
+        Dispatch tmp = msg;
+        return scan(Pack<T, Ts...>(), u, tmp, msg);
     }
 };
 
@@ -123,39 +120,39 @@ struct ToValue<std::tuple<Ts...>> {
 
 template <class V>
 struct CompiledSequenceFromValue {
-    Dispatch &message;
-
-    template <class U>
-    V operator()(U &&u) const {
-        throw message.error("expected sequence", typeid(U), typeid(V));
-    }
-
     template <std::size_t ...Is>
-    V get(Sequence &u, std::index_sequence<Is...>) const {
+    V extract2(Sequence &u, Dispatch &message, std::index_sequence<Is...>) const {
         message.indices.emplace_back(0);
         return {(message.indices.back() = Is,
-            std::visit(FromValue<std::tuple_element_t<Is, V>>{message}, std::move(u.contents[Is].var))
+            FromValue<std::tuple_element_t<Is, V>>()(std::move(u.contents[Is]), message)
             )...};
     }
 
-    V operator()(Sequence &&u) const {
+    V extract(Sequence &&u, Dispatch &message) const {
         if (u.contents.size() != std::tuple_size_v<V>) {
             throw message.error("wrong sequence length", typeid(Sequence), typeid(V), std::tuple_size_v<V>, u.contents.size());
         }
-        V &&v = get(u, std::make_index_sequence<std::tuple_size_v<V>>());
+        V &&v = extract2(u, message, std::make_index_sequence<std::tuple_size_v<V>>());
         message.indices.pop_back();
         return v;
     }
 
-    V operator()(Any &&u) const {
+    template <class U>
+    V operator()(U &&u, Dispatch &message) const {
+        static_assert(U::aaa, "");
+        throw message.error("expected sequence", typeid(U), typeid(V));
+    }
+
+    V operator()(Value &&u, Dispatch &message) const {
         auto ptr = &u;
-        if (auto p = std::any_cast<AnyReference>(&u)) ptr = p->get();
-        if (auto p = std::any_cast<no_qualifier<V>>(ptr)) return static_cast<V>(*p);
+        // if (auto p = std::any_cast<Reference>(&u)) ptr = p->get();
+        if (auto p = cast<no_qualifier<V>>(ptr)) return *p;
+        if (auto p = cast<Sequence>(ptr)) return extract(std::move(*p), message);
         throw message.error(u.has_value() ? "mismatched class" : "object was already moved", u.type(), typeid(V));
     }
 };
 
-/// The default implementation is to accept convertible arguments or Any of the exact typeid match
+/// The default implementation is to accept convertible arguments or Value of the exact typeid match
 template <class T1, class T2>
 struct FromValue<std::pair<T1, T2>> : CompiledSequenceFromValue<std::pair<T1, T2>> {};
 

@@ -14,7 +14,7 @@ template <class F, class ...Ts>
 Value value_invoke(F const &f, Ts &&... ts) {
     if constexpr(std::is_same_v<void, std::invoke_result_t<F, Ts...>>) {
         std::invoke(f, static_cast<Ts &&>(ts)...);
-        return std::monostate();
+        return {};
     } else {
         return std::invoke(f, static_cast<Ts &&>(ts)...);
     }
@@ -32,7 +32,7 @@ Value context_invoke(F const &f, Caller &c, Ts &&...ts) {
 template <class T, std::enable_if_t<!(std::is_convertible_v<Value &, T>), int> = 0>
 decltype(auto) cast_index(ArgPack &v, Dispatch &msg, IndexedType<T> i) {
     msg.index = i.index;
-    return std::visit(FromValue<no_qualifier<T>>{msg}, std::move(v[i.index].var));
+    return FromValue<no_qualifier<T>>()(std::move(v[i.index]), msg);
 }
 
 template <class T, std::enable_if_t<(std::is_convertible_v<Value &, T>), int> = 0>
