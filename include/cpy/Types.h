@@ -29,14 +29,13 @@ struct ToValue<T, std::enable_if_t<(std::is_floating_point_v<T>)>> {
     Real operator()(T t) const {return static_cast<Real>(t);}
 };
 
-
 template <class T>
 struct FromValue<T, std::enable_if_t<std::is_arithmetic_v<T>>> {
     T operator()(Value const &u, Dispatch &message) const {
         auto t = u.type();
-        if (t == typeid(bool)) return static_cast<T>(cast<bool>(u));
-        if (t == typeid(Integer)) return static_cast<T>(cast<Integer>(u));
-        if (t == typeid(Real)) return static_cast<T>(cast<Real>(u));
+        if (t == typeid(bool)) return static_cast<T>(std::any_cast<bool>(u.any));
+        if (t == typeid(Integer)) return static_cast<T>(std::any_cast<Integer>(u.any));
+        if (t == typeid(Real)) return static_cast<T>(std::any_cast<Real>(u.any));
         throw message.error("not convertible to arithmetic value", u.type(), typeid(T));
     }
 };
@@ -80,13 +79,10 @@ struct FromValue<T, std::void_t<decltype(from_value(+Type<T>(), Sequence(), std:
     using out_type = std::remove_const_t<decltype(false ? std::declval<T &&>() :
         from_value(Type<T>(), std::declval<Value &&>(), std::declval<Dispatch &>()))>;
 
-    out_type operator()(Value &&u, Dispatch &message) const {
-        auto ptr = &u;
-        if (auto p = cast<Reference<Value &>>(&u)) ptr = &p->get();
-        auto p = cast<no_qualifier<T>>(ptr);
+    out_type operator()(Value u, Dispatch &message) const {
         message.source = u.type();
         message.dest = typeid(T);
-        return p ? static_cast<T>(*p) : from_value(+Type<T>(), std::move(*ptr), message);
+        return from_value(+Type<T>(), std::move(u), message);
     }
 };
 
@@ -98,8 +94,8 @@ template <class V>
 struct VectorFromValue {
     using T = no_qualifier<typename V::value_type>;
 
-    V operator()(Value &&u, Dispatch &message) const {
-        auto &&cts = cast<Sequence>(std::move(u)).contents;
+    V operator()(Value u, Dispatch &message) const {
+        auto &&cts = std::move(std::any_cast<Sequence &>(u.any).contents);
         V out;
         out.reserve(cts.size());
         message.indices.emplace_back(0);

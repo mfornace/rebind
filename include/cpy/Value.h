@@ -49,20 +49,6 @@ struct Value {
 
 /******************************************************************************/
 
-template <class T>
-T cast(Value const &v) {return std::any_cast<T>(v.any);}
-
-template <class T>
-T cast(Value &v) {return std::any_cast<T>(v.any);}
-
-template <class T>
-T const * cast(Value const *v) {return std::any_cast<no_qualifier<T>>(&v->any);}
-
-template <class T>
-T * cast(Value *v) {return std::any_cast<no_qualifier<T>>(&v->any);}
-
-/******************************************************************************/
-
 using ArgPack = Vector<Value>;
 
 /******************************************************************************/
@@ -105,62 +91,110 @@ struct ToValue<char const *> {
 
 /******************************************************************************/
 
-/// The default implementation is to accept convertible arguments or Value of the exact typeid match
 template <class T, class=void>
 struct FromValue {
-    // static_assert(!std::is_reference_v<T>);
-
-    // Return casted type T from type U.
-    no_qualifier<T> operator()(Value &&u, Dispatch &message) const {
-        if (auto p = cast<Reference<Value const &>>(&u)) return cast<no_qualifier<T>>(p->get());
-        if (auto p = cast<Reference<Value &>>(&u)) return cast<no_qualifier<T>>(p->get());
-        if (auto p = cast<no_qualifier<T>>(&u)) return static_cast<T &&>(*p);
-        throw message.error(u.has_value() ? "mismatched class" : "object was already moved", u.type(), typeid(T));
+    T operator()(Value const &v, Dispatch &msg) {
+        throw msg.error("mismatched class type", v.type(), typeid(T));
     }
 };
 
 template <class T>
 struct FromValue<T &> {
-    T & operator()(Value &&u, Dispatch &message) const {
-        if (!u.has_value())
-            throw message.error("object was already moved", u.type(), typeid(T));
-        if (auto p = cast<Reference<Value &>>(&u)) {
-            if (auto t = cast<T>(&p->get())) return *t;
-            throw message.error("mismatched class", p->get().type(), typeid(T));
-        }
-        throw message.error("cannot form lvalue reference", u.type(), typeid(T));
+    T & operator()(Value const &v, Dispatch &msg) {
+        throw msg.error("cannot form lvalue reference", v.type(), typeid(T));
     }
 };
 
-
 template <class T>
 struct FromValue<T const &> {
-    T const & operator()(Value &&u, Dispatch &message) const {
-        if (!u.has_value())
-            throw message.error("object was already moved", u.type(), typeid(T));
-        if (auto p = cast<Reference<Value &>>(&u)) {
-            if (auto t = cast<T>(&p->get())) return *t;
-            throw message.error("mismatched class", u.type(), typeid(T));
-        }
-        if (auto p = cast<Reference<Value const &>>(&u)) {
-            if (auto t = cast<T>(&p->get())) return *t;
-            throw message.error("mismatched class", u.type(), typeid(T));
-        }
-        if (auto p = cast<no_qualifier<T>>(&u)) return *p;
-        u.any = FromValue<T>()(std::move(u), message);
-        return cast<T const &>(u);
+    T const & operator()(Value const &v, Dispatch &msg) {
+        throw msg.error("cannot form const lvalue reference", v.type(), typeid(T));
     }
 };
 
 template <class T>
 struct FromValue<T &&> {
-    T && operator()(Value &&u, Dispatch &message) const {
-        if (!u.has_value())
-            throw message.error("object was already moved", u.type(), typeid(T));
-        u.any = FromValue<no_qualifier<T>>()(std::move(u), message);
-        return std::move(cast<T &>(u));
+    T && operator()(Value const &v, Dispatch &msg) {
+        throw msg.error("cannot form rvalue reference", v.type(), typeid(T));
     }
 };
+
+/******************************************************************************/
+
+/// The default implementation is to accept convertible arguments or Value of the exact typeid match
+/// castvalue always needs an output Value &, and an input Value
+template <class T>
+struct CastValue {
+    T operator()(Value &out, Value const &in, Dispatch &msg) const {
+        if (auto t = std::any_cast<T>(&in.any))
+            return *t;
+        if (auto p = std::any_cast<Reference<Value const &>>(&in.any))
+            return (*this)(out, *p, msg);
+        if (auto p = std::any_cast<Reference<Value &>>(&in.any))
+            return (*this)(out, *p, msg);
+        return FromValue<T>()(in, msg);
+    }
+    T operator()(Value &out, Value &&in, Dispatch &msg) const {
+        if (auto t = std::any_cast<T>(&in.any))
+            return std::move(*t);
+        if (auto p = std::any_cast<Reference<Value const &>>(&in.any))
+            return (*this)(out, *p, msg);
+        if (auto p = std::any_cast<Reference<Value &>>(&in.any))
+            return (*this)(out, *p, msg);
+        return FromValue<T>()(std::move(in), msg);
+    }
+};
+
+template <class T>
+struct CastValue<T &> {
+    T & operator()(Value &out, Value &&in, Dispatch &msg) const {
+        if (!in.has_value())
+            throw msg.error("object was already moved", in.type(), typeid(T));
+        if (auto p = std::any_cast<Reference<Value &>>(&in.any)) {
+            if (auto t = std::any_cast<T>(&p->get().any)) return *t;
+            return FromValue<T &>()(p->get(), msg);
+        }
+        return FromValue<T &>()(std::move(in), msg);
+    }
+};
+
+template <class T>
+struct CastValue<T const &> {
+    T const & operator()(Value &out, Value const &in, Dispatch &msg) const {
+        if (auto p = std::any_cast<no_qualifier<T>>(&in.any))
+            return *p;
+        if (auto p = std::any_cast<Reference<Value &>>(&in.any)) {
+            if (auto t = std::any_cast<T>(&p->get().any)) return *t;
+            return (*this)(out, p->get(), msg);
+        }
+        if (auto p = std::any_cast<Reference<Value const &>>(&in.any)) {
+            if (auto t = std::any_cast<T>(&p->get().any)) return *t;
+            return (*this)(out, p->get(), msg);
+        }
+        return out.any.emplace<T>(CastValue<T>()(out, std::move(in), msg));
+    }
+};
+
+template <class T>
+struct CastValue<T &&> {
+    T && operator()(Value &out, Value &&in, Dispatch &msg) const {
+        if (!in.has_value())
+            throw msg.error("object was already moved", in.type(), typeid(T));
+        return std::move(out.any.emplace<T>(CastValue<no_qualifier<T>>()(out, std::move(in), msg)));
+    }
+};
+
+template <class T>
+T value_cast(Value &&v, Dispatch &msg) {
+    return CastValue<T>()(v, std::move(v), msg);
+}
+
+
+template <class T>
+T value_cast(Value &&v) {
+    Dispatch msg;
+    return CastValue<T>()(v, std::move(v), msg);
+}
 
 /******************************************************************************/
 

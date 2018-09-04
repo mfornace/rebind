@@ -34,7 +34,7 @@ Value context_invoke(F const &f, C &&c, Ts &&...ts) {
 template <class T, std::enable_if_t<!(std::is_convertible_v<Value &, T>), int> = 0>
 decltype(auto) cast_index(ArgPack &v, Dispatch &msg, IndexedType<T> i) {
     msg.index = i.index;
-    return FromValue<T>()(std::move(v[i.index]), msg);
+    return value_cast<T>(std::move(v[i.index]), msg);
 }
 
 template <class T, std::enable_if_t<(std::is_convertible_v<Value &, T>), int> = 0>
@@ -173,7 +173,7 @@ class Callback {
         ArgPack pack;
         pack.reserve(sizeof...(Ts));
         (pack.emplace_back(static_cast<Ts &&>(ts)), ...);
-        return FromValue<R>()(fun(caller, std::move(pack)));
+        return value_cast<R>()(fun(caller, std::move(pack)));
     }
 
 private:

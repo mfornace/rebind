@@ -53,9 +53,9 @@ struct ToValue<std::optional<T>> {
 
 template <class T>
 struct FromValue<std::optional<T>> {
-    std::optional<T> operator()(Value &&u, Dispatch &message) const {
+    std::optional<T> operator()(Value u, Dispatch &message) const {
         if (!u.has_value()) return {};
-        return FromValue<T>(message)(std::move(u));
+        return value_cast<T>(std::move(u), message);
     }
 };
 
@@ -73,20 +73,20 @@ template <class T, class ...Ts>
 struct FromValue<std::variant<T, Ts...>> {
     template <class V1, class U>
     std::variant<T, Ts...> scan(Pack<V1>, U &u, Dispatch &tmp, Dispatch &msg) const {
-        try {return FromValue<V1>{tmp}(std::move(u));}
+        try {return value_cast<V1>(std::move(u), tmp);}
         catch (DispatchError const &err) {}
         throw msg.error("no conversions succeeded", typeid(std::variant<T, Ts...>), typeid(U));
     }
 
     template <class V1, class V2, class U, class ...Vs>
     std::variant<T, Ts...> scan(Pack<V1, V2, Vs...>, U &u, Dispatch &tmp, Dispatch &msg) const {
-        try {return FromValue<V1>{tmp}(std::move(u));}
+        try {return value_cast<V1>(std::move(u), tmp);}
         catch (DispatchError const &err) {}
         return scan(Pack<V2, Vs...>(), u, tmp, msg);
     }
 
     template <class U>
-    std::variant<T, Ts...> operator()(U &&u, Dispatch &msg) const {
+    std::variant<T, Ts...> operator()(U u, Dispatch &msg) const {
         Dispatch tmp = msg;
         return scan(Pack<T, Ts...>(), u, tmp, msg);
     }
@@ -127,7 +127,7 @@ struct CompiledSequenceFromValue {
     V extract2(Sequence &u, Dispatch &message, std::index_sequence<Is...>) const {
         message.indices.emplace_back(0);
         return {(message.indices.back() = Is,
-            FromValue<std::tuple_element_t<Is, V>>()(std::move(u.contents[Is]), message)
+            value_cast<std::tuple_element_t<Is, V>>(std::move(u.contents[Is]), message)
             )...};
     }
 
@@ -146,11 +146,8 @@ struct CompiledSequenceFromValue {
         throw message.error("expected sequence", typeid(U), typeid(V));
     }
 
-    V operator()(Value &&u, Dispatch &message) const {
-        auto ptr = &u;
-        // if (auto p = std::any_cast<Reference>(&u)) ptr = p->get();
-        if (auto p = cast<no_qualifier<V>>(ptr)) return *p;
-        if (auto p = cast<Sequence>(ptr)) return extract(std::move(*p), message);
+    V operator()(Value u, Dispatch &message) const {
+        if (auto p = std::any_cast<Sequence>(&u.any)) return extract(std::move(*p), message);
         throw message.error(u.has_value() ? "mismatched class" : "object was already moved", u.type(), typeid(V));
     }
 };

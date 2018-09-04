@@ -162,20 +162,21 @@ Object to_python(std::tuple<Ts...> const &t);
 template <class T, class U>
 Object to_python(std::pair<T, U> const &t);
 
-template <class T, std::enable_if_t<std::is_same_v<T, Value>, int> = 0>
-Object to_python(T const &a) {
+
+template <class T, std::enable_if_t<std::is_same_v<no_qualifier<T>, Value>, int> = 0>
+Object to_python(T &&a) {
     if (!a.has_value()) return {Py_None, true};
     std::type_index const t = a.type();
-    if (t == typeid(Object))           return cast<Object>(a);
-    if (t == typeid(bool))             return to_python(cast<bool>(a));
-    if (t == typeid(Integer))          return to_python(cast<Integer>(a));
-    if (t == typeid(Real))             return to_python(cast<Real>(a));
-    if (t == typeid(std::string_view)) return to_python(cast<std::string_view>(a));
-    if (t == typeid(std::string))      return to_python(cast<std::string>(a));
-    if (t == typeid(Function))         return to_python(cast<Function>(a));
-    if (t == typeid(Sequence))         return to_python(cast<Sequence>(a));
+    if (t == typeid(Object))           return std::any_cast<Object>(a.any);
+    if (t == typeid(bool))             return to_python(std::any_cast<bool>(a.any));
+    if (t == typeid(Integer))          return to_python(std::any_cast<Integer>(a.any));
+    if (t == typeid(Real))             return to_python(std::any_cast<Real>(a.any));
+    if (t == typeid(std::string_view)) return to_python(std::any_cast<std::string_view>(a.any));
+    if (t == typeid(std::string))      return to_python(std::any_cast<std::string const &>(a.any));
+    if (t == typeid(Function))         return to_python(std::any_cast<Function const &>(a.any));
+    if (t == typeid(Sequence))         return to_python(std::any_cast<Sequence const &>(a.any));
     Object o{PyObject_CallObject(type_object(ValueType), nullptr), false};
-    cast_object<Value>(+o) = a;
+    cast_object<Value>(+o) = static_cast<T &&>(a);
     return o;
 }
 

@@ -14,7 +14,7 @@ struct ValueHandler {
             Sequence(mapped<Value>(logs, [](auto &x) {return std::move(x.first);})),
             Sequence(mapped<Value>(logs, [](auto &x) {return std::move(x.second);}))
         };
-        return cast<bool>(fun(context, vals));
+        return value_cast<bool>(fun(context, vals));
     }
 };
 
@@ -32,9 +32,9 @@ Vector<Value> run_test(Caller &ct0, std::size_t i, Vector<Function> calls,
     auto const test = suite().at(i);
     if (!test.function) throw std::runtime_error("Test case has invalid Function");
     ArgPack pack;
-    if (auto p = cast<Integer>(&args))
+    if (auto p = std::any_cast<Integer>(&args.any))
         pack = test.parameters.at(*p);
-    if (auto p = cast<Sequence>(&args)) {
+    if (auto p = std::any_cast<Sequence>(&args.any)) {
         if (!p->shape.empty()) throw std::runtime_error("Non 1-dimensional Sequence");
         pack = std::move(p->contents);
     }

@@ -1237,3 +1237,47 @@ finally:
     b.slice_from(a) # calls std::move of a into b
 ```
 It's not pretty.
+
+### Reference semantics
+As the caller we can call our function with
+- `T &`: we expect that our object can be mutated
+- `T const &`: we do not expect that our object can be mutated
+- `T &&`: we give up our object and don't care about it
+
+As a function we may wish to be called with
+- `T`: we don't want to modify the caller, but we do want to modify the input
+- `T &`: we do want to modify both
+- `T const &`: we don't want to modify either
+- `T &&`: we take it
+
+We can convert as follows:
+- `T`: we can always convert to this
+- `T &`: take `T &` or else make a copy and pass that instead
+- `T const &`: we don't want to modify either
+- `T &&`: take `T &&` or else make a copy and pass that instead
+
+Mutate means
+
+self goes in, self goes out
+if an exception occurs it should be returned as well
+
+### Caller, Context
+Right now Caller just contains a single callback utility e.g. GIL.
+
+In the test suite we need a Context, which contains a Caller because the handlers need the callback information
+
+That is, the handlers are representable as Function, we need the GIL inside the Context to call them.
+
+Tests require a Context and not just caller, and the functions they call usually need a Context as well
+The test that's handled should therefore be Context.
+
+- could represent tests separately from functions as it is now. test suite is separate and the context is constructed from the caller and passed into the suite functions
+- would be a bit tricky to call normal functions but not that hard
+
+- could represent tests as taking caller, then casting the held pointer into a context. then context is alongside the GIL in the caller (would have to do a vector or something). this doesn't give much because there's no reasonable way to call tests without a Context
+
+- could represent Context as a class in py, but it's a little hard because it's much cleaner in C++
+
+I guess the current strategy is fine.
+
+Also caller? copyable?
