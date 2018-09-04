@@ -1,7 +1,9 @@
 #pragma once
-#include <cpy/Value.h>
+#include <cpy/Types.h>
 
 namespace cpy {
+
+using KeyPair = std::pair<std::string_view, Value>;
 
 using Logs = Vector<KeyPair>;
 

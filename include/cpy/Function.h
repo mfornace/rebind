@@ -153,27 +153,6 @@ Function make_function(F f) {
 
 /******************************************************************************/
 
-template <class F, class C, class ...Ts>
-auto mutate(F &&f, Pack<void, C, Ts...>) {
-    return [f] (no_qualifier<C> &&self, Ts ...ts) {
-        f(self, static_cast<decltype(ts) &&>(ts)...);
-        return Value(std::move(self));
-    };
-}
-
-template <class F, class R, class C, class ...Ts, std::enable_if_t<!std::is_same_v<R, void>, int> = 0>
-auto mutate(F &&f, Pack<R, C, Ts...>) {
-    return [f] (no_qualifier<C> &&self, Ts ...ts) {
-        auto x = f(self, static_cast<decltype(ts) &&>(ts)...);
-        return Sequence::from_values(std::move(self), std::move(x));
-    };
-}
-
-template <class F>
-auto mutate(F &&f) {return mutate(static_cast<F &&>(f), Signature<no_qualifier<F>>());}
-
-/******************************************************************************/
-
 template <class R, class ...Ts>
 struct Construct {
     constexpr R operator()(Ts &&...ts) const {return R{static_cast<Ts>(ts)...};}

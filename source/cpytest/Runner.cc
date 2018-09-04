@@ -11,8 +11,8 @@ struct ValueHandler {
     Function fun;
     bool operator()(Event e, Scopes const &scopes, Logs &&logs) {
         Vector<Value> vals = {Value(Integer(e)), Value(Sequence(scopes)),
-            Sequence(mapped<Value>(logs, [](auto &x) {return std::move(x.key);})),
-            Sequence(mapped<Value>(logs, [](auto &x) {return std::move(x.value);}))
+            Sequence(mapped<Value>(logs, [](auto &x) {return std::move(x.first);})),
+            Sequence(mapped<Value>(logs, [](auto &x) {return std::move(x.second);}))
         };
         return cast<bool>(fun(context, vals));
     }

@@ -59,10 +59,6 @@ void render(Document &doc, Type<Goo> t) {
         return x;
     });
     doc.method(t, "show", &Goo::show);
-    doc.method(t, "test_throw", mutate([](Goo &g, double x) {
-        std::cout << "before throw " << g.x << std::endl;
-        g.test_throw(x);
-    }));
 }
 
 // could make this return a document

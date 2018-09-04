@@ -1,5 +1,6 @@
 #pragma once
 #include "Document.h"
+#include "Types.h"
 #include <tuple>
 #include <utility>
 #include <array>

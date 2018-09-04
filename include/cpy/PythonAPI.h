@@ -264,14 +264,6 @@ Object to_python(Sequence const &s) {
 template <class T>
 Object to_python(Vector<T> const &v) {return to_tuple(v);}
 
-inline Object to_python(KeyPair const &p) noexcept {
-    Object key = to_python(p.key);
-    if (!key) return {};
-    Object value = to_python(p.value);
-    if (!value) return {};
-    return {PyTuple_Pack(2u, +key, +value), false};
-}
-
 /******************************************************************************/
 
 struct PythonError : ClientError {
