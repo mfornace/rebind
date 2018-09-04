@@ -187,7 +187,9 @@ struct Context : Caller {
             std::invoke(static_cast<F &&>(f), static_cast<Args &&>(args)...);
             return require(true);
         } catch (ClientError const &e) {
-            throw e;
+            throw;
+        } catch (DispatchError const &e) {
+            throw;
         } catch (...) {return require(false);}
     }
 };

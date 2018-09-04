@@ -63,11 +63,17 @@ def set_global_type(name, methods):
         props = {'__module__': scope}
     methods = collapse_overloads(methods)
     props.update(dict(zip(methods.keys(), map(overload, methods.values()))))
+
+    put = props.pop('{}', None)
+    if put is not None:
+        props['__str__'] = put
+
     new = props.pop('new', None)
     if new is not None:
-        def __init__(self, *args, _new=new, **kwargs):
+        def __init__(self, *args, **kwargs):
             self.move_from(new(*args, **kwargs))
         props['__init__'] = __init__
+
     cls = type(name, (Value,), props)
     print('new class:', scope, name)
     setattr(mod, name, cls)

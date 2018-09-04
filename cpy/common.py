@@ -67,6 +67,19 @@ def pop_value(key, keys, values, default=None):
 
 ################################################################################
 
+class Suite:
+    def __init__(self, document):
+        obj = dict(document['objects'])
+        self.find_test = lambda n: 0
+        self.n_tests = obj['n_tests']
+        self.test_names = obj['test_names']
+        self.n_parameters = obj['n_parameters']
+        self.compile_info = obj['compile_info']
+        self.test_info = obj['test_info']
+        self.run_test = obj['run_test']
+        self.Function = document['Function']
+        self.add_value = obj['add_value']
+
 def import_library(lib, name=None):
     '''
     Import a module from a given shared library file name
@@ -89,6 +102,9 @@ def import_library(lib, name=None):
                 ret = importlib.util.module_from_spec(spec)
                 return ret
         raise e
+
+def import_suite(lib, name=None):
+    return Suite(import_library(lib, name).document)
 
 ################################################################################
 
@@ -116,7 +132,7 @@ def load_parameters(params):
 
 ################################################################################
 
-def test_indices(lib, exclude=False, tests=None, regex=''):
+def test_indices(names, exclude=False, tests=None, regex=''):
     '''
     Return list of indices of tests to run
         exclude: whether to include or exclude the specified tests
@@ -124,17 +140,20 @@ def test_indices(lib, exclude=False, tests=None, regex=''):
         regex: pattern to specify tests
     '''
     if tests:
-        out = set(lib.find_test(t) for t in tests)
+        try:
+            out = set(names.index(t) for t in tests)
+        except ValueError:
+            raise KeyError('Keys {} are not in the test suite'.format([t for t in tests if t not in names]))
     else:
-        out = set() if (regex or exclude) else set(range(lib.n_tests()))
+        out = set() if (regex or exclude) else set(range(len(names)))
 
     if regex:
         import re
         pattern = re.compile(regex)
-        out.update(i for i, t in enumerate(lib.test_names()) if pattern.match(t))
+        out.update(i for i, t in enumerate(names) if pattern.match(t))
 
     if exclude:
-        out = set(range(lib.n_tests())).difference(out)
+        out = set(range(len(names))).difference(out)
     return sorted(out)
 
 ################################################################################
@@ -178,8 +197,6 @@ class MultiReport:
 
 def multireport(reports):
     '''Wrap multiple reports for C++ to look like they are one'''
-    if not reports:
-        return None
     if len(reports) == 1:
         return reports[0]
     return MultiReport(reports)
@@ -201,8 +218,9 @@ def run_test(lib, index, test_masks, args=(), gil=False, cout=False, cerr=False)
         for r, mask in test_masks:
             stack.enter_context(r)
             [l.append(r) for m, l in zip(mask, lists) if m]
-        reports = tuple(map(multireport, lists))
-        return lib.run_test(index, reports, args, gil, cout, cerr)
+        reports = [lib.Function() if r is None else lib.Function(multireport(r)) for r in lists]
+        print(lib.run_test.__call__)
+        return lib.run_test(index, reports, args, cout, cerr)
 
 ################################################################################
 

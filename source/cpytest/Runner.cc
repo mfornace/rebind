@@ -10,10 +10,7 @@ struct ValueHandler {
     Caller context;
     Function fun;
     bool operator()(Event e, Scopes const &scopes, Logs &&logs) {
-        Vector<Value> vals = {Value(Integer(e)), Value(Sequence(scopes)),
-            Sequence(mapped<Value>(logs, [](auto &x) {return std::move(x.first);})),
-            Sequence(mapped<Value>(logs, [](auto &x) {return std::move(x.second);}))
-        };
+        Vector<Value> vals = {Value(Integer(e)), Value(Sequence(scopes)), logs};
         return value_cast<bool>(fun(context, vals));
     }
 };
@@ -92,11 +89,12 @@ bool make_document() {
         return suite().at(i).parameters.size();
     });
 
-    doc.function("add_value", [](std::string s, Value v) {
-        add_test(TestCase{std::move(s), {}, ValueAdaptor{std::move(v)}});
+    doc.function("add_value", [](std::string_view s, Value v) {
+        add_test(TestCase{std::string(s), {}, ValueAdaptor{std::move(v)}});
     });
 
     doc.function("run_test", [](Caller &ct, std::size_t i, Vector<Function> calls, Value args, bool cout, bool cerr) {
+        // return std::vector<int>{1,2,3,4,5};
         return run_test(ct, i, std::move(calls), std::move(args), cout, cerr);
     });
 

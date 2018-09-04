@@ -4,6 +4,7 @@
 
 #include <typeindex>
 #include <iostream>
+#include <sstream>
 
 namespace cpy {
 
@@ -22,25 +23,23 @@ Value value_invoke(F const &f, Ts &&... ts) {
     }
 }
 
-template <bool B, class F, class C, class ...Ts>
-Value context_invoke(F const &f, C &&c, Ts &&...ts) {
-    if constexpr(B) return value_invoke(f, static_cast<C &&>(c), static_cast<Ts &&>(ts)...);
-    else return value_invoke(f, static_cast<Ts &&>(ts)...);
+template <class F, class C, class ...Ts>
+Value context_invoke(std::true_type, F const &f, C &&c, Ts &&...ts) {
+    return value_invoke(f, static_cast<C &&>(c), static_cast<Ts &&>(ts)...);
+}
+
+template <class F, class C, class ...Ts>
+Value context_invoke(std::false_type, F const &f, C &&c, Ts &&...ts) {
+    return value_invoke(f, static_cast<Ts &&>(ts)...);
 }
 
 /******************************************************************************/
 
 /// Cast element i of v to type T
-template <class T, std::enable_if_t<!(std::is_convertible_v<Value &, T>), int> = 0>
+template <class T>
 decltype(auto) cast_index(ArgPack &v, Dispatch &msg, IndexedType<T> i) {
     msg.index = i.index;
     return value_cast<T>(std::move(v[i.index]), msg);
-}
-
-template <class T, std::enable_if_t<(std::is_convertible_v<Value &, T>), int> = 0>
-T cast_index(ArgPack &v, Dispatch &msg, IndexedType<T> i) {
-    msg.index = i.index;
-    return static_cast<T>(v[i.index]);
 }
 
 /******************************************************************************/
@@ -68,22 +67,22 @@ Pack<Ts...> skip_head(Pack<R, Ts...>);
 template <int N, class R, class C, class ...Ts, std::enable_if_t<N == 2, int> = 0>
 Pack<Ts...> skip_head(Pack<R, C, Ts...>);
 
-template <class R>
-std::false_type has_context(Pack<R>);
+template <class C, class R>
+std::false_type has_head(Pack<R>);
 
-template <class R, class T, class ...Ts>
-std::is_convertible<T, Caller &> has_context(Pack<R, T, Ts...>);
+template <class C, class R, class T, class ...Ts>
+std::is_convertible<T, C> has_head(Pack<R, T, Ts...>);
 
 template <std::size_t N, class F>
 struct FunctionAdaptor {
     F function;
-    using Ctx = decltype(has_context(Signature<F>()));
+    using Ctx = decltype(has_head<Caller>(Signature<F>()));
     using Sig = decltype(skip_head<1 + int(Ctx::value)>(Signature<F>()));
 
     template <class P>
     void call_each(P, Value &out, Caller &c, Dispatch &msg, ArgPack &args) const {
         P::indexed([&](auto ...ts) {
-            out = context_invoke<Ctx::value>(function, c, cast_index(args, msg, ts)...);
+            out = context_invoke(Ctx(), function, c, cast_index(args, msg, ts)...);
         });
     }
 
@@ -101,7 +100,7 @@ struct FunctionAdaptor {
         Dispatch msg;
         if (args.size() == Sig::size)
             return Sig::indexed([&](auto ...ts) {
-                return context_invoke<Ctx::value>(function, c, cast_index(args, msg, ts)...);
+                return context_invoke(Ctx(), function, c, cast_index(args, msg, ts)...);
             });
         if (args.size() < Sig::size - N)
             throw WrongNumber(Sig::size - N, args.size());
@@ -114,7 +113,7 @@ struct FunctionAdaptor {
 template <class F>
 struct FunctionAdaptor<0, F> {
     F function;
-    using Ctx = decltype(has_context(Signature<F>()));
+    using Ctx = decltype(has_head<Caller>(Signature<F>()));
     using Sig = decltype(skip_head<1 + int(Ctx::value)>(Signature<F>()));
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
@@ -126,7 +125,7 @@ struct FunctionAdaptor<0, F> {
             throw WrongNumber(Sig::size, args.size());
         return Sig::indexed([&](auto ...ts) {
             Dispatch msg;
-            return context_invoke<Ctx::value>(function, c, cast_index(args, msg, ts)...);
+            return context_invoke(Ctx(), function, c, cast_index(args, msg, ts)...);
         });
     }
 };
@@ -160,6 +159,19 @@ struct Construct {
 
 template <class ...Ts, class R>
 Construct<R, Ts...> construct(Type<R> t) {return {};}
+
+
+template <class T>
+struct Streamable {
+    std::string operator()(T const &t) const {
+        std::ostringstream os;
+        os << t;
+        return os.str();
+    }
+};
+
+template <class T>
+Streamable<T> streamable(Type<T> t={}) {return {};}
 
 /******************************************************************************/
 

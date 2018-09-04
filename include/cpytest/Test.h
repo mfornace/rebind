@@ -34,28 +34,33 @@ struct TestSignature<F, std::void_t<typename Signature<F>::return_type>> : Signa
 template <class F>
 struct TestAdaptor {
     F function;
-    using Ctx = decltype(has_context(TestSignature<F>()));
+    using Ctx = decltype(has_head<Context>(TestSignature<F>()));
     using Sig = decltype(skip_head<1 + int(Ctx::value)>(TestSignature<F>()));
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
     Value operator()(Context &ct, ArgPack args) {
+        std::cout << typeid(Sig).name() << std::endl;
+        std::cout << args.size() << std::endl;
+        std::cout << Ctx::value << std::endl;
         try {
             if (args.size() != Sig::size)
                 throw WrongNumber(Sig::size, args.size());
             return Sig::indexed([&](auto ...ts) {
                 Dispatch msg("mismatched test argument");
-                return context_invoke<Ctx::value>(function, Context(ct), cast_index(args, msg, ts)...);
+                return context_invoke(Ctx(), function, Context(ct), cast_index(args, msg, ts)...);
             });
         } catch (Skip const &e) {
             ct.info("value", e.message);
             ct.handle(Skipped);
-            throw e;
+            throw;
         } catch (ClientError const &e) {
-            throw e;
+            throw;
+        } catch (DispatchError const &e) {
+            throw;
         } catch (std::exception const &e) {
             ct.info("value", e.what());
             ct.handle(Exception);
-            throw e;
+            throw;
         } catch (...) {
             ct.handle(Exception);
             std::rethrow_exception(std::current_exception());

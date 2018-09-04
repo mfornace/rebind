@@ -38,14 +38,16 @@ struct Goo {
         if (xx < 0) throw std::runtime_error("cannot be negative");
         else x += xx;
     }
-    void show() const {std::cout << x << ", " << &x << std::endl;}
+    friend std::ostream &operator<<(std::ostream &os, Goo const &g) {
+        return os << "Goo(" << g.x << ", " << &g.x << ")" << std::endl;
+    }
 };
 
 /******************************************************************************/
 
 void render(Document &doc, Type<Blah> t) {
     doc.type(t, "submodule.Blah");
-    doc.method(t, "new", Construct<Blah, std::string>());
+    doc.method(t, "new", construct<std::string>(t));
     doc.method(t, "dump", &Blah::dump);
 }
 
@@ -55,10 +57,10 @@ void render(Document &doc, Type<Goo> t) {
     doc.method(t, "new", [](double x) -> Goo {return x;});
     doc.method(t, "add", [](Goo x) {
         x.x += 4;
-        x.show();
+        std::cout << x.x << std::endl;
         return x;
     });
-    doc.method(t, "show", &Goo::show);
+    doc.method(t, "{}", streamable(t));
 }
 
 // could make this return a document

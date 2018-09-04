@@ -100,7 +100,7 @@ struct VectorFromValue {
         out.reserve(cts.size());
         message.indices.emplace_back(0);
         for (auto &x : cts) {
-            out.emplace_back(FromValue<T>()(std::move(x), message));
+            out.emplace_back(value_cast<T>(std::move(x), message));
             ++message.indices.back();
         }
         message.indices.pop_back();

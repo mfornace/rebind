@@ -1,5 +1,5 @@
-from .common import Event, run_test, open_file, load_parameters
-from .common import ExitStack, import_library, test_indices, parametrized_indices
+from .common import Event, run_test, open_file, load_parameters, import_suite
+from .common import ExitStack, Suite, test_indices, parametrized_indices
 
 ################################################################################
 
@@ -86,8 +86,8 @@ def main(run=run_suite, lib='libcpy', list=False, failure=False, success=False, 
     teamcity=None, json=None, json_indent=None, jobs=0, tests=None, params=None, skip=False):
     '''Main non-argparse function for running a subset of cpy tests with given options'''
 
-    lib = import_library(lib)
-    indices = test_indices(lib, exclude, tests, regex)
+    lib = import_suite(lib)
+    indices = test_indices(lib.test_names(), exclude, tests, regex)
     keypairs = tuple(parametrized_indices(lib, indices, load_parameters(params)))
 
     if list:
