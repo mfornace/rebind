@@ -88,6 +88,10 @@ bool make_document() {
     doc.function("moo", [](Goo &i) {
         i.x += 5;
     });
+    doc.function("lref", [](double &i) {i = 2;});
+    doc.function("clref", [](double const &i) {});
+    doc.function("noref", [](double i) {});
+    doc.function("rref", [](double &&i) {});
     doc.render(Type<Goo>());
     return bool();
 }

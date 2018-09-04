@@ -174,8 +174,13 @@ struct FromValue {
 template <class T>
 struct FromValue<T &> {
     T & operator()(Value &&u, Dispatch &message) const {
-        if (auto p = cast<Reference<Value &>>(&u)) return cast<T &>(p->get());
-        throw message.error(u.has_value() ? "mismatched class" : "object was already moved", u.type(), typeid(T));
+        if (!u.has_value())
+            throw message.error("object was already moved", u.type(), typeid(T));
+        if (auto p = cast<Reference<Value &>>(&u)) {
+            if (auto t = cast<T>(&p->get())) return *t;
+            throw message.error("mismatched class", p->get().type(), typeid(T));
+        }
+        throw message.error("cannot form lvalue reference", u.type(), typeid(T));
     }
 };
 
@@ -183,12 +188,31 @@ struct FromValue<T &> {
 template <class T>
 struct FromValue<T const &> {
     T const & operator()(Value &&u, Dispatch &message) const {
-        if (auto p = cast<Reference<Value &>>(&u)) return cast<T &>(p->get());
-        if (auto p = cast<Reference<Value const &>>(&u)) return cast<T const &>(p->get());
-        throw message.error(u.has_value() ? "mismatched class" : "object was already moved", u.type(), typeid(T));
+        if (!u.has_value())
+            throw message.error("object was already moved", u.type(), typeid(T));
+        if (auto p = cast<Reference<Value &>>(&u)) {
+            if (auto t = cast<T>(&p->get())) return *t;
+            throw message.error("mismatched class", u.type(), typeid(T));
+        }
+        if (auto p = cast<Reference<Value const &>>(&u)) {
+            if (auto t = cast<T>(&p->get())) return *t;
+            throw message.error("mismatched class", u.type(), typeid(T));
+        }
+        if (auto p = cast<no_qualifier<T>>(&u)) return *p;
+        u.any = FromValue<T>()(std::move(u), message);
+        return cast<T const &>(u);
     }
 };
 
+template <class T>
+struct FromValue<T &&> {
+    T && operator()(Value &&u, Dispatch &message) const {
+        if (!u.has_value())
+            throw message.error("object was already moved", u.type(), typeid(T));
+        u.any = FromValue<no_qualifier<T>>()(std::move(u), message);
+        return std::move(cast<T &>(u));
+    }
+};
 
 template <class T>
 struct FromValue<T, std::enable_if_t<std::is_arithmetic_v<T>>> {
