@@ -71,9 +71,9 @@ struct Document {
     /// Always a function - no vagueness here
     template <class F, class ...Ts>
     void method(std::type_index t, std::string name, F f) {
-        // Signature<F>::no_qualifier::apply2([&](auto r, auto c, auto ...ts) {
-        //     render(r); (render(ts), ...);
-        // });
+        Signature<F>::no_qualifier::apply2([&](auto r, auto c, auto ...ts) {
+            render(r); (render(ts), ...);
+        });
         types[t].methods.emplace_back(std::move(name), make_function(std::move(f)));
     }
 };

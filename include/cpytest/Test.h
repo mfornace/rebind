@@ -34,7 +34,8 @@ struct TestSignature<F, std::void_t<typename Signature<F>::return_type>> : Signa
 template <class F>
 struct TestAdaptor {
     F function;
-    using Sig = decltype(skip_head<2>(TestSignature<F>()));
+    using Ctx = decltype(has_context(TestSignature<F>()));
+    using Sig = decltype(skip_head<1 + int(Ctx::value)>(TestSignature<F>()));
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
     Value operator()(Context &ct, ArgPack args) {
@@ -43,7 +44,7 @@ struct TestAdaptor {
                 throw WrongNumber(Sig::size, args.size());
             return Sig::indexed([&](auto ...ts) {
                 Dispatch msg("mismatched test argument");
-                return value_invoke(function, Context(ct), cast_index(args, msg, ts)...);
+                return context_invoke<Ctx::value>(function, Context(ct), cast_index(args, msg, ts)...);
             });
         } catch (Skip const &e) {
             ct.info("value", e.message);

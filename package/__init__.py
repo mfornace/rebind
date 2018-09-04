@@ -94,6 +94,7 @@ def set_global_object(k, v):
         v = dispatch(v, old)
     else:
         print(k, v, old)
+        print(v.type())
         assert old is None
     print('new object:', mod.__name__, key, v)
     setattr(mod, key, v)

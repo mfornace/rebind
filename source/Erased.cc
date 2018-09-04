@@ -85,6 +85,9 @@ bool make_document() {
     doc.function("vec", [](double i, double d) {
         return std::vector<double>{i, i, d};
     });
+    doc.function("moo", [](Goo &i) {
+        i.x += 5;
+    });
     doc.render(Type<Goo>());
     return bool();
 }

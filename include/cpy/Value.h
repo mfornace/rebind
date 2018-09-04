@@ -49,44 +49,34 @@ struct Value {
     constexpr Value() = default;
 
     template <class T>
-    Value(std::in_place_t, T &&t) : any(static_cast<T &&>(t)) {
-        if (any.type() == typeid(Value)) throw std::runtime_error("ugh1");
-    }
+    Value(std::in_place_t, T &&t) : any(static_cast<T &&>(t)) {}
 
-    Value(std::in_place_t, Value &&t) : Value(std::move(t)) {
-        if (any.type() == typeid(Value)) throw std::runtime_error("ugh5");
+    Value(std::in_place_t, Value &&t) noexcept : Value(std::move(t)) {}
 
-    }
-
-    Value(std::in_place_t, Value const &t) : Value(t) {
-        if (any.type() == typeid(Value)) throw std::runtime_error("ugh4");
-
-    }
-
+    Value(std::in_place_t, Value const &t) : Value(t) {}
 
     template <class T, std::enable_if_t<!std::is_same_v<no_qualifier<T>, Value>, int> = 0>
     Value(T &&t) : Value(std::in_place_t(), ToValue<no_qualifier<T>>()(static_cast<T &&>(t))) {}
-
-    Value(std::any &&a) : any(std::move(a)) {
-        if (any.type() == typeid(Value)) throw std::runtime_error("ugh2");
-    }
-
-    Value(std::any const &a) : any(a) {
-        if (any.type() == typeid(Value)) throw std::runtime_error("ugh3");
-    }
 
     std::type_index type() const {return any.type();}
     bool has_value() const {return any.has_value();}
 };
 
+/******************************************************************************/
+
 template <class T>
 T cast(Value const &v) {return std::any_cast<T>(v.any);}
 
 template <class T>
-T const * cast(Value const *v) {return std::any_cast<T>(&v->any);}
+T cast(Value &v) {return std::any_cast<T>(v.any);}
 
 template <class T>
-T * cast(Value *v) {return std::any_cast<T>(&v->any);}
+T const * cast(Value const *v) {return std::any_cast<no_qualifier<T>>(&v->any);}
+
+template <class T>
+T * cast(Value *v) {return std::any_cast<no_qualifier<T>>(&v->any);}
+
+/******************************************************************************/
 
 struct Sequence {
     Vector<Value> contents;
@@ -107,8 +97,6 @@ using ArgPack = Vector<Value>;
 
 /******************************************************************************/
 
-using Function = std::function<Value(Caller &, ArgPack)>;
-
 template <class T>
 class Reference {
     static_assert(std::is_reference_v<T>, "Only reference types can be wrapped");
@@ -124,9 +112,6 @@ static_assert(32 == sizeof(Value));              // 8 + 24 buffer I think
 
 /******************************************************************************/
 
-// template <class T>
-// struct InPlace {T value;};
-
 struct KeyPair {
     std::string_view key;
     Value value;
@@ -141,8 +126,6 @@ struct ToValue {
     std::any operator()(T &&t) const {return {static_cast<T &&>(t)};}
     std::any operator()(T const &t) const {return {t};}
 };
-
-
 
 inline std::any to_value(std::nullptr_t) {return {};}
 
@@ -164,7 +147,7 @@ struct ToValue<T, std::enable_if_t<(std::is_integral_v<T>)>> {
 
 template <>
 struct ToValue<char const *> {
-    std::string operator()(char const *t) const {return std::string(t);}
+    std::string_view operator()(char const *t) const {return t;}
 };
 
 template <class T, class Alloc>
@@ -177,15 +160,35 @@ struct ToValue<std::vector<T, Alloc>> {
 /// The default implementation is to accept convertible arguments or Value of the exact typeid match
 template <class T, class=void>
 struct FromValue {
-    static_assert(!std::is_reference_v<T>);
+    // static_assert(!std::is_reference_v<T>);
 
-    // Return casted type T from type U
-    T && operator()(Value &&u, Dispatch &message) const {
-        // if (auto p = cast<Reference<T>>(&u)) ptr = p->get();
+    // Return casted type T from type U.
+    no_qualifier<T> operator()(Value &&u, Dispatch &message) const {
+        if (auto p = cast<Reference<Value const &>>(&u)) return cast<no_qualifier<T>>(p->get());
+        if (auto p = cast<Reference<Value &>>(&u)) return cast<no_qualifier<T>>(p->get());
         if (auto p = cast<no_qualifier<T>>(&u)) return static_cast<T &&>(*p);
         throw message.error(u.has_value() ? "mismatched class" : "object was already moved", u.type(), typeid(T));
     }
 };
+
+template <class T>
+struct FromValue<T &> {
+    T & operator()(Value &&u, Dispatch &message) const {
+        if (auto p = cast<Reference<Value &>>(&u)) return cast<T &>(p->get());
+        throw message.error(u.has_value() ? "mismatched class" : "object was already moved", u.type(), typeid(T));
+    }
+};
+
+
+template <class T>
+struct FromValue<T const &> {
+    T const & operator()(Value &&u, Dispatch &message) const {
+        if (auto p = cast<Reference<Value &>>(&u)) return cast<T &>(p->get());
+        if (auto p = cast<Reference<Value const &>>(&u)) return cast<T const &>(p->get());
+        throw message.error(u.has_value() ? "mismatched class" : "object was already moved", u.type(), typeid(T));
+    }
+};
+
 
 template <class T>
 struct FromValue<T, std::enable_if_t<std::is_arithmetic_v<T>>> {
@@ -206,13 +209,15 @@ struct FromValue<T, std::void_t<decltype(from_value(+Type<T>(), Sequence(), std:
 
     out_type operator()(Value &&u, Dispatch &message) const {
         auto ptr = &u;
-        // if (auto p = cast<Reference>(&u)) ptr = p->get();
+        if (auto p = cast<Reference<Value &>>(&u)) ptr = &p->get();
         auto p = cast<no_qualifier<T>>(ptr);
         message.source = u.type();
         message.dest = typeid(T);
         return p ? static_cast<T>(*p) : from_value(+Type<T>(), std::move(*ptr), message);
     }
 };
+
+// static_assert(decltype(FromValue<double &>()(Value(), std::declval<Dispatch &>()))::aaa);
 
 /******************************************************************************/
 

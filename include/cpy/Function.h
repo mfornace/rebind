@@ -7,6 +7,8 @@
 
 namespace cpy {
 
+using Function = std::function<Value(Caller, ArgPack)>;
+
 /******************************************************************************/
 
 /// Invoke a function and arguments, storing output in a Value if it doesn't return void
@@ -20,9 +22,9 @@ Value value_invoke(F const &f, Ts &&... ts) {
     }
 }
 
-template <bool B, class F, class ...Ts>
-Value context_invoke(F const &f, Caller &c, Ts &&...ts) {
-    if constexpr(B) return value_invoke(f, c, static_cast<Ts &&>(ts)...);
+template <bool B, class F, class C, class ...Ts>
+Value context_invoke(F const &f, C &&c, Ts &&...ts) {
+    if constexpr(B) return value_invoke(f, static_cast<C &&>(c), static_cast<Ts &&>(ts)...);
     else return value_invoke(f, static_cast<Ts &&>(ts)...);
 }
 
@@ -32,7 +34,7 @@ Value context_invoke(F const &f, Caller &c, Ts &&...ts) {
 template <class T, std::enable_if_t<!(std::is_convertible_v<Value &, T>), int> = 0>
 decltype(auto) cast_index(ArgPack &v, Dispatch &msg, IndexedType<T> i) {
     msg.index = i.index;
-    return FromValue<no_qualifier<T>>()(std::move(v[i.index]), msg);
+    return FromValue<T>()(std::move(v[i.index]), msg);
 }
 
 template <class T, std::enable_if_t<(std::is_convertible_v<Value &, T>), int> = 0>
@@ -44,8 +46,9 @@ T cast_index(ArgPack &v, Dispatch &msg, IndexedType<T> i) {
 /******************************************************************************/
 
 template <class T>
-struct NoMutable {
+struct CheckType {
     static_assert(
+        true ||
         !std::is_lvalue_reference_v<T> ||
         std::is_const_v<std::remove_reference_t<T>>,
         "Mutable lvalue references are not allowed in function signature"
@@ -91,9 +94,9 @@ struct FunctionAdaptor {
         return out;
     }
 
-    Value operator()(Caller &c, ArgPack args) const {
+    Value operator()(Caller c, ArgPack args) const {
         Sig::apply2([](auto ...ts) {
-            (NoMutable<decltype(*ts)>(), ...);
+            (CheckType<decltype(*ts)>(), ...);
         });
         Dispatch msg;
         if (args.size() == Sig::size)
@@ -115,9 +118,9 @@ struct FunctionAdaptor<0, F> {
     using Sig = decltype(skip_head<1 + int(Ctx::value)>(Signature<F>()));
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
-    Value operator()(Caller &c, ArgPack args) const {
+    Value operator()(Caller c, ArgPack args) const {
         Sig::apply2([](auto ...ts) {
-            (NoMutable<decltype(*ts)>(), ...);
+            (CheckType<decltype(*ts)>(), ...);
         });
         if (args.size() != Sig::size)
             throw WrongNumber(Sig::size, args.size());

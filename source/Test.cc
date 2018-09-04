@@ -60,7 +60,6 @@ UNIT_TEST("test-2", "This is a test 2") = [](cpy::Context ct) {
     std::cout << "Hey I am std::cout 2" << std::endl;
 
 
-    std::cout << sizeof(std::monostate) << " sizeof(std::monostate)" << std::endl;
     std::cout << sizeof(bool)  << " sizeof(bool) " << std::endl;
     std::cout << sizeof(std::any)  << " sizeof(std::any) " << std::endl;
     std::cout << sizeof(cpy::Integer)  << " sizeof(Integer) " << std::endl;

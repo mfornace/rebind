@@ -109,14 +109,14 @@ template <class F, class=void>
 struct Signature;
 
 template <class R, class ...Ts>
-struct Signature<R(Ts...)> : Pack<R, Ts...> {};
+struct Signature<R(Ts...)> : Pack<R, Ts...> {using return_type = R;};
 
 template <class R, class ...Ts>
-struct Signature<R(*)(Ts...)> : Signature<R(Ts...)> {};
+struct Signature<R(*)(Ts...)> : Signature<R(Ts...)> {using return_type = R;};
 
 #define CPY_TMP(C, Q, C2) \
     template <class R, class C, class ...Ts> \
-    struct Signature<R (C::* )(Ts...) Q> : Pack<R, C2, Ts...> {};
+    struct Signature<R (C::* )(Ts...) Q> : Pack<R, C2, Ts...> {using return_type = R;};
 
     CPY_TMP(C, , C &);
     CPY_TMP(C, const, C const &);
@@ -127,7 +127,7 @@ struct Signature<R(*)(Ts...)> : Signature<R(Ts...)> {};
 #undef CPY_TMP
 
 template <class R, class C>
-struct Signature<R C::*> : Pack<R, C> {};
+struct Signature<R C::*> : Pack<R, C> {using return_type = R;};
 
 /******************************************************************************************/
 
@@ -135,7 +135,7 @@ template <class T>
 struct FunctorSignature;
 
 #define CPY_TMP(Q) template <class R, class C, class ...Ts> \
-    struct FunctorSignature<R (C::* )(Ts...) Q> : Signature<R(Ts...)> {};
+    struct FunctorSignature<R (C::* )(Ts...) Q> : Signature<R(Ts...)> {using return_type = R;};
     CPY_TMP( );
     CPY_TMP(&);
     CPY_TMP(&&);

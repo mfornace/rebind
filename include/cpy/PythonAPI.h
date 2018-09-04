@@ -301,6 +301,7 @@ struct ReleaseGIL {
     PyThreadState * state;
     std::mutex mutex;
     ReleaseGIL(bool no_gil) : state(no_gil ? PyEval_SaveThread() : nullptr) {}
+    // lock to prevent multiple threads trying to get the thread going
     void acquire() noexcept {if (state) {mutex.lock(); PyEval_RestoreThread(state);}}
     void release() noexcept {if (state) {state = PyEval_SaveThread(); mutex.unlock();}}
     ~ReleaseGIL() {if (state) PyEval_RestoreThread(state);}
@@ -321,7 +322,7 @@ struct PythonFunction {
     Object function;
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
-    Value operator()(Caller &ct, ArgPack args) const {
+    Value operator()(Caller ct, ArgPack args) const {
         AcquireGIL lk(&ct.cast<ReleaseGIL>());
         Object o = to_python(std::move(args));
         if (!o) throw python_error();

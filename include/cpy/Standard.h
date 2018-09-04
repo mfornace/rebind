@@ -61,7 +61,9 @@ struct FromValue<std::optional<T>> {
 template <class ...Ts>
 struct ToValue<std::variant<Ts...>> {
     Value operator()(std::variant<Ts...> t) const {
-        return std::visit([](auto &t) -> Value {return ToValue<no_qualifier<decltype(t)>>(std::move(t));}, t);
+        return std::visit([](auto &t) -> Value {
+            return ToValue<no_qualifier<decltype(t)>>(std::move(t));
+        }, t);
     }
 };
 

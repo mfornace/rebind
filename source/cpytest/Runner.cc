@@ -14,7 +14,7 @@ struct ValueHandler {
             Sequence(mapped<Value>(logs, [](auto &x) {return std::move(x.key);})),
             Sequence(mapped<Value>(logs, [](auto &x) {return std::move(x.value);}))
         };
-        return fun(context, vals).as_bool();
+        return cast<bool>(fun(context, vals));
     }
 };
 
@@ -32,12 +32,11 @@ Vector<Value> run_test(Caller &ct0, std::size_t i, Vector<Function> calls,
     auto const test = suite().at(i);
     if (!test.function) throw std::runtime_error("Test case has invalid Function");
     ArgPack pack;
-    if (std::holds_alternative<Integer>(args.var))
-        pack = test.parameters.at(args.as_integer());
-    if (std::holds_alternative<Sequence>(args.var)) {
-        auto &seq = std::get<Sequence>(args.var);
-        if (!seq.shape.empty()) throw std::runtime_error("Non 1-dimensional Sequence");
-        pack = std::move(seq.contents);
+    if (auto p = cast<Integer>(&args))
+        pack = test.parameters.at(*p);
+    if (auto p = cast<Sequence>(&args)) {
+        if (!p->shape.empty()) throw std::runtime_error("Non 1-dimensional Sequence");
+        pack = std::move(p->contents);
     }
     std::stringstream out, err;
     Value return_value;
@@ -72,36 +71,36 @@ Vector<Value> run_test(Caller &ct0, std::size_t i, Vector<Function> calls,
 
 bool make_document() {
     auto &doc = document();
-    doc.recurse("n_tests", [] {
+    doc.function("n_tests", [] {
         return suite().size();
     });
 
-    doc.recurse("compile_info", []() -> Vector<std::string_view> {
+    doc.function("compile_info", []() -> Vector<std::string_view> {
         return {__VERSION__ "", __DATE__ "", __TIME__ ""};
     });
 
-    doc.recurse("test_names", [] {
+    doc.function("test_names", [] {
         return mapped<Value>(suite(), [](auto &&x) {return x.name;});
     });
 
-    doc.recurse("test_info", [](std::size_t i) -> Vector<Value> {
+    doc.function("test_info", [](std::size_t i) -> Vector<Value> {
         auto const &c = suite().at(i);
         return {c.name, c.comment.location.file, Integer(c.comment.location.line), c.comment.comment};
     });
 
-    doc.recurse("n_parameters", [](std::size_t i) {
+    doc.function("n_parameters", [](std::size_t i) {
         return suite().at(i).parameters.size();
     });
 
-    doc.recurse("add_value", [](std::string s, Value v) {
+    doc.function("add_value", [](std::string s, Value v) {
         add_test(TestCase{std::move(s), {}, ValueAdaptor{std::move(v)}});
     });
 
-    doc.recurse("run_test", [](Caller &ct, std::size_t i, Vector<Function> calls, Value args, bool cout, bool cerr) {
+    doc.function("run_test", [](Caller &ct, std::size_t i, Vector<Function> calls, Value args, bool cout, bool cerr) {
         return run_test(ct, i, std::move(calls), std::move(args), cout, cerr);
     });
 
-    doc.recurse("add_test", [](std::string s, Function f, Vector<ArgPack> params) {
+    doc.function("add_test", [](std::string s, Function f, Vector<ArgPack> params) {
         add_test(TestCase{std::move(s), {}, ValueTest{f}, std::move(params)});
     });
 
