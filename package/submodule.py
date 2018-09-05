@@ -1,4 +1,4 @@
 
 def fun(i, d):
-    '''Hey man'''
+    '''Example docstring for fun'''
     pass

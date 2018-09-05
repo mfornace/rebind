@@ -1,13 +1,39 @@
 #pragma once
 #include "Value.h"
+#include <cstdlib>
 
 namespace cpy {
 
 /******************************************************************************/
 
+//
 using Binary = std::basic_string<unsigned char>;
 
 using BinaryView = std::basic_string_view<unsigned char>;
+
+class BinaryData  {
+    unsigned char *m_begin=nullptr;
+    unsigned char *m_end=nullptr;
+public:
+    constexpr BinaryData() = default;
+    constexpr BinaryData(unsigned char *b, unsigned char *e) : m_begin(b), m_end(e) {}
+    constexpr auto begin() const {return m_begin;}
+    constexpr auto data() const {return m_begin;}
+    constexpr auto end() const {return m_end;}
+    constexpr std::size_t size() const {return m_end - m_begin;}
+    operator BinaryView() const {return {m_begin, size()};}
+};
+
+template <class V>
+Binary make_binary(V const &v) {
+    using T = no_qualifier<decltype(*std::begin(v))>;
+    static_assert(__STDCPP_DEFAULT_NEW_ALIGNMENT__ >= alignof(T));
+    static_assert(std::is_trivially_destructible_v<T>);
+    return {
+        reinterpret_cast<unsigned char const *>(std::addressof(*std::begin(v))),
+        reinterpret_cast<unsigned char const *>(std::addressof(*std::end(v))),
+    };
+}
 
 /******************************************************************************/
 

@@ -154,11 +154,19 @@ Function make_function(F f) {
 
 template <class R, class ...Ts>
 struct Construct {
+    constexpr R operator()(Ts &&...ts) const {return R(static_cast<Ts>(ts)...);}
+};
+
+template <class R, class ...Ts>
+struct BraceConstruct {
     constexpr R operator()(Ts &&...ts) const {return R{static_cast<Ts>(ts)...};}
 };
 
 template <class ...Ts, class R>
-Construct<R, Ts...> construct(Type<R> t) {return {};}
+constexpr auto construct(Type<R>) {
+    return std::conditional_t<std::is_constructible_v<R, Ts...>,
+        Construct<R, Ts...>, BraceConstruct<R, Ts...>>();
+}
 
 
 template <class T>
