@@ -41,11 +41,19 @@ struct Renderer<boost::container::small_vector<T, N, A>, std::enable_if_t<!Opaqu
     void operator()(Document &doc) {doc.render(Type<T>());}
 };
 
+template <class T, std::size_t N, class A>
+struct FromValue<boost::container::small_vector<T, N, A>> : VectorFromValue<boost::container::small_vector<T, N, A>> {};
+
+template <class T, std::size_t N, class A>
+struct ToValue<boost::container::small_vector<T, N, A>> {
+    std::any operator()(boost::container::small_vector<T, N, A> t) const {return Sequence(std::move(t));}
+};
+
 /******************************************************************************/
 
 template <class T>
 struct ToValue<std::optional<T>> {
-    Value operator()(std::optional<T> t) const {
+    std::any operator()(std::optional<T> t) const {
         if (!t) return {};
         else return *t;
     }
@@ -61,8 +69,8 @@ struct FromValue<std::optional<T>> {
 
 template <class ...Ts>
 struct ToValue<std::variant<Ts...>> {
-    Value operator()(std::variant<Ts...> t) const {
-        return std::visit([](auto &t) -> Value {
+    std::any operator()(std::variant<Ts...> t) const {
+        return std::visit([](auto &t) -> std::any {
             return ToValue<no_qualifier<decltype(t)>>()(std::move(t));
         }, t);
     }
@@ -99,7 +107,7 @@ struct ToValue<std::pair<T, U>> {
     static_assert(!std::is_reference_v<T>);
     static_assert(!std::is_reference_v<U>);
 
-    Sequence operator()(std::pair<T, U> p) const {
+    std::any operator()(std::pair<T, U> p) const {
         return Sequence::from_values(std::move(p.first), std::move(p.second));
     }
 };
@@ -114,7 +122,7 @@ struct ToValue<std::tuple<Ts...>> {
         return Sequence::from_values(std::move(std::get<Is>(t))...);
     }
 
-    Sequence operator()(std::tuple<Ts...> t) const {
+    std::any operator()(std::tuple<Ts...> t) const {
         return get(std::move(t), std::make_index_sequence<sizeof...(Ts)>());
     }
 };

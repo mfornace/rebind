@@ -1,5 +1,5 @@
 from .cpp import document
-from cpy.build import render
+from cpy.build import render_module
 from . import submodule
 
-rendered = render(__name__, document)
+rendered_document = render_module(__name__, document)

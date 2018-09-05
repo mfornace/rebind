@@ -151,7 +151,7 @@ Value from_python(Object const &o, bool view) {
 
     if (PyByteArray_Check(+o)) {
         char const *data = PyByteArray_AS_STRING(+o);
-        auto const len = PyByteArray_GET_SIZE(+o) - 1;
+        auto const len = PyByteArray_GET_SIZE(+o);
         if (view) return BinaryView(reinterpret_cast<unsigned char const *>(data), len);
         else return Binary(data, data + len); // ignore null byte at end
     }
@@ -242,9 +242,16 @@ long type_index_hash(PyObject *o) noexcept {
     return static_cast<long>(cast_object<std::type_index>(o).hash_code());
 }
 
-PyObject *type_index_name(PyObject *o) noexcept {
+PyObject *type_index_repr(PyObject *o) noexcept {
     std::type_index const *p = cast_if<std::type_index>(o);
     if (p) return PyUnicode_FromFormat("TypeIndex('%s')", get_type_name(*p).data());
+    PyErr_SetString(PyExc_TypeError, "Expected instance of cpy.TypeIndex");
+    return nullptr;
+}
+
+PyObject *type_index_str(PyObject *o) noexcept {
+    std::type_index const *p = cast_if<std::type_index>(o);
+    if (p) return PyUnicode_FromString(get_type_name(*p).data());
     PyErr_SetString(PyExc_TypeError, "Expected instance of cpy.TypeIndex");
     return nullptr;
 }
@@ -270,8 +277,8 @@ PyTypeObject TypeIndexType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name = "cpy.TypeIndex",
     .tp_hash = type_index_hash,
-    .tp_str = type_index_name,
-    .tp_repr = type_index_name,
+    .tp_str = type_index_str,
+    .tp_repr = type_index_repr,
     .tp_richcompare = type_index_compare,
     .tp_basicsize = sizeof(Holder<std::type_index>),
     .tp_dealloc = tp_delete<std::type_index>,
@@ -345,20 +352,24 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
             return nullptr;
         }
     }
-    std::cout << "gil = " << gil << " " << Py_REFCNT(self) << Py_REFCNT(args) << std::endl;
+    if (Debug) std::cout << "gil = " << gil << " " << Py_REFCNT(self) << Py_REFCNT(args) << std::endl;
 
     return cpy::raw_object([=]() -> Object {
         auto &fun = cast_object<Function>(self);
         auto py = fun.target<PythonFunction>();
         if (py) return {PyObject_CallObject(+py->function, args), false};
-        if (!fun) return raised(PyExc_ValueError, "Invalid C++ function");
+        if (!fun) return raised(PyExc_TypeError, "Invalid C++ function");
         auto pack = positional_args({args, true});
+        if (Debug) std::cout << "got the pack " << pack.size() << std::endl;
+        if (Debug) for (auto const &p : pack) std::cout << p.type().name() << std::endl;
         Value out;
         {
             ReleaseGIL lk(!gil);
             Caller ct{&lk};
+            if (Debug) std::cout << "calling the pack " << pack.size() << std::endl;
             out = fun(ct, std::move(pack));
         }
+        if (Debug) std::cout << "got the output " << out.type().name() << std::endl;
         return cpy::to_python(std::move(out));
     });
 }

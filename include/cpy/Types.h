@@ -47,12 +47,12 @@ using Real = double;
 
 template <class T>
 struct ToValue<T, std::enable_if_t<(std::is_integral_v<T>)>> {
-    Integer operator()(T t) const {return static_cast<Integer>(t);}
+    std::any operator()(T t) const {return static_cast<Integer>(t);}
 };
 
 template <class T>
 struct ToValue<T, std::enable_if_t<(std::is_floating_point_v<T>)>> {
-    Real operator()(T t) const {return static_cast<Real>(t);}
+    std::any operator()(T t) const {return static_cast<Real>(t);}
 };
 
 template <class T>
@@ -89,13 +89,40 @@ struct Sequence {
         contents.reserve(std::size(v));
         for (auto &&x : v) contents.emplace_back(static_cast<decltype(x) &&>(x));
     }
+
+    // template <class T, class ...Keys>
+    // T unzip(Dispatch &msg, Keys &&...keys) const & {
+    //     if (shape.size() < 2) {
+    //         if (contents.size() != sizeof...(Keys)) throw msg.error("wrong number of keys");
+    //         for (auto const &c : contents) {
+    //             auto s = std::any_cast<Sequence>(&c.any);
+    //             if (!s) throw msg.error("not sequence");
+    //             if (s->size() != 2) throw msg.error("should be length 2");
+    //         }
+    //         auto get = [](auto const &k) {return std::find_if(contents.begin(), contents.end(), []() {
+    //             return std::any_cast<Sequence>()
+    //         })}
+    //         return T{}
+    //     }
+    //     throw msg.error("not implemented");
+    // }
+
+    Vector<Value> && flat(Dispatch &msg) && {
+        if (shape.size() > 1) throw msg.error("expected 1d sequence");
+        return std::move(contents);
+    }
+
+    Vector<Value> const & flat(Dispatch &msg) const & {
+        if (shape.size() > 1) throw msg.error("expected 1d sequence");
+        return contents;
+    }
 };
 
 /******************************************************************************/
 
 template <class T, class Alloc>
 struct ToValue<std::vector<T, Alloc>> {
-    Sequence operator()(std::vector<T, Alloc> t) const {return Sequence(std::move(t));}
+    std::any operator()(std::vector<T, Alloc> t) const {return Sequence(std::move(t));}
 };
 
 

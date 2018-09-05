@@ -38,12 +38,13 @@ struct Value {
     template <class T, class ...Ts>
     Value(std::in_place_type_t<T> t, Ts &&...ts) : any(t, static_cast<Ts &&>(ts)...) {}
 
-    Value(std::in_place_t, Value &&t) noexcept : Value(std::move(t)) {}
+    // Value(std::in_place_t, Value &&t) noexcept : Value(std::move(t)) {}
 
-    Value(std::in_place_t, Value const &t) : Value(t) {}
+    Value(std::any &&a) noexcept : any(std::move(a)) {}
+    Value(std::any const &a) noexcept : any(a) {}
 
-    template <class T, std::enable_if_t<!std::is_same_v<no_qualifier<T>, Value>, int> = 0>
-    Value(T &&t) : Value(std::in_place_t(), ToValue<no_qualifier<T>>()(static_cast<T &&>(t))) {}
+    template <class T, std::enable_if_t<(!std::is_same_v<no_qualifier<T>, Value>), int> = 0>
+    Value(T &&t);
 
     std::type_index type() const {return any.type();}
     bool has_value() const {return any.has_value();}
@@ -51,6 +52,12 @@ struct Value {
     operator std::any const &() const & {return any;}
     operator std::any &&() && {return std::move(any);}
 };
+
+static_assert(std::is_copy_constructible_v<Value>);
+static_assert(std::is_move_constructible_v<Value>);
+
+template <class T, std::enable_if_t<(!std::is_same_v<no_qualifier<T>, Value>), int>>
+Value::Value(T &&t) : Value(ToValue<no_qualifier<T>>()(static_cast<T &&>(t))) {}
 
 /******************************************************************************/
 
@@ -84,9 +91,9 @@ struct ToValue {
 inline std::any to_value(std::nullptr_t) {return {};}
 
 template <class T>
-struct ToValue<T, std::void_t<decltype(to_value(Type<T>(), std::declval<T>()))>> {
-    decltype(auto) operator()(T &&t) const {return to_value(Type<T>(), static_cast<T &&>(t));}
-    decltype(auto) operator()(T const &t) const {return to_value(Type<T>(), t);}
+struct ToValue<T, std::void_t<decltype(to_value(std::declval<T>()))>> {
+    decltype(auto) operator()(T &&t) const {return to_value(static_cast<T &&>(t));}
+    decltype(auto) operator()(T const &t) const {return to_value(t);}
 };
 
 template <>
@@ -99,7 +106,7 @@ struct ToValue<char const *> {
 template <class T, class=void>
 struct FromValue {
     T operator()(Value const &v, Dispatch &msg) {
-        std::cout << v.type().name() << " " << typeid(T).name() << std::endl;
+        if (Debug) std::cout << v.type().name() << " " << typeid(T).name() << std::endl;
         throw msg.error("mismatched class type", v.type(), typeid(T));
     }
 };
@@ -140,9 +147,11 @@ struct CastValue {
         if (auto t = std::any_cast<T>(&in.any))
             return std::move(*t);
         if (auto p = std::any_cast<Reference<Value const &>>(&in.any))
-            return (*this)(out, *p, msg);
-        if (auto p = std::any_cast<Reference<Value &>>(&in.any))
-            return (*this)(out, *p, msg);
+            return (*this)(out, p->get(), msg);
+        if (auto p = std::any_cast<Reference<Value &>>(&in.any)) {
+            if (Debug) std::cout << "casting reference " << p->get().type().name() << std::endl;
+            return (*this)(out, p->get(), msg);
+        }
         return FromValue<T>()(std::move(in), msg);
     }
 };
@@ -193,6 +202,7 @@ struct CastValue<T &&> {
 
 template <class T>
 T value_cast(Value &&v, Dispatch &msg) {
+    if (Debug) std::cout << "casting " << v.type().name() << " " << typeid(T).name() << std::endl;
     if constexpr(std::is_convertible_v<Value &&, T>) return static_cast<T>(std::move(v));
     return CastValue<T>()(v, std::move(v), msg);
 }
@@ -200,8 +210,7 @@ T value_cast(Value &&v, Dispatch &msg) {
 template <class T>
 T value_cast(Value &&v) {
     Dispatch msg;
-    if constexpr(std::is_convertible_v<Value &&, T>) return static_cast<T>(std::move(v));
-    return CastValue<T>()(v, std::move(v), msg);
+    return value_cast<T>(std::move(v), msg);
 }
 
 /******************************************************************************/

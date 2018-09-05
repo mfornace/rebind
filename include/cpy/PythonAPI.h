@@ -173,8 +173,10 @@ Object to_python(T &&a) {
     if (t == typeid(Real))             return to_python(std::any_cast<Real>(a.any));
     if (t == typeid(std::string_view)) return to_python(std::any_cast<std::string_view>(a.any));
     if (t == typeid(std::string))      return to_python(std::any_cast<std::string const &>(a.any));
-    if (t == typeid(Function))         return to_python(std::any_cast<Function const &>(a.any));
+    if (t == typeid(Function))         return to_python(std::any_cast<Function>(a.any));
     if (t == typeid(Sequence))         return to_python(std::any_cast<Sequence const &>(a.any));
+    if (t == typeid(std::type_index))  return to_python(std::any_cast<std::type_index>(a.any));
+    if (t == typeid(Binary))           return to_python(std::any_cast<Binary const &>(a.any));
     Object o{PyObject_CallObject(type_object(ValueType), nullptr), false};
     cast_object<Value>(+o) = static_cast<T &&>(a);
     return o;

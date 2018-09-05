@@ -4,6 +4,8 @@
 
 namespace cpy {
 
+static constexpr bool Debug = false;
+
 /******************************************************************************/
 
 template <class T>

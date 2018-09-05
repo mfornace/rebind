@@ -5,11 +5,11 @@ logging.basicConfig(level=logging.INFO)
 
 ################################################################################
 
-def render(pkg, doc):
-    log.info('rendering document')
+def render_module(pkg: str, doc: dict):
+    log.info('rendering document into module %s', repr(pkg))
 
     Function = type('Function', (doc['Function'],), {
-        '__call__': _call, '__module__': pkg,
+        '__call__': _call, '__module__': pkg, 'raw_call': doc['Function'].__call__,
         'convert': classmethod(_convert), 'overload': classmethod(_overload),
     })
 
@@ -26,7 +26,7 @@ def render(pkg, doc):
     mod = importlib.import_module(pkg)
     for k, v in out.items():
         setattr(mod, k, v)
-    log.info('finished rendering document')
+    log.info('finished rendering document into module %s', repr(pkg))
     return out
 
 ################################################################################
@@ -86,7 +86,7 @@ def collapse_overloads(items):
 
 ################################################################################
 
-def set_global_type(pkg, overload, bases, name, methods):
+def set_global_type(pkg: str, overload, bases: tuple, name: str, methods):
     '''Define a new type in pkg'''
     scope, name = '{}.{}'.format(pkg, name).rsplit('.', maxsplit=1)
     mod = importlib.import_module(scope)

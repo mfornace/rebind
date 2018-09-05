@@ -5,6 +5,8 @@ namespace cpy {
 
 using KeyPair = std::pair<std::string_view, Value>;
 
+// static_assert(decltype(ToValue<KeyPair>()(KeyPair()))::aaa);
+
 using Logs = Vector<KeyPair>;
 
 /******************************************************************************/
