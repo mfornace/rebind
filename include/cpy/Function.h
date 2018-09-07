@@ -1,6 +1,6 @@
 #pragma once
 #include "Signature.h"
-#include "Value.h"
+#include "Types.h"
 
 #include <typeindex>
 #include <iostream>
@@ -39,7 +39,8 @@ Value context_invoke(std::false_type, F const &f, C &&c, Ts &&...ts) {
 template <class T>
 decltype(auto) cast_index(ArgPack &v, Dispatch &msg, IndexedType<T> i) {
     msg.index = i.index;
-    return value_cast<T>(std::move(v[i.index]), msg);
+    if (Debug) std::cout << typeid(T).name() << " castindex" << std::endl;
+    return cast_value<T>(std::move(v.contents[i.index]), msg);
 }
 
 /******************************************************************************/
@@ -132,6 +133,24 @@ struct FunctionAdaptor<0, F> {
 
 /******************************************************************************/
 
+struct OverloadedFunction {
+    Vector<Function> overloads;
+
+    Value operator()(Caller c, ArgPack args) const {
+        if (overloads.size() == 1 && overloads[0])
+            return overloads[0](std::move(c), std::move(args));
+        for (auto const &o : overloads) if (o) {
+            try {return o(c, args);}
+            catch(DispatchError const &) {}
+        }
+        throw DispatchError("No overloads worked");
+    }
+};
+
+Function overload(Function f, Function o);
+
+/******************************************************************************/
+
 template <class F, class=void>
 struct Simplify {
     constexpr std::decay_t<F> operator()(F f) const {return f;}
@@ -191,9 +210,9 @@ class Callback {
 
     R operator()(Ts &&...ts) const {
         ArgPack pack;
-        pack.reserve(sizeof...(Ts));
-        (pack.emplace_back(static_cast<Ts &&>(ts)), ...);
-        return value_cast<R>()(fun(caller, std::move(pack)));
+        pack.contents.reserve(sizeof...(Ts));
+        (pack.contents.emplace_back(static_cast<Ts &&>(ts)), ...);
+        return cast_value<R>()(fun(caller, std::move(pack)));
     }
 
 private:

@@ -18,13 +18,19 @@
 
 namespace cpy {
 
+extern PyTypeObject FunctionType, ValueType, TypeIndexType;
+extern std::unordered_map<std::type_index, std::string> type_names;
+
+enum class Scalar {Bool, Char, SignedChar, UnsignedChar, Unsigned, Signed, Float, Pointer};
+extern Zip<Scalar, std::type_index, unsigned> scalars;
+
+/******************************************************************************/
+
 template <class T>
 struct Holder {
     PyObject_HEAD // 16 bytes for the ref count and the type object
     T value; // I think stack is OK because this object is only casted to anyway.
 };
-
-extern PyTypeObject FunctionType, ValueType, TypeIndexType;
 
 struct Object {
     PyObject *ptr = nullptr;
@@ -58,6 +64,7 @@ struct Buffer {
 
     static std::type_index format(std::string_view s);
     static Binary binary(Py_buffer *view, std::size_t len);
+    static Arg binary_view(Py_buffer *view, std::size_t len);
 
     ~Buffer() {PyBuffer_Release(&view);}
 };
@@ -99,6 +106,9 @@ T & cast_object(PyObject *o) {
 
 /******************************************************************************/
 
+template <class T>
+struct ToPython;
+
 inline Object to_python(Object t) noexcept {return t;}
 
 inline Object to_python(bool b) noexcept {return {b ? Py_True : Py_False, true};}
@@ -109,6 +119,9 @@ inline Object to_python(char const *s) noexcept {
 
 template <class T, std::enable_if_t<(std::is_integral_v<T> && sizeof(T) <= sizeof(long long)), int> = 0>
 Object to_python(T t) noexcept {return {PyLong_FromLongLong(static_cast<long long>(t)), false};}
+
+template <class T, std::enable_if_t<(std::is_enum_v<T>), int> = 0>
+Object to_python(T t) noexcept {return to_python(static_cast<std::underlying_type_t<T>>(t));}
 
 inline Object to_python(double t) noexcept {return {PyFloat_FromDouble(t), false};}
 
@@ -155,30 +168,23 @@ inline Object to_python(std::type_index f) noexcept {
     return o;
 }
 
-
-template <class ...Ts>
-Object to_python(std::tuple<Ts...> const &t);
-
-template <class T, class U>
-Object to_python(std::pair<T, U> const &t);
-
-
-template <class T, std::enable_if_t<std::is_same_v<no_qualifier<T>, Value>, int> = 0>
+template <class T, std::enable_if_t<std::is_base_of_v<Arg, no_qualifier<T>>, int> = 0>
 Object to_python(T &&a) {
     if (!a.has_value()) return {Py_None, true};
     std::type_index const t = a.type();
-    if (t == typeid(Object))           return std::any_cast<Object>(a.any);
-    if (t == typeid(bool))             return to_python(std::any_cast<bool>(a.any));
-    if (t == typeid(Integer))          return to_python(std::any_cast<Integer>(a.any));
-    if (t == typeid(Real))             return to_python(std::any_cast<Real>(a.any));
-    if (t == typeid(std::string_view)) return to_python(std::any_cast<std::string_view>(a.any));
-    if (t == typeid(std::string))      return to_python(std::any_cast<std::string const &>(a.any));
-    if (t == typeid(Function))         return to_python(std::any_cast<Function>(a.any));
-    if (t == typeid(Sequence))         return to_python(std::any_cast<Sequence const &>(a.any));
-    if (t == typeid(std::type_index))  return to_python(std::any_cast<std::type_index>(a.any));
-    if (t == typeid(Binary))           return to_python(std::any_cast<Binary const &>(a.any));
+    if (t == typeid(Object))           return std::any_cast<Object>(a);
+    if (t == typeid(bool))             return to_python(std::any_cast<bool>(a));
+    if (t == typeid(Integer))          return to_python(std::any_cast<Integer>(a));
+    if (t == typeid(Real))             return to_python(std::any_cast<Real>(a));
+    if (t == typeid(std::string_view)) return to_python(std::any_cast<std::string_view>(a));
+    if (t == typeid(std::string))      return to_python(std::any_cast<std::string const &>(a));
+    if (t == typeid(Function))         return to_python(std::any_cast<Function>(a));
+    if (t == typeid(ValuePack))        return to_python(std::any_cast<ValuePack const &>(a));
+    if (t == typeid(ArgPack))          return to_python(std::any_cast<ArgPack const &>(a));
+    if (t == typeid(std::type_index))  return to_python(std::any_cast<std::type_index>(a));
+    if (t == typeid(Binary))           return to_python(std::any_cast<Binary const &>(a));
     Object o{PyObject_CallObject(type_object(ValueType), nullptr), false};
-    cast_object<Value>(+o) = static_cast<T &&>(a);
+    static_cast<std::any &>(cast_object<Value>(+o)) = static_cast<T &&>(a).base();
     return o;
 }
 
@@ -224,13 +230,9 @@ Object to_python(std::tuple<Ts...> const &t) {
 }
 
 template <class T, class U>
-Object to_python(std::pair<T, U> const &t) {
-    return to_tuple(t, std::make_index_sequence<2>());
-}
+Object to_python(std::pair<T, U> const &t) {return to_tuple(t, std::make_index_sequence<2>());}
 
-Object to_python(Methods const &m) {
-    return to_python(std::tie(m.name, m.methods));
-}
+inline Object to_python(Methods const &m) {return to_python(std::tie(m.name, m.methods));}
 
 template <class V>
 Object to_dict(V const &v) noexcept {
@@ -249,7 +251,7 @@ Object to_dict(V const &v) noexcept {
 // template <class T, std::enable_if_t<std::is_same_v<T, Value> || std::is_same_v<T, Value>, int> = 0>
 // Object to_python(T const &s) noexcept;
 
-Object to_python(Sequence const &s) {
+inline Object to_python(ArgPack const &s) {
     auto const n = s.contents.size();
     Object out = {PyTuple_New(n), false};
     if (!out) return {};
@@ -311,7 +313,15 @@ struct AcquireGIL {
 
 /******************************************************************************/
 
-Value from_python(Object const &o, bool view);
+template <>
+struct ToArg<Object> {
+    Arg operator()(Object const &o) const;
+};
+
+template <>
+struct ToValue<Object> {
+    Value operator()(Object const &o) const;
+};
 
 struct PythonFunction {
     Object function;
@@ -323,33 +333,15 @@ struct PythonFunction {
         if (!o) throw python_error();
         o = {PyObject_CallObject(+function, +o), false};
         if (!o) throw python_error();
-        return from_python(o, false);
+        return o;
     }
 };
 
 /******************************************************************************/
 
-extern std::unordered_map<std::type_index, std::string> type_names;
+std::string_view get_type_name(std::type_index idx) noexcept;
 
-inline std::string_view get_type_name(std::type_index idx) noexcept {
-    auto it = type_names.find(idx);
-    if (it == type_names.end() || it->second.empty()) return idx.name();
-    else return it->second;
-}
-
-inline std::string wrong_types_message(WrongTypes const &e) {
-    std::ostringstream os;
-    os << "C++: " << e.what() << " (#" << e.index << ", "
-        << get_type_name(e.source) << " \u2192 " << get_type_name(e.dest);
-    if (!e.indices.empty()) {
-        os << ", scopes=[";
-        for (auto i : e.indices) os << i << ", ";
-    };
-    os << ')';
-    auto s = std::move(os).str();
-    if (!e.indices.empty()) {s.end()[-3] = ']'; s.end()[-2] = ')'; s.pop_back();}
-    return s;
-}
+std::string wrong_types_message(WrongTypes const &e);
 
 template <class F>
 PyObject *raw_object(F &&f) noexcept {

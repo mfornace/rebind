@@ -507,7 +507,7 @@ The primary hurdles to using `cpy` are that it requires C++17 (most importantly 
     - [Macros](#macros)
     - [`Value`](#value)
             - [Thoughts](#thoughts)
-        - [`ToValue` and conversion of arbitrary types to `Value`](#tovalue-and-conversion-of-arbitrary-types-to-value)
+        - [`ToOutput` and conversion of arbitrary types to `Value`](#ToOutput-and-conversion-of-arbitrary-types-to-value)
         - [`FromValue` and conversion from `Value`](#fromvalue-and-conversion-from-value)
         - [`Glue` and `AddKeyPairs`](#glue-and-addkeypairs)
     - [Test adaptors](#test-adaptors)
@@ -787,7 +787,7 @@ Purposes of `Value`:
 
 It seems that there are two use cases, one with `std::any` within C++, one with `Scalar` and maybe a couple other limited types for Python. This would indicate that `Value` should only be used for the test interaction and `std::any` should be used for most C++ to C++ operations. If that's true, the next question would be if `std::any` is useful within `Value`. I don't know if it's very common to pass test results to other tests in Python. Probably not. Would just do it directly in C++. Yeah... seems like `std::any` is not very useful to put in the `Value`.
 
-It does seem OK to put vector and binary types in the `Value`. Even though they're not useful for logging, they're useful for parametrization and return values of tests. However, wouldn't we want `ToValue` to translate a vector to a string for logging but to a vector for output? That might indicate that the logger can accept only `Scalar`...? Or we could keep it as one type and 1) enforce always going to a vector, which is slow but not wrong, or 2) put a bool in the signature for `ToValue` to indicate whether it's just for logging. If we split the type, can't log the return value necessarily (unless it's one of `Scalar`).
+It does seem OK to put vector and binary types in the `Value`. Even though they're not useful for logging, they're useful for parametrization and return values of tests. However, wouldn't we want `ToOutput` to translate a vector to a string for logging but to a vector for output? That might indicate that the logger can accept only `Scalar`...? Or we could keep it as one type and 1) enforce always going to a vector, which is slow but not wrong, or 2) put a bool in the signature for `ToOutput` to indicate whether it's just for logging. If we split the type, can't log the return value necessarily (unless it's one of `Scalar`).
 
 ##### Thoughts
 
@@ -806,14 +806,14 @@ struct KeyPair {std::string_view key; Value value;}; // A key value pair used in
 using Logs = Vector<KeyPair>; // Keeps tracked of logged information in a Context
 ```
 
-#### `ToValue` and conversion of arbitrary types to `Value`
+#### `ToOutput` and conversion of arbitrary types to `Value`
 To make a Value from an arbitrary object, the following function is provided:
 ```c++
 template <class T>
 Value make_output(T &&t);
 ```
 
-This functions does a compile-time lookup of `ToValue<std::decay_t<T>`. If no such struct is defined, `cpy` converts the object to a string via something like the following. The compiler will then error if `operator<<` has no matches.
+This functions does a compile-time lookup of `ToOutput<std::decay_t<T>`. If no such struct is defined, `cpy` converts the object to a string via something like the following. The compiler will then error if `operator<<` has no matches.
 ```c++
 std::ostringstream os;
 os << static_cast<T &&>(t);
@@ -822,28 +822,28 @@ Value v = os.str();
 
 Otherwise, this implementation is assumed to be usable:
 ```
-Value v = ToValue<std::decay_t<T>>()(static_cast<T &&>(t));
+Value v = ToOutput<std::decay_t<T>>()(static_cast<T &&>(t));
 ```
 
-`ToValue` may be specialized as needed. Here are some examples:
+`ToOutput` may be specialized as needed. Here are some examples:
 
 ```c++
 // The declaration present in cpy
 template <class T, class=void>
-struct ToValue;
+struct ToOutput;
 // User example: define the default Value making operation for all objects
 template <class T, class>
-struct ToValue {
+struct ToOutput {
     Value operator()(T const &t) const {...}
 };
 // User example: specialize a Value making operation for a specific type
 template <>
-struct ToValue<my_type> {
+struct ToOutput<my_type> {
     Value operator()(my_type const &t) const {return "my_type";}
 };
 // User example: specialize a Value making operation for a trait
 template <class T>
-struct ToValue<T, std::enable_if_t<(my_trait<T>::value)> {
+struct ToOutput<T, std::enable_if_t<(my_trait<T>::value)> {
     Value operator()(T const &t) const {...}
 };
 ```

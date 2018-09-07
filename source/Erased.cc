@@ -19,7 +19,7 @@ template <class T>
 Blah from_value(Type<Blah>, T &&, Dispatch &msg) {
     if constexpr(std::is_same_v<no_qualifier<T>, std::string>)
         return Blah("haha");
-    throw msg.error();
+    throw msg.error("bad blah", typeid(Blah), typeid(T));
 }
 
 //remove iostream
@@ -91,10 +91,21 @@ bool make_document() {
     doc.function("noref", [](double i) {});
     doc.function("rref", [](double &&i) {});
     doc.render(Type<Goo>());
+
+    doc.function("buffer", [](std::tuple<BinaryData, std::type_index, Vector<std::size_t>> i) {
+        std::cout << std::get<0>(i).size() << std::endl;
+        std::cout << std::get<1>(i).name() << std::endl;
+        std::cout << std::get<2>(i).size() << std::endl;
+        for (auto &c : std::get<0>(i)) c += 4;
+    });
+    doc.function("vec1", [](std::vector<int> const &) {});
+    doc.function("vec2", [](std::vector<int> &) {});
+    doc.function("vec3", [](std::vector<int>) {});
+
     return bool();
 }
 
 // then this is just add_document()
-static bool blah = make_document();
+static bool static_document_trigger = make_document();
 
 }

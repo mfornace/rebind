@@ -1,7 +1,19 @@
-import sys, types, importlib, functools, inspect, logging
+import sys, types, importlib, functools, inspect, logging, enum
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
+################################################################################
+
+class Scalar(enum.IntEnum):
+    Bool = 0
+    Char = 1
+    SignedChar = 2
+    UnsignedChar = 3
+    Unsigned = 4
+    Signed = 5
+    Float = 6
+    Pointer = 7
 
 ################################################################################
 

@@ -16,9 +16,15 @@ template <> struct Opaque<char const *>     : std::true_type {};
 template <> struct Opaque<void>             : std::true_type {};
 template <> struct Opaque<std::string>      : std::true_type {};
 template <> struct Opaque<std::string_view> : std::true_type {};
+template <> struct Opaque<std::type_index>  : std::true_type {};
+template <> struct Opaque<BinaryView>       : std::true_type {};
+template <> struct Opaque<BinaryData>       : std::true_type {};
+template <> struct Opaque<Binary>           : std::true_type {};
 template <> struct Opaque<Function>         : std::true_type {};
 template <> struct Opaque<Value>            : std::true_type {};
-template <> struct Opaque<Caller>   : std::true_type {};
+template <> struct Opaque<Arg>              : std::true_type {};
+template <> struct Opaque<ArgPack>          : std::true_type {};
+template <> struct Opaque<Caller>           : std::true_type {};
 
 template <class T>
 struct Opaque<T, std::enable_if_t<(std::is_arithmetic_v<T>)>> : std::true_type {};

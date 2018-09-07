@@ -26,7 +26,8 @@ struct Identity {
 /******************************************************************************/
 
 template <class T, class U>
-static constexpr bool Reinterpretable = (sizeof(T) == sizeof(U)) && alignof(T) == alignof(U);
+static constexpr bool Reinterpretable = sizeof(T) == sizeof(U) && alignof(T) == alignof(U)
+                                      && std::is_pod_v<T> && std::is_pod_v<U>;
 
 static_assert(!std::is_same_v<unsigned char, char>);
 static_assert(Reinterpretable<unsigned char, char>);
@@ -38,8 +39,14 @@ static_assert(Reinterpretable<unsigned char, char>);
 template <class T>
 using Vector = std::vector<T>;
 
+template <class ...Ts>
+struct ZipType {using type = std::tuple<Ts...>;};
+
 template <class T, class U>
-using Zip = Vector<std::pair<T, U>>;
+struct ZipType<T, U> {using type = std::pair<T, U>;};
+
+template <class ...Ts>
+using Zip = Vector<typename ZipType<Ts...>::type>;
 
 template <class T, class V, class F=Identity>
 Vector<T> mapped(V const &v, F &&f) {

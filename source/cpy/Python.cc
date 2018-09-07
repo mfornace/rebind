@@ -13,26 +13,6 @@
 
 namespace cpy {
 
-std::unordered_map<std::type_index, std::string> type_names = {
-    {typeid(void),             "void"},
-    {typeid(bool),             "bool"},
-    {typeid(Integer),          "int"},
-    {typeid(Real),             "float"},
-    {typeid(std::string_view), "str"},
-    {typeid(std::string),      "str"},
-    {typeid(std::type_index),  "TypeIndex"},
-    {typeid(Binary),           "Binary"},
-    {typeid(BinaryView),       "BinaryView"},
-    {typeid(Function),         "Function"},
-    {typeid(Value),            "Value"},
-    {typeid(Sequence),         "Sequence"},
-
-    {typeid(std::uint32_t),    "uint32"},
-    {typeid(std::int32_t),     "int32"},
-    {typeid(int),              "int32"},
-    {typeid(float),            "float32"}
-};
-
 /******************************************************************************/
 
 // Assuming a Python exception has been raised, fetch its string and put it in
@@ -56,28 +36,6 @@ PythonError python_error() noexcept {
 
 /******************************************************************************/
 
-Zip<std::string_view, std::type_index> Buffer::formats = {
-    {"d", typeid(double)},
-    {"f", typeid(float)},
-    {"c", typeid(char)},
-    {"b", typeid(signed char)},
-    {"B", typeid(unsigned char)},
-    {"?", typeid(bool)},
-    {"h", typeid(short)},
-    {"H", typeid(unsigned short)},
-    {"i", typeid(int)},
-    {"I", typeid(unsigned int)},
-    {"l", typeid(long)},
-    {"L", typeid(unsigned long)},
-    {"q", typeid(long long)},
-    {"Q", typeid(unsigned long long)},
-    {"n", typeid(ssize_t)},
-    {"s", typeid(char[])},
-    {"p", typeid(char[])},
-    {"N", typeid(size_t)},
-    {"P", typeid(void *)}
-};
-
 std::type_index Buffer::format(std::string_view s) {
     auto it = std::find_if(Buffer::formats.begin(), Buffer::formats.end(),
         [&](auto const &p) {return p.first == s;});
@@ -93,6 +51,20 @@ Binary Buffer::binary(Py_buffer *view, std::size_t len) {
     return bin;
 }
 
+Arg Buffer::binary_view(Py_buffer *view, std::size_t len) {
+    if (PyBuffer_IsContiguous(view, 'C')) {
+        if (view->readonly) {
+            std::cout << "read only view" << std::endl;
+            return BinaryView(reinterpret_cast<unsigned char const *>(view), view->len);
+        } else {
+            std::cout << "mutable view" << std::endl;
+            return BinaryData(reinterpret_cast<unsigned char *>(view->buf), view->len);
+        }
+    }
+    std::cout << "not view" << std::endl;
+    return binary(view, len);
+}
+
 std::string_view as_string_view(PyObject *o) {
     Py_ssize_t size;
 #if PY_MAJOR_VERSION > 2
@@ -105,7 +77,8 @@ std::string_view as_string_view(PyObject *o) {
     return std::string_view(static_cast<char const *>(c), size);
 }
 
-Value from_python(Object const &o, bool view) {
+template <bool A>
+std::conditional_t<A, Arg, Value> from_python(Object const &o) {
     if (+o == Py_None) return {};
 
     if (PyBool_Check(+o)) return (+o == Py_True) ? true : false;
@@ -115,31 +88,31 @@ Value from_python(Object const &o, bool view) {
     if (PyFloat_Check(+o)) return static_cast<Real>(PyFloat_AsDouble(+o));
 
     if (PyTuple_Check(+o) || PyList_Check(+o)) {
-        Vector<Value> vals;
-        vals.reserve(PyObject_Length(+o));
+        std::conditional_t<A, ArgPack, ValuePack> vals;
+        vals.contents.reserve(PyObject_Length(+o));
         map_iterable(o, [&](Object o) {
-            vals.emplace_back(from_python(o, view));
+            vals.contents.emplace_back(from_python<A>(o));
         });
-        return Sequence(std::move(vals));
+        return std::move(vals);
     }
 
     if (PyBytes_Check(+o)) {
         char *c;
         Py_ssize_t size;
         PyBytes_AsStringAndSize(+o, &c, &size);
-        if (view) return std::string_view(c, size);
+        if (A) return std::string_view(c, size);
         else return std::string(c, size);
     }
 
     if (PyUnicode_Check(+o)) {
         auto v = as_string_view(+o);
-        if (view) return v;
+        if (A) return v;
         else return std::string(v);
     }
 
     if (PyObject_TypeCheck(+o, &ValueType)) {
-        if (view) return Value(Reference<Value &>(cast_object<Value>(+o)));
-        else return cast_object<Value>(+o);
+        if constexpr(A) return Reference<Value &>(cast_object<Value>(+o));
+        return cast_object<Value>(+o);
     }
 
     if (PyObject_TypeCheck(+o, &TypeIndexType)) return cast_object<std::type_index>(+o);
@@ -152,7 +125,7 @@ Value from_python(Object const &o, bool view) {
     if (PyByteArray_Check(+o)) {
         char const *data = PyByteArray_AS_STRING(+o);
         auto const len = PyByteArray_GET_SIZE(+o);
-        if (view) return BinaryView(reinterpret_cast<unsigned char const *>(data), len);
+        if (A) return BinaryView(reinterpret_cast<unsigned char const *>(data), len);
         else return Binary(data, data + len); // ignore null byte at end
     }
 
@@ -162,9 +135,12 @@ Value from_python(Object const &o, bool view) {
             PyErr_SetString(PyExc_TypeError, "C++: could not get buffer");
             throw python_error();
         }
-        return Sequence::from_values(
-            Buffer::binary(&buff.view, buff.view.len),
-            Buffer::format(buff.view.format ? buff.view.format : ""),
+        std::conditional_t<A, Arg, Value> bin;
+        if (Debug) std::cout << "cast buffer " << A << std::endl;
+        if constexpr(A) bin = Buffer::binary_view(&buff.view, buff.view.len);
+        else bin = Buffer::binary(&buff.view, buff.view.len);
+        return std::conditional_t<A, ArgPack, ValuePack>::from_values(
+            std::move(bin), Buffer::format(buff.view.format ? buff.view.format : ""),
             Vector<Integer>(buff.view.shape, buff.view.shape + buff.view.ndim));
     }
 
@@ -172,14 +148,40 @@ Value from_python(Object const &o, bool view) {
     throw python_error();
 };
 
+Arg ToArg<Object>::operator()(Object const &o) const {return from_python<true>(o);}
+
+Value ToValue<Object>::operator()(Object const &o) const {return from_python<false>(o);}
+
+/******************************************************************************/
+
+std::string_view get_type_name(std::type_index idx) noexcept {
+    auto it = type_names.find(idx);
+    if (it == type_names.end() || it->second.empty()) return idx.name();
+    else return it->second;
+}
+
+std::string wrong_types_message(WrongTypes const &e) {
+    std::ostringstream os;
+    os << "C++: " << e.what() << " (#" << e.index << ", "
+        << get_type_name(e.source) << " \u2192 " << get_type_name(e.dest);
+    if (!e.indices.empty()) {
+        os << ", scopes=[";
+        for (auto i : e.indices) os << i << ", ";
+    };
+    os << ')';
+    auto s = std::move(os).str();
+    if (!e.indices.empty()) {s.end()[-3] = ']'; s.end()[-2] = ')'; s.pop_back();}
+    return s;
+}
+
 /******************************************************************************/
 
 // Store the objects in args in pack
 ArgPack positional_args(Object const &args) {
     ArgPack pack;
-    pack.reserve(PyObject_Length(+args));
+    pack.contents.reserve(PyObject_Length(+args));
     map_iterable(std::move(args), [&pack](Object o) {
-        pack.emplace_back(from_python(o, true));
+        pack.contents.emplace_back(from_python<true>(o));
     });
     return pack;
 }
@@ -360,13 +362,13 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
         if (py) return {PyObject_CallObject(+py->function, args), false};
         if (!fun) return raised(PyExc_TypeError, "Invalid C++ function");
         auto pack = positional_args({args, true});
-        if (Debug) std::cout << "got the pack " << pack.size() << std::endl;
-        if (Debug) for (auto const &p : pack) std::cout << p.type().name() << std::endl;
+        if (Debug) std::cout << "constructed args from python " << pack.size() << std::endl;
+        if (Debug) for (auto const &p : pack.contents) std::cout << p.type().name() << std::endl;
         Value out;
         {
             ReleaseGIL lk(!gil);
             Caller ct{&lk};
-            if (Debug) std::cout << "calling the pack " << pack.size() << std::endl;
+            if (Debug) std::cout << "calling the args: size=" << pack.size() << std::endl;
             out = fun(ct, std::move(pack));
         }
         if (Debug) std::cout << "got the output " << out.type().name() << std::endl;
@@ -431,6 +433,7 @@ Object initialize(Document const &doc) {
     bool ok = attach_type(m, "Value", &ValueType)
         && attach_type(m, "Function", &FunctionType)
         && attach_type(m, "TypeIndex", &TypeIndexType)
+        && attach(m, "scalars", to_tuple(scalars))
         && attach(m, "objects", to_tuple(doc.values))
         && attach(m, "types",   to_dict(doc.types))
         && attach(m, "set_type_names", to_python(make_function([](Zip<std::type_index, std::string_view> v) {

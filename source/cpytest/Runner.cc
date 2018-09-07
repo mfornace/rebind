@@ -10,8 +10,9 @@ struct ValueHandler {
     Caller context;
     Function fun;
     bool operator()(Event e, Scopes const &scopes, Logs &&logs) {
-        Vector<Value> vals = {Value(Integer(e)), Value(Sequence(scopes)), logs};
-        return value_cast<bool>(fun(context, vals));
+        return cast_value<bool>(fun(context, ArgPack::from_values(
+            Integer(e), scopes, std::move(logs)
+        )));
     }
 };
 
@@ -29,12 +30,12 @@ Vector<Value> run_test(Caller &ct0, std::size_t i, Vector<Function> calls,
     auto const test = suite().at(i);
     if (!test.function) throw std::runtime_error("Test case has invalid Function");
     ArgPack pack;
-    if (auto p = std::any_cast<Integer>(&args.any))
+    if (auto p = std::any_cast<Integer>(&args))
         pack = test.parameters.at(*p);
-    if (auto p = std::any_cast<Sequence>(&args.any)) {
-        if (!p->shape.empty()) throw std::runtime_error("Non 1-dimensional Sequence");
-        pack = std::move(p->contents);
-    }
+    if (auto p = std::any_cast<ArgPack>(&args))
+        pack = std::move(*p);
+    if (auto p = std::any_cast<ValuePack>(&args))
+        pack = std::move(*p);
     std::stringstream out, err;
     Value return_value;
     double test_time = 0;
