@@ -54,6 +54,7 @@ struct Object {
     ~Object() {Py_XDECREF(ptr);}
 };
 
+/******************************************************************************/
 
 struct Buffer {
     static Zip<std::string_view, std::type_index> formats;

@@ -59,7 +59,7 @@ struct Document {
     }
 
     template <class ...Ts>
-    void render(Pack<Ts...>) {(render(Type<Ts>()), ...);}
+    void render(Pack<Ts...>) {(render(Type<no_qualifier<Ts>>()), ...);}
 
     template <class T>
     void object(std::string_view s, T value) {
@@ -77,12 +77,7 @@ struct Document {
     /// Always a function - no vagueness here
     template <class F, class ...Ts>
     void method(std::type_index t, std::string name, F f) {
-        Signature<F>::no_qualifier::apply2([&](auto r, auto c, auto ...ts) {
-            std::cout << name << std::endl;
-            std::cout << std::type_index(r).name() << std::endl;
-            std::cout << std::type_index(c).name() << std::endl;
-            render(r); (render(ts), ...);
-        });
+        Signature<F>::no_qualifier::for_each([&](auto r) {if (t != +r) render(+r);});
         types[t].methods.emplace_back(std::move(name), make_function(std::move(f)));
     }
 };

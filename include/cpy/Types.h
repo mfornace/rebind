@@ -64,6 +64,8 @@ struct FromArg<BinaryView> {
             return {p->get().data(), p->get().size()};
         if (auto p = std::any_cast<BinaryData>(&in))
             return {p->data(), p->size()};
+        if (auto p = std::any_cast<Binary>(&in))
+            return {p->data(), p->size()};
         return FromArg<BinaryView, bool>()(out, std::move(in), msg);
     }
 };
@@ -99,12 +101,31 @@ struct ToValue<T, std::enable_if_t<(std::is_floating_point_v<T>)>> {
 
 template <class T>
 struct FromValue<T, std::enable_if_t<std::is_arithmetic_v<T>>> {
-    T operator()(Value const &u, Dispatch &message) const {
-        auto const &t = u.type();
-        if (t == typeid(bool)) return static_cast<T>(std::any_cast<bool>(u));
-        if (t == typeid(Integer)) return static_cast<T>(std::any_cast<Integer>(u));
-        if (t == typeid(Real)) return static_cast<T>(std::any_cast<Real>(u));
-        throw message.error("not convertible to arithmetic value", u.type(), typeid(T));
+    T operator()(Value const &u, Dispatch &msg) const {
+        if (auto p = std::any_cast<bool>(&u))    return static_cast<T>(*p);
+        if (auto p = std::any_cast<Integer>(&u)) return static_cast<T>(*p);
+        if (auto p = std::any_cast<Real>(&u))    return static_cast<T>(*p);
+        throw msg.error("not convertible to arithmetic value", u.type(), typeid(T));
+    }
+};
+
+template <class T, class Traits, class Alloc>
+struct FromValue<std::basic_string<T, Traits, Alloc>> {
+    std::basic_string<T, Traits, Alloc> operator()(Value u, Dispatch &msg) const {
+        if (auto p = std::any_cast<std::basic_string_view<T, Traits>>(&u))
+            return std::basic_string<T, Traits, Alloc>(*p);
+        return FromValue<std::basic_string<T, Traits, Alloc>, bool>()(std::move(u), msg);
+    }
+};
+
+template <class T, class Traits>
+struct FromArg<std::basic_string_view<T, Traits>> {
+    std::basic_string_view<T, Traits> operator()(Arg &out, Arg &&in, Dispatch &msg) const {
+        if (auto p = std::any_cast<Reference<std::basic_string<T, Traits> &>>(&in))
+            return {p->get().data(), p->get().size()};
+        if (auto p = std::any_cast<Reference<std::basic_string<T, Traits> const &>>(&in))
+            return {p->get().data(), p->get().size()};
+        return FromArg<std::basic_string_view<T, Traits>, bool>()(out, std::move(in), msg);
     }
 };
 
@@ -207,18 +228,31 @@ template <class V>
 struct VectorFromArg {
     using T = no_qualifier<typename V::value_type>;
 
-    V operator()(Arg &outarg, Arg &&in, Dispatch &msg) const {
-        auto v = std::any_cast<ArgPack>(&in);
-        if (!v) throw msg.error("expected sequence", in.type(), typeid(V));
+    template <class P>
+    static V get(P &&pack, Dispatch &msg) {
         V out;
-        out.reserve(v->contents.size());
+        out.reserve(pack.contents.size());
         msg.indices.emplace_back(0);
-        for (auto &x : v->contents) {
-            out.emplace_back(cast_value<T>(std::move(x), msg));
+        for (auto &&x : pack.contents) {
+            using X0 = std::remove_reference_t<decltype(x)>;
+            using X = std::conditional_t<std::is_const_v<X0>, std::remove_cv_t<X0>, X0 &&>;
+            out.emplace_back(downcast<T>(static_cast<X>(x), msg));
             ++msg.indices.back();
         }
         msg.indices.pop_back();
         return out;
+    }
+
+    V operator()(Arg &outarg, Arg &&in, Dispatch &msg) const {
+        if (auto p = std::any_cast<ArgPack>(&in)) return get(std::move(*p), msg);
+        if (auto p = std::any_cast<ValuePack>(&in)) return get(std::move(*p), msg);
+        throw msg.error("expected sequence", in.type(), typeid(V));
+    }
+
+    V operator()(Arg &outarg, Arg const &in, Dispatch &msg) const {
+        if (auto p = std::any_cast<ArgPack>(&in)) return get(*p, msg);
+        if (auto p = std::any_cast<ValuePack>(&in)) return get(*p, msg);
+        throw msg.error("expected sequence", in.type(), typeid(V));
     }
 };
 

@@ -40,7 +40,7 @@ template <class T>
 decltype(auto) cast_index(ArgPack &v, Dispatch &msg, IndexedType<T> i) {
     msg.index = i.index;
     if (Debug) std::cout << typeid(T).name() << " castindex" << std::endl;
-    return cast_value<T>(std::move(v.contents[i.index]), msg);
+    return downcast<T>(std::move(v.contents[i.index]), msg);
 }
 
 /******************************************************************************/
@@ -212,7 +212,7 @@ class Callback {
         ArgPack pack;
         pack.contents.reserve(sizeof...(Ts));
         (pack.contents.emplace_back(static_cast<Ts &&>(ts)), ...);
-        return cast_value<R>()(fun(caller, std::move(pack)));
+        return downcast<R>()(fun(caller, std::move(pack)));
     }
 
 private:

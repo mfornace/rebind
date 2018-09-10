@@ -10,7 +10,7 @@ struct ValueHandler {
     Caller context;
     Function fun;
     bool operator()(Event e, Scopes const &scopes, Logs &&logs) {
-        return cast_value<bool>(fun(context, ArgPack::from_values(
+        return downcast<bool>(fun(context, ArgPack::from_values(
             Integer(e), scopes, std::move(logs)
         )));
     }

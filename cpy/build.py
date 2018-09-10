@@ -24,22 +24,40 @@ def render_module(pkg: str, doc: dict):
         '__call__': _call, '__module__': pkg, 'raw_call': doc['Function'].__call__,
         'convert': classmethod(_convert), 'overload': classmethod(_overload),
     })
+    collapsed = collapse_overloads([(name, (k, meth)) for k, (name, meth) in doc['types'].items() if name])
+    collapsed = {k: [[i[0] for i in v], [m for i in v for m in i[1]]] for k, v in collapsed.items()}
 
-    types = {k: set_global_type(pkg, Function.overload, (doc['Value'],), *v)
-        for k, v in doc['types'].items() if v[0]} # ignore empty names
+    types = {}
+    for k, (idx, meth) in collapsed.items():
+        methods = {n: _overload(Function, m) for n, m in collapse_overloads(meth).items()}
+        cls = set_global_type(pkg, (doc['Value'],), k, methods)
+        types.update({i: cls for i in idx})
+
     Function.types = types
 
     objects = {k: set_global_object(pkg, k, Function.overload(v))
         for k, v in collapse_overloads(doc['objects']).items()}
 
-    out = dict(TypeIndex=doc['TypeIndex'], Value=doc['Value'], Function=Function,
+    find = lambda x, n: next(t for c, t, s in doc['scalars'] if c == x and s == n)
+    scalars = {
+        'float32': find(Scalar.Float, 4),
+        'float64': find(Scalar.Float, 8),
+        'uint32': find(Scalar.Unsigned, 4),
+        'uint64': find(Scalar.Unsigned, 8),
+        'int32': find(Scalar.Signed, 4),
+        'int64': find(Scalar.Signed, 8),
+    }
+
+    out = dict(TypeIndex=doc['TypeIndex'], Value=doc['Value'], Function=Function, scalars=scalars,
         types=types, objects=objects, set_type_names=Function(doc['set_type_names']))
 
     mod = importlib.import_module(pkg)
     for k, v in out.items():
         setattr(mod, k, v)
     log.info('finished rendering document into module %s', repr(pkg))
+
     return out
+
 
 ################################################################################
 
@@ -59,7 +77,7 @@ def _convert(cls, obj):
     except (KeyError, AttributeError):
         return obj
 
-def _wrapped(*args, **kwargs):
+def _wrapped(*args):
     '''Call a function from a cpy.Document'''
     pass
 
@@ -74,14 +92,14 @@ def _overload(cls, v):
                     try:
                         out = f(*args, **kwargs)
                         break
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        print(e)
                 else:
                     raise TypeError('No overloads worked')
                 return cls.convert(out)
         functools.update_wrapper(call, _wrapped)
-        call.__qualname__ = 'dispatched'
-        call.__name__ = 'dispatched'
+        call.__qualname__ = 'cpy.dispatched_%d' % len(v)
+        call.__name__ = 'dispatched_%d' % len(v)
         call.__module__ = 'cpy'
         return call
     else:
@@ -98,7 +116,12 @@ def collapse_overloads(items):
 
 ################################################################################
 
-def set_global_type(pkg: str, overload, bases: tuple, name: str, methods):
+def translate(props, old, new):
+    put = props.pop(old, None)
+    if put is not None:
+        props[new] = put
+
+def set_global_type(pkg: str, bases: tuple, name: str, methods):
     '''Define a new type in pkg'''
     scope, name = '{}.{}'.format(pkg, name).rsplit('.', maxsplit=1)
     mod = importlib.import_module(scope)
@@ -106,44 +129,75 @@ def set_global_type(pkg: str, overload, bases: tuple, name: str, methods):
         props = dict(getattr(mod, name).__dict__)
     except AttributeError:
         props = {'__module__': scope}
-    methods = collapse_overloads(methods)
-    props.update({k: overload(v) for k, v in methods.items()})
 
-    put = props.pop('{}', None)
-    if put is not None:
-        props['__str__'] = put
+    translate(methods, '{}', '__str__')
+    translate(methods, '[]', '__getitem__')
+    translate(methods, '()', '__call__')
 
-    new = props.pop('new', None)
-    if new is not None:
-        def __init__(self, *args, **kwargs):
-            self.move_from(new(*args, **kwargs))
-        props['__init__'] = __init__
+    new = methods.pop('new', None)
+    if new is None:
+        def __init__(self):
+            raise TypeError('No __init__ is possible')
+    else:
+        def __init__(self, *args, _new=new):
+            self.move_from(_new(*args))
+    methods['__init__'] = __init__
+
+    for k, v in methods.items():
+        old = props.get(k)
+        props[k] = dispatch(v, old)
+        if old is not None:
+            log.info("deriving method '%s.%s.%s' from %s", pkg, name, k, repr(old))
 
     cls = type(name, bases, props)
-    log.info('rendering class (scope=%s, name=%s)', repr(scope), repr(name))
+    log.info("rendering class '%s.%s'", scope, name)
     setattr(mod, name, cls)
     return cls
 
 ################################################################################
 
+def discard_parameter(sig, key):
+    return inspect.Signature([v for v in sig.parameters.values() if v.name != key],
+            return_annotation=sig.return_annotation)
+
 def dispatch(fun, old):
-    '''Replace a declared function's contents with the one from the document'''
+    '''
+    Replace a declared function's contents with the one from the document
+    - If the declared function takes '_out', call the document function and pass its
+    output to the declared function as '_out', with the other arguments filled appropriately
+    - Otherwise if the declared function takes '_fun', call the declared function
+    with the document function passed as '_fun' and the other arguments filled appropiately
+    - Otherwise, call the document function
+    '''
     if old is None:
         return fun
+    sig = inspect.signature(old)
+    if '_fun' in sig.parameters:
+        assert '_out' not in sig.parameters
+        sig = discard_parameter(sig, '_fun')
+        def bound(*args, _orig=fun, _bind=sig.bind, _old=old, **kwargs):
+            bound = _bind(*args, **kwargs)
+            bound.apply_defaults()
+            return _old(*bound.args, _fun=_orig)
+    elif '_out' in sig.parameters:
+        assert '_fun' not in sig.parameters
+        sig = discard_parameter(sig, '_out')
+        def bound(*args, _orig=fun, _bind=sig.bind, _old=old, **kwargs):
+            args = _bind(*args, **kwargs).args
+            return _old(*args, _out=_orig(*args))
     else:
-        sig = inspect.signature(old)
         def bound(*args, _orig=fun, _bind=sig.bind, **kwargs):
             return _orig(*_bind(*args, **kwargs).args)
-        return functools.update_wrapper(bound, old)
+    return functools.update_wrapper(bound, old)
 
 def set_global_object(pkg, k, v):
     '''put in the module level functions and objects'''
     mod, key = '{}.{}'.format(pkg, k).rsplit('.', maxsplit=1)
-    log.info('rendering object (module=%s, name=%s)', mod, repr(k))
+    log.info("rendering object '%s.%s'", mod, k)
     mod = importlib.import_module(mod)
     old = getattr(mod, key, None)
     if old is not None:
-        log.info('replacing object (module=%s, name=%s, old=%s)', mod.__name__, repr(key), repr(old))
+        log.info("deriving object '%s.%s' from %s", mod.__name__, key, repr(old))
     if isinstance(v, types.FunctionType):
         v = dispatch(v, old)
     else:

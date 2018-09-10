@@ -63,7 +63,7 @@ template <class T>
 struct FromValue<std::optional<T>> {
     std::optional<T> operator()(Value u, Dispatch &msg) const {
         if (!u.has_value()) return {};
-        return cast_value<T>(std::move(u), msg);
+        return downcast<T>(std::move(u), msg);
     }
 };
 
@@ -81,14 +81,14 @@ template <class T, class ...Ts>
 struct FromValue<std::variant<T, Ts...>> {
     template <class V1, class U>
     std::variant<T, Ts...> scan(Pack<V1>, U &u, Dispatch &tmp, Dispatch &msg) const {
-        try {return cast_value<V1>(std::move(u), tmp);}
+        try {return downcast<V1>(std::move(u), tmp);}
         catch (DispatchError const &err) {}
         throw msg.error("no conversions succeeded", typeid(std::variant<T, Ts...>), typeid(U));
     }
 
     template <class V1, class V2, class U, class ...Vs>
     std::variant<T, Ts...> scan(Pack<V1, V2, Vs...>, U &u, Dispatch &tmp, Dispatch &msg) const {
-        try {return cast_value<V1>(std::move(u), tmp);}
+        try {return downcast<V1>(std::move(u), tmp);}
         catch (DispatchError const &err) {}
         return scan(Pack<V2, Vs...>(), u, tmp, msg);
     }
@@ -114,14 +114,11 @@ struct FromCompiledSequence {
     }
 };
 
-template <class T, class U>
-struct ToValue<std::pair<T, U>> : FromCompiledSequence<std::pair<T, U>, false> {};
+template <class T>
+struct ToValue<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : FromCompiledSequence<T, false> {};
 
-template <class T, class U>
-struct ToArg<std::pair<T, U>> : FromCompiledSequence<std::pair<T, U>, true> {};
-
-template <class ...Ts>
-struct ToArg<std::tuple<Ts...>> : FromCompiledSequence<std::tuple<Ts...>, true> {};
+template <class T>
+struct ToArg<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : FromCompiledSequence<T, true> {};
 
 /******************************************************************************/
 
@@ -129,7 +126,7 @@ template <class V, class S, std::size_t ...Is>
 V to_compiled_sequence(S &s, Dispatch &msg, std::index_sequence<Is...>) {
     msg.indices.emplace_back(0);
     return {(msg.indices.back() = Is,
-        cast_value<std::tuple_element_t<Is, V>>(std::move(s.contents[Is]), msg)
+        downcast<std::tuple_element_t<Is, V>>(std::move(s.contents[Is]), msg)
         )...};
 }
 
@@ -154,14 +151,8 @@ struct CompiledSequenceFromValue {
 };
 
 /// The default implementation is to accept convertible arguments or Value of the exact typeid match
-template <class T1, class T2>
-struct FromValue<std::pair<T1, T2>> : CompiledSequenceFromValue<std::pair<T1, T2>> {};
-
-template <class ...Ts>
-struct FromValue<std::tuple<Ts...>> : CompiledSequenceFromValue<std::tuple<Ts...>> {};
-
-template <class T, std::size_t N>
-struct FromValue<std::array<T, N>> : CompiledSequenceFromValue<std::array<T, N>> {};
+template <class T>
+struct FromValue<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : CompiledSequenceFromValue<T> {};
 
 template <class V>
 struct CompiledSequenceFromArg {
@@ -179,13 +170,35 @@ struct CompiledSequenceFromArg {
 };
 
 /// The default implementation is to accept convertible arguments or Value of the exact typeid match
-template <class T1, class T2>
-struct FromArg<std::pair<T1, T2>> : CompiledSequenceFromArg<std::pair<T1, T2>> {};
+template <class T>
+struct FromArg<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : CompiledSequenceFromArg<T> {};
 
-template <class ...Ts>
-struct FromArg<std::tuple<Ts...>> : CompiledSequenceFromArg<std::tuple<Ts...>> {};
+/******************************************************************************/
 
-template <class T, std::size_t N>
-struct FromArg<std::array<T, N>> : CompiledSequenceFromArg<std::array<T, N>> {};
+template <class R, class ...Ts>
+struct Renderer<std::function<R(Ts...)>> : Renderer<Pack<no_qualifier<R>, no_qualifier<Ts>...>> {};
+
+template <class R, class ...Ts>
+struct FromValue<std::function<R(Ts...)>> {
+    std::function<R(Ts...)> operator()(Value v, Dispatch &msg) const {
+        return {};
+    }
+};
+
+/******************************************************************************/
+
+// template <class T>
+// void render(cpy::Document &doc, Type<std::future<T>> t) {
+//     using F = std::future<T>;
+//     doc.type(t, "Future");
+//     doc.method(t, "valid", &F::valid);
+//     doc.method(t, "wait", &F::wait);
+//     doc.method(t, "get", &F::get);
+//     doc.method(t, "wait_for", [](F const &f, double t) {
+//         return f.wait_for(std::chrono::duration<double>(t)) == std::future_status::ready;
+//     });
+// }
+
+/******************************************************************************/
 
 }

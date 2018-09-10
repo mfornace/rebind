@@ -137,8 +137,8 @@ inline Value to_value(std::nullptr_t) {return {};}
 
 template <class T>
 struct ToValue<T, std::void_t<decltype(to_value(std::declval<T>()))>> {
-    decltype(auto) operator()(T &&t) const {return to_value(static_cast<T &&>(t));}
-    decltype(auto) operator()(T const &t) const {return to_value(t);}
+    Value operator()(T &&t) const {return to_value(static_cast<T &&>(t));}
+    Value operator()(T const &t) const {return to_value(t);}
 };
 
 /******************************************************************************/
@@ -151,22 +151,22 @@ struct FromValue {
     }
 };
 
-template <class T>
-struct FromValue<T &> {
+template <class T, class V>
+struct FromValue<T &, V> {
     T & operator()(Value const &v, Dispatch &msg) {
         throw msg.error("cannot form lvalue reference", v.type(), typeid(T));
     }
 };
 
-template <class T>
-struct FromValue<T const &> {
+template <class T, class V>
+struct FromValue<T const &, V> {
     T const & operator()(Value const &v, Dispatch &msg) {
         throw msg.error("cannot form const lvalue reference", v.type(), typeid(T));
     }
 };
 
-template <class T>
-struct FromValue<T &&> {
+template <class T, class V>
+struct FromValue<T &&, V> {
     T && operator()(Value const &v, Dispatch &msg) {
         throw msg.error("cannot form rvalue reference", v.type(), typeid(T));
     }
@@ -201,8 +201,8 @@ struct FromArg {
     }
 };
 
-template <class T>
-struct FromArg<T &> {
+template <class T, class V>
+struct FromArg<T &, V> {
     T & operator()(Arg &out, Arg &in, Dispatch &msg) const {
         if (!in.has_value())
             throw msg.error("object was already moved", in.type(), typeid(T));
@@ -226,8 +226,8 @@ struct FromArg<T &> {
     }
 };
 
-template <class T>
-struct FromArg<T const &> {
+template <class T, class V>
+struct FromArg<T const &, V> {
     T const & operator()(Arg &out, Arg const &in, Dispatch &msg) const {
         if (auto p = std::any_cast<no_qualifier<T>>(&in))
             return *p;
@@ -241,32 +241,30 @@ struct FromArg<T const &> {
             return (*this)(out, p->get(), msg);
         }
         /// To bind a temporary to a const &, we store it in the out value
-        return out.emplace<T>(FromArg<T>()(out, std::move(in), msg));
+        return out.emplace<T>(FromArg<T>()(out, in, msg));
     }
 };
 
-template <class T>
-struct FromArg<T &&> {
+template <class T, class V>
+struct FromArg<T &&, V> {
     T && operator()(Arg &out, Arg &&in, Dispatch &msg) const {
-        /// No reference wrappers are used here, better to just move the Value in
-        if (!in.has_value())
-            throw msg.error("object was already moved", in.type(), typeid(T));
+        /// No reference wrappers are used here, simpler to just move the Value in
         /// To bind a temporary to a &&, we store it in the out value
         return std::move(out.emplace<T>(FromArg<no_qualifier<T>>()(out, std::move(in), msg)));
     }
 };
 
 template <class T>
-T cast_value(Arg &&v, Dispatch &msg) {
+T downcast(Arg &&v, Dispatch &msg) {
     if (Debug) std::cout << "casting " << v.type().name() << " to " << typeid(T).name() << std::endl;
     if constexpr(std::is_convertible_v<Arg &&, T>) return static_cast<T>(std::move(v));
     return FromArg<T>()(v, std::move(v), msg);
 }
 
 template <class T>
-T cast_value(Arg &&v) {
+T downcast(Arg &&v) {
     Dispatch msg;
-    return cast_value<T>(std::move(v), msg);
+    return downcast<T>(std::move(v), msg);
 }
 
 /******************************************************************************/

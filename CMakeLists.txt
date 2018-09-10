@@ -49,6 +49,7 @@ target_link_libraries(libcpy PUBLIC cpy_interface)
 set_property(GLOBAL PROPERTY cpy_module_files
     # ${CMAKE_CURRENT_SOURCE_DIR}/source/cpytest/Module.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/source/cpy/Python.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/cpy/Module.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/source/cpy/Globals.cc
     # ${CMAKE_CURRENT_SOURCE_DIR}/source/cpytest/Python.cc
 )
