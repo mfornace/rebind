@@ -40,12 +40,12 @@ def render_module(pkg: str, doc: dict):
 
     find = lambda x, n: next(t for c, t, s in doc['scalars'] if c == x and s == n)
     scalars = {
-        'float32': find(Scalar.Float, 4),
-        'float64': find(Scalar.Float, 8),
-        'uint32': find(Scalar.Unsigned, 4),
-        'uint64': find(Scalar.Unsigned, 8),
-        'int32': find(Scalar.Signed, 4),
-        'int64': find(Scalar.Signed, 8),
+        'float32': find(Scalar.Float, 32),
+        'float64': find(Scalar.Float, 64),
+        'uint32': find(Scalar.Unsigned, 32),
+        'uint64': find(Scalar.Unsigned, 64),
+        'int32': find(Scalar.Signed, 32),
+        'int64': find(Scalar.Signed, 64),
     }
 
     out = dict(TypeIndex=doc['TypeIndex'], Value=doc['Value'], Function=Function, scalars=scalars,
@@ -175,18 +175,18 @@ def dispatch(fun, old):
     if '_fun' in sig.parameters:
         assert '_out' not in sig.parameters
         sig = discard_parameter(sig, '_fun')
-        def bound(*args, _orig=fun, _bind=sig.bind, _old=old, **kwargs):
+        def bound(*args, _orig=fun, _bind=sig.bind, _old=old, gil=None, **kwargs):
             bound = _bind(*args, **kwargs)
             bound.apply_defaults()
             return _old(*bound.args, _fun=_orig)
     elif '_out' in sig.parameters:
         assert '_fun' not in sig.parameters
         sig = discard_parameter(sig, '_out')
-        def bound(*args, _orig=fun, _bind=sig.bind, _old=old, **kwargs):
+        def bound(*args, _orig=fun, _bind=sig.bind, _old=old, gil=None, **kwargs):
             args = _bind(*args, **kwargs).args
             return _old(*args, _out=_orig(*args))
     else:
-        def bound(*args, _orig=fun, _bind=sig.bind, **kwargs):
+        def bound(*args, _orig=fun, _bind=sig.bind, gil=None, **kwargs):
             return _orig(*_bind(*args, **kwargs).args)
     return functools.update_wrapper(bound, old)
 
@@ -206,3 +206,24 @@ def set_global_object(pkg, k, v):
     return v
 
 ################################################################################
+
+try:
+    import cxxfilt
+    def _demangle(s):
+        try:
+            out = cxxfilt.demangle(s)
+            if out != s:
+                return out
+        except cxxfilt.InvalidName:
+            pass
+        return None
+
+    def demangle(s):
+        return _demangle(s) or _demangle('_Z' + s) or s
+
+except ImportError:
+    def demangle(s):
+        return s
+
+    def _demangle(s):
+        return s

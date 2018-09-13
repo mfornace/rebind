@@ -59,7 +59,7 @@ Zip<std::string_view, std::type_index> Buffer::formats = {
     {"P", typeid(void *)}
 };
 
-#define CPY_TMP(C, T) {Scalar::C, typeid(T), sizeof(T)}
+#define CPY_TMP(C, T) {Scalar::C, typeid(T), sizeof(T) * CHAR_BIT}
 
 Zip<Scalar, std::type_index, unsigned> scalars = {
     CPY_TMP(Bool,         bool),

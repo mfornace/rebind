@@ -39,7 +39,7 @@ std::type_index Buffer::format(std::string_view s) {
 }
 
 Binary Buffer::binary(Py_buffer *view, std::size_t len) {
-    if (Debug) std::cout << "make new Binary from PyBuffer" << std::endl;
+    std::cout << "make new Binary from PyBuffer" << std::endl;
     Binary bin(len, typename Binary::value_type());
     if (PyBuffer_ToContiguous(bin.data(), view, bin.size(), 'C') < 0) {
         PyErr_SetString(PyExc_TypeError, "C++: could not make contiguous buffer");
@@ -49,16 +49,17 @@ Binary Buffer::binary(Py_buffer *view, std::size_t len) {
 }
 
 Arg Buffer::binary_view(Py_buffer *view, std::size_t len) {
-    if (PyBuffer_IsContiguous(view, 'C')) {
+    std::cout << "Contiguous " << PyBuffer_IsContiguous(view, 'C') << PyBuffer_IsContiguous(view, 'F') << std::endl;
+    if (PyBuffer_IsContiguous(view, 'F')) {
         if (view->readonly) {
-            if (Debug) std::cout << "read only view from PyBuffer" << std::endl;
+            std::cout << "read only view from PyBuffer" << std::endl;
             return BinaryView(reinterpret_cast<unsigned char const *>(view), view->len);
         } else {
-            if (Debug) std::cout << "mutable view from PyBuffer" << std::endl;
+            std::cout << "mutable view from PyBuffer" << std::endl;
             return BinaryData(reinterpret_cast<unsigned char *>(view->buf), view->len);
         }
     }
-    if (Debug) std::cout << "copy view from PyBuffer" << std::endl;
+    std::cout << "copy view from PyBuffer" << std::endl;
     return binary(view, len);
 }
 
@@ -158,7 +159,7 @@ std::string_view get_type_name(std::type_index idx) noexcept {
     else return it->second;
 }
 
-std::string wrong_types_message(WrongTypes const &e) {
+std::string wrong_types_message(WrongType const &e) {
     std::ostringstream os;
     os << "C++: " << e.what() << " (#" << e.index << ", "
         << get_type_name(e.source) << " \u2192 " << get_type_name(e.dest);

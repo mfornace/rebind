@@ -32,13 +32,13 @@ struct WrongNumber : DispatchError {
 
 /******************************************************************************/
 
-struct WrongTypes : DispatchError {
+struct WrongType : DispatchError {
     std::vector<unsigned int> indices;
     std::type_index source;
     std::type_index dest;
     unsigned int index, expected, received;
 
-    WrongTypes(std::string const &n, std::vector<unsigned int> &&v,
+    WrongType(std::string const &n, std::vector<unsigned int> &&v,
                std::type_index s, std::type_index d,
                unsigned int i, unsigned int e=0, unsigned int r=0)
         noexcept : DispatchError(n), indices(std::move(v)), source(s), dest(d),
@@ -54,19 +54,19 @@ struct Dispatch {
     std::type_index dest = typeid(void);
     unsigned int index;
 
-    WrongTypes error() noexcept {
+    WrongType error() noexcept {
         return {scope, std::move(indices), source, dest, index};
     }
 
-    WrongTypes error(std::string const &scope2) noexcept {
+    WrongType error(std::string const &scope2) noexcept {
         return {scope2, std::move(indices), source, dest, index};
     }
 
-    WrongTypes error(std::type_index s, std::type_index d) noexcept {
+    WrongType error(std::type_index s, std::type_index d) noexcept {
         return {scope, std::move(indices), s, d, index};
     }
 
-    WrongTypes error(std::string const &scope2, std::type_index s, std::type_index d, unsigned int e=0, unsigned int r=0) noexcept {
+    WrongType error(std::string const &scope2, std::type_index s, std::type_index d, unsigned int e=0, unsigned int r=0) noexcept {
         return {scope2, std::move(indices), s, d, index, e, r};
     }
 

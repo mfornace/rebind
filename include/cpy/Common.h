@@ -23,6 +23,14 @@ struct Identity {
     T const & operator()(T const &t) const {return t;}
 };
 
+struct Ignore {
+    template <class T>
+    Ignore(T const &) {}
+
+    template <class T>
+    Ignore &operator=(T const &) {return *this;}
+};
+
 /******************************************************************************/
 
 template <class T, class U>

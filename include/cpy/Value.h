@@ -31,9 +31,6 @@ struct ToArg;
 template <class T, class=void>
 struct ToValue;
 
-// template <class T>
-// Value
-
 struct Arg : std::any {
     constexpr Arg() = default;
 
@@ -92,6 +89,7 @@ static_assert(32 == sizeof(Value));              // 8 + 24 buffer I think
 
 /******************************************************************************/
 
+/// Default ToArg passes lvalues as Reference and rvalues as Value
 template <class T, class>
 struct ToArg {
     static_assert(!std::is_base_of_v<T, Arg>);
@@ -110,6 +108,7 @@ struct ToArg {
     }
 };
 
+/// A common behavior passing the argument directly by value into an Arg without conversion
 struct ToArgFromAny {
     template <class T>
     Arg operator()(T t) const {
@@ -124,7 +123,7 @@ template <>
 struct ToArg<Reference<Value const &>> : ToArgFromAny {};
 
 
-/// The default implementation is to serialize to Value
+/// The default implementation is to serialize to Value without conversion
 template <class T, class>
 struct ToValue {
     static_assert(!std::is_base_of_v<T, Arg>);
@@ -135,6 +134,7 @@ struct ToValue {
 
 inline Value to_value(std::nullptr_t) {return {};}
 
+/// ADL version
 template <class T>
 struct ToValue<T, std::void_t<decltype(to_value(std::declval<T>()))>> {
     Value operator()(T &&t) const {return to_value(static_cast<T &&>(t));}
@@ -143,14 +143,17 @@ struct ToValue<T, std::void_t<decltype(to_value(std::declval<T>()))>> {
 
 /******************************************************************************/
 
+/// If the type is matched exactly, return it
 template <class T, class=void>
 struct FromValue {
-    T operator()(Value const &v, Dispatch &msg) {
+    T operator()(Value v, Dispatch &msg) {
         if (Debug) std::cout << v.type().name() << " " << typeid(T).name() << std::endl;
+        if (auto p = std::any_cast<T>(&v)) return std::move(*p);
         throw msg.error("mismatched class type", v.type(), typeid(T));
     }
 };
 
+/// I don't know why these are that necessary? Not sure when you'd expect FromValue to ever return a reference
 template <class T, class V>
 struct FromValue<T &, V> {
     T & operator()(Value const &v, Dispatch &msg) {
@@ -178,11 +181,13 @@ struct FromValue<T &&, V> {
 /// castvalue always needs an output Value &, and an input Value
 template <class T, class=void>
 struct FromArg {
+    /// If exact match, return it, else return FromValue implementation
     T operator()(Arg &out, Arg const &in, Dispatch &msg) const {
         if (auto t = std::any_cast<T>(&in))
             return *t;
         return FromValue<T>()(Value::from_any(in.base()), msg);
     }
+    /// Remove Reference wrappers
     T operator()(Arg &out, Arg &&in, Dispatch &msg) const {
         if (Debug) std::cout << "casting FromArg " << in.type().name() << " to " <<  typeid(T).name() << std::endl;
         if (auto t = std::any_cast<T>(&in))
