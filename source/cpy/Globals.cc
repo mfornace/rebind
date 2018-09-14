@@ -16,7 +16,7 @@ std::unordered_map<std::type_index, std::string> type_names = {
     {typeid(BinaryData),       "BinaryData"},
     {typeid(Function),         "Function"},
     {typeid(Value),            "Value"},
-    {typeid(ValuePack),        "ValuePack"},
+    // {typeid(ValuePack),        "ValuePack"},
     {typeid(ArgPack),          "ArgPack"},
     {typeid(char),             "char"},
     {typeid(unsigned char),    "unsigned_char"},

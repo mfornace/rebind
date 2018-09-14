@@ -10,9 +10,8 @@ struct ValueHandler {
     Caller context;
     Function fun;
     bool operator()(Event e, Scopes const &scopes, Logs &&logs) {
-        return downcast<bool>(fun(context, ArgPack::from_values(
-            Integer(e), scopes, std::move(logs)
-        )));
+        Integer const ev{e};
+        return downcast<bool>(fun(context, ArgPack{ev, scopes, std::move(logs)}));
     }
 };
 
@@ -32,10 +31,10 @@ Vector<Value> run_test(Caller &ct0, std::size_t i, Vector<Function> calls,
     ArgPack pack;
     if (auto p = std::any_cast<Integer>(&args))
         pack = test.parameters.at(*p);
-    if (auto p = std::any_cast<ArgPack>(&args))
-        pack = std::move(*p);
-    if (auto p = std::any_cast<ValuePack>(&args))
-        pack = std::move(*p);
+    // if (auto p = std::any_cast<ArgPack>(&args))
+        // pack = std::move(*p);
+    // if (auto p = std::any_cast<ValuePack>(&args))
+        // pack = std::move(*p);
     std::stringstream out, err;
     Value return_value;
     double test_time = 0;

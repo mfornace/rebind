@@ -22,7 +22,7 @@ template <> struct Opaque<BinaryData>       : std::true_type {};
 template <> struct Opaque<Binary>           : std::true_type {};
 template <> struct Opaque<Function>         : std::true_type {};
 template <> struct Opaque<Value>            : std::true_type {};
-template <> struct Opaque<Arg>              : std::true_type {};
+template <> struct Opaque<Reference>        : std::true_type {};
 template <> struct Opaque<ArgPack>          : std::true_type {};
 template <> struct Opaque<Caller>           : std::true_type {};
 

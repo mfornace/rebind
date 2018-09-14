@@ -178,12 +178,20 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
 
     return cpy::raw_object([=]() -> Object {
         auto &fun = cast_object<Function>(self);
-        auto py = fun.target<PythonFunction>();
-        if (py) return {PyObject_CallObject(+py->function, args), false};
-        if (!fun) {PyErr_SetString(PyExc_TypeError, "C++: invalid function"); return {};}
+        if (!fun.has_value()) {
+            PyErr_SetString(PyExc_TypeError, "C++: invalid function");
+            return {};
+        } else if (auto py = fun.erased.target<PythonFunction>()) {
+            return {PyObject_CallObject(+py->function, args), false};
+        }
+        // I think here we should convert each arg into an Object
+        // then pass them in as Reference
+        // then in ToValue, we allow conversions out of Object to the types we know
+        // the alternative is to convert to C++ stuff here.
+        // the alternative is better for the GIL I guess.
         auto pack = positional_args({args, true});
         if (Debug) std::cout << "constructed args from python " << pack.size() << std::endl;
-        if (Debug) for (auto const &p : pack.contents) std::cout << p.type().name() << std::endl;
+        if (Debug) for (auto const &p : pack) std::cout << p.type().name() << std::endl;
         Value out;
         {
             ReleaseGIL lk(!gil);

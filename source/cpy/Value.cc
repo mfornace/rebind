@@ -10,12 +10,12 @@ Document & document() noexcept {
 /******************************************************************************/
 
 Function overload(Function f, Function o) {
-    if (auto ff = f.target<OverloadedFunction>()) {
-        if (auto oo = o.target<OverloadedFunction>())
+    if (auto ff = f.erased.target<OverloadedFunction>()) {
+        if (auto oo = o.erased.target<OverloadedFunction>())
             ff->overloads.insert(ff->overloads.end(), oo->overloads.begin(), oo->overloads.end());
         else ff->overloads.emplace_back(std::move(o));
         return std::move(f);
-    } else if (auto oo = o.target<OverloadedFunction>()) {
+    } else if (auto oo = o.erased.target<OverloadedFunction>()) {
         oo->overloads.insert(oo->overloads.begin(), std::move(f));
         return std::move(o);
     } else return OverloadedFunction{{std::move(f), std::move(o)}};

@@ -5,6 +5,8 @@
 #include <typeindex>
 #include <algorithm>
 #include <string>
+#include <any>
+#include <deque>
 
 namespace cpy {
 
@@ -48,6 +50,7 @@ struct WrongType : DispatchError {
 /******************************************************************************/
 
 struct Dispatch {
+    std::deque<std::any> storage;
     std::string scope;
     std::vector<unsigned int> indices;
     std::type_index source = typeid(void);

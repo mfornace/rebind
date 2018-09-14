@@ -201,6 +201,10 @@ def set_global_object(pkg, k, v):
     if isinstance(v, types.FunctionType):
         v = dispatch(v, old)
     else:
+        try:
+            print(v.type())
+        except:
+            pass
         assert old is None
     setattr(mod, key, v)
     return v

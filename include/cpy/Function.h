@@ -8,7 +8,28 @@
 
 namespace cpy {
 
-using Function = std::function<Value(Caller, ArgPack)>;
+using ErasedFunction = std::function<Value(Caller, ArgPack)>;
+
+struct Function {
+    ErasedFunction erased;
+
+    Value operator()(Caller c, ArgPack v) const {return erased(c, std::move(v));}
+
+    Function() = default;
+
+    template <class F, std::enable_if_t<std::is_constructible_v<ErasedFunction, F &&>, int> = 0>
+    Function(F &&f) : erased(static_cast<F &&>(f)) {}
+
+    template <class ...Ts>
+    Value operator()(Caller c, Ts &&...ts) const {
+        ArgPack v;
+        v.reserve(sizeof...(Ts));
+        (v.emplace_back(static_cast<Ts &&>(ts)), ...);
+        return (*this)(c, std::move(v));
+    }
+
+    bool has_value() const {return bool(erased);}
+};
 
 /******************************************************************************/
 
@@ -37,10 +58,10 @@ Value context_invoke(std::false_type, F const &f, C &&c, Ts &&...ts) {
 
 /// Cast element i of v to type T
 template <class T>
-decltype(auto) cast_index(ArgPack &v, Dispatch &msg, IndexedType<T> i) {
+decltype(auto) cast_index(ArgPack const &v, Dispatch &msg, IndexedType<T> i) {
     msg.index = i.index;
     if (Debug) std::cout << typeid(T).name() << " castindex" << std::endl;
-    return downcast<T>(std::move(v.contents[i.index]), msg);
+    return downcast<T>(v[i.index], msg);
 }
 
 /******************************************************************************/
@@ -137,9 +158,9 @@ struct OverloadedFunction {
     Vector<Function> overloads;
 
     Value operator()(Caller c, ArgPack args) const {
-        if (overloads.size() == 1 && overloads[0])
+        if (overloads.size() == 1 && overloads[0].has_value())
             return overloads[0](std::move(c), std::move(args));
-        for (auto const &o : overloads) if (o) {
+        for (auto const &o : overloads) if (o.has_value()) {
             try {return o(c, args);}
             catch(DispatchError const &) {}
         }
@@ -173,12 +194,12 @@ Function make_function(F f) {
 
 template <class R, class ...Ts>
 struct Construct {
-    constexpr R operator()(Ts &&...ts) const {return R(static_cast<Ts>(ts)...);}
+    constexpr R operator()(Ts ...ts) const {return R(static_cast<Ts &&>(ts)...);}
 };
 
 template <class R, class ...Ts>
 struct BraceConstruct {
-    constexpr R operator()(Ts &&...ts) const {return R{static_cast<Ts>(ts)...};}
+    constexpr R operator()(Ts ...ts) const {return R{static_cast<Ts &&>(ts)...};}
 };
 
 template <class ...Ts, class R>
@@ -202,22 +223,22 @@ Streamable<T> streamable(Type<T> t={}) {return {};}
 
 /******************************************************************************/
 
-template <class R, class ...Ts>
-class Callback {
-    Function fun;
+// template <class R, class ...Ts>
+// class Callback {
+//     Function fun;
 
-    Callback(Function f, Caller &c) : fun(std::move(f), caller(&c)) {}
+//     Callback(Function f, Caller &c) : fun(std::move(f), caller(&c)) {}
 
-    R operator()(Ts &&...ts) const {
-        ArgPack pack;
-        pack.contents.reserve(sizeof...(Ts));
-        (pack.contents.emplace_back(static_cast<Ts &&>(ts)), ...);
-        return downcast<R>()(fun(caller, std::move(pack)));
-    }
+//     R operator()(Ts &&...ts) const {
+//         ArgPack pack;
+//         pack.contents.reserve(sizeof...(Ts));
+//         (pack.contents.emplace_back(static_cast<Ts &&>(ts)), ...);
+//         return downcast<R>()(fun(caller, std::move(pack)));
+//     }
 
-private:
-    Caller *caller;
-};
+// private:
+//     Caller *caller;
+// };
 
 /******************************************************************************/
 

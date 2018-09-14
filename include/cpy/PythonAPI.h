@@ -65,7 +65,7 @@ struct Buffer {
 
     static std::type_index format(std::string_view s);
     static Binary binary(Py_buffer *view, std::size_t len);
-    static Arg binary_view(Py_buffer *view, std::size_t len);
+    static Value binary_view(Py_buffer *view, std::size_t len);
 
     ~Buffer() {PyBuffer_Release(&view);}
 };
@@ -169,8 +169,9 @@ inline Object to_python(std::type_index f) noexcept {
     return o;
 }
 
-template <class T, std::enable_if_t<std::is_base_of_v<Arg, no_qualifier<T>>, int> = 0>
+template <class T, std::enable_if_t<std::is_base_of_v<std::any, no_qualifier<T>>, int> = 0>
 Object to_python(T &&a) {
+    std::cout << "to_python" << std::endl;
     if (!a.has_value()) return {Py_None, true};
     std::type_index const t = a.type();
     if (t == typeid(Object))           return std::any_cast<Object>(a);
@@ -180,16 +181,22 @@ Object to_python(T &&a) {
     if (t == typeid(std::string_view)) return to_python(std::any_cast<std::string_view>(a));
     if (t == typeid(std::string))      return to_python(std::any_cast<std::string const &>(a));
     if (t == typeid(Function))         return to_python(std::any_cast<Function>(a));
-    if (t == typeid(ValuePack))        return to_python(std::any_cast<ValuePack const &>(a));
+    // if (t == typeid(ValuePack))        return to_python(std::any_cast<ValuePack const &>(a));
     if (t == typeid(ArgPack))          return to_python(std::any_cast<ArgPack const &>(a));
     if (t == typeid(std::type_index))  return to_python(std::any_cast<std::type_index>(a));
     if (t == typeid(Binary))           return to_python(std::any_cast<Binary const &>(a));
+    std::cout << "to_python Value" << t.name() << std::endl;
     Object o{PyObject_CallObject(type_object(ValueType), nullptr), false};
     static_cast<std::any &>(cast_object<Value>(+o)) = static_cast<T &&>(a).base();
     return o;
 }
 
 ArgPack positional_args(Object const &pypack);
+
+template <>
+struct ToValue<PyObject> {
+    Value operator()(PyObject const &, TypeRequest const &);
+};
 
 /******************************************************************************/
 
@@ -253,12 +260,12 @@ Object to_dict(V const &v) noexcept {
 // Object to_python(T const &s) noexcept;
 
 inline Object to_python(ArgPack const &s) {
-    auto const n = s.contents.size();
+    auto const n = s.size();
     Object out = {PyTuple_New(n), false};
     if (!out) return {};
     Py_ssize_t i = 0u;
-    for (auto const &x : s.contents) {
-        Object item = to_python(x);
+    for (auto const &ref : s) {
+        Object item = to_python(ref.value());
         if (!item) return {};
         Py_INCREF(+item);
         if (PyTuple_SetItem(+out, i, +item)) {Py_DECREF(+item); return {};}
@@ -314,16 +321,6 @@ struct AcquireGIL {
 
 /******************************************************************************/
 
-template <>
-struct ToArg<Object> {
-    Arg operator()(Object const &o) const;
-};
-
-template <>
-struct ToValue<Object> {
-    Value operator()(Object const &o) const;
-};
-
 struct PythonFunction {
     Object function;
 
@@ -342,7 +339,7 @@ struct PythonFunction {
 
 std::string_view get_type_name(std::type_index idx) noexcept;
 
-std::string wrong_types_message(WrongType const &e);
+std::string wrong_type_message(WrongType const &e);
 
 template <class F>
 PyObject *raw_object(F &&f) noexcept {
@@ -358,7 +355,7 @@ PyObject *raw_object(F &&f) noexcept {
         unsigned int n0 = e.expected, n = e.received;
         PyErr_Format(PyExc_TypeError, "C++: wrong number of arguments (expected %u, got %u)", n0, n);
     } catch (WrongType const &e) {
-        try {PyErr_SetString(PyExc_TypeError, wrong_types_message(e).c_str());}
+        try {PyErr_SetString(PyExc_TypeError, wrong_type_message(e).c_str());}
         catch(...) {PyErr_SetString(PyExc_TypeError, e.what());}
     } catch (std::exception const &e) {
         if (!PyErr_Occurred())
