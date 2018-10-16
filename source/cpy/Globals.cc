@@ -2,6 +2,10 @@
 
 namespace cpy {
 
+std::vector<std::pair<PyTypeObject *, std::function<Object(Object)>>> python_types;
+
+std::map<Object, Object> type_conversions{};
+
 std::unordered_map<std::type_index, std::string> type_names = {
     {typeid(void),             "void"},
     {typeid(void *),           "pointer"},

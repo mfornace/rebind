@@ -13,10 +13,13 @@ struct Blah {
     void dump() const {std::cout << name << std::endl;}
 };
 
-auto to_value(Type<Blah>, Blah b) {return std::move(b.name);}
+Value simplify(std::type_index t, Blah b) {
+    if (t == typeid(std::string)) return std::move(b.name);
+    return {};
+}
 
 template <class T>
-Blah from_value(Type<Blah>, T &&, Dispatch &msg) {
+Blah from_reference(Type<Blah>, T &&, Dispatch &msg) {
     if constexpr(std::is_same_v<no_qualifier<T>, std::string>)
         return Blah("haha");
     throw msg.error("bad blah", typeid(Blah), typeid(T));
@@ -43,6 +46,12 @@ struct Goo {
     }
 };
 
+template <class Q>
+auto simplify(Q, qualified<Goo, Q> b, std::type_index t) {
+    std::cout << "casting Blah to double const &" << std::endl;
+    return (t == typeid(double)) ? &b.x : nullptr;
+}
+
 /******************************************************************************/
 
 void render(Document &doc, Type<Blah> t) {
@@ -68,6 +77,9 @@ bool make_document() {
     auto &doc = document();
     doc.function("fun", [](int i, double d) {
         return i + d;
+    });
+    doc.function("refthing", [](double const &d) {
+        return d;
     });
     doc.function("submodule.fun", [](int i, double d) {
         return i + d;

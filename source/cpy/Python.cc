@@ -13,7 +13,7 @@ namespace cpy {
 
 // Assuming a Python exception has been raised, fetch its string and put it in
 // a C++ exception type. Does not clear the Python error status.
-PythonError python_error() noexcept {
+PythonError python_error(std::nullptr_t) noexcept {
     PyObject *type, *value, *traceback;
     PyErr_Fetch(&type, &value, &traceback);
     PyObject *str = PyObject_Str(value);
@@ -32,6 +32,7 @@ PythonError python_error() noexcept {
 
 /******************************************************************************/
 
+/// type_index from PyBuffer format string (excludes constness)
 std::type_index Buffer::format(std::string_view s) {
     auto it = std::find_if(Buffer::formats.begin(), Buffer::formats.end(),
         [&](auto const &p) {return p.first == s;});
@@ -39,31 +40,29 @@ std::type_index Buffer::format(std::string_view s) {
 }
 
 Binary Buffer::binary(Py_buffer *view, std::size_t len) {
-    std::cout << "make new Binary from PyBuffer" << std::endl;
+    if (Debug) std::cout << "make new Binary from PyBuffer" << std::endl;
     Binary bin(len, typename Binary::value_type());
-    if (PyBuffer_ToContiguous(bin.data(), view, bin.size(), 'C') < 0) {
-        PyErr_SetString(PyExc_TypeError, "C++: could not make contiguous buffer");
-        throw python_error();
-    }
+    if (PyBuffer_ToContiguous(bin.data(), view, bin.size(), 'C') < 0)
+        throw python_error(type_error("C++: could not make contiguous buffer"));
     return bin;
 }
 
 Value Buffer::binary_view(Py_buffer *view, std::size_t len) {
-    std::cout << "Contiguous " << PyBuffer_IsContiguous(view, 'C') << PyBuffer_IsContiguous(view, 'F') << std::endl;
+    if (Debug) std::cout << "Contiguous " << PyBuffer_IsContiguous(view, 'C') << PyBuffer_IsContiguous(view, 'F') << std::endl;
     if (PyBuffer_IsContiguous(view, 'F')) {
         if (view->readonly) {
-            std::cout << "read only view from PyBuffer" << std::endl;
+            if (Debug) std::cout << "read only view from PyBuffer" << std::endl;
             return BinaryView(reinterpret_cast<unsigned char const *>(view), view->len);
         } else {
-            std::cout << "mutable view from PyBuffer" << std::endl;
+            if (Debug) std::cout << "mutable view from PyBuffer" << std::endl;
             return BinaryData(reinterpret_cast<unsigned char *>(view->buf), view->len);
         }
     }
-    std::cout << "copy view from PyBuffer" << std::endl;
+    if (Debug) std::cout << "copy view from PyBuffer" << std::endl;
     return binary(view, len);
 }
 
-std::string_view as_string_view(PyObject *o) {
+std::string_view from_unicode(PyObject *o) {
     Py_ssize_t size;
 #if PY_MAJOR_VERSION > 2
     char const *c = PyUnicode_AsUTF8AndSize(o, &size);
@@ -75,121 +74,110 @@ std::string_view as_string_view(PyObject *o) {
     return std::string_view(static_cast<char const *>(c), size);
 }
 
-template <bool A>
-Value from_python(Object const &o) {
-    if (+o == Py_None) return {};
+std::string_view from_bytes(PyObject *o) {
+    char *c;
+    Py_ssize_t size;
+    PyBytes_AsStringAndSize(+o, &c, &size);
+    return std::string_view(c, size);
+}
 
-    if (PyBool_Check(+o)) return (+o == Py_True) ? true : false;
+template <class T>
+void to_arithmetic(Object const &o, Value &v) {
+    if (PyFloat_Check(+o)) v = static_cast<T>(PyFloat_AsDouble(+o));
+    else if (PyLong_Check(+o)) v = static_cast<T>(PyLong_AsLongLong(+o));
+    else if (PyBool_Check(+o)) v = static_cast<T>(+o == Py_True);
+}
 
-    if (PyLong_Check(+o)) return static_cast<Integer>(PyLong_AsLongLong(+o));
+void *Simplify<PyObject>::operator()(Qualifier q, PyObject const &ob, std::type_index t) const {
+    Object o(const_cast<PyObject *>(&ob), true);
+    if (Debug) std::cout << "trying to get reference from pyobject" << std::endl;
 
-    if (PyFloat_Check(+o)) return static_cast<Real>(PyFloat_AsDouble(+o));
-
-    if (PyTuple_Check(+o) || PyList_Check(+o)) {
-        Vector<Value> vals;
-        vals.reserve(PyObject_Length(+o));
-        map_iterable(o, [&](Object o) {
-            vals.emplace_back(from_python<A>(o));
-        });
-        return std::move(vals);
+    if (PyObject_TypeCheck(+o, &WrapType)) {
+        if (Debug) std::cout << "its a wrap" << std::endl;
+        auto &c = cast_object<Wrap>(+o);
+        if (auto p = std::get_if<Value>(&c)) {
+            if (p->type() == t) return p->ptr;
+        } else {
+            auto &x = std::get<WeakReference>(c).lock();
+            if (x.type() == t) return x.ptr;
+        }
     }
+    return nullptr;
+}
 
-    if (PyBytes_Check(+o)) {
-        char *c;
-        Py_ssize_t size;
-        PyBytes_AsStringAndSize(+o, &c, &size);
-        if (A) return std::string_view(c, size);
-        else return std::string(c, size);
-    }
-
-    if (PyUnicode_Check(+o)) {
-        auto v = as_string_view(+o);
-        if (A) return v;
-        else return std::string(v);
-    }
-
-    if (PyObject_TypeCheck(+o, &ValueType)) {
-        if constexpr(A) return Reference(cast_object<Value>(+o));
-        return cast_object<Value>(+o);
-    }
-
-    if (PyObject_TypeCheck(+o, &TypeIndexType)) return cast_object<std::type_index>(+o);
-
-    if (PyObject_TypeCheck(+o, &FunctionType)) return cast_object<Function>(+o);
-
-    if (PyComplex_Check(+o))
-        return std::complex<double>{PyComplex_RealAsDouble(+o), PyComplex_ImagAsDouble(+o)};
-
-    if (PyByteArray_Check(+o)) {
-        char *data = PyByteArray_AS_STRING(+o);
-        auto const len = PyByteArray_GET_SIZE(+o);
-        if (Debug) std::cout << "binary from bytearray " << A << std::endl;
-        if (A) return BinaryData(reinterpret_cast<unsigned char *>(data), len);
-        else return Binary(data, data + len); // ignore null byte at end
-    }
-
-    if (PyObject_CheckBuffer(+o)) {
-        // Buffer buff(+o, PyBUF_FULL_RO); // Read in the shape but ignore strides, suboffsets
-        // if (!buff.ok) {
-        //     PyErr_SetString(PyExc_TypeError, "C++: could not get buffer");
-        //     throw python_error();
-        // }
-        // std::conditional_t<A, Value, Value> bin;
-        // if (Debug) std::cout << "cast buffer " << A << std::endl;
-        // if constexpr(A) bin = Buffer::binary_view(&buff.view, buff.view.len);
-        // else bin = Buffer::binary(&buff.view, buff.view.len);
-        // return std::conditional_t<A, ArgPack, ValuePack>::from_values(
-        //     std::move(bin), Buffer::format(buff.view.format ? buff.view.format : ""),
-        //     Vector<Integer>(buff.view.shape, buff.view.shape + buff.view.ndim));
-    }
-
-    PyErr_Format(PyExc_TypeError, "C++: object of type %R cannot be converted to a Value", (+o)->ob_type);
-    throw python_error();
-};
-
-Value ToValue<PyObject>::operator()(PyObject const &ob, TypeRequest const &t) {
+void Simplify<PyObject>::operator()(Value &v, PyObject const &ob, std::type_index t) const {
     Object o(const_cast<PyObject *>(&ob), true);
 
-    std::cout << "trying to convert object" << std::endl;
-    for (auto const &x : t) {
-        std::cout << x.name() << std::endl;
+    if (Debug) {
+        Object repr{PyObject_Repr(reinterpret_cast<PyObject *>((+o)->ob_type)), false};
+
+        if (Debug) std::cout << "trying to convert object " << t.name() << " " << from_unicode(+repr) << std::endl;
+        if (Debug) std::cout << bool(PyObject_TypeCheck(+o, &WrapType)) << std::endl;
     }
 
-    if (+o == Py_None) return {};
-
-    for (auto const &idx : t) {
-        if (idx == typeid(Vector<Reference>)) {
-            if (PyTuple_Check(+o) || PyList_Check(+o)) {
-                std::cout << "making a tuple" << std::endl;
-                Vector<Reference> refs;
-                refs.reserve(PyObject_Length(+o));
-                map_iterable(o, [&](Object o) {
-                    refs.emplace_back(*(+o));
-                });
-                return std::move(refs);
-            }
-        } else if (idx == typeid(Real)) {
-            if (PyFloat_Check(+o)) return static_cast<Real>(PyFloat_AsDouble(+o));
-        } else if (idx == typeid(Integer)) {
-            std::cout << "casting to int" << std::endl;
-            // if (PyBool_Check(+o)) return (+o == Py_True) ? true : false;
-            if (PyLong_Check(+o)) {
-                std::cout << "casting to int2" << std::endl;
-                return static_cast<Integer>(PyLong_AsLongLong(+o));
-            }
-            // if (PyFloat_Check(+o)) return static_cast<Real>(PyFloat_AsDouble(+o));
-        } else if (idx == typeid(bool)) {
-            if (PyBool_Check(+o)) return (+o == Py_True) ? true : false;
-        } else if (idx == typeid(std::string_view)) {
-            if (PyUnicode_Check(+o)) return as_string_view(+o);
-        } else if (idx == typeid(std::string)) {
-            if (PyUnicode_Check(+o)) return std::string(as_string_view(+o));
+    if (PyObject_TypeCheck(+o, &WrapType)) {
+        if (Debug) std::cout << "its a wrap" << std::endl;
+        auto &c = cast_object<Wrap>(+o);
+        if (std::holds_alternative<Value>(c))
+            v = std::get<Value>(c).reference().request(t);
+        else v = std::get<WeakReference>(c).lock().request(t);
+    } else if (t == typeid(Object)) {
+        v = std::move(o);
+    } else if (t == typeid(Function)) {
+        if (Debug) std::cout << "requested function" << std::endl;
+        if (+o == Py_None) v = Function();
+        else if (PyObject_TypeCheck(+o, &FunctionType)) v = cast_object<Function>(+o);
+        else v = Function().emplace(PythonFunction({+o, true}, {Py_None, true}));
+    } else if (t == typeid(Vector<Reference>)) {
+        if (PyTuple_Check(+o) || PyList_Check(+o)) {
+            if (Debug) std::cout << "making a tuple" << std::endl;
+            Vector<Reference> refs;
+            refs.reserve(PyObject_Length(+o));
+            map_iterable(o, [&](Object o) {
+                refs.emplace_back(*(+o));
+            });
+            v = std::move(refs);
         }
-        std::cout << "requested " << idx.name() << std::endl;
+    } else if (t == typeid(Real)) to_arithmetic<Real>(o, v);
+    else if (t == typeid(Integer)) to_arithmetic<Integer>(o, v);
+    else if (t == typeid(bool)) to_arithmetic<bool>(o, v);
+    else if (t == typeid(std::string_view)) {
+        if (PyUnicode_Check(+o)) v = from_unicode(+o);
+        if (PyBytes_Check(+o)) v = from_bytes(+o);
+    } else if (t == typeid(std::string)) {
+        if (PyUnicode_Check(+o)) v = std::string(from_unicode(+o));
+        if (PyBytes_Check(+o)) v = std::string(from_bytes(+o));
+    } else if (t == typeid(ArrayData)) {
+        Buffer buff(+o, PyBUF_FULL_RO); // Read in the shape but ignore strides, suboffsets
+        if (Debug) std::cout << "cast buffer " << std::endl;
+        if (buff.ok) {
+            if (Debug) std::cout << "making data" << std::endl;
+            if (Debug) std::cout << Buffer::format(buff.view.format ? buff.view.format : "").name() << std::endl;
+            if (Debug) std::cout << buff.view.ndim << std::endl;
+            if (Debug) std::cout << "hwat" << std::endl;
+            if (Debug) std::cout << (nullptr == buff.view.buf) << bool(buff.view.readonly) << std::endl;
+            auto a = ArrayData(buff.view.buf, Buffer::format(buff.view.format ? buff.view.format : ""),
+                !buff.view.readonly, Vector<Integer>(buff.view.shape, buff.view.shape + buff.view.ndim),
+                Vector<Integer>()
+                // Vector<Integer>(buff.view.strides, buff.view.strides + buff.view.ndim)
+                );
+            if (Debug) for (auto i : a.shape) std::cout << i << ", ";
+            if (Debug) std::cout << std::endl;
+            if (Debug) // for (auto i : a.strides) std::cout << i << ", ";
+            if (Debug) // std::cout << std::endl;
+            if (Debug) std::cout << "made data" << std::endl;
+            if (Debug) std::cout << *static_cast<float *>(buff.view.buf) << " " << *static_cast<float *>(a.data) << std::endl;
+            if (Debug) std::cout << *static_cast<std::uint16_t *>(buff.view.buf) << " " << *static_cast<std::uint16_t *>(a.data) << std::endl;
+            v = std::move(a);
+        } else throw python_error(type_error("C++: could not get buffer"));
+    } else if (t == typeid(std::complex<double>)) {
+        if (PyComplex_Check(+o)) v = std::complex<double>{PyComplex_RealAsDouble(+o), PyComplex_ImagAsDouble(+o)};
+    } else if (+o == Py_None) {
+        if (Debug) std::cout << "got none " << t.name() << std::endl;
+    } else {
+        if (Debug) std::cout << "cannot create type " << t.name() << std::endl;
     }
-    std::cout << "what is this" << std::endl;
-    throw std::runtime_error("not known");
-    return from_python<true>(std::move(o));
+    if (Debug) std::cout << "requested " << t.name() << std::endl;
 }
 
 /******************************************************************************/
@@ -225,9 +213,12 @@ ArgPack positional_args(Object const &args) {
             v.emplace_back(cast_object<Function>(+o));
         else if (PyObject_TypeCheck(+o, &TypeIndexType))
             v.emplace_back(cast_object<std::type_index>(+o));
-        else if (PyObject_TypeCheck(+o, &ValueType))
-            v.emplace_back(cast_object<Value>(+o));
-        else v.emplace_back(*(+o));
+        else if (PyObject_TypeCheck(+o, &WrapType)) {
+            auto &w = cast_object<Wrap>(+o);
+            if (std::holds_alternative<Value>(w))
+                v.emplace_back(std::get<Value>(w).reference());
+            else v.emplace_back(std::get<WeakReference>(w).lock());
+        } else v.emplace_back(*(+o));
     });
     return v;
 }

@@ -41,23 +41,29 @@ struct Renderer<boost::container::small_vector<T, N, A>, std::enable_if_t<!Opaqu
     void operator()(Document &doc) {doc.render(Type<T>());}
 };
 
-// template <class T, std::size_t N, class A>
-// struct FromArg<boost::container::small_vector<T, N, A>> : VectorFromArg<boost::container::small_vector<T, N, A>> {};
+template <class T, std::size_t N, class A>
+struct FromReference<boost::container::small_vector<T, N, A>> : VectorFromReference<boost::container::small_vector<T, N, A>> {};
+
+template <class T, std::size_t N, class A>
+struct Simplify<boost::container::small_vector<T, N, A>> : SimplifyVector<boost::container::small_vector<T, N, A>> {};
+
+template <class T, std::size_t N>
+struct Simplify<std::array<T, N>> : SimplifyVector<std::array<T, N>> {};
+
 
 // template <class T, std::size_t N, class A>
-// struct ToValue<boost::container::small_vector<T, N, A>> {
+// struct Simplify<boost::container::small_vector<T, N, A>> {
 //     Value value(boost::container::small_vector<T, N, A> t) const {return {ValuePack(std::move(t)), bool()};}
 // };
 
 // /******************************************************************************/
 
-// template <class T>
-// struct ToValue<std::optional<T>> {
-//     Value value(std::optional<T> t) const {
-//         if (!t) return {};
-//         else return {*t, bool()};
-//     }
-// };
+template <class T>
+struct Simplify<std::optional<T>> {
+    void operator()(Value &out, std::optional<T> const &v, std::type_index t) const {
+        if (v) Simplify<T>()(out, v, std::move(t));
+    }
+};
 
 // template <class T>
 // struct FromValue<std::optional<T>> {
@@ -68,10 +74,10 @@ struct Renderer<boost::container::small_vector<T, N, A>, std::enable_if_t<!Opaqu
 // };
 
 // template <class ...Ts>
-// struct ToValue<std::variant<Ts...>> {
+// struct Simplify<std::variant<Ts...>> {
 //     Value value(std::variant<Ts...> t) const {
 //         return std::visit([](auto &&t) -> Value {
-//             return ToValue<no_qualifier<decltype(t)>>()(static_cast<decltype(t) &&>(t));
+//             return Simplify<no_qualifier<decltype(t)>>()(static_cast<decltype(t) &&>(t));
 //         }, t);
 //     }
 // };
@@ -102,27 +108,32 @@ struct Renderer<boost::container::small_vector<T, N, A>, std::enable_if_t<!Opaqu
 
 // /******************************************************************************/
 
-// template <class T, bool A>
-// struct FromCompiledSequence {
-//     template <std::size_t ...Is>
-//     auto get(T &&t, std::index_sequence<Is...>) const {
-//         return std::conditional_t<A, ArgPack, ValuePack>::from_values(std::get<Is>(std::move(t))...);
-//     }
+template <class V>
+struct FromCompiledSequence {
+    template <class O, std::size_t ...Is>
+    O put(V const &v, std::index_sequence<Is...>) const {
+        O o;
+        o.reserve(sizeof...(Is));
+        (o.emplace_back(Reference(std::get<Is>(v))), ...);
+        return o;
+    }
 
-//     Value operator()(T t) const {
-//         return get(std::move(t), std::make_index_sequence<std::tuple_size_v<T>>());
-//     }
-// };
+    void operator()(Value &out, V const &v, std::type_index t) const {
+        if (t == typeid(Vector<Reference>)) {
+            out = put<Vector<Reference>>(v, std::make_index_sequence<std::tuple_size_v<V>>());
+        } else if (t == typeid(Vector<Value>)) {
+            out = put<Vector<Value>>(v, std::make_index_sequence<std::tuple_size_v<V>>());
+        }
+    }
+};
 
-// // template <class T>
-// // struct ToValue<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : FromCompiledSequence<T, false> {
+template <class ...Ts>
+struct Simplify<std::tuple<Ts...>> : FromCompiledSequence<std::tuple<Ts...>> {};
 
-// // };
+template <class T, class U>
+struct Simplify<std::pair<T, U>> : FromCompiledSequence<std::pair<T, U>> {};
 
-// // template <class T>
-// // struct ToValue<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : FromCompiledSequence<T, true> {};
-
-// /******************************************************************************/
+/******************************************************************************/
 
 template <class V, class S, std::size_t ...Is>
 V to_compiled_sequence(S &s, Dispatch &msg, std::index_sequence<Is...>) {
@@ -139,16 +150,16 @@ V to_compiled_sequence(S &&s, Dispatch &msg) {
     }
     V &&v = to_compiled_sequence<V>(s, msg, std::make_index_sequence<std::tuple_size_v<V>>());
     msg.indices.pop_back();
-    return v;
+    return std::move(v);
 }
 
 // /******************************************************************************/
 
 template <class V>
-struct CompiledSequenceFromValue {
+struct CompiledSequenceFromReference {
     V operator()(Reference r, Dispatch &msg) const {
-        Value v = r.value({typeid(Vector<Reference>)});
-        if (auto p = std::any_cast<Vector<Reference>>(&v))
+        if (Debug) std::cout << "trying CompiledSequenceFromReference " << r.type().name() << std::endl;
+        if (auto p = r.request<Vector<Reference>>())
             return to_compiled_sequence<V>(std::move(*p), msg);
         throw msg.error("mismatched class", r.type(), typeid(V));
     }
@@ -156,7 +167,7 @@ struct CompiledSequenceFromValue {
 
 /// The default implementation is to accept convertible arguments or Value of the exact typeid match
 template <class T>
-struct FromReference<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : CompiledSequenceFromValue<T> {};
+struct FromReference<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : CompiledSequenceFromReference<T> {};
 
 // template <class V>
 // struct CompiledSequenceFromArg {

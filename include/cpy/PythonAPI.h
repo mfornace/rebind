@@ -9,7 +9,9 @@
 #include <mutex>
 #include <complex>
 #include <iostream>
+#include <variant>
 #include <unordered_map>
+#include <map>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wregister"
@@ -18,7 +20,7 @@
 
 namespace cpy {
 
-extern PyTypeObject FunctionType, ValueType, TypeIndexType;
+extern PyTypeObject FunctionType, WrapType, TypeIndexType;
 extern std::unordered_map<std::type_index, std::string> type_names;
 
 enum class Scalar {Bool, Char, SignedChar, UnsignedChar, Unsigned, Signed, Float, Pointer};
@@ -32,15 +34,44 @@ struct Holder {
     T value; // I think stack is OK because this object is only casted to anyway.
 };
 
+/******************************************************************************/
+
+struct PythonError : ClientError {
+    PythonError(char const *s) : ClientError(s) {}
+};
+
+PythonError python_error(std::nullptr_t=nullptr) noexcept;
+
+template <class ...Ts>
+std::nullptr_t type_error(char const *s, Ts ...ts) {PyErr_Format(PyExc_TypeError, s, ts...); return nullptr;}
+
+/******************************************************************************/
+
+struct WeakReference {
+    Reference ref;
+    std::weak_ptr<void> handle;
+    bool has_value() const {return !handle.expired() && ref.has_value();}
+    auto type() const {return ref.type();}
+    Reference & lock() {
+        auto p = handle.lock();
+        if (p) return ref;
+        throw python_error(type_error("expired reference"));
+    }
+};
+
+using Wrap = std::variant<Value, WeakReference>;
+
 struct Object {
     PyObject *ptr = nullptr;
     Object() = default;
+    Object(std::nullptr_t) {}
     Object(PyObject *o, bool incref) : ptr(o) {if (incref) Py_INCREF(ptr);}
     Object(Object const &o) : ptr(o.ptr) {Py_XINCREF(ptr);}
     Object(Object &&o) noexcept : ptr(std::exchange(o.ptr, nullptr)) {}
     Object & operator=(Object o) noexcept {ptr = std::exchange(o.ptr, nullptr); return *this;}
 
     explicit operator bool() const {return ptr;}
+    explicit operator PyObject *() const {return ptr;}
     PyObject *operator+() const {return ptr;}
 
     bool operator<(Object const &o) const {return ptr < o.ptr;}
@@ -53,6 +84,8 @@ struct Object {
 
     ~Object() {Py_XDECREF(ptr);}
 };
+
+extern std::map<Object, Object> type_conversions;
 
 /******************************************************************************/
 
@@ -75,15 +108,15 @@ struct Buffer {
 inline PyObject * type_object(PyTypeObject &o) noexcept {return reinterpret_cast<PyObject *>(&o);}
 
 inline PyTypeObject & type_ref(Type<Function>) {return FunctionType;}
-inline PyTypeObject & type_ref(Type<Value>) {return ValueType;}
+inline PyTypeObject & type_ref(Type<Wrap>) {return WrapType;}
 inline PyTypeObject & type_ref(Type<std::type_index>) {return TypeIndexType;}
 
 /******************************************************************************/
 
 template <class T>
 T * cast_if(PyObject *o) {
-    if constexpr(std::is_same_v<T, Value>)
-        if (!PyObject_TypeCheck(o, &ValueType)) return nullptr;
+    if constexpr(std::is_same_v<T, Wrap>)
+        if (!PyObject_TypeCheck(o, &WrapType)) return nullptr;
     if constexpr(std::is_same_v<T, Function>)
         if (!PyObject_TypeCheck(o, &FunctionType)) return nullptr;
     if constexpr(std::is_same_v<T, std::type_index>)
@@ -93,13 +126,14 @@ T * cast_if(PyObject *o) {
 
 template <class T>
 T & cast_object(PyObject *o) {
-    if constexpr(std::is_same_v<T, Value>) {
-        if (!PyObject_TypeCheck(o, &ValueType)) throw std::invalid_argument("Expected instance of cpy.Value");
+    static_assert(std::is_same_v<T, Wrap> || std::is_same_v<T, std::type_index> || std::is_same_v<T, Function>);
+    if (std::is_same_v<T, Wrap>) {
+        if (!PyObject_TypeCheck(o, &WrapType)) throw std::invalid_argument("Expected instance of cpy.Value");
     }
-    if constexpr(std::is_same_v<T, Function>) {
+    if (std::is_same_v<T, Function>) {
         if (!PyObject_TypeCheck(o, &FunctionType)) throw std::invalid_argument("Expected instance of cpy.Function");
     }
-    if constexpr(std::is_same_v<T, std::type_index>) {
+    if (std::is_same_v<T, std::type_index>) {
         if (!PyObject_TypeCheck(o, &TypeIndexType)) throw std::invalid_argument("Expected instance of cpy.TypeIndex");
     }
     return reinterpret_cast<Holder<T> *>(o)->value;
@@ -107,183 +141,72 @@ T & cast_object(PyObject *o) {
 
 /******************************************************************************/
 
-template <class T>
-struct ToPython;
-
-inline Object to_python(Object t) noexcept {return t;}
-
-inline Object to_python(bool b) noexcept {return {b ? Py_True : Py_False, true};}
-
-inline Object to_python(char const *s) noexcept {
-    return {PyUnicode_FromString(s ? s : ""), false};
-}
-
-template <class T, std::enable_if_t<(std::is_integral_v<T> && sizeof(T) <= sizeof(long long)), int> = 0>
-Object to_python(T t) noexcept {return {PyLong_FromLongLong(static_cast<long long>(t)), false};}
-
-template <class T, std::enable_if_t<(std::is_enum_v<T>), int> = 0>
-Object to_python(T t) noexcept {return to_python(static_cast<std::underlying_type_t<T>>(t));}
-
-inline Object to_python(double t) noexcept {return {PyFloat_FromDouble(t), false};}
-
-inline Object to_python(std::string const &s) noexcept {
-    return {PyUnicode_FromStringAndSize(s.data(), static_cast<Py_ssize_t>(s.size())), false};
-}
-
-inline Object to_python(std::string_view const &s) noexcept {
-    return {PyUnicode_FromStringAndSize(s.data(), static_cast<Py_ssize_t>(s.size())), false};
-}
-
-inline Object to_python(std::wstring const &s) noexcept {
-    return {PyUnicode_FromWideChar(s.data(), static_cast<Py_ssize_t>(s.size())), false};
-}
-
-inline Object to_python(std::wstring_view const &s) noexcept {
-    return {PyUnicode_FromWideChar(s.data(), static_cast<Py_ssize_t>(s.size())), false};
-}
-
-template <class T, std::enable_if_t<(sizeof(T) <= sizeof(double)), int> = 0>
-Object to_python(std::complex<T> const &s) noexcept {
-    return {PyComplex_FromDoubles(s.real(), s.imag()), false};
-}
-
-template <class CharT, class T, class A, std::enable_if_t<Reinterpretable<CharT, char>, int> = 0>
-Object to_python(std::basic_string<CharT, T, A> const &s) noexcept {
-    return {PyByteArray_FromStringAndSize(reinterpret_cast<char const *>(s.data()), s.size()), false};
-}
-
-template <class CharT, class T, std::enable_if_t<Reinterpretable<CharT, char>, int> = 0>
-Object to_python(std::basic_string_view<CharT, T> const &s) noexcept {
-    return {PyByteArray_FromStringAndSize(reinterpret_cast<char const *>(s.data()), s.size()), false};
-}
-
-inline Object to_python(Function f) noexcept {
-    Object o{PyObject_CallObject(type_object(FunctionType), nullptr), false};
-    cast_object<Function>(+o) = std::move(f);
-    return o;
-}
-
-inline Object to_python(std::type_index f) noexcept {
-    Object o{PyObject_CallObject(type_object(TypeIndexType), nullptr), false};
-    cast_object<std::type_index>(+o) = std::move(f);
-    return o;
-}
-
-template <class T, std::enable_if_t<std::is_base_of_v<std::any, no_qualifier<T>>, int> = 0>
-Object to_python(T &&a) {
-    std::cout << "to_python" << std::endl;
-    if (!a.has_value()) return {Py_None, true};
-    std::type_index const t = a.type();
-    if (t == typeid(Object))           return std::any_cast<Object>(a);
-    if (t == typeid(bool))             return to_python(std::any_cast<bool>(a));
-    if (t == typeid(Integer))          return to_python(std::any_cast<Integer>(a));
-    if (t == typeid(Real))             return to_python(std::any_cast<Real>(a));
-    if (t == typeid(std::string_view)) return to_python(std::any_cast<std::string_view>(a));
-    if (t == typeid(std::string))      return to_python(std::any_cast<std::string const &>(a));
-    if (t == typeid(Function))         return to_python(std::any_cast<Function>(a));
-    // if (t == typeid(ValuePack))        return to_python(std::any_cast<ValuePack const &>(a));
-    if (t == typeid(ArgPack))          return to_python(std::any_cast<ArgPack const &>(a));
-    if (t == typeid(std::type_index))  return to_python(std::any_cast<std::type_index>(a));
-    if (t == typeid(Binary))           return to_python(std::any_cast<Binary const &>(a));
-    std::cout << "to_python Value" << t.name() << std::endl;
-    Object o{PyObject_CallObject(type_object(ValueType), nullptr), false};
-    static_cast<std::any &>(cast_object<Value>(+o)) = static_cast<T &&>(a).base();
+inline Object as_weak_reference(WeakReference a) {
+    Object o{PyObject_CallObject(type_object(WrapType), nullptr), false};
+    cast_object<Wrap>(+o) = std::move(a);
     return o;
 }
 
 ArgPack positional_args(Object const &pypack);
 
 template <>
-struct ToValue<PyObject> {
-    Value operator()(PyObject const &, TypeRequest const &);
+struct Simplify<PyObject> {
+    void operator()(Value &, PyObject const &, std::type_index) const;
+    void *operator()(Qualifier, PyObject const &, std::type_index) const;
 };
 
 /******************************************************************************/
 
-template <class V>
-Object to_tuple(V &&v) noexcept {
+inline bool set_tuple_item(Object const &t, Py_ssize_t i, Object const &x) {
+    if (!x) return false;
+    Py_INCREF(+x);
+    PyTuple_SET_ITEM(+t, i, +x);
+    return true;
+}
+
+template <class V, class F>
+Object map_as_tuple(V &&v, F &&f) noexcept {
     Object out = {PyTuple_New(std::size(v)), false};
     if (!out) return {};
     auto it = std::begin(v);
     for (Py_ssize_t i = 0u; i != std::size(v); ++i, ++it) {
         using T = std::conditional_t<std::is_rvalue_reference_v<V>,
             decltype(*it), decltype(std::move(*it))>;
-        Object item = to_python(static_cast<T>(*it));
-        if (!item) return {};
-        Py_INCREF(+item);
-        if (PyTuple_SetItem(+out, i, +item)) {Py_DECREF(+item); return {};}
+        if (!set_tuple_item(out, i, f(static_cast<T>(*it)))) return {};
     }
     return out;
-}
-
-template <class T, std::size_t ...Is>
-Object to_tuple(T &&t, std::index_sequence<Is...>) {
-    Object out = {PyTuple_New(sizeof...(Is)), false};
-    if (!out) return {};
-    bool ok = true;
-    auto go = [&](auto i, auto &&x) {
-        if (!ok) return;
-        Object item = to_python(x);
-        if (!item) {ok = false; return;}
-        Py_INCREF(+item);
-        if (PyTuple_SetItem(+out, i, +item)) {Py_DECREF(+item); ok = false;}
-    };
-    (go(Is, std::get<Is>(static_cast<T &&>(t))), ...);
-    return ok ? out : Object();
 }
 
 template <class ...Ts>
-Object to_python(std::tuple<Ts...> const &t) {
-    return to_tuple(t, std::make_index_sequence<sizeof...(Ts)>());
-}
-
-template <class T, class U>
-Object to_python(std::pair<T, U> const &t) {return to_tuple(t, std::make_index_sequence<2>());}
-
-inline Object to_python(Methods const &m) {return to_python(std::tie(m.name, m.methods));}
-
-template <class V>
-Object to_dict(V const &v) noexcept {
-    Object out = {PyDict_New(), false};
+Object args_as_tuple(Ts &&...ts) {
+    Object out = {PyTuple_New(sizeof...(Ts)), false};
     if (!out) return {};
-    for (auto const &x : v) {
-        Object key = to_python(std::get<0>(x));
-        if (!key) return {};
-        Object value = to_python(std::get<1>(x));
-        if (!value) return {};
-        if (PyDict_SetItem(+out, +key, +value) != 0) return {};
-    }
-    return out;
+    Py_ssize_t i = 0;
+    auto go = [&](Object const &x) {return set_tuple_item(out, i++, x);};
+    return (go(ts) && ...) ? out : Object();
 }
 
-// template <class T, std::enable_if_t<std::is_same_v<T, Value> || std::is_same_v<T, Value>, int> = 0>
-// Object to_python(T const &s) noexcept;
+struct NoDeleter {void operator()(void *) {}};
 
-inline Object to_python(ArgPack const &s) {
+inline Object to_python_args(ArgPack const &s, Vector<std::shared_ptr<void>> &storage, Object const &sig={}) {
+    if (sig && !PyTuple_Check(+sig))
+        throw python_error(type_error("expected tuple but got %R", (+sig)->ob_type));
+    std::size_t len = sig ? PyObject_Length(+sig) : 0;
     auto const n = s.size();
     Object out = {PyTuple_New(n), false};
     if (!out) return {};
     Py_ssize_t i = 0u;
     for (auto const &ref : s) {
-        Object item = to_python(ref.value());
-        if (!item) return {};
-        Py_INCREF(+item);
-        if (PyTuple_SetItem(+out, i, +item)) {Py_DECREF(+item); return {};}
+        if (i < len) {
+            PyObject *t = PyTuple_GET_ITEM(+sig, i);
+        } else {
+            storage.emplace_back(ref.ptr, NoDeleter());
+            if (!set_tuple_item(out, i, as_weak_reference(WeakReference{ref, storage.back()}))) return {};
+        }
         ++i;
     }
     return out;
 }
-
-template <class T>
-Object to_python(Vector<T> const &v) {return to_tuple(v);}
-
-/******************************************************************************/
-
-struct PythonError : ClientError {
-    PythonError(char const *s) : ClientError(s) {}
-};
-
-PythonError python_error() noexcept;
 
 /******************************************************************************/
 
@@ -291,7 +214,6 @@ template <class F>
 void map_iterable(Object iterable, F &&f) {
     Object iter = {PyObject_GetIter(+iterable), false};
     if (!iter) throw python_error();
-
     while (true) {
         auto it = Object(PyIter_Next(+iter), false);
         if (!+it) return;
@@ -302,36 +224,72 @@ void map_iterable(Object iterable, F &&f) {
 /******************************************************************************/
 
 /// RAII release of Python GIL
-struct ReleaseGIL {
-    PyThreadState * state;
+struct SuspendedPython final : Frame {
+    PyThreadState *state;
     std::mutex mutex;
-    ReleaseGIL(bool no_gil) : state(no_gil ? PyEval_SaveThread() : nullptr) {}
+
+    SuspendedPython(bool no_gil) : state(no_gil ? PyEval_SaveThread() : nullptr) {
+        if (Debug) std::cout << "running with nogil=" << no_gil << std::endl;
+    }
+
+    std::shared_ptr<Frame> operator()(std::shared_ptr<Frame> &&t) override {
+        if (Debug) std::cout << "suspended Python " << bool(t) << std::endl;
+        return std::move(t);
+    }
+
     // lock to prevent multiple threads trying to get the thread going
     void acquire() noexcept {if (state) {mutex.lock(); PyEval_RestoreThread(state);}}
+
     void release() noexcept {if (state) {state = PyEval_SaveThread(); mutex.unlock();}}
-    ~ReleaseGIL() {if (state) PyEval_RestoreThread(state);}
+
+    ~SuspendedPython() {if (state) PyEval_RestoreThread(state);}
+};
+
+struct PythonEntry final : Frame {
+    bool no_gil;
+    PythonEntry(bool no_gil) : no_gil(no_gil) {}
+    std::shared_ptr<Frame> operator()(std::shared_ptr<Frame> &&) override {
+        if (Debug) std::cout << "entered C++ from Python nogil=" << no_gil << std::endl;
+        return std::make_shared<SuspendedPython>(no_gil);
+    }
+    ~PythonEntry() = default;
 };
 
 /// RAII reacquisition of Python GIL
-struct AcquireGIL {
-    ReleaseGIL * const lock; //< ReleaseGIL object; can be nullptr
-    AcquireGIL(ReleaseGIL *u) : lock(u) {if (lock) lock->acquire();}
-    ~AcquireGIL() {if (lock) lock->release();}
+struct ActivePython {
+    SuspendedPython &lock; //< SuspendedPython object; can be nullptr
+
+    ActivePython(SuspendedPython &u) : lock(u) {lock.acquire();}
+    ~ActivePython() {lock.release();}
 };
 
 /******************************************************************************/
 
 struct PythonFunction {
-    Object function;
+    Object function, signature;
+
+    PythonFunction(Object f, Object s={}) : function(std::move(f)), signature(std::move(s)) {
+        if (+signature == Py_None) signature = Object();
+        if (!function)
+            throw python_error(type_error("cannot convert null object to Function"));
+        if (!PyCallable_Check(+function))
+            throw python_error(type_error("expected callable type but got %R", (+function)->ob_type));
+        if (+signature && !PyTuple_Check(+signature))
+            throw python_error(type_error("expected tuple or None but got %R", (+signature)->ob_type));
+    }
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
-    Value operator()(Caller ct, ArgPack args) const {
-        AcquireGIL lk(&ct.cast<ReleaseGIL>());
-        Object o = to_python(std::move(args));
+    Value operator()(Caller c, ArgPack args) const {
+        if (Debug) std::cout << "calling python function" << std::endl;
+        auto p = c.target<SuspendedPython>();
+        if (!p) throw DispatchError("Python context is expired or invalid");
+        ActivePython lk(*p);
+        Vector<std::shared_ptr<void>> storage;
+        Object o = to_python_args(std::move(args), storage, signature);
         if (!o) throw python_error();
         o = {PyObject_CallObject(+function, +o), false};
         if (!o) throw python_error();
-        return o;
+        return Value(Reference(*(+o)));
     }
 };
 

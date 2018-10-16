@@ -30,6 +30,18 @@ struct TestSignature<F, std::void_t<typename Signature<F>::return_type>> : Signa
 
 /******************************************************************************/
 
+template <class F, class ...Ts>
+Value context_invoke(std::true_type, F const &f, Context &c, Ts &&...ts) {
+    if (Debug) std::cout << "invoking with context" << std::endl;
+    return value_invoke(f, c, static_cast<Ts &&>(ts)...);
+}
+
+template <class F, class ...Ts>
+Value context_invoke(std::false_type, F const &f, Context &c, Ts &&...ts) {
+    if (Debug) std::cout << "invoking context guard" << std::endl;
+    return value_invoke(f, static_cast<Ts &&>(ts)...);
+}
+
 /// Basic wrapper to make C++ functor into a type erased std::function
 template <class F>
 struct TestAdaptor {
@@ -39,23 +51,24 @@ struct TestAdaptor {
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
     Value operator()(Context &ct, ArgPack args) {
-        std::cout << typeid(Sig).name() << std::endl;
-        std::cout << args.size() << std::endl;
-        std::cout << Ctx::value << std::endl;
+        if (Debug) std::cout << typeid(Sig).name() << std::endl;
+        if (Debug) std::cout << args.size() << std::endl;
+        if (Debug) std::cout << Ctx::value << std::endl;
         try {
             if (args.size() != Sig::size)
                 throw WrongNumber(Sig::size, args.size());
             return Sig::indexed([&](auto ...ts) {
                 Dispatch msg("mismatched test argument");
-                return context_invoke(Ctx(), function, Context(ct), cast_index(args, msg, ts)...);
+                if constexpr(Ctx::value) return value_invoke(function, ct, cast_index(args, msg, ts)...);
+                else return value_invoke(function, cast_index(args, msg, ts)...);
             });
         } catch (Skip const &e) {
             ct.info("value", e.message);
             ct.handle(Skipped);
             throw;
-        } catch (ClientError const &e) {
+        } catch (ClientError const &) {
             throw;
-        } catch (DispatchError const &e) {
+        } catch (DispatchError const &) {
             throw;
         } catch (std::exception const &e) {
             ct.info("value", e.what());
@@ -63,7 +76,7 @@ struct TestAdaptor {
             throw;
         } catch (...) {
             ct.handle(Exception);
-            std::rethrow_exception(std::current_exception());
+            throw;
         }
     }
 };

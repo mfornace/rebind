@@ -1,6 +1,5 @@
 #pragma once
-#include "Signature.h"
-#include "Types.h"
+#include "FunctionAdapter.h"
 
 #include <typeindex>
 #include <iostream>
@@ -10,25 +9,78 @@ namespace cpy {
 
 using ErasedFunction = std::function<Value(Caller, ArgPack)>;
 
-struct Function {
-    ErasedFunction erased;
+template <class R, class ...Ts>
+static std::type_index const signature_types[] = {typeid(R), typeid(Ts)...};
 
-    Value operator()(Caller c, ArgPack v) const {return erased(c, std::move(v));}
+/******************************************************************************/
+
+struct ErasedSignature {
+    std::type_index const *b = nullptr;
+    std::type_index const *e = nullptr;
+public:
+    ErasedSignature() = default;
+
+    template <class ...Ts>
+    ErasedSignature(Pack<Ts...>) : b(std::begin(signature_types<Ts...>)), e(std::end(signature_types<Ts...>)) {}
+
+    explicit operator bool() const {return b;}
+    auto begin() const {return b;}
+    auto end() const {return e;}
+    std::size_t size() const {return e - b;}
+};
+
+/******************************************************************************/
+
+struct Function {
+    Zip<ErasedSignature, ErasedFunction> overloads;
+
+    Value operator()(Caller c, ArgPack v) const {
+        return overloads[0].second(std::move(c), std::move(v));
+    }
 
     Function() = default;
-
-    template <class F, std::enable_if_t<std::is_constructible_v<ErasedFunction, F &&>, int> = 0>
-    Function(F &&f) : erased(static_cast<F &&>(f)) {}
 
     template <class ...Ts>
     Value operator()(Caller c, Ts &&...ts) const {
         ArgPack v;
         v.reserve(sizeof...(Ts));
         (v.emplace_back(static_cast<Ts &&>(ts)), ...);
-        return (*this)(c, std::move(v));
+        return (*this)(std::move(c), std::move(v));
     }
 
-    bool has_value() const {return bool(erased);}
+    void emplace(ErasedFunction f, ErasedSignature const &s) {
+        overloads.emplace_back(s, std::move(f));
+    }
+
+    /******************************************************************************/
+
+    template <int N = -1, class F>
+    Function & emplace(F f) & {
+        auto fun = SimplifyFunction<F>()(std::move(f));
+        overloads.emplace_back(SimpleSignature<decltype(fun)>(),
+            FunctionAdaptor<(N == -1 ? 0 : SimpleSignature<decltype(fun)>::size - 1 - N), decltype(fun)>{std::move(fun)});
+        return *this;
+    }
+
+    template <int N = -1, class F>
+    Function && emplace(F f) && {emplace<N>(std::move(f)); return std::move(*this);}
+};
+
+/******************************************************************************/
+
+template <class R, class ...Ts>
+struct Callback {
+    Caller caller;
+    Function function;
+
+    Callback(Function f, Caller c) : function(std::move(f)), caller(std::move(c)) {}
+
+    R operator()(Ts ...ts) const {
+        ArgPack pack;
+        pack.reserve(sizeof...(Ts));
+        (pack.emplace_back(static_cast<Ts &&>(ts)), ...);
+        return downcast<R>(function(caller, std::move(pack)).reference());
+    }
 };
 
 /******************************************************************************/
@@ -44,13 +96,17 @@ Value value_invoke(F const &f, Ts &&... ts) {
     }
 }
 
-template <class F, class C, class ...Ts>
-Value context_invoke(std::true_type, F const &f, C &&c, Ts &&...ts) {
-    return value_invoke(f, static_cast<C &&>(c), static_cast<Ts &&>(ts)...);
+template <class F, class ...Ts>
+Value caller_invoke(std::true_type, F const &f, Caller &&c, Ts &&...ts) {
+    if (Debug) std::cout << "invoking with context" << std::endl;
+    return value_invoke(f, std::move(c)(), static_cast<Ts &&>(ts)...);
 }
 
-template <class F, class C, class ...Ts>
-Value context_invoke(std::false_type, F const &f, C &&c, Ts &&...ts) {
+template <class F, class ...Ts>
+Value caller_invoke(std::false_type, F const &f, Caller &&c, Ts &&...ts) {
+    if (Debug) std::cout << "invoking context guard" << std::endl;
+    auto new_frame = std::move(c)();
+    if (Debug) std::cout << "invoked context guard" << std::endl;
     return value_invoke(f, static_cast<Ts &&>(ts)...);
 }
 
@@ -60,134 +116,7 @@ Value context_invoke(std::false_type, F const &f, C &&c, Ts &&...ts) {
 template <class T>
 decltype(auto) cast_index(ArgPack const &v, Dispatch &msg, IndexedType<T> i) {
     msg.index = i.index;
-    if (Debug) std::cout << typeid(T).name() << " castindex" << std::endl;
     return downcast<T>(v[i.index], msg);
-}
-
-/******************************************************************************/
-
-template <class T>
-struct CheckType {
-    static_assert(
-        true ||
-        !std::is_lvalue_reference_v<T> ||
-        std::is_const_v<std::remove_reference_t<T>>,
-        "Mutable lvalue references are not allowed in function signature"
-    );
-};
-
-// Basic wrapper to make C++ functor into a type erased std::function
-// the C++ functor must be callable with (T), (const &) or (&&) parameters
-// we need to take the any class by reference...
-// if args contains an Any
-// the function may move the Any if it takes Value
-// or the function may leave the Any alone if it takes const &
-
-template <int N, class R, class ...Ts, std::enable_if_t<N == 1, int> = 0>
-Pack<Ts...> skip_head(Pack<R, Ts...>);
-
-template <int N, class R, class C, class ...Ts, std::enable_if_t<N == 2, int> = 0>
-Pack<Ts...> skip_head(Pack<R, C, Ts...>);
-
-template <class C, class R>
-std::false_type has_head(Pack<R>);
-
-template <class C, class R, class T, class ...Ts>
-std::is_convertible<T, C> has_head(Pack<R, T, Ts...>);
-
-template <std::size_t N, class F>
-struct FunctionAdaptor {
-    F function;
-    using Ctx = decltype(has_head<Caller>(Signature<F>()));
-    using Sig = decltype(skip_head<1 + int(Ctx::value)>(Signature<F>()));
-
-    template <class P>
-    void call_each(P, Value &out, Caller &c, Dispatch &msg, ArgPack &args) const {
-        P::indexed([&](auto ...ts) {
-            out = context_invoke(Ctx(), function, c, cast_index(args, msg, ts)...);
-        });
-    }
-
-    template <std::size_t ...Is>
-    Value call(ArgPack &args, Caller &c, Dispatch &msg, std::index_sequence<Is...>) const {
-        Value out;
-        ((args.size() == N - Is - 1 ? call_each(Sig::template slice<0, N - Is - 1>(), out, c, msg, args) : void()), ...);
-        return out;
-    }
-
-    Value operator()(Caller c, ArgPack args) const {
-        Sig::apply2([](auto ...ts) {
-            (CheckType<decltype(*ts)>(), ...);
-        });
-        Dispatch msg;
-        if (args.size() == Sig::size)
-            return Sig::indexed([&](auto ...ts) {
-                return context_invoke(Ctx(), function, c, cast_index(args, msg, ts)...);
-            });
-        if (args.size() < Sig::size - N)
-            throw WrongNumber(Sig::size - N, args.size());
-        if (args.size() > Sig::size)
-            throw WrongNumber(Sig::size, args.size());
-        return call(args, c, msg, std::make_index_sequence<N>());
-    }
-};
-
-template <class F>
-struct FunctionAdaptor<0, F> {
-    F function;
-    using Ctx = decltype(has_head<Caller>(Signature<F>()));
-    using Sig = decltype(skip_head<1 + int(Ctx::value)>(Signature<F>()));
-
-    /// Run C++ functor; logs non-ClientError and rethrows all exceptions
-    Value operator()(Caller c, ArgPack args) const {
-        Sig::apply2([](auto ...ts) {
-            (CheckType<decltype(*ts)>(), ...);
-        });
-        if (args.size() != Sig::size)
-            throw WrongNumber(Sig::size, args.size());
-        return Sig::indexed([&](auto ...ts) {
-            Dispatch msg;
-            return context_invoke(Ctx(), function, c, cast_index(args, msg, ts)...);
-        });
-    }
-};
-
-/******************************************************************************/
-
-struct OverloadedFunction {
-    Vector<Function> overloads;
-
-    Value operator()(Caller c, ArgPack args) const {
-        if (overloads.size() == 1 && overloads[0].has_value())
-            return overloads[0](std::move(c), std::move(args));
-        for (auto const &o : overloads) if (o.has_value()) {
-            try {return o(c, args);}
-            catch(DispatchError const &) {}
-        }
-        throw DispatchError("No overloads worked");
-    }
-};
-
-Function overload(Function f, Function o);
-
-/******************************************************************************/
-
-template <class F, class=void>
-struct Simplify {
-    constexpr std::decay_t<F> operator()(F f) const {return f;}
-};
-
-template <class F>
-struct Simplify<F, std::void_t<decltype(false ? nullptr : std::declval<F>())>> {
-    constexpr auto operator()(F f) const {return false ? nullptr : f;}
-};
-
-/******************************************************************************/
-
-template <int N = -1, class F>
-Function make_function(F f) {
-    auto fun = Simplify<F>()(std::move(f));
-    return FunctionAdaptor<(N == -1 ? 0 : Signature<decltype(fun)>::size - 1 - N), decltype(fun)>{std::move(fun)};
 }
 
 /******************************************************************************/
@@ -220,25 +149,6 @@ struct Streamable {
 
 template <class T>
 Streamable<T> streamable(Type<T> t={}) {return {};}
-
-/******************************************************************************/
-
-// template <class R, class ...Ts>
-// class Callback {
-//     Function fun;
-
-//     Callback(Function f, Caller &c) : fun(std::move(f), caller(&c)) {}
-
-//     R operator()(Ts &&...ts) const {
-//         ArgPack pack;
-//         pack.contents.reserve(sizeof...(Ts));
-//         (pack.contents.emplace_back(static_cast<Ts &&>(ts)), ...);
-//         return downcast<R>()(fun(caller, std::move(pack)));
-//     }
-
-// private:
-//     Caller *caller;
-// };
 
 /******************************************************************************/
 

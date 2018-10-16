@@ -34,28 +34,35 @@ struct Opaque<Vector<T>> : Opaque<T> {};
 
 /******************************************************************************/
 
-struct Methods {
-    Methods(bool=true) noexcept {}
-    std::string name;
-    Zip<std::string, Function> methods;
+struct TypeData {
+    std::map<std::string, Function> methods;
+    std::map<std::type_index, Value> data;
 };
 
 struct Document {
-    Zip<std::string, Value> values;
-    std::map<std::type_index, Methods> types;
+    std::map<std::string, Value> contents;
+    std::map<std::type_index, std::pair<std::string const, Value> *> types;
 
-    void type(std::type_index t, std::string s) {types[t].name = std::move(s);}
+    TypeData & type(std::type_index t, std::string s, Value data={}) {
+        auto it = contents.emplace(std::move(s), TypeData()).first;
+        if (auto p = it->second.target<TypeData>()) {
+            p->data.emplace(t, std::move(data));
+            types[t] = &(*it);
+            return *p;
+        }
+        throw std::runtime_error("bada");
+    }
 
     template <class T, std::enable_if_t<Opaque<T>::value, int> = 0>
     bool render(Type<T> t={}) {
         static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
-        return types.emplace(typeid(T), true).second;
+        return types.emplace(typeid(T), nullptr).second;
     }
 
     template <class T, std::enable_if_t<!Opaque<T>::value, int> = 0>
     bool render(Type<T> t={}) {
         static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
-        return types.emplace(typeid(T), true).second ? Renderer<T>()(*this), true : false;
+        return types.emplace(typeid(T), nullptr).second ? Renderer<T>()(*this), true : false;
     }
 
     template <class ...Ts>
@@ -64,21 +71,30 @@ struct Document {
     template <class T>
     void object(std::string_view s, T value) {
         render(Type<T>());
-        values.emplace_back(s, std::move(value));
+        contents.emplace(std::move(s), std::move(value));
     }
 
     /// Export function and its signature
     template <class F>
-    void function(std::string_view s, F functor) {
+    void function(std::string s, F functor) {
         render(typename Signature<F>::no_qualifier());
-        values.emplace_back(s, make_function(std::move(functor)));
+        auto it = contents.find(s);
+        if (it == contents.end()) {
+            contents.emplace(std::move(s), Function().emplace(std::move(functor)));
+        } else {
+            if (auto f = it->second.target<Function>())
+                f->emplace(std::move(functor));
+            else throw std::runtime_error("function with nonfunction");
+        }
     }
 
     /// Always a function - no vagueness here
     template <class F, class ...Ts>
     void method(std::type_index t, std::string name, F f) {
         Signature<F>::no_qualifier::for_each([&](auto r) {if (t != +r) render(+r);});
-        types[t].methods.emplace_back(std::move(name), make_function(std::move(f)));
+        if (auto p = types.at(t)->second.target<TypeData>())
+            p->methods[std::move(name)].emplace(std::move(f));
+        else throw std::runtime_error("bad");
     }
 };
 

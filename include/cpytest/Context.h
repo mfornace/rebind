@@ -46,7 +46,7 @@ struct Context : Caller {
     /// Opens a new section with a reset start_time
     template <class F, class ...Ts>
     auto section(std::string name, F &&functor, Ts &&...ts) const {
-        Context ctx(*this, scopes, handlers, counters);
+        Context ctx(Caller::operator()(), scopes, handlers, counters);
         ctx.scopes.push_back(std::move(name));
         return static_cast<F &&>(functor)(ctx, static_cast<Ts &&>(ts)...);
     }

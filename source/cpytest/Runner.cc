@@ -11,7 +11,8 @@ struct ValueHandler {
     Function fun;
     bool operator()(Event e, Scopes const &scopes, Logs &&logs) {
         Integer const ev{e};
-        return downcast<bool>(fun(context, ArgPack{ev, scopes, std::move(logs)}));
+        return true;
+        // return downcast<bool>(fun(context, ArgPack{ev, scopes, std::move(logs)}));
     }
 };
 
@@ -29,12 +30,8 @@ Vector<Value> run_test(Caller &ct0, std::size_t i, Vector<Function> calls,
     auto const test = suite().at(i);
     if (!test.function) throw std::runtime_error("Test case has invalid Function");
     ArgPack pack;
-    if (auto p = std::any_cast<Integer>(&args))
+    if (auto p = args.target<Integer>())
         pack = test.parameters.at(*p);
-    // if (auto p = std::any_cast<ArgPack>(&args))
-        // pack = std::move(*p);
-    // if (auto p = std::any_cast<ValuePack>(&args))
-        // pack = std::move(*p);
     std::stringstream out, err;
     Value return_value;
     double test_time = 0;
@@ -93,8 +90,7 @@ bool make_document() {
         add_test(TestCase{std::string(s), {}, ValueAdaptor{std::move(v)}});
     });
 
-    doc.function("run_test", [](Caller &ct, std::size_t i, Vector<Function> calls, Value args, bool cout, bool cerr) {
-        // return std::vector<int>{1,2,3,4,5};
+    doc.function("run_test", [](Caller ct, std::size_t i, Vector<Function> calls, Value args, bool cout, bool cerr) {
         return run_test(ct, i, std::move(calls), std::move(args), cout, cerr);
     });
 

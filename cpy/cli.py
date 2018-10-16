@@ -1,3 +1,4 @@
+import typing
 from .common import Event, run_test, open_file, load_parameters, import_suite
 from .common import ExitStack, Suite, test_indices, parametrized_indices
 
@@ -60,7 +61,7 @@ def run_index(lib, masks, out, err, gil, cout, cerr, p):
     err.write(e)
     for r, _ in test_masks:
         r.finalize(val, time, counts, o, e)
-    return (1, time) + counts
+    return [1, time] + counts
 
 ################################################################################
 

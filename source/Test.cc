@@ -18,7 +18,7 @@ struct goo {
 
 // namespace cpy {
 //     template <>
-//     struct ToValue<goo> {
+//     struct Simplify<goo> {
 //         Value operator()(goo g) const {return {std::in_place_t(), g};}
 //     };
 // }
@@ -75,7 +75,7 @@ UNIT_TEST("test-2", "This is a test 2") = [](cpy::Context ct) {
 };
 
 UNIT_TEST("test-3") = [](auto ct) {
-    std::cout << std::any_cast<double>(cpy::get_value("max_time")) << std::endl;
+    std::cout << cpy::get_value("max_time").cast<double>() << std::endl;
     throw std::runtime_error("runtime_error: uh oh");
 };
 

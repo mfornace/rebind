@@ -22,6 +22,9 @@ struct Type  {
 };
 
 template <class T>
+static constexpr Type<T> ctype = {};
+
+template <class T>
 struct IndexedType {
     std::size_t index;
     T operator*() const; // undefined
@@ -127,7 +130,7 @@ struct Signature<R(*)(Ts...)> : Signature<R(Ts...)> {using return_type = R;};
 #undef CPY_TMP
 
 template <class R, class C>
-struct Signature<R C::*> : Pack<R, C> {using return_type = R;};
+struct Signature<R C::*> : Pack<R const &, C const &> {using return_type = R const &;};
 
 /******************************************************************************************/
 
@@ -148,5 +151,8 @@ struct FunctorSignature;
 
 template <class F>
 struct Signature<F, std::void_t<decltype(&F::operator())>> : FunctorSignature<decltype(&F::operator())> {};
+
+template <class F>
+constexpr typename Signature<F>::pack_type signature(F const &) {return {};}
 
 }

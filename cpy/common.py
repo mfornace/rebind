@@ -1,4 +1,4 @@
-import sys, io, enum
+import sys, io, enum, typing
 
 try:
     from contextlib import ExitStack
@@ -104,7 +104,11 @@ def import_library(lib, name=None):
         raise e
 
 def import_suite(lib, name=None):
-    return Suite(import_library(lib, name).document)
+    from cpy.build import render_module
+    from cpy import template
+    lib = import_library(lib, name)
+    [setattr(lib, k, getattr(template, k)) for k in dir(template) if not k.startswith('_')]
+    return Suite(render_module(lib.__name__, lib.document))
 
 ################################################################################
 

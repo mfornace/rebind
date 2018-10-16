@@ -12,8 +12,8 @@
 #include <vector>
 #include <type_traits>
 #include <string_view>
-#include <any>
 #include <typeindex>
+#include <optional>
 
 #define CPY_CAT_IMPL(s1, s2) s1##s2
 #define CPY_CAT(s1, s2) CPY_CAT_IMPL(s1, s2)
@@ -23,64 +23,78 @@
 
 namespace cpy {
 
-struct Value;
+struct Info;
+class Value;
+class Reference;
 
 /******************************************************************************/
 
 enum class Qualifier : unsigned char {C, L, R};
 
-struct rvalue {};
-struct lvalue {};
-struct cvalue {};
+struct cvalue {constexpr operator Qualifier() const {return Qualifier::C;}};
+struct lvalue {constexpr operator Qualifier() const {return Qualifier::L;}};
+struct rvalue {constexpr operator Qualifier() const {return Qualifier::R;}};
 
-class TypeRequest {
-    std::type_index const *m_begin=nullptr;
-    std::type_index const *m_end=nullptr;
-public:
-    constexpr TypeRequest() = default;
-    constexpr TypeRequest(std::type_index const *b, std::type_index const *e) : m_begin(b), m_end(e) {}
-    TypeRequest(std::initializer_list<std::type_index> const &t) : m_begin(t.begin()), m_end(t.end()) {}
-    auto begin() const {return m_begin;}
-    auto end() const {return m_end;}
-    auto data() const {return m_begin;}
-    auto size() const {return m_end - m_begin;}
+template <class T, class Ref> struct Qualified;
+template <class T> struct Qualified<T, cvalue> {using type = T const &;};
+template <class T> struct Qualified<T, lvalue> {using type = T &;};
+template <class T> struct Qualified<T, rvalue> {using type = T &&;};
 
-    auto contains(std::type_index t) const {return std::find(m_begin, m_end, t) != m_end;}
-};
-
-using CopyFunction = Value(*)(void const *, TypeRequest const &);
+template <class Ref, class T> using qualified = typename Qualified<Ref, T>::type;
 
 template <class T>
-struct CopyImpl {
-    static Value apply(void const *, TypeRequest const &);
-};
+static constexpr Qualifier qualifier = std::is_rvalue_reference_v<T> ? Qualifier::R :
+    (std::is_const_v<std::remove_reference_t<T>> ? Qualifier::C : Qualifier::L);
 
-// template <class T>
-// struct ToReference {
-// for any & you should have the address, the index,
-// };
+/******************************************************************************/
 
-class Reference {
+enum class ActionType : unsigned char {destroy, copy, move, make_value, to_reference};
+
+using ActionFunction = void *(*)(ActionType, void *, Info *);
+
+struct Info {
     void *ptr = nullptr;
     std::type_index idx = typeid(void);
-    CopyFunction copy = nullptr;
+    ActionFunction fun = nullptr;
+
+    explicit constexpr operator bool() const {return ptr;}
+    constexpr bool has_value() const {return ptr;}
+    auto name() const {return idx.name();}
+
+    std::type_index type() const {return idx;}
+};
+
+template <class T>
+struct Action;
+
+class Reference : public Info {
     Qualifier qual;
 public:
     Reference() = default;
 
-    template <class T, std::enable_if_t<!std::is_base_of_v<Reference, T>, int> = 0>
-    Reference(T &&t) : ptr(std::addressof(t)), idx(typeid(T)), copy(CopyImpl<T>::apply), qual(Qualifier::R) {}
+    Reference(void *p, std::type_index t, ActionFunction f, Qualifier q) : Info{p, t, f}, qual(q) {}
 
-    template <class T, std::enable_if_t<!std::is_base_of_v<Reference, T>, int> = 0>
-    Reference(T &t) : ptr(std::addressof(t)), idx(typeid(T)), copy(CopyImpl<T>::apply), qual(Qualifier::L) {}
+    template <class V, std::enable_if_t<std::is_same_v<no_qualifier<V>, Value>, int> = 0>
+    explicit Reference(V &&v) : Info{static_cast<V &&>(v)}, qual(::cpy::qualifier<V &&>) {}
 
-    template <class T, std::enable_if_t<!std::is_base_of_v<Reference, T>, int> = 0>
-    Reference(T const &t) : ptr(const_cast<T *>(std::addressof(t))), idx(typeid(T)), copy(CopyImpl<T>::apply), qual(Qualifier::C) {}
+    template <class T, std::enable_if_t<!std::is_base_of_v<Info, no_qualifier<T>>, int> = 0>
+    explicit Reference(T &&t) : Info{std::addressof(t), typeid(T), Action<T>::apply}, qual(Qualifier::R) {}
 
-    std::type_index type() const {return idx;}
+    template <class T, std::enable_if_t<!std::is_base_of_v<Info, T>, int> = 0>
+    explicit Reference(T &t) : Info{std::addressof(t), typeid(T), Action<T>::apply}, qual(Qualifier::L) {}
+
+    template <class T, std::enable_if_t<!std::is_base_of_v<Info, T>, int> = 0>
+    explicit Reference(T const &t) : Info{const_cast<T *>(std::addressof(t)), typeid(T), Action<T>::apply}, qual(Qualifier::C) {}
+
     Qualifier qualifier() const {return qual;}
 
-    Value value(TypeRequest const &t={}) const;
+    Value request(std::type_index const) const;
+
+    template <class T>
+    std::optional<T> request(Type<T> t={}) const;
+
+    template <class T>
+    std::remove_reference_t<T> *to_reference(Type<T> t={}) const;
 
     template <class T, std::enable_if_t<std::is_lvalue_reference_v<T> && !std::is_const_v<std::remove_reference_t<T>>, int> = 0>
     std::remove_reference_t<T> *target(Type<T> t={}) const {
@@ -98,63 +112,232 @@ public:
     }
 
     template <class T, std::enable_if_t<!std::is_reference_v<T>, int> = 0>
-    T unsafe_target(Type<T> t={}) const {
+    T unsafe_cast(Type<T> t={}) const {
         if (qual == Qualifier::R) return std::move(*static_cast<T *>(ptr));
         else return *static_cast<T const *>(ptr);
     }
 };
 
+static_assert(std::is_trivially_destructible_v<Reference>);
 static_assert(std::is_constructible_v<Reference, Reference>);
 
 /******************************************************************************/
 
-struct Value : std::any {
-    constexpr Value() = default;
+class Value : public Info {
+public:
+    Value() = default;
 
-    template <class T>
-    Value(std::in_place_t, T &&t) : any(static_cast<T &&>(t)) {}
+    template <class T, class ...Ts>
+    Value(Type<T> t, Ts &&...ts) :
+        Info{new T(static_cast<Ts &&>(ts)...), typeid(T), Action<T>::apply} {
+            static_assert(std::is_same_v<no_qualifier<T>, T>);
+            static_assert(!std::is_same_v<no_qualifier<T>, Reference>);
+            static_assert(!std::is_same_v<no_qualifier<T>, Value>);
+            static_assert(!std::is_same_v<no_qualifier<T>, void *>);
+        }
+
+    template <class T, std::enable_if_t<!std::is_base_of_v<Info, no_qualifier<T>>, int> = 0>
+    Value(T &&t) : Value(+Type<T>(), static_cast<T &&>(t)) {
+        static_assert(!std::is_same_v<no_qualifier<T>, Reference>);
+        static_assert(!std::is_same_v<no_qualifier<T>, Value>);
+        static_assert(!std::is_same_v<no_qualifier<T>, void *>);
+    }
+
+    explicit Value(Info const &other) : Info(other) {
+        ptr = fun(ActionType::copy, ptr, nullptr);
+    }
+
+    Value(Value &&v) noexcept : Info{std::exchange(v.ptr, nullptr), std::exchange(v.idx, typeid(void)), v.fun} {}
+
+    Value(Value const &v) : Info{v.ptr ? v.fun(ActionType::copy, v.ptr, nullptr) : nullptr, v.idx, v.fun} {}
+
+    Value & operator=(Value &&v) noexcept {
+        if (ptr) fun(ActionType::destroy, ptr, nullptr);
+        ptr = std::exchange(v.ptr, nullptr);
+        idx = std::exchange(v.idx, typeid(void));
+        fun = v.fun;
+        return *this;
+    }
+
+    Value & operator=(Value const &v) {
+        if (ptr) fun(ActionType::destroy, ptr, nullptr);
+        ptr = v.ptr ? v.fun(ActionType::copy, v.ptr, nullptr) : nullptr;
+        idx = v.idx;
+        fun = v.fun;
+        return *this;
+    }
+
+    void reset() {
+        if (ptr) {
+            fun(ActionType::destroy, ptr, nullptr);
+            fun = nullptr;
+            ptr = nullptr;
+            idx = typeid(void);
+        }
+    }
+
+    ~Value() {if (ptr) fun(ActionType::destroy, ptr, nullptr);}
 
     template <class T>
     static Value from_any(T &&t) {return {std::in_place_t(), static_cast<T &&>(t)};}
 
-    template <class T, class ...Ts>
-    Value(Type<T> t, Ts &&...ts) : any(std::in_place_type_t<T>(), static_cast<Ts &&>(ts)...) {}
+    template <class T>
+    T *target() {return idx == typeid(T) ? static_cast<T *>(ptr) : nullptr;}
 
-    Value(Reference &&r) : Value(r.value()) {}
-    Value(Reference const &r) : Value(r.value()) {}
+    template <class T>
+    T const *target() const {return idx == typeid(T) ? static_cast<T const *>(ptr) : nullptr;}
 
-    template <class T, std::enable_if_t<(!std::is_base_of_v<std::any, no_qualifier<T>>), int> = 0>
-    Value(T &&t) : Value(Reference(static_cast<T &&>(t)).value()) {}
+    template <class T>
+    T unsafe_cast(Type<T> t={}) const & {return static_cast<T>(*static_cast<no_qualifier<T> const *>(ptr));}
 
-    std::any && base() && noexcept {return std::move(*this);}
-    std::any const & base() const & noexcept {return *this;}
+    template <class T>
+    T unsafe_cast(Type<T> t={}) & {return static_cast<T>(*static_cast<no_qualifier<T> *>(ptr));}
+
+    template <class T>
+    T unsafe_cast(Type<T> t={}) && {return static_cast<T>(std::move(*static_cast<no_qualifier<T> *>(ptr)));}
+
+    template <class T>
+    T cast(Type<T> t={}) const {
+        return (idx == +t) ? unsafe_cast(t) : throw std::runtime_error("bad");
+    }
+
+    Reference reference() & {return {ptr, idx, fun, Qualifier::L};}
+    Reference reference() const & {return {ptr, idx, fun, Qualifier::C};}
+    Reference reference() && {return {ptr, idx, fun, Qualifier::R};}
 };
 
 static_assert(std::is_copy_constructible_v<Value>);
 static_assert(std::is_move_constructible_v<Value>);
-static_assert(32 == sizeof(Value));              // 8 + 24 buffer I think
+static_assert(24 == sizeof(Value));              // 8 + 24 buffer I think
 
-inline Value Reference::value(TypeRequest const &t) const {
-    std::cout << (copy != nullptr) << t.size() << std::endl;
-    return copy(ptr, t);
+template <class T>
+std::optional<T> Reference::request(Type<T> t) const {
+    auto &&v = request(typeid(T));
+    if (auto p = v.target<T>()) return std::move(*p);
+    else return {};
 }
 
+/******************************************************************************/
+
 template <class T, class=void>
-struct ToValue {
-    static_assert(std::is_same_v<no_qualifier<T>, T>);
-    Value operator()(T const &t, TypeRequest const &) const {
-        std::cout << typeid(T).name() << std::endl;
-        auto out = Value::from_any(t);
-        std::cout << typeid(T).name() << "2" << std::endl;
-        return out;
+struct SimplifyValue {
+    void operator()(Value &out, T const &t, std::type_index) const {
+        if (Debug) std::cout << typeid(T).name() << std::endl;
+        out = t;
+        if (Debug) std::cout << typeid(T).name() << " 2" << std::endl;
     }
 };
 
 template <class T>
-Value CopyImpl<T>::apply(void const *p, TypeRequest const &req) {
-    std::cout << "running" << std::endl;
-    static_assert(std::is_same_v<Value, no_qualifier<decltype(ToValue<T>()(*static_cast<T const *>(p), req))>>);
-    return ToValue<T>()(*static_cast<T const *>(p), req);
+struct SimplifyValue<T, std::void_t<decltype(simplify(std::declval<T const &>(), std::declval<std::type_index &&>()))>> {
+    void operator()(Value &out, T const &t, std::type_index idx) const {
+        if (Debug) std::cout << typeid(T).name() << std::endl;
+        out = simplify(t, std::move(idx));
+        if (Debug) std::cout << typeid(T).name() << " 2" << std::endl;
+    }
+};
+
+template <class T, class=void>
+struct SimplifyReference {
+    using custom = std::false_type;
+    void * operator()(Qualifier q, T const &t, std::type_index i) const {
+        if (Debug) std::cout << "no conversion " << typeid(T).name() << " "
+            << int(static_cast<unsigned char>(q)) << " " << i.name() << std::endl;
+        return nullptr;
+    }
+};
+
+template <class T>
+struct SimplifyReference<T, std::void_t<decltype(simplify(cvalue(), std::declval<T const &>(), std::declval<std::type_index &&>()))>> {
+    using custom = std::true_type;
+    template <class Q>
+    void * operator()(Q q, qualified<T, Q> t, std::type_index idx) const {
+        if (Debug) std::cout << "convert reference " << typeid(T).name() << std::endl;
+        return const_cast<void *>(static_cast<void const *>(simplify(q, static_cast<decltype(t) &&>(t), std::move(idx))));
+    }
+};
+
+
+template <class T, class=void>
+struct Simplify : SimplifyValue<T>, SimplifyReference<T> {
+    static_assert(std::is_same_v<no_qualifier<T>, T>);
+};
+
+/******************************************************************************/
+
+template <class V>
+void *call_reference(Qualifier dest, V &&v, std::type_index &&t) {
+    using S = Simplify<no_qualifier<V>>;
+    if (dest == Qualifier::R) {
+        if constexpr(!std::is_invocable_v<S, rvalue &&, V &&, std::type_index &&>) return nullptr;
+        else return static_cast<void *>(S()(rvalue(), static_cast<V &&>(v), std::move(t)));
+    } else if (dest == Qualifier::L) {
+        if constexpr(!std::is_invocable_v<S, lvalue &&, V &&, std::type_index &&>) return nullptr;
+        else return static_cast<void *>(S()(lvalue(), static_cast<V &&>(v), std::move(t)));
+    } else {
+        if (Debug) std::cout << "call reference " << std::is_invocable_v<S, cvalue &&, V &&, std::type_index &&>
+            << " " << typeid(S).name() << " " << typeid(V).name() << std::endl;
+        if constexpr(!std::is_invocable_v<S, cvalue &&, V &&, std::type_index &&>) return nullptr;
+        else return const_cast<void *>(static_cast<void const *>(S()(cvalue(), static_cast<V &&>(v), std::move(t))));
+    }
+}
+
+template <class T>
+struct Action {
+    static_assert(std::is_same_v<no_qualifier<T>, T>);
+    static void * apply(ActionType a, void *ptr, Info *out) {
+        if (a == ActionType::destroy) delete static_cast<T *>(ptr);
+        else if (a == ActionType::copy) return new T(*static_cast<T const *>(ptr));
+        else if (a == ActionType::move) return new T(std::move(*static_cast<T *>(ptr)));
+        else if (a == ActionType::make_value) {
+            std::type_index t = out->idx;
+            out->idx = typeid(void);
+            Qualifier q{static_cast<unsigned char>(reinterpret_cast<std::uintptr_t>(out->fun))};
+            out->fun = nullptr;
+            Simplify<T>()(*static_cast<Value *>(out), *static_cast<T const *>(ptr), std::move(t));
+        } else if (a == ActionType::to_reference) {
+            if (Debug) std::cout << "convert to reference " << out->idx.name() << std::endl;
+            Qualifier src{static_cast<unsigned char>(reinterpret_cast<std::uintptr_t>(out->ptr))};
+            Qualifier dest{static_cast<unsigned char>(reinterpret_cast<std::uintptr_t>(out->fun))};
+            if (src == Qualifier::R)
+                return call_reference(dest, static_cast<T &&>(*static_cast<T *>(ptr)), std::move(out->idx));
+            else if (src == Qualifier::L)
+                return call_reference(dest, *static_cast<T *>(ptr), std::move(out->idx));
+            else
+                return call_reference(dest, *static_cast<T const *>(ptr), std::move(out->idx));
+        }
+        return nullptr;
+    }
+};
+
+inline Value Reference::request(std::type_index const t) const {
+    if (Debug) std::cout << (fun != nullptr) << " asking for " << t.name() << " from " << type().name() << std::endl;
+    Value v;
+    if (t == idx) {
+        v.idx = t;
+        v.fun = fun;
+        v.ptr = fun(ActionType::copy, ptr, nullptr);
+    } else {
+        v.idx = t;
+        v.fun = reinterpret_cast<ActionFunction>(static_cast<std::uintptr_t>(Qualifier::C));
+        void * new_ptr = fun(ActionType::make_value, ptr, &v);
+    }
+    if (v.idx != t) v.reset();
+    return v;
+}
+
+template <class T>
+std::remove_reference_t<T> *Reference::to_reference(Type<T> t) const {
+    if (idx == typeid(no_qualifier<T>))
+        return std::is_const_v<std::remove_reference_t<T>>
+            || (std::is_rvalue_reference_v<T> && qual == Qualifier::R)
+            || (std::is_lvalue_reference_v<T> && qual == Qualifier::L) ?
+            static_cast<std::remove_reference_t<T> *>(ptr) : nullptr;
+    Info r;
+    r.idx = t; // desired type
+    r.ptr = reinterpret_cast<void *>(static_cast<std::uintptr_t>(qual)); // source qualifier
+    r.fun = reinterpret_cast<ActionFunction>(static_cast<std::uintptr_t>(Qualifier::C)); // desired qualifier
+    return static_cast<std::remove_reference_t<T> *>(fun(ActionType::to_reference, ptr, &r));
 }
 
 /******************************************************************************/
@@ -165,7 +348,8 @@ struct FromReference {
     static_assert(std::is_same_v<no_qualifier<T>, T>);
 
     T operator()(Reference const &r, Dispatch &msg) const {
-
+        auto v = r.request(typeid(T));
+        if (auto p = v.target<T>()) return static_cast<T &&>(*p);
         throw msg.error("mismatched class type", r.type(), typeid(T));
     }
 };
@@ -180,203 +364,64 @@ struct FromReference<T &, C> {
 template <class T, class C>
 struct FromReference<T const &, C> {
     T const & operator()(Reference const &r, Dispatch &msg) const {
-        throw msg.error("could not bind to const lvalue", r.type(), typeid(T));
+        if (Debug) std::cout << "trying temporary const & storage " << typeid(T const &).name() << std::endl;
+        try {
+            return FromReference<T &>()(r, msg);
+        } catch (DispatchError const &) {
+            return msg.storage.emplace_back().emplace<T>(FromReference<T>()(r, msg));
+        }
     }
 };
 
 template <class T, class C>
 struct FromReference<T &&, C> {
-    static_assert(T::aa);
     T && operator()(Reference const &r, Dispatch &msg) const {
-        throw msg.error("could not bind to rvalue", r.type(), typeid(T));
+        if (Debug) std::cout << "trying temporary && storage " << typeid(T &&).name() << std::endl;
+        return static_cast<T &&>(msg.storage.emplace_back().emplace<T>(FromReference<T>()(r, msg)));
     }
 };
 
-// /// Default ToValue passes lvalues as Reference and rvalues as Value
-// template <class T, class>
-// struct ToValue {
-//     static_assert(!std::is_base_of_v<T, Value>);
 
-//     Value arg(T &t) const {
-//         if (Debug) std::cout << "ref " << typeid(T &).name() << std::endl;
-//         return {Type<Reference<T &>>(), t};
-//     }
-//     Value arg(T const &t) const {
-//         if (Debug) std::cout << "cref " << typeid(T const &).name() << std::endl;
-//         return {Type<Reference<T const &>>(), t};
-//     }
-//     Value arg(T &&t) const {
-//         if (Debug) std::cout << "rref " << typeid(T).name() << std::endl;
-//         return ToValue<T>()(std::move(t));
-//     }
+void from_reference(int, int, int);
 
-//     /// The default implementation is to serialize to Value without conversion
-//     Value value(T &&t) const {return Value::from_any(static_cast<T &&>(t));}
+/// ADL version
+template <class T>
+struct FromReference<T, std::void_t<decltype(
+    from_reference(Type<T>(), std::declval<Reference const &>(), std::declval<Dispatch &>()))>> {
 
-//     Value value(T const &t) const {return Value::from_any(t);}
-// };
-
-/// A common behavior passing the argument directly by value into an Value without conversion
-// struct ToArgFromAny {
-//     template <class T>
-//     Value arg(T t) const {
-//         if (Debug) std::cout << "convert directly to arg " << typeid(T).name() << std::endl;
-//         return Value::from_any(std::move(t));}
-// };
-
-// template <>
-// struct ToValue<Reference<Value &>> : ToArgFromAny {};
-
-// template <>
-// struct ToValue<Reference<Value const &>> : ToArgFromAny {};
-
-// inline Value to_value(std::nullptr_t) {return {};}
-
-// /// ADL version
-// template <class T>
-// struct ToValue<T, std::void_t<decltype(to_value(std::declval<T>()))>> {
-//     Value operator()(T &&t) const {return to_value(static_cast<T &&>(t));}
-//     Value operator()(T const &t) const {return to_value(t);}
-// };
-
-/******************************************************************************/
-
-// /// If the type is matched exactly, return it
-// template <class T, class=void>
-// struct FromValue {
-//     T operator()(Value v, Dispatch &msg) {
-//         if (Debug) std::cout << v.type().name() << " " << typeid(T).name() << std::endl;
-//         if (auto p = std::any_cast<T>(&v)) return std::move(*p);
-//         throw msg.error("mismatched class type", v.type(), typeid(T));
-//     }
-// };
-
-// /// I don't know why these are that necessary? Not sure when you'd expect FromValue to ever return a reference
-// template <class T, class V>
-// struct FromValue<T &, V> {
-//     T & operator()(Value const &v, Dispatch &msg) {
-//         throw msg.error("cannot form lvalue reference", v.type(), typeid(T));
-//     }
-// };
-
-// template <class T, class V>
-// struct FromValue<T const &, V> {
-//     T const & operator()(Value const &v, Dispatch &msg) {
-//         throw msg.error("cannot form const lvalue reference", v.type(), typeid(T));
-//     }
-// };
-
-// template <class T, class V>
-// struct FromValue<T &&, V> {
-//     T && operator()(Value const &v, Dispatch &msg) {
-//         throw msg.error("cannot form rvalue reference", v.type(), typeid(T));
-//     }
-// };
-
-/******************************************************************************/
-
-/// The default implementation is to accept convertible arguments or Value of the exact typeid match
-/// castvalue always needs an output Value &, and an input Value
-// template <class T, class=void>
-// struct FromReference {
-//     /// If exact match, return it, else return FromValue implementation
-//     T operator()(Value &out, Reference const &in, Dispatch &msg) const {
-//         if (auto t = std::any_cast<T>(&in))
-//             return *t;
-//         return FromValue<T>()(Value::from_any(in.base()), msg);
-//     }
-//     /// Remove Reference wrappers
-//     T operator()(Value &out, Reference &&in, Dispatch &msg) const {
-//         if (Debug) std::cout << "casting FromReference " << in.type().name() << " to " <<  typeid(T).name() << std::endl;
-//         if (auto t = std::any_cast<T>(&in))
-//             return std::move(*t);
-//         if (auto p = std::any_cast<Reference<T const &>>(&in))
-//             return p->get();
-//         if (auto p = std::any_cast<Reference<T &>>(&in))
-//             return p->get();
-//         if (auto p = std::any_cast<Reference<Value const &>>(&in))
-//             return (*this)(out, p->get(), msg);
-//         if (auto p = std::any_cast<Reference<Value &>>(&in)) {
-//             if (Debug) std::cout << "casting reference " << p->get().type().name() << std::endl;
-//             return (*this)(out, p->get(), msg);
-//         }
-//         return FromValue<T>()(Value::from_any(std::move(in).base()), msg);
-//     }
-// };
-
-// template <class T, class V>
-// struct FromReference<T &, V> {
-//     T & operator()(Value &out, Value &in, Dispatch &msg) const {
-//         if (!in.has_value())
-//             throw msg.error("object was already moved", in.type(), typeid(T));
-//         /// Must be passes by & wrapper
-//         if (auto p = std::any_cast<Reference<Value &>>(&in)) {
-//             if (auto t = std::any_cast<T>(&p->get())) return *t;
-//             return FromReference<T &>()(out, std::move(p->get()), msg);
-//         }
-//         return FromValue<T &>()(Value::from_any(in.base()), msg);
-//     }
-
-//     T & operator()(Value &out, Value &&in, Dispatch &msg) const {
-//         if (!in.has_value())
-//             throw msg.error("object was already moved", in.type(), typeid(T));
-//         /// Must be passes by & wrapper
-//         if (auto p = std::any_cast<Reference<Value &>>(&in)) {
-//             if (auto t = std::any_cast<T>(&p->get())) return *t;
-//             return FromReference<T &>()(out, p->get(), msg);
-//         }
-//         return FromValue<T &>()(Value::from_any(std::move(in).base()), msg);
-//     }
-// };
-
-// template <class T, class V>
-// struct FromReference<T const &, V> {
-//     T const & operator()(Value &out, Value const &in, Dispatch &msg) const {
-//         if (auto p = std::any_cast<no_qualifier<T>>(&in))
-//             return *p;
-//         /// Check for & and const & wrappers
-//         if (auto p = std::any_cast<Reference<Value &>>(&in)) {
-//             if (auto t = std::any_cast<T>(&p->get())) return *t;
-//             return (*this)(out, p->get(), msg);
-//         }
-//         if (auto p = std::any_cast<Reference<Value const &>>(&in)) {
-//             if (auto t = std::any_cast<T>(&p->get())) return *t;
-//             return (*this)(out, p->get(), msg);
-//         }
-//         /// To bind a temporary to a const &, we store it in the out value
-//         return out.emplace<T>(FromReference<T>()(out, in, msg));
-//     }
-// };
-
-// template <class T, class V>
-// struct FromReference<T &&, V> {
-//     T && operator()(Value &out, Value &&in, Dispatch &msg) const {
-//         /// No reference wrappers are used here, simpler to just move the Value in
-//         /// To bind a temporary to a &&, we store it in the out value
-//         return std::move(out.emplace<T>(FromReference<no_qualifier<T>>()(out, std::move(in), msg)));
-//     }
-// };
+    T operator()(Reference const &r, Dispatch &msg) const {
+        return static_cast<T>(from_reference(Type<T>(), r, msg));
+    }
+};
 
 template <class T>
 T downcast(Reference const &r, Dispatch &msg) {
     if (Debug) std::cout << "casting " << r.type().name() << " to " << typeid(T).name() << std::endl;
-    if constexpr(std::is_convertible_v<Value &&, T>) return r.value();
-    else if constexpr(!std::is_reference_v<T>) {
-        std::cout << "not reference " << typeid(T).name() << std::endl;
-        if (r.type() == typeid(no_qualifier<T>)) return r.unsafe_target<T>();
+    if constexpr(std::is_same_v<T, void>) {
+        // do nothing
+    } else if constexpr(std::is_convertible_v<Value &&, T>) {
+        return Value(r);
+
+    } else if constexpr(!std::is_reference_v<T>) {
+        if (Debug) std::cout << "not reference " << typeid(T).name() << std::endl;
+        if (auto v = r.request(typeid(no_qualifier<T>))) {
+            if (Debug) std::cout << "exact match " << v.name() << std::endl;
+            return std::move(v).unsafe_cast<T>();
+        }
         return FromReference<T>()(r, msg);
     } else {
-        std::cout << "reference" << typeid(T).name() << std::endl;
-        if (auto p = r.target<T>()) return static_cast<T>(*p);
+        if (Debug) std::cout << "reference " << typeid(T).name() << std::endl;
+        if (auto p = r.to_reference<T>()) return static_cast<T>(*p);
+        if (Debug) std::cout << "reference2 " << typeid(FromReference<T>).name() << std::endl;
         return FromReference<T>()(r, msg);
     }
 }
 
-// template <class T>
-// T downcast(Reference const &r) {
-//     Dispatch msg;
-//     return downcast<T>(r, msg);
-// }
+template <class T, std::enable_if_t<!std::is_reference_v<T>, int> = 0>
+T downcast(Reference const &r) {
+    Dispatch msg;
+    return downcast<T>(r, msg);
+}
 
 /******************************************************************************/
 

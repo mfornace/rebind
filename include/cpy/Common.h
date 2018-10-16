@@ -4,7 +4,7 @@
 
 namespace cpy {
 
-static constexpr bool Debug = true;
+static constexpr bool Debug = false;
 
 /******************************************************************************/
 
@@ -66,20 +66,28 @@ Vector<T> mapped(V const &v, F &&f) {
 
 /******************************************************************************/
 
-// Roughly, a type safe version of std::any but simpler and non-owning
+/// Interface: return a new frame given a shared_ptr of *this
+struct Frame {
+    virtual std::shared_ptr<Frame> operator()(std::shared_ptr<Frame> &&) = 0;
+    virtual ~Frame() {};
+};
+
 class Caller {
-    void *metadata = nullptr;
-    std::type_index index = typeid(void);
+    std::weak_ptr<Frame> model;
 public:
     Caller() = default;
 
-    template <class T>
-    Caller(T *t) : metadata(t), index(typeid(T)) {}
+    Caller(std::shared_ptr<Frame> const &f): model(f) {}
+
+    std::shared_ptr<Frame> operator()() const {
+        if (auto p = model.lock()) return p.get()->operator()(std::move(p));
+        return {};
+    }
 
     template <class T>
-    T & cast(Type<T> = {}) {
-        if (index != typeid(T)) throw DispatchError("invalid Caller cast");
-        return *static_cast<T *>(metadata);
+    T * target() {
+        if (auto p = model.lock()) return dynamic_cast<T *>(p.get());
+        return nullptr;
     }
 };
 
