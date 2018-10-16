@@ -53,9 +53,8 @@ struct WeakReference {
     bool has_value() const {return !handle.expired() && ref.has_value();}
     auto type() const {return ref.type();}
     Reference & lock() {
-        auto p = handle.lock();
-        if (p) return ref;
-        throw python_error(type_error("expired reference"));
+        if (auto p = handle.lock()) return ref;
+        else throw python_error(type_error("expired reference"));
     }
 };
 

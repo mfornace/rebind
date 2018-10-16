@@ -21,7 +21,7 @@ struct ArrayData {
 
     template <class T>
     T * target() const {
-        // if (!mutate && !std::is_const<T>::value) return nullptr;
+        if (!mutate && !std::is_const<T>::value) return nullptr;
         if (type != typeid(std::remove_cv_t<T>)) return nullptr;
         return static_cast<T *>(data);
     }

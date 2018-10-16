@@ -38,12 +38,12 @@ auto test1 = unit_test("test-1", COMMENT("This is a test"), [](cpy::Context ct) 
 
     ct.timed(1, []{return 1;});
 
-    ct.timed(1, [] {
-        std::vector<double> x;
-        for (int i = 0; i != 100000; ++i) {
-            if (std::find(x.begin(), x.end(), i) == x.end()) x.emplace_back(i);
-        }
-    });
+    // ct.timed(1, [] {
+    //     std::vector<double> x;
+    //     for (int i = 0; i != 1000; ++i) {
+    //         if (std::find(x.begin(), x.end(), i) == x.end()) x.emplace_back(i);
+    //     }
+    // });
 
     ct(HERE).near(5, 5.0);
 
@@ -75,14 +75,16 @@ UNIT_TEST("test-2", "This is a test 2") = [](cpy::Context ct) {
 };
 
 UNIT_TEST("test-3") = [](auto ct) {
+    std::cout << "ok1" << std::endl;
     std::cout << cpy::get_value("max_time").cast<double>() << std::endl;
+    std::cout << "ok2" << std::endl;
     throw std::runtime_error("runtime_error: uh oh");
 };
 
 UNIT_TEST("test-4") = [](cpy::Context ct, goo const &) {
-    return goo();
-    throw cpy::Skip("this test is skipped");
+    // return goo();
     ct.equal(5, 5);
+    throw cpy::Skip("this test is skipped");
 };
 
 void each(double) {}

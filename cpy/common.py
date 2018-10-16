@@ -261,3 +261,26 @@ def readable_message(kind, scopes, logs, indent='    '):
     '''Return readable string for a C++ cpy callback'''
     keys, values = map(list, zip(*logs)) if logs else ((), ())
     return readable_header(keys, values, kind, scopes) + readable_logs(keys, values, indent)
+
+################################################################################
+
+try:
+    import cxxfilt
+    def _demangle(s):
+        try:
+            out = cxxfilt.demangle(s)
+            if out != s:
+                return out
+        except cxxfilt.InvalidName:
+            pass
+        return None
+
+    def demangle(s):
+        return _demangle(s) or _demangle('_Z' + s) or s
+
+except ImportError:
+    def demangle(s):
+        return s
+
+    def _demangle(s):
+        return s
