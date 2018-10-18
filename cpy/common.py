@@ -223,7 +223,6 @@ def run_test(lib, index, test_masks, args=(), gil=False, cout=False, cerr=False)
             stack.enter_context(r)
             [l.append(r) for m, l in zip(mask, lists) if m]
         reports = [lib.Function() if r is None else lib.Function(multireport(r)) for r in lists]
-        print(lib.run_test.__call__)
         return lib.run_test(index, reports, args, cout, cerr)
 
 ################################################################################

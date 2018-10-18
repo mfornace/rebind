@@ -16,6 +16,9 @@ namespace cpy {
 PythonError python_error(std::nullptr_t) noexcept {
     PyObject *type, *value, *traceback;
     PyErr_Fetch(&type, &value, &traceback);
+    if (!type) {
+        std::cout << "bad no error" << std::endl;
+    }
     PyObject *str = PyObject_Str(value);
     char const *c = nullptr;
     if (str) {
@@ -140,7 +143,15 @@ void Simplify<PyObject>::operator()(Value &v, PyObject const &ob, std::type_inde
         }
     } else if (t == typeid(Real)) to_arithmetic<Real>(o, v);
     else if (t == typeid(Integer)) to_arithmetic<Integer>(o, v);
-    else if (t == typeid(bool)) to_arithmetic<bool>(o, v);
+    else if (t == typeid(bool)) {
+        if ((+o)->ob_type == Py_None->ob_type) { // fix, doesnt work with Py_None...
+            v = false;
+        }
+        else to_arithmetic<bool>(o, v);
+        // if (!v) {
+        //     throw python_error(type_error("what %R %R", +o, (+o)->ob_type));
+        // }
+    }
     else if (t == typeid(std::string_view)) {
         if (PyUnicode_Check(+o)) v = from_unicode(+o);
         if (PyBytes_Check(+o)) v = from_bytes(+o);

@@ -10,9 +10,10 @@ struct ValueHandler {
     Caller context;
     Function fun;
     bool operator()(Event e, Scopes const &scopes, Logs &&logs) {
-        Integer const ev{e};
+        auto out = fun(context, Integer(e), scopes, std::move(logs));
+        if (auto b = Reference(out).request<bool>()) return *b;
+        std::cout << "not bool " << Reference(out).type().name() << std::endl;
         return true;
-        // return downcast<bool>(fun(context, ArgPack{ev, scopes, std::move(logs)}));
     }
 };
 
@@ -49,8 +50,12 @@ Vector<Value> run_test(Caller &ct0, std::size_t i, Vector<Function> calls,
         auto const start = Clock::now();
 
         try {return_value = test.function(ct, std::move(pack));}
-        catch (ClientError const &e) {throw e;}
-        catch (std::bad_alloc const &e) {throw e;}
+        catch (ClientError const &) {throw;}
+        catch (std::bad_alloc const &) {throw;}
+        catch (WrongNumber const &e) {std::cout << "hmm " << e.what() << e.expected << e.received << std::endl;}
+        catch (std::exception const &e) {
+            std::cout << "error2: " << e.what() << std::endl;
+        }
         catch (...) {} // Silence any other exceptions from inside the test
 
         test_time = std::chrono::duration<double>(Clock::now() - start).count();
@@ -87,7 +92,7 @@ bool make_document() {
     });
 
     doc.function("add_value", [](std::string_view s, Value v) {
-        add_test(TestCase{std::string(s), {}, ValueAdaptor{std::move(v)}});
+        add_test(TestCase{std::string(s), {}, ValueAdaptor{std::move(v)}, {}});
     });
 
     doc.function("run_test", [](Caller ct, std::size_t i, Vector<Function> calls, Value args, bool cout, bool cerr) {

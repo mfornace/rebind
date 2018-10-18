@@ -1,7 +1,7 @@
 import sys, types, importlib, functools, inspect, logging, enum, typing
 
 log = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+# logging.basicConfig(level=logging.INFO)
 
 ################################################################################
 
@@ -28,13 +28,9 @@ def render_scalars(info):
 
 def render_module(pkg: str, doc: dict):
     log.info('rendering document into module %s', repr(pkg))
+    out = doc.copy()
 
-    Function = type('Function', (doc['Function'],), {'__module__': pkg})
-
-    out = dict(TypeIndex=doc['TypeIndex'], Value=doc['Value'], Function=Function,
-               types=types, set_type_names=Function(doc['set_type_names']), set_conversion=Function(doc['set_conversion']))
-
-    out['types'] = {k : v for k, v in doc['contents'] if isinstance(v, tuple)}
+    out['types'] = {k: v for k, v in doc['contents'] if isinstance(v, tuple)}
     for k, (meth, data) in out['types'].items():
         cls = set_global_type(pkg, (doc['Value'],), k, dict(meth), out)
         cls.metadata = {k: v or None for k, v in data}
@@ -165,7 +161,7 @@ def dispatch(fun, old, globalns={}, localns={}):
             # print(_orig, sig, args, kwargs)
             out = _orig(*_bind(*args, **kwargs).args)
             # print('requesting return type', out.type(), _return, type(_orig))
-            print(_return, type(_return), out.type())
+            # print(_return, type(_return), out.type())
             return out.request(_return)
     return functools.update_wrapper(bound, old)
 

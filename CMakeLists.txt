@@ -51,6 +51,7 @@ set_property(GLOBAL PROPERTY cpy_module_files
     ${CMAKE_CURRENT_SOURCE_DIR}/source/cpy/Python.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/source/cpy/Module.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/source/cpy/Globals.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/cpytest/Runner.cc
     # ${CMAKE_CURRENT_SOURCE_DIR}/source/cpytest/Python.cc
 )
 

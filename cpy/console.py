@@ -1,4 +1,4 @@
-import io, sys
+import io, sys, typing
 from .common import Report, readable_message, Event
 
 ################################################################################
@@ -58,7 +58,7 @@ class ConsoleReport(Report):
             color=self.color, timing=self.timing, **self.kwargs)
 
     def finalize(self, n, time, counts, out, err):
-        s = self.color.footer + 'Total results for {} tests:\n'.format(n)
+        s = self.color.footer + 'Total results for {} test{}:\n'.format(n, '' if n == 1 else 's')
 
         spacing = max(map(len, self.events)) + 1
         for e, c in zip(self.events, counts):
@@ -94,6 +94,7 @@ class ConsoleTestReport(Report):
         self.file.flush()
 
     def __call__(self, event, scopes, logs):
+        event, scopes, logs = event.request(int), scopes.request(typing.List[str]), logs.request(typing.List[typing.Tuple[str, object]])
         self.write('\n', readable_message(self.events[event], scopes, logs, self.color.indent))
 
     def finalize(self, value, time, counts, out, err):

@@ -64,6 +64,7 @@ struct Object {
     PyObject *ptr = nullptr;
     Object() = default;
     Object(std::nullptr_t) {}
+    static Object from(PyObject *o) {return o ? Object(o, false) : throw python_error();}
     Object(PyObject *o, bool incref) : ptr(o) {if (incref) Py_INCREF(ptr);}
     Object(Object const &o) : ptr(o.ptr) {Py_XINCREF(ptr);}
     Object(Object &&o) noexcept : ptr(std::exchange(o.ptr, nullptr)) {}
@@ -106,10 +107,6 @@ struct Buffer {
 
 inline PyObject * type_object(PyTypeObject &o) noexcept {return reinterpret_cast<PyObject *>(&o);}
 
-inline PyTypeObject & type_ref(Type<Function>) {return FunctionType;}
-inline PyTypeObject & type_ref(Type<Wrap>) {return WrapType;}
-inline PyTypeObject & type_ref(Type<std::type_index>) {return TypeIndexType;}
-
 /******************************************************************************/
 
 template <class T>
@@ -141,7 +138,7 @@ T & cast_object(PyObject *o) {
 /******************************************************************************/
 
 inline Object as_weak_reference(WeakReference a) {
-    Object o{PyObject_CallObject(type_object(WrapType), nullptr), false};
+    auto o = Object::from(PyObject_CallObject(type_object(WrapType), nullptr));
     cast_object<Wrap>(+o) = std::move(a);
     return o;
 }
@@ -165,21 +162,18 @@ inline bool set_tuple_item(Object const &t, Py_ssize_t i, Object const &x) {
 
 template <class V, class F>
 Object map_as_tuple(V &&v, F &&f) noexcept {
-    Object out = {PyTuple_New(std::size(v)), false};
-    if (!out) return {};
+    auto out = Object::from(PyTuple_New(std::size(v)));
     auto it = std::begin(v);
-    for (Py_ssize_t i = 0u; i != std::size(v); ++i, ++it) {
-        using T = std::conditional_t<std::is_rvalue_reference_v<V>,
-            decltype(*it), decltype(std::move(*it))>;
+    using T = std::conditional_t<std::is_rvalue_reference_v<V>,
+        decltype(*it), decltype(std::move(*it))>;
+    for (Py_ssize_t i = 0u; i != std::size(v); ++i, ++it)
         if (!set_tuple_item(out, i, f(static_cast<T>(*it)))) return {};
-    }
     return out;
 }
 
 template <class ...Ts>
 Object args_as_tuple(Ts &&...ts) {
-    Object out = {PyTuple_New(sizeof...(Ts)), false};
-    if (!out) return {};
+    auto out = Object::from(PyTuple_New(sizeof...(Ts)));
     Py_ssize_t i = 0;
     auto go = [&](Object const &x) {return set_tuple_item(out, i++, x);};
     return (go(ts) && ...) ? out : Object();
@@ -190,10 +184,9 @@ struct NoDeleter {void operator()(void *) {}};
 inline Object to_python_args(ArgPack const &s, Vector<std::shared_ptr<void>> &storage, Object const &sig={}) {
     if (sig && !PyTuple_Check(+sig))
         throw python_error(type_error("expected tuple but got %R", (+sig)->ob_type));
-    std::size_t len = sig ? PyObject_Length(+sig) : 0;
+    std::size_t len = sig ? PyTuple_GET_SIZE(+sig) : 0;
     auto const n = s.size();
-    Object out = {PyTuple_New(n), false};
-    if (!out) return {};
+    auto out = Object::from(PyTuple_New(n));
     Py_ssize_t i = 0u;
     for (auto const &ref : s) {
         if (i < len) {
@@ -211,12 +204,10 @@ inline Object to_python_args(ArgPack const &s, Vector<std::shared_ptr<void>> &st
 
 template <class F>
 void map_iterable(Object iterable, F &&f) {
-    Object iter = {PyObject_GetIter(+iterable), false};
-    if (!iter) throw python_error();
+    auto iter = Object::from(PyObject_GetIter(+iterable));
     while (true) {
-        auto it = Object(PyIter_Next(+iter), false);
-        if (!+it) return;
-        f(std::move(it));
+        if (auto it = Object(PyIter_Next(+iter), false)) f(std::move(it));
+        else return;
     }
 }
 
@@ -286,9 +277,7 @@ struct PythonFunction {
         Vector<std::shared_ptr<void>> storage;
         Object o = to_python_args(std::move(args), storage, signature);
         if (!o) throw python_error();
-        o = {PyObject_CallObject(+function, +o), false};
-        if (!o) throw python_error();
-        return Value(Reference(*(+o)));
+        return Value(Reference(*(+Object::from(PyObject_CallObject(+function, +o)))));
     }
 };
 

@@ -137,7 +137,7 @@ public:
         }
 
     template <class T, std::enable_if_t<!std::is_base_of_v<Info, no_qualifier<T>>, int> = 0>
-    Value(T &&t) : Value(+Type<T>(), static_cast<T &&>(t)) {
+    Value(T &&t) : Value(Type<std::decay_t<T>>(), static_cast<T &&>(t)) {
         static_assert(!std::is_same_v<no_qualifier<T>, Reference>);
         static_assert(!std::is_same_v<no_qualifier<T>, Value>);
         static_assert(!std::is_same_v<no_qualifier<T>, void *>);

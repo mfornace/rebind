@@ -3,7 +3,7 @@ import typing
 def add_test() -> None:
     '''blah'''
 
-def add_value() -> None:
+def add_value(key, value) -> None:
     '''blah'''
 
 def compile_info() -> typing.Tuple[str, str, str]:
