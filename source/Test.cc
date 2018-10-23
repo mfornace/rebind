@@ -76,7 +76,7 @@ UNIT_TEST("test-2", "This is a test 2") = [](cpy::Context ct) {
 
 UNIT_TEST("test-3") = [](auto ct) {
     std::cout << "ok1" << std::endl;
-    std::cout << cpy::get_value("max_time").cast<double>() << std::endl;
+    std::cout << cpy::downcast<double>(cpy::Reference(cpy::get_value("max_time"))) << std::endl;
     std::cout << "ok2" << std::endl;
     throw std::runtime_error("runtime_error: uh oh");
 };

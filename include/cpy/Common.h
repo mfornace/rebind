@@ -18,27 +18,27 @@ auto binary_search(V const &v, typename V::value_type::first_type t) {
     return (it != v.end() && it->first == t) ? it : v.end();
 }
 
-struct Identity {
-    template <class T>
-    T const & operator()(T const &t) const {return t;}
-};
+// struct Identity {
+//     template <class T>
+//     T const & operator()(T const &t) const {return t;}
+// };
 
-struct Ignore {
-    template <class T>
-    Ignore(T const &) {}
+// struct Ignore {
+//     template <class T>
+//     Ignore(T const &) {}
 
-    template <class T>
-    Ignore &operator=(T const &) {return *this;}
-};
+//     template <class T>
+//     Ignore &operator=(T const &) {return *this;}
+// };
 
 /******************************************************************************/
 
-template <class T, class U>
-static constexpr bool Reinterpretable = sizeof(T) == sizeof(U) && alignof(T) == alignof(U)
-                                      && std::is_pod_v<T> && std::is_pod_v<U>;
+// template <class T, class U>
+// static constexpr bool Reinterpretable = sizeof(T) == sizeof(U) && alignof(T) == alignof(U)
+//                                       && std::is_pod_v<T> && std::is_pod_v<U>;
 
-static_assert(!std::is_same_v<unsigned char, char>);
-static_assert(Reinterpretable<unsigned char, char>);
+// static_assert(!std::is_same_v<unsigned char, char>);
+// static_assert(Reinterpretable<unsigned char, char>);
 // Standard: a char, a signed char, and an unsigned char occupy
 // the same amount of storage and have the same alignment requirements
 
@@ -56,7 +56,7 @@ struct ZipType<T, U> {using type = std::pair<T, U>;};
 template <class ...Ts>
 using Zip = Vector<typename ZipType<Ts...>::type>;
 
-template <class T, class V, class F=Identity>
+template <class T, class V, class F>
 Vector<T> mapped(V const &v, F &&f) {
     Vector<T> out;
     out.reserve(std::size(v));
@@ -90,6 +90,25 @@ public:
         return nullptr;
     }
 };
+
+/******************************************************************************/
+
+enum class Qualifier : unsigned char {C, L, R};
+
+struct cvalue {constexpr operator Qualifier() const {return Qualifier::C;}};
+struct lvalue {constexpr operator Qualifier() const {return Qualifier::L;}};
+struct rvalue {constexpr operator Qualifier() const {return Qualifier::R;}};
+
+template <class T, class Ref> struct Qualified;
+template <class T> struct Qualified<T, cvalue> {using type = T const &;};
+template <class T> struct Qualified<T, lvalue> {using type = T &;};
+template <class T> struct Qualified<T, rvalue> {using type = T &&;};
+
+template <class Ref, class T> using qualified = typename Qualified<Ref, T>::type;
+
+template <class T>
+static constexpr Qualifier qualifier = std::is_rvalue_reference_v<T> ? Qualifier::R :
+    (std::is_const_v<std::remove_reference_t<T>> ? Qualifier::C : Qualifier::L);
 
 /******************************************************************************/
 

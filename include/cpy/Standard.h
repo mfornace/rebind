@@ -42,7 +42,7 @@ struct Renderer<boost::container::small_vector<T, N, A>, std::enable_if_t<!Opaqu
 };
 
 template <class T, std::size_t N, class A>
-struct FromReference<boost::container::small_vector<T, N, A>> : VectorFromReference<boost::container::small_vector<T, N, A>> {};
+struct Request<boost::container::small_vector<T, N, A>> : VectorRequest<boost::container::small_vector<T, N, A>> {};
 
 template <class T, std::size_t N, class A>
 struct Simplify<boost::container::small_vector<T, N, A>> : SimplifyVector<boost::container::small_vector<T, N, A>> {};
@@ -138,9 +138,7 @@ struct Simplify<std::pair<T, U>> : FromCompiledSequence<std::pair<T, U>> {};
 template <class V, class S, std::size_t ...Is>
 V to_compiled_sequence(S &s, Dispatch &msg, std::index_sequence<Is...>) {
     msg.indices.emplace_back(0);
-    return {(msg.indices.back() = Is,
-        downcast<std::tuple_element_t<Is, V>>(s[Is], msg)
-        )...};
+    return {(msg.indices.back() = Is, downcast<std::tuple_element_t<Is, V>>(Reference(s[Is]), msg))...};
 }
 
 template <class V, class S>
@@ -156,10 +154,12 @@ V to_compiled_sequence(S &&s, Dispatch &msg) {
 // /******************************************************************************/
 
 template <class V>
-struct CompiledSequenceFromReference {
+struct CompiledSequenceRequest {
     V operator()(Reference r, Dispatch &msg) const {
-        if (Debug) std::cout << "trying CompiledSequenceFromReference " << r.type().name() << std::endl;
+        if (Debug) std::cout << "trying CompiledSequenceRequest " << r.type().name() << std::endl;
         if (auto p = r.request<Vector<Reference>>())
+            return to_compiled_sequence<V>(std::move(*p), msg);
+        if (auto p = r.request<Vector<Value>>())
             return to_compiled_sequence<V>(std::move(*p), msg);
         throw msg.error("mismatched class", r.type(), typeid(V));
     }
@@ -167,7 +167,7 @@ struct CompiledSequenceFromReference {
 
 /// The default implementation is to accept convertible arguments or Value of the exact typeid match
 template <class T>
-struct FromReference<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : CompiledSequenceFromReference<T> {};
+struct Request<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : CompiledSequenceRequest<T> {};
 
 // template <class V>
 // struct CompiledSequenceFromArg {
@@ -194,8 +194,10 @@ template <class R, class ...Ts>
 struct Renderer<std::function<R(Ts...)>> : Renderer<Pack<no_qualifier<R>, no_qualifier<Ts>...>> {};
 
 // template <class R, class ...Ts>
-// struct FromValue<std::function<R(Ts...)>> {
-//     std::function<R(Ts...)> operator()(Value v, Dispatch &msg) const {
+// struct Request<std::function<R(Ts...)>> {
+//     std::function<R(Ts...)> operator()(Reference v, Dispatch &msg) const {
+//         if (auto f = v.request(Function))
+
 //         return {};
 //     }
 // };

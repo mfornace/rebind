@@ -9,6 +9,8 @@ std::map<Object, Object> type_conversions{};
 std::unordered_map<std::type_index, std::string> type_names = {
     {typeid(void),             "void"},
     {typeid(void *),           "pointer"},
+    {typeid(PyObject),         "PyObject"},
+    {typeid(PyObject *),       "PyObject *"},
     {typeid(bool),             "bool"},
     // {typeid(Integer),          "int"},
     {typeid(Real),             "float64"},

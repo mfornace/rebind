@@ -158,7 +158,7 @@ Object as_list(Reference const &ref, Object const &o) {
         auto list = Object::from(PyList_New(v.size()));
         for (Py_ssize_t i = 0; i != v.size(); ++i) {
             if (Debug) std::cout << "list index " << i << std::endl;
-            Object item = as_value(std::move(v[i]).reference(), vt);
+            Object item = as_value(Reference(std::move(v[i])), vt);
             if (!item) return {};
             Py_INCREF(+item);
             PyList_SET_ITEM(+list, i, +item);
@@ -175,12 +175,12 @@ Object as_tuple(Reference const &ref, Object const &o) {
             Object vt{PyTuple_GET_ITEM(+args, 0), true};
             auto tup = Object::from(PyTuple_New(v.size()));
             for (Py_ssize_t i = 0; i != v.size(); ++i)
-                if (!set_tuple_item(tup, i, as_value(std::move(v[i]).reference(), vt))) return {};
+                if (!set_tuple_item(tup, i, as_value(Reference(std::move(v[i])), vt))) return {};
             return tup;
         } else {
             auto tup = Object::from(PyTuple_New(len));
             for (Py_ssize_t i = 0; i != len; ++i)
-                if (!set_tuple_item(tup, i, as_value(v[i].reference(), {PyTuple_GET_ITEM(+args, i), true}))) return {};
+                if (!set_tuple_item(tup, i, as_value(Reference(v[i]), {PyTuple_GET_ITEM(+args, i), true}))) return {};
             return tup;
         }
     } else return {};
@@ -239,7 +239,7 @@ Object as_object(Function f) {
 }
 
 Object as_object(Reference const &ref) {
-    if (Debug) std::cout << "asking for object" << std::endl;
+    if (Debug) std::cout << "    - asking for object" << std::endl;
     if (!ref.has_value()) return {Py_None, true};
     if (auto v = ref.request<bool>())             return as_object(std::move(*v));
     if (auto v = ref.request<Integer>())          return as_object(std::move(*v));
@@ -267,14 +267,14 @@ Object as_bool(Reference const &ref, Object const &t={}) {
 
 Object as_int(Reference const &ref, Object const &t={}) {
     if (auto p = ref.request<Integer>()) return as_object(*p);
-    if (Debug) std::cout << "bad int" << std::endl;
+    if (Debug) std::cout << "    - bad int" << std::endl;
     return {};
 }
 
 Object as_float(Reference const &ref, Object const &t={}) {
     if (auto p = ref.request<double>()) return as_object(*p);
     if (auto p = ref.request<Integer>()) return as_object(*p);
-    if (Debug) std::cout << "bad float" << std::endl;
+    if (Debug) std::cout << "    - bad float" << std::endl;
     return {};
 }
 
@@ -309,7 +309,7 @@ Object as_value(Reference const &ref, Object const &t={}) {
         return type_error("expected type object");
     auto type = reinterpret_cast<PyTypeObject *>(+t);
     Object out;
-    if (Debug) std::cout << "is wrap " << is_subclass(type, &WrapType) << std::endl;
+    if (Debug) std::cout << "    - is wrap " << is_subclass(type, &WrapType) << std::endl;
     if (+type == Py_None->ob_type || +t == Py_None) return {Py_None, true};
     else if (type == &PyBaseObject_Type)          out = as_object(ref);
     else if (is_subclass(type, &PyBool_Type))     out = as_bool(ref, t);
@@ -341,7 +341,7 @@ PyObject * value_request(PyObject *self, PyObject *args) noexcept {
     return raw_object([=]() -> Object {
         auto &w = cast_object<Wrap>(self);
         Reference ref = std::holds_alternative<Value>(w) ?
-            std::get<Value>(w).reference() : std::get<WeakReference>(w).lock();
+            Reference(std::get<Value>(w)) : std::get<WeakReference>(w).lock();
         if (t == reinterpret_cast<PyObject *>(&PyBaseObject_Type)) return as_object(ref);
         else return as_value(ref, Object(t, true));
     });
@@ -385,18 +385,22 @@ PyTypeObject WrapType = {
 Object call_overload(ErasedFunction const &fun, Object const &args, bool gil) {
     if (auto py = fun.target<PythonFunction>())
         return {PyObject_CallObject(+py->function, +args), false};
-    auto pack = positional_args(args);
-    if (Debug) std::cout << "constructed args from python " << pack.size();
+    std::deque<Object> storage;
+    auto pack = positional_args(args, storage);
+    if (Debug) std::cout << "    - constructed python args " << pack.size();
     if (Debug) for (auto const &p : pack) std::cout << ", " << p.type().name();
     if (Debug) std::cout << std::endl;
     Value out;
     {
         auto lk = std::make_shared<PythonEntry>(!gil);
         Caller ct(lk);
-        if (Debug) std::cout << "calling the args: size=" << pack.size() << std::endl;
+        if (Debug) std::cout << "    - calling the args: size=" << pack.size() << std::endl;
         out = fun(ct, std::move(pack));
     }
-    if (Debug) std::cout << "got the output " << out.type().name() << std::endl;
+    if (Debug) std::cout << "    - got the output " << out.type().name() << std::endl;
+    if (auto p = out.target<Object>()) return std::move(*p);
+    if (auto p = out.target<PyObject>()) {std::cout << "fff" << std::endl;}
+    if (auto p = out.target<PyObject *>()) return {*p, true};
     return any_as_wrap(std::move(out));
 }
 
@@ -430,7 +434,7 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
                     }
                 } else if (*o.first.begin() != cast_object<std::type_index>(s)) continue;
             }
-            if (Debug) std::cout << "****call overload****" << std::endl;
+            if (Debug) std::cout << "**** call overload ****" << std::endl;
             try {return call_overload(o.second, {args, true}, gil);}
             catch (DispatchError const &e) {
                 std::cout << "error " << e.what() << std::endl;

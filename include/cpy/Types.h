@@ -1,5 +1,6 @@
 #pragma once
 #include "Value.h"
+#include "Conversions.h"
 #include <cstdlib>
 
 namespace cpy {
@@ -42,7 +43,7 @@ template <>
 struct Simplify<char const *> {
     void operator()(Value &out, char const *s, std::type_index const &t) const {
         if (t == typeid(std::string_view))
-            out = s ? std::string_view() : std::string_view(s);
+            out = s ? std::string_view(s) : std::string_view();
         else
             out = s ? std::string(s) : std::string();
     }
@@ -101,7 +102,7 @@ struct Simplify<BinaryView> {
 };
 
 template <>
-struct FromReference<BinaryView> {
+struct Request<BinaryView> {
     BinaryView operator()(Reference const &r, Dispatch &msg) const {
         if (auto p = r.request<BinaryView>())
             return std::move(*p);
@@ -112,7 +113,7 @@ struct FromReference<BinaryView> {
 };
 
 template <>
-struct FromReference<BinaryData> {
+struct Request<BinaryData> {
     BinaryData operator()(Reference const &r, Dispatch &msg) const {
         if (auto p = r.request<BinaryData>())
             return {p->data(), p->size()};
@@ -137,7 +138,7 @@ struct Simplify<T, std::enable_if_t<(std::is_floating_point_v<T>)>> {
 };
 
 template <class T>
-struct FromReference<T, std::enable_if_t<std::is_arithmetic_v<T>>> {
+struct Request<T, std::enable_if_t<std::is_arithmetic_v<T>>> {
     T operator()(Reference const &r, Dispatch &msg) const {
         if (Debug) std::cout << "convert to arithmetic" << std::endl;
         if (auto p = r.request<Real>())    return static_cast<T>(*p);
@@ -148,7 +149,7 @@ struct FromReference<T, std::enable_if_t<std::is_arithmetic_v<T>>> {
 };
 
 template <class T, class Traits, class Alloc>
-struct FromReference<std::basic_string<T, Traits, Alloc>> {
+struct Request<std::basic_string<T, Traits, Alloc>> {
     std::basic_string<T, Traits, Alloc> operator()(Reference const &r, Dispatch &msg) const {
         if (Debug) std::cout << "trying to convert to string" << std::endl;
         if (auto p = r.request<std::basic_string<T, Traits, Alloc>>())
@@ -162,7 +163,7 @@ struct FromReference<std::basic_string<T, Traits, Alloc>> {
 };
 
 template <class T, class Traits>
-struct FromReference<std::basic_string_view<T, Traits>> {
+struct Request<std::basic_string_view<T, Traits>> {
     std::basic_string_view<T, Traits> operator()(Reference const &r, Dispatch &msg) const {
         if (auto p = r.request<std::basic_string_view<T, Traits>>())
             return std::move(*p);
@@ -196,7 +197,7 @@ struct Simplify<Vector<T>, std::enable_if_t<!std::is_same_v<T, Reference>>> : Si
 /******************************************************************************/
 
 template <class V>
-struct VectorFromReference {
+struct VectorRequest {
     using T = no_qualifier<typename V::value_type>;
 
     template <class P>
@@ -220,6 +221,6 @@ struct VectorFromReference {
 };
 
 template <class T>
-struct FromReference<Vector<T>> : VectorFromReference<Vector<T>> {};
+struct Request<Vector<T>> : VectorRequest<Vector<T>> {};
 
 }

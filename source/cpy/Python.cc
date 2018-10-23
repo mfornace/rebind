@@ -91,10 +91,8 @@ void to_arithmetic(Object const &o, Value &v) {
     else if (PyBool_Check(+o)) v = static_cast<T>(+o == Py_True);
 }
 
-void *Simplify<PyObject>::operator()(Qualifier q, PyObject const &ob, std::type_index t) const {
-    Object o(const_cast<PyObject *>(&ob), true);
-    if (Debug) std::cout << "trying to get reference from pyobject" << std::endl;
-
+void *Simplify<Object>::operator()(Qualifier q, Object o, std::type_index t) const {
+    if (Debug) std::cout << "    - trying to get reference from Object " << bool(o) << std::endl;
     if (PyObject_TypeCheck(+o, &WrapType)) {
         if (Debug) std::cout << "its a wrap" << std::endl;
         auto &c = cast_object<Wrap>(+o);
@@ -108,38 +106,34 @@ void *Simplify<PyObject>::operator()(Qualifier q, PyObject const &ob, std::type_
     return nullptr;
 }
 
-void Simplify<PyObject>::operator()(Value &v, PyObject const &ob, std::type_index t) const {
-    Object o(const_cast<PyObject *>(&ob), true);
-
+void Simplify<Object>::operator()(Value &v, Object o, std::type_index t) const {
     if (Debug) {
         Object repr{PyObject_Repr(reinterpret_cast<PyObject *>((+o)->ob_type)), false};
 
-        if (Debug) std::cout << "trying to convert object " << t.name() << " " << from_unicode(+repr) << std::endl;
+        if (Debug) std::cout << "    - trying to convert object to " << t.name() << " " << from_unicode(+repr) << std::endl;
         if (Debug) std::cout << bool(PyObject_TypeCheck(+o, &WrapType)) << std::endl;
     }
 
     if (PyObject_TypeCheck(+o, &WrapType)) {
-        if (Debug) std::cout << "its a wrap" << std::endl;
+        if (Debug) std::cout << "    - its a wrap" << std::endl;
         auto &c = cast_object<Wrap>(+o);
         if (std::holds_alternative<Value>(c))
-            v = std::get<Value>(c).reference().request(t);
+            v = Reference(std::get<Value>(c)).request(t);
         else v = std::get<WeakReference>(c).lock().request(t);
     } else if (t == typeid(Object)) {
         v = std::move(o);
     } else if (t == typeid(Function)) {
-        if (Debug) std::cout << "requested function" << std::endl;
+        if (Debug) std::cout << "    - requested function" << std::endl;
         if (+o == Py_None) v = Function();
         else if (PyObject_TypeCheck(+o, &FunctionType)) v = cast_object<Function>(+o);
-        else v = Function().emplace(PythonFunction({+o, true}, {Py_None, true}));
-    } else if (t == typeid(Vector<Reference>)) {
+        else v = Function().emplace(PythonFunction({+o, true}, {Py_None, true}), {});
+    } else if (t == typeid(Vector<Value>)) {
         if (PyTuple_Check(+o) || PyList_Check(+o)) {
-            if (Debug) std::cout << "making a tuple" << std::endl;
-            Vector<Reference> refs;
-            refs.reserve(PyObject_Length(+o));
-            map_iterable(o, [&](Object o) {
-                refs.emplace_back(*(+o));
-            });
-            v = std::move(refs);
+            if (Debug) std::cout << "    - making a tuple" << std::endl;
+            Vector<Value> vals;
+            vals.reserve(PyObject_Length(+o));
+            map_iterable(o, [&](Object o) {vals.emplace_back(std::move(o));});
+            v = std::move(vals);
         }
     } else if (t == typeid(Real)) to_arithmetic<Real>(o, v);
     else if (t == typeid(Integer)) to_arithmetic<Integer>(o, v);
@@ -160,12 +154,11 @@ void Simplify<PyObject>::operator()(Value &v, PyObject const &ob, std::type_inde
         if (PyBytes_Check(+o)) v = std::string(from_bytes(+o));
     } else if (t == typeid(ArrayData)) {
         Buffer buff(+o, PyBUF_FULL_RO); // Read in the shape but ignore strides, suboffsets
-        if (Debug) std::cout << "cast buffer " << std::endl;
+        if (Debug) std::cout << "    - cast buffer " << std::endl;
         if (buff.ok) {
-            if (Debug) std::cout << "making data" << std::endl;
+            if (Debug) std::cout << "    - making data" << std::endl;
             if (Debug) std::cout << Buffer::format(buff.view.format ? buff.view.format : "").name() << std::endl;
             if (Debug) std::cout << buff.view.ndim << std::endl;
-            if (Debug) std::cout << "hwat" << std::endl;
             if (Debug) std::cout << (nullptr == buff.view.buf) << bool(buff.view.readonly) << std::endl;
             auto a = ArrayData(buff.view.buf, Buffer::format(buff.view.format ? buff.view.format : ""),
                 !buff.view.readonly, Vector<Integer>(buff.view.shape, buff.view.shape + buff.view.ndim),
@@ -216,10 +209,10 @@ std::string wrong_type_message(WrongType const &e) {
 /******************************************************************************/
 
 // Store the objects in args in pack
-ArgPack positional_args(Object const &args) {
+ArgPack positional_args(Object const &args, std::deque<Object> &storage) {
     ArgPack v;
     v.reserve(PyObject_Length(+args));
-    map_iterable(args, [&v](Object o) {
+    map_iterable(args, [&v, &storage](Object o) {
         if (PyObject_TypeCheck(+o, &FunctionType))
             v.emplace_back(cast_object<Function>(+o));
         else if (PyObject_TypeCheck(+o, &TypeIndexType))
@@ -227,9 +220,13 @@ ArgPack positional_args(Object const &args) {
         else if (PyObject_TypeCheck(+o, &WrapType)) {
             auto &w = cast_object<Wrap>(+o);
             if (std::holds_alternative<Value>(w))
-                v.emplace_back(std::get<Value>(w).reference());
+                v.emplace_back(std::get<Value>(w));
             else v.emplace_back(std::get<WeakReference>(w).lock());
-        } else v.emplace_back(*(+o));
+        } else {
+            storage.emplace_back(std::move(o));
+            // v.emplace_back(Reference(std::move(storage.back())));
+            v.emplace_back(storage.back());
+        }
     });
     return v;
 }

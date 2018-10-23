@@ -35,21 +35,33 @@ struct Function {
     Zip<ErasedSignature, ErasedFunction> overloads;
 
     Value operator()(Caller c, ArgPack v) const {
+        if (Debug) std::cout << "    - calling type erased Function " << std::endl;
+        if (overloads.empty()) throw std::out_of_range("empty Function");
         return overloads[0].second(std::move(c), std::move(v));
     }
 
     Function() = default;
 
+    explicit operator bool() const {return !overloads.empty();}
+
     template <class ...Ts>
     Value operator()(Caller c, Ts &&...ts) const {
+        if (Debug) std::cout << "    - calling Function " << std::endl;
         ArgPack v;
         v.reserve(sizeof...(Ts));
         (v.emplace_back(static_cast<Ts &&>(ts)), ...);
         return (*this)(std::move(c), std::move(v));
     }
 
-    void emplace(ErasedFunction f, ErasedSignature const &s) {
+    Function & emplace(ErasedFunction f, ErasedSignature const &s) & {
         overloads.emplace_back(s, std::move(f));
+        return *this;
+    }
+
+
+    Function && emplace(ErasedFunction f, ErasedSignature const &s) && {
+        overloads.emplace_back(s, std::move(f));
+        return std::move(*this);
     }
 
     /******************************************************************************/
@@ -79,7 +91,7 @@ struct Callback {
         ArgPack pack;
         pack.reserve(sizeof...(Ts));
         (pack.emplace_back(static_cast<Ts &&>(ts)), ...);
-        return downcast<R>(function(caller, std::move(pack)).reference());
+        return downcast<R>(Reference(function(caller, std::move(pack))));
     }
 };
 
@@ -91,9 +103,7 @@ Value value_invoke(F const &f, Ts &&... ts) {
     if constexpr(std::is_same_v<void, std::invoke_result_t<F, Ts...>>) {
         std::invoke(f, static_cast<Ts &&>(ts)...);
         return {};
-    } else {
-        return std::invoke(f, static_cast<Ts &&>(ts)...);
-    }
+    } else return std::invoke(f, static_cast<Ts &&>(ts)...);
 }
 
 template <class F, class ...Ts>
@@ -136,7 +146,6 @@ constexpr auto construct(Type<R>) {
     return std::conditional_t<std::is_constructible_v<R, Ts...>,
         Construct<R, Ts...>, BraceConstruct<R, Ts...>>();
 }
-
 
 template <class T>
 struct Streamable {

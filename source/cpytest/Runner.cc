@@ -52,6 +52,7 @@ Vector<Value> run_test(Caller &ct0, std::size_t i, Vector<Function> calls,
         try {return_value = test.function(ct, std::move(pack));}
         catch (ClientError const &) {throw;}
         catch (std::bad_alloc const &) {throw;}
+        catch (WrongType const &e) {std::cout << "hmm " << e.what() << e.source.name() << e.dest.name() << std::endl;}
         catch (WrongNumber const &e) {std::cout << "hmm " << e.what() << e.expected << e.received << std::endl;}
         catch (std::exception const &e) {
             std::cout << "error2: " << e.what() << std::endl;

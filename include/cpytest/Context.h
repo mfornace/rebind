@@ -95,6 +95,9 @@ struct Context : Caller {
         logs.clear();
     }
 
+    template <class ...Ts>
+    void timing(Ts &&...ts) {handle(Timing, static_cast<Ts &&>(ts)...);}
+
     template <class F, class ...Args>
     auto timed(std::size_t n, F &&f, Args &&...args) {
         auto const start = Clock::now();

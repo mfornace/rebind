@@ -143,12 +143,12 @@ inline Object as_weak_reference(WeakReference a) {
     return o;
 }
 
-ArgPack positional_args(Object const &pypack);
+ArgPack positional_args(Object const &pypack, std::deque<Object> &storage);
 
 template <>
-struct Simplify<PyObject> {
-    void operator()(Value &, PyObject const &, std::type_index) const;
-    void *operator()(Qualifier, PyObject const &, std::type_index) const;
+struct Simplify<Object> {
+    void operator()(Value &, Object, std::type_index) const;
+    void *operator()(Qualifier, Object, std::type_index) const;
 };
 
 /******************************************************************************/
@@ -277,7 +277,7 @@ struct PythonFunction {
         Vector<std::shared_ptr<void>> storage;
         Object o = to_python_args(std::move(args), storage, signature);
         if (!o) throw python_error();
-        return Value(Reference(*(+Object::from(PyObject_CallObject(+function, +o)))));
+        return Value(Object::from(PyObject_CallObject(+function, +o)));
     }
 };
 

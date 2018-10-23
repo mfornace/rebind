@@ -154,6 +154,10 @@ def dispatch(fun, old, globalns={}, localns={}):
             return _old(*args, _out=_orig(*args))
     elif sig.return_annotation is inspect._empty:
         def bound(*args, _orig=fun, _bind=sig.bind, gil=None, **kwargs):
+            x = _bind(*args, **kwargs).args
+            for x, p in zip(x, sig.parameters.values()):
+                print('aaa', x, p)
+            print(x, sig.parameters)
             return _orig(*_bind(*args, **kwargs).args) or None
     else:
         ret = eval_type(typing._type_check(sig.return_annotation, 'expected type'), globalns, localns)
