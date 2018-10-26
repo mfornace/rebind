@@ -128,6 +128,7 @@ T & cast_object(PyObject *o) {
 
 /******************************************************************************/
 
+Variable variable_from_object(Object o);
 ArgPack args_from_python(Object const &pypack);
 
 template <>

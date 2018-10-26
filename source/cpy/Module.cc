@@ -39,11 +39,14 @@ void tp_delete(PyObject *o) noexcept {
     Py_TYPE(o)->tp_free(o);
 }
 
-template <class T>
-PyObject * move_from(PyObject *self, PyObject *args) noexcept {
+// move_from is called 1) during init, V.move_from(V), to transfer the object (here just use Var move constructor)
+//                     2) during assignment, R.move_from(L), to transfer the object (here cast V to new object of same type, swap)
+//                     2) during assignment, R.move_from(V), to transfer the object (here cast V to new object of same type, swap)
+PyObject * var_assign(PyObject *self, PyObject *args) noexcept {
     if (PyObject *value = one_argument(args)) {
         return raw_object([=] {
-            cast_object<T>(self) = std::move(cast_object<T>(value));
+            if (Debug) std::cout << "- moving variable" << std::endl;
+            cast_object<Var>(self).assign(variable_from_object({value, true}));
             return Object(self, true);
         });
     } else return nullptr;
@@ -307,8 +310,13 @@ Object as_function(Variable &&ref, Object const &t={}) {
 }
 
 Object as_value(Variable &&v, Object const &t={}) {
+    if (auto p = cast_if<std::type_index>(t)) {
+        std::cout << "not done" << std::endl;
+        // if (auto var = std::move(v).request(*p)) return as_variable(std::move(var));
+        // return type_error("could not convert object of type %s to type %s", v.name(), p->name());
+    }
     if (!PyType_Check(+t))
-        return type_error("expected type object");
+        return type_error("expected type object but got %R", (+t)->ob_type);
     auto type = reinterpret_cast<PyTypeObject *>(+t);
     Object out;
     if (Debug) std::cout << "    - is wrap " << is_subclass(type, type_object<Variable>()) << std::endl;
@@ -342,6 +350,7 @@ PyObject * var_request(PyObject *self, PyObject *args) noexcept {
     if (!t) return nullptr;
     return raw_object([=]() -> Object {
         auto &v = cast_object<Variable>(self);
+
         if (t == reinterpret_cast<PyObject *>(&PyBaseObject_Type)) return as_object(std::move(v));
         else return as_value(std::move(v), Object(t, true));
     });
@@ -374,17 +383,33 @@ PyObject * var_ward(PyObject *self, PyObject *) noexcept {
     });
 }
 
+PyObject * var_set_ward(PyObject *self, PyObject *args) noexcept {
+    return raw_object([=]() -> Object {
+        if (auto arg = one_argument(args)) {
+            Object root{arg, true};
+            while (true) { // recurse upwards to find the governing lifetime
+                auto p = cast_if<Var>(root);
+                if (!p || !p->ward) break;
+                root = p->ward;
+            }
+            cast_object<Var>(self).ward = std::move(root);
+            return {Py_None, true};
+        } else return {};
+    });
+}
+
 PyNumberMethods VarNumberMethods = {
     .nb_bool = static_cast<inquiry>(value_bool),
 };
 
 PyMethodDef VarMethods[] = {
-    {"move_from", static_cast<PyCFunction>(move_from<Var>), METH_VARARGS, "move it"},
+    {"assign",    static_cast<PyCFunction>(var_assign),     METH_VARARGS, "move it"},
     {"copy_from", static_cast<PyCFunction>(copy_from<Var>), METH_VARARGS, "copy it"},
     {"address",   static_cast<PyCFunction>(var_address),    METH_NOARGS,  "qualifier it"},
-    {"ward",      static_cast<PyCFunction>(var_ward),       METH_NOARGS,  "qualifier it"},
+    {"_ward",     static_cast<PyCFunction>(var_ward),       METH_NOARGS,  "qualifier it"},
+    {"_set_ward", static_cast<PyCFunction>(var_set_ward),   METH_VARARGS, "qualifier it"},
     {"qualifier", static_cast<PyCFunction>(var_qualifier),  METH_NOARGS,  "qualifier it"},
-    {"type",      static_cast<PyCFunction>(var_type),       METH_NOARGS, "index it"},
+    {"type",      static_cast<PyCFunction>(var_type),       METH_NOARGS,  "index it"},
     {"has_value", static_cast<PyCFunction>(var_has_value),  METH_VARARGS, "has value"},
     {"request",   static_cast<PyCFunction>(var_request),    METH_VARARGS, "request given type"},
     {nullptr, nullptr, 0, nullptr}
@@ -439,7 +464,7 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
     if (Debug) std::cout << "gil = " << gil << " " << Py_REFCNT(self) << Py_REFCNT(args) << std::endl;
     if (Debug) std::cout << "number of signatures " << cast_object<Function>(self).overloads.size() << std::endl;
 
-    return cpy::raw_object([=]() -> Object {
+    return raw_object([=]() -> Object {
         auto const &overloads = cast_object<Function>(self).overloads;
         if (overloads.size() == 1)
             return call_overload(overloads[0].second, {args, true}, gil);
@@ -467,7 +492,7 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
 }
 
 PyObject * function_signatures(PyObject *self, PyObject *) noexcept {
-    return cpy::raw_object([=]() -> Object {
+    return raw_object([=]() -> Object {
         return map_as_tuple(cast_object<Function>(self).overloads, [](auto const &p) -> Object {
             if (!p.first) return {Py_None, true};
             return map_as_tuple(p.first, [](auto const &o) {return as_object(o);});
@@ -476,7 +501,7 @@ PyObject * function_signatures(PyObject *self, PyObject *) noexcept {
 }
 
 PyMethodDef FunctionTypeMethods[] = {
-    {"move_from", static_cast<PyCFunction>(move_from<Function>),   METH_VARARGS, "move it"},
+    // {"move_from", static_cast<PyCFunction>(move_from<Function>),   METH_VARARGS, "move it"},
     {"copy_from", static_cast<PyCFunction>(copy_from<Function>),   METH_VARARGS, "copy it"},
     {"signatures", static_cast<PyCFunction>(function_signatures),   METH_NOARGS, "get signature"},
     {nullptr, nullptr, 0, nullptr}

@@ -39,7 +39,7 @@ class Variable;
 /******************************************************************************/
 
 
-enum class ActionType : unsigned char {destroy, copy, move, make_value, make_reference};
+enum class ActionType : unsigned char {destroy, copy, move, make_value, make_reference, assign};
 using ActionFunction = void *(*)(ActionType, void *, Variable *);
 // destroy: delete the ptr
 // copy: return a new ptr holding a copy
@@ -126,6 +126,23 @@ public:
 
     ~Variable() {if (valued()) fun(ActionType::destroy, ptr, nullptr);}
 
+    void assign(Variable v) {
+        if (!ptr || qual == Qualifier::V) {
+            if (v.qual == Qualifier::V) *this = std::move(v);
+            else {
+                // for now, just make a fresh value copy of the variable
+                ptr = v.ptr ? v.fun(v.qual == Qualifier::R ? ActionType::move : ActionType::copy, v.ptr, nullptr) : v.ptr;
+                idx = v.idx;
+                fun = v.fun;
+            }
+        } else if (qual == Qualifier::C) {
+            throw std::invalid_argument("Cannot assign to const Variable");
+        } else {
+            if (!fun(ActionType::assign, ptr, &v))
+                throw std::invalid_argument("Could not coerce Variable to matching type");
+        }
+    }
+
     explicit constexpr operator bool() const {return ptr;}
     constexpr bool has_value() const {return ptr;}
     auto name() const {return idx.name();}
@@ -196,6 +213,14 @@ struct Action {
                 return simplify_to_reference(dest, *static_cast<T *>(ptr), std::move(out->idx));
             else
                 return simplify_to_reference(dest, *static_cast<T const *>(ptr), std::move(out->idx));
+        } else if (a == ActionType::assign) {
+            if (Debug) std::cout << "    - assign " << out->idx.name() << std::endl;
+            if constexpr(std::is_move_assignable_v<T>) {
+                if (auto p = std::move(*out).request<T>()) {
+                    *static_cast<T *>(ptr) = std::move(*p);
+                    return ptr;
+                }
+            }
         }
         return nullptr;
     }

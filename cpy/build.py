@@ -1,7 +1,7 @@
 import sys, types, importlib, functools, inspect, logging, enum, typing
 
 log = logging.getLogger(__name__)
-# logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO)
 
 ################################################################################
 
@@ -94,13 +94,33 @@ def set_global_type(pkg: str, bases: tuple, name: str, methods, lookup={}):
             raise TypeError('No __init__ is possible')
     else:
         def __init__(self, *args, _new=new, signature=None):
-            self.move_from(_new(*args, signature=signature))
+            self.assign(_new(*args, signature=signature))
     methods['__init__'] = __init__
 
     for k, v in methods.items():
-        old = props.get(k)
-        log.info("deriving method '%s.%s.%s' from %s", pkg, name, k, repr(old))
-        props[k] = dispatch(v, old, globalns)
+        if k.startswith('.'):
+            old = props.get('__annotations__', {}).get(k[1:])
+            log.info("deriving member '%s.%s%s' from %s", pkg, name, k, repr(old))
+
+            def getter(self, _old=v, _return=old):
+                out = _old(self)
+                if _return is not None:
+                    ret = eval_type(typing._type_check(_return, 'expected type'), globalns, {})
+                    out = out.request(ret)
+                out._set_ward(self)
+                return out
+
+            def setter(self, other, _old=v, _return=old):
+                print('setting')
+                ref = _old(self)
+                ref.assign(other)
+                print('done setting')
+
+            props[k[1:]] = property(fget=getter, fset=setter, doc='C++ member of type {}'.format(old)) # fget=None, fset=None, fdel=None, doc=None
+        else:
+            old = props.get(k)
+            log.info("deriving method '%s.%s.%s' from %s", pkg, name, k, repr(old))
+            props[k] = dispatch(v, old, globalns)
 
     cls = type(name, bases, props)
     log.info("rendering class '%s.%s'", mod.__name__, name)

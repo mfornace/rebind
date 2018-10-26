@@ -200,28 +200,18 @@ std::string wrong_type_message(WrongType const &e) {
 
 /******************************************************************************/
 
+Variable variable_from_object(Object o) {
+    if (auto p = cast_if<Function>(o)) return {Type<Function const &>(), *p};
+    else if (auto p = cast_if<std::type_index>(o)) return {Type<std::type_index>(), *p};
+    else if (auto p = cast_if<Variable>(o)) return p->reference();
+    else return std::move(o);
+}
+
 // Store the objects in args in pack
 ArgPack args_from_python(Object const &args) {
     ArgPack v;
     v.reserve(PyObject_Length(+args));
-    map_iterable(args, [&v](Object o) {
-        if (auto p = cast_if<Function>(o))
-            v.emplace_back(Type<Function const &>(), *p);
-        else if (auto p = cast_if<std::type_index>(o))
-            v.emplace_back(Type<std::type_index>(), *p);
-        else if (auto p = cast_if<Variable>(o)) {
-            std::cout << "hmmmm1 " << int(p->qualifier()) << std::endl;
-            std::cout << "hmmmm2 " << int(p->reference().qualifier()) << std::endl;
-            std::cout << "got this " << reinterpret_cast<std::uintptr_t>(p->ptr) << std::endl;
-            v.emplace_back(p->reference()); // lvalue
-            std::cout << "put this1 " << reinterpret_cast<std::uintptr_t>(p->reference().ptr) << std::endl;
-            std::cout << "put this2 " << reinterpret_cast<std::uintptr_t>(p->reference().ptr) << std::endl;
-            std::cout << "put this " << reinterpret_cast<std::uintptr_t>(v.back().ptr) << std::endl;
-            std::cout << "hmmmm " << int(v.back().qualifier()) << std::endl;
-        } else {
-            v.emplace_back(std::move(o));
-        }
-    });
+    map_iterable(args, [&v](Object o) {v.emplace_back(variable_from_object(std::move(o)));});
     return v;
 }
 

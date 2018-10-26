@@ -357,6 +357,15 @@ On the other hand would be nice for base classes for example.
 Also assuming our current implementation idea, I think we can just get the return std::any, make
 the object, cast the type to one from the map of type_index.
 
+### Members
+
+```python
+variable.member # property that returns a reference to the member with parent as a ward
+variable.member = other_variable # setter that calls copy assign from other to member
+variable.member.move_from(other_variable) # setter that calls move assign from other to member
+variable.move_from(other_variable) # if variable is V, move_from,
+```
+
 ### Hooks: how to build a document?
 
 I think the easiest way is via the ADL functionality:
