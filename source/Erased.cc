@@ -13,7 +13,7 @@ struct Blah {
     void dump() const {std::cout << name << std::endl;}
 };
 
-Value simplify(std::type_index t, Blah b) {
+Variable simplify(std::type_index t, Blah b) {
     if (t == typeid(std::string)) return std::move(b.name);
     return {};
 }

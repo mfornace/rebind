@@ -3,7 +3,7 @@
 
 namespace cpy {
 
-using KeyPair = std::pair<std::string_view, Value>;
+using KeyPair = std::pair<std::string_view, Variable>;
 
 using Logs = Vector<KeyPair>;
 

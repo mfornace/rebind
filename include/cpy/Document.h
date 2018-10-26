@@ -21,8 +21,7 @@ template <> struct Opaque<BinaryView>       : std::true_type {};
 template <> struct Opaque<BinaryData>       : std::true_type {};
 template <> struct Opaque<Binary>           : std::true_type {};
 template <> struct Opaque<Function>         : std::true_type {};
-template <> struct Opaque<Value>            : std::true_type {};
-template <> struct Opaque<Reference>        : std::true_type {};
+template <> struct Opaque<Variable>         : std::true_type {};
 template <> struct Opaque<ArgPack>          : std::true_type {};
 template <> struct Opaque<Caller>           : std::true_type {};
 
@@ -36,21 +35,24 @@ struct Opaque<Vector<T>> : Opaque<T> {};
 
 struct TypeData {
     std::map<std::string, Function> methods;
-    std::map<std::type_index, Value> data;
+    std::map<std::type_index, Variable> data;
 };
 
 struct Document {
-    std::map<std::string, Value> contents;
-    std::map<std::type_index, std::pair<std::string const, Value> *> types;
+    std::map<std::string, Variable> contents;
+    std::map<std::type_index, std::pair<std::string const, Variable> *> types;
 
-    TypeData & type(std::type_index t, std::string s, Value data={}) {
+    TypeData & type(std::type_index t, std::string s, Variable data={}) {
         auto it = contents.emplace(std::move(s), TypeData()).first;
-        if (auto p = it->second.target<TypeData>()) {
+        if (auto p = it->second.target<TypeData &>()) {
             p->data.emplace(t, std::move(data));
             types[t] = &(*it);
             return *p;
         }
-        throw std::runtime_error("bada");
+        std::cout << typeid(Type<decltype(it->second)>).name() << std::endl;
+        std::cout << t.name() << " " << s << " " << data.name() << std::endl;
+        std::cout << it->second.name() << static_cast<unsigned char>(it->second.qualifier()) << std::endl;
+        throw std::runtime_error("should be TypeData");
     }
 
     template <class T, std::enable_if_t<Opaque<T>::value, int> = 0>
@@ -82,7 +84,7 @@ struct Document {
         if (it == contents.end()) {
             contents.emplace(std::move(s), Function().emplace(std::move(functor)));
         } else {
-            if (auto f = it->second.target<Function>())
+            if (auto f = it->second.target<Function &>())
                 f->emplace(std::move(functor));
             else throw std::runtime_error("function with nonfunction");
         }
@@ -92,7 +94,7 @@ struct Document {
     template <class F, class ...Ts>
     void method(std::type_index t, std::string name, F f) {
         Signature<F>::no_qualifier::for_each([&](auto r) {if (t != +r) render(+r);});
-        if (auto p = types.at(t)->second.target<TypeData>())
+        if (auto p = types.at(t)->second.target<TypeData &>())
             p->methods[std::move(name)].emplace(std::move(f));
         else throw std::runtime_error("bad");
     }

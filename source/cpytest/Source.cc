@@ -21,7 +21,7 @@ Context::Context(Caller ct, Scopes s, Vector<Handler> h, Vector<Counter> *c)
 
 /******************************************************************************/
 
-Value call(std::string_view s, Context c, ArgPack pack) {
+Variable call(std::string_view s, Context c, ArgPack pack) {
     auto const &cases = suite();
     auto it = std::find_if(cases.begin(), cases.end(), [=](auto const &c) {return c.name == s;});
     if (it == cases.end())
@@ -29,7 +29,7 @@ Value call(std::string_view s, Context c, ArgPack pack) {
     return it->function(c, pack);
 }
 
-Value get_value(std::string_view s) {
+Variable get_value(std::string_view s) {
     auto const &cases = suite();
     auto it = std::find_if(cases.begin(), cases.end(), [=](auto const &c) {return c.name == s;});
     if (it == cases.end())

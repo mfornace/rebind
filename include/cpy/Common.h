@@ -4,7 +4,7 @@
 
 namespace cpy {
 
-static constexpr bool Debug = false;
+static constexpr bool Debug = true;
 
 /******************************************************************************/
 
@@ -93,7 +93,7 @@ public:
 
 /******************************************************************************/
 
-enum class Qualifier : unsigned char {C, L, R};
+enum class Qualifier : unsigned char {V, C, L, R};
 
 struct cvalue {constexpr operator Qualifier() const {return Qualifier::C;}};
 struct lvalue {constexpr operator Qualifier() const {return Qualifier::L;}};
@@ -107,8 +107,26 @@ template <class T> struct Qualified<T, rvalue> {using type = T &&;};
 template <class Ref, class T> using qualified = typename Qualified<Ref, T>::type;
 
 template <class T>
-static constexpr Qualifier qualifier = std::is_rvalue_reference_v<T> ? Qualifier::R :
-    (std::is_const_v<std::remove_reference_t<T>> ? Qualifier::C : Qualifier::L);
+static constexpr Qualifier qualifier_of = (!std::is_reference_v<T>) ? Qualifier::V
+    : (std::is_rvalue_reference_v<T> ? Qualifier::R :
+        (std::is_const_v<std::remove_reference_t<T>> ? Qualifier::C : Qualifier::L));
+
+/******************************************************************************/
+
+// template <class T>
+// struct UnqualifiedID {static constexpr bool id = true;}
+
+// template <class T>
+// struct QualifiedID {static constexpr bool * id_ptr = &UnqualifiedID<std::decay_t<T>>::id;};
+
+// class TypeID {
+//     bool **ptr;
+// public:
+//     template <class T>
+//     constexpr TypeID(Type<T>) : ptr(&QualifiedTypeID<T>::id_ptr) {}
+
+//     friend operator=(TypeID)
+// };
 
 /******************************************************************************/
 

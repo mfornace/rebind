@@ -32,7 +32,7 @@ def render_module(pkg: str, doc: dict):
 
     out['types'] = {k: v for k, v in doc['contents'] if isinstance(v, tuple)}
     for k, (meth, data) in out['types'].items():
-        cls = set_global_type(pkg, (doc['Value'],), k, dict(meth), out)
+        cls = set_global_type(pkg, (doc['Variable'],), k, dict(meth), out)
         cls.metadata = {k: v or None for k, v in data}
 
     out['objects'] = {k: set_global_object(pkg, k, v, out)
@@ -187,7 +187,9 @@ def set_global_object(pkg, key, value, lookup={}):
         value = dispatch(value, old, globalns)
     else:
         log.info("deriving object '%s.%s' from %s", mod.__name__, key, repr(old))
-        assert isinstance(old, type), 'expected annotation to be a type'
+        if not isinstance(old, type):
+            print(value.type())
+            raise TypeError('expected placeholder {} to be a type'.format(old))
         value = value.request(eval_type(old, globalns))
 
     setattr(mod, key, value)

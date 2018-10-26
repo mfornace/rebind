@@ -1,3 +1,20 @@
+## Function
+
+Function is a model of `Vector<Reference> -> Value`.
+
+## Conversion
+
+`Request<T>` models `Reference, Dispatch & -> T` and attempts to return a `T` from a `Reference` and `Dispatch &`.
+
+It could be changed to return `optional<T>`.
+
+`Response<T>` models `Value &, T t, type_index -> void` and attempts to put a `T` into a `Value` with a given `type_index`.
+
+Also, `Response<T>` models `Qualifier, T, type_index -> void *` and attempts to return a qualified reference to type `T`. It could be changed to return a `Reference`.
+
+Instead of the above, we could always try to return a `Reference` and use the `Dispatch` storage for lifetime extension. Mostly semantics.
+
+Could a `Function` return a `Reference`?
 
 ## Function binding
 

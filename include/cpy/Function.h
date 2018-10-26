@@ -7,7 +7,7 @@
 
 namespace cpy {
 
-using ErasedFunction = std::function<Value(Caller, ArgPack)>;
+using ErasedFunction = std::function<Variable(Caller, ArgPack)>;
 
 template <class R, class ...Ts>
 static std::type_index const signature_types[] = {typeid(R), typeid(Ts)...};
@@ -34,7 +34,7 @@ public:
 struct Function {
     Zip<ErasedSignature, ErasedFunction> overloads;
 
-    Value operator()(Caller c, ArgPack v) const {
+    Variable operator()(Caller c, ArgPack v) const {
         if (Debug) std::cout << "    - calling type erased Function " << std::endl;
         if (overloads.empty()) throw std::out_of_range("empty Function");
         return overloads[0].second(std::move(c), std::move(v));
@@ -45,7 +45,7 @@ struct Function {
     explicit operator bool() const {return !overloads.empty();}
 
     template <class ...Ts>
-    Value operator()(Caller c, Ts &&...ts) const {
+    Variable operator()(Caller c, Ts &&...ts) const {
         if (Debug) std::cout << "    - calling Function " << std::endl;
         ArgPack v;
         v.reserve(sizeof...(Ts));
@@ -91,32 +91,34 @@ struct Callback {
         ArgPack pack;
         pack.reserve(sizeof...(Ts));
         (pack.emplace_back(static_cast<Ts &&>(ts)), ...);
-        return downcast<R>(Reference(function(caller, std::move(pack))));
+        return downcast<R>(function(caller, std::move(pack)));
     }
 };
 
 /******************************************************************************/
 
-/// Invoke a function and arguments, storing output in a Value if it doesn't return void
+/// Invoke a function and arguments, storing output in a Variable if it doesn't return void
 template <class F, class ...Ts>
-Value value_invoke(F const &f, Ts &&... ts) {
-    if constexpr(std::is_same_v<void, std::invoke_result_t<F, Ts...>>) {
+Variable value_invoke(F const &f, Ts &&... ts) {
+    using O = std::remove_cv_t<std::invoke_result_t<F, Ts...>>;
+    std::cout << "    -- making output " << typeid(Type<O>).name() << std::endl;
+    if constexpr(std::is_same_v<void, O>) {
         std::invoke(f, static_cast<Ts &&>(ts)...);
         return {};
-    } else return std::invoke(f, static_cast<Ts &&>(ts)...);
+    } else return Variable(Type<O>(), std::invoke(f, static_cast<Ts &&>(ts)...));
 }
 
 template <class F, class ...Ts>
-Value caller_invoke(std::true_type, F const &f, Caller &&c, Ts &&...ts) {
-    if (Debug) std::cout << "invoking with context" << std::endl;
+Variable caller_invoke(std::true_type, F const &f, Caller &&c, Ts &&...ts) {
+    if (Debug) std::cout << "    - invoking with context" << std::endl;
     return value_invoke(f, std::move(c)(), static_cast<Ts &&>(ts)...);
 }
 
 template <class F, class ...Ts>
-Value caller_invoke(std::false_type, F const &f, Caller &&c, Ts &&...ts) {
-    if (Debug) std::cout << "invoking context guard" << std::endl;
+Variable caller_invoke(std::false_type, F const &f, Caller &&c, Ts &&...ts) {
+    if (Debug) std::cout << "    - invoking context guard" << std::endl;
     auto new_frame = std::move(c)();
-    if (Debug) std::cout << "invoked context guard" << std::endl;
+    if (Debug) std::cout << "    - invoked context guard" << std::endl;
     return value_invoke(f, static_cast<Ts &&>(ts)...);
 }
 

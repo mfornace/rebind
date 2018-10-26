@@ -129,8 +129,9 @@ struct Signature<R(*)(Ts...)> : Signature<R(Ts...)> {using return_type = R;};
     CPY_TMP(C, const &&, C const &&);
 #undef CPY_TMP
 
+/// this is tricky...
 template <class R, class C>
-struct Signature<R C::*> : Pack<R const &, C const &> {using return_type = R const &;};
+struct Signature<R C::*> : Pack<R &, C &> {using return_type = R &;};
 
 /******************************************************************************************/
 

@@ -41,20 +41,20 @@ struct FunctionAdaptor {
     using Sig = decltype(skip_head<1 + int(Ctx::value)>(SimpleSignature<F>()));
 
     template <class P>
-    void call_each(P, Value &out, Caller &&c, Dispatch &msg, ArgPack &args) const {
+    void call_each(P, Variable &out, Caller &&c, Dispatch &msg, ArgPack &args) const {
         P::indexed([&](auto ...ts) {
             out = caller_invoke(Ctx(), function, std::move(c), cast_index(args, msg, simplify_argument_type(ts))...);
         });
     }
 
     template <std::size_t ...Is>
-    Value call(ArgPack &args, Caller &&c, Dispatch &msg, std::index_sequence<Is...>) const {
-        Value out;
+    Variable call(ArgPack &args, Caller &&c, Dispatch &msg, std::index_sequence<Is...>) const {
+        Variable out;
         ((args.size() == N - Is - 1 ? call_each(Sig::template slice<0, N - Is - 1>(), out, std::move(c), msg, args) : void()), ...);
         return out;
     }
 
-    Value operator()(Caller c, ArgPack args) const {
+    Variable operator()(Caller c, ArgPack args) const {
         Dispatch msg;
         if (args.size() == Sig::size)
             return Sig::indexed([&](auto ...ts) {
@@ -74,7 +74,7 @@ struct FunctionAdaptor<0, F> {
     using Ctx = decltype(has_head<Caller>(SimpleSignature<F>()));
     using Sig = decltype(skip_head<1 + int(Ctx::value)>(SimpleSignature<F>()));
 
-    Value operator()(Caller c, ArgPack args) const {
+    Variable operator()(Caller c, ArgPack args) const {
         if (args.size() != Sig::size)
             throw WrongNumber(Sig::size, args.size());
         return Sig::indexed([&](auto ...ts) {

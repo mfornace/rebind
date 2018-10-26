@@ -50,7 +50,7 @@ Binary Buffer::binary(Py_buffer *view, std::size_t len) {
     return bin;
 }
 
-Value Buffer::binary_view(Py_buffer *view, std::size_t len) {
+Variable Buffer::binary_view(Py_buffer *view, std::size_t len) {
     if (Debug) std::cout << "Contiguous " << PyBuffer_IsContiguous(view, 'C') << PyBuffer_IsContiguous(view, 'F') << std::endl;
     if (PyBuffer_IsContiguous(view, 'F')) {
         if (view->readonly) {
@@ -85,53 +85,45 @@ std::string_view from_bytes(PyObject *o) {
 }
 
 template <class T>
-void to_arithmetic(Object const &o, Value &v) {
-    if (PyFloat_Check(+o)) v = static_cast<T>(PyFloat_AsDouble(+o));
-    else if (PyLong_Check(+o)) v = static_cast<T>(PyLong_AsLongLong(+o));
-    else if (PyBool_Check(+o)) v = static_cast<T>(+o == Py_True);
+void to_arithmetic(Object const &o, Variable &v) {
+    if (PyFloat_Check(o)) v = static_cast<T>(PyFloat_AsDouble(+o));
+    else if (PyLong_Check(o)) v = static_cast<T>(PyLong_AsLongLong(+o));
+    else if (PyBool_Check(o)) v = static_cast<T>(+o == Py_True);
 }
 
-void *Simplify<Object>::operator()(Qualifier q, Object o, std::type_index t) const {
+void *Response<Object>::operator()(Qualifier q, Object o, std::type_index t) const {
     if (Debug) std::cout << "    - trying to get reference from Object " << bool(o) << std::endl;
-    if (PyObject_TypeCheck(+o, &WrapType)) {
-        if (Debug) std::cout << "its a wrap" << std::endl;
-        auto &c = cast_object<Wrap>(+o);
-        if (auto p = std::get_if<Value>(&c)) {
-            if (p->type() == t) return p->ptr;
-        } else {
-            auto &x = std::get<WeakReference>(c).lock();
-            if (x.type() == t) return x.ptr;
-        }
+    if (auto p = cast_if<Variable>(o)) {
+        if (Debug) std::cout << "    - its a variable" << std::endl;
+        if (Debug) std::cout << "    - qualifier " << p->name() << " " << static_cast<int>(p->qualifier()) << std::endl;
+        if (p->type() == t) return p->ptr;
     }
     return nullptr;
 }
 
-void Simplify<Object>::operator()(Value &v, Object o, std::type_index t) const {
+void Response<Object>::operator()(Variable &v, Object o, std::type_index t) const {
     if (Debug) {
-        Object repr{PyObject_Repr(reinterpret_cast<PyObject *>((+o)->ob_type)), false};
+        Object repr{PyObject_Repr(TypeObject{(+o)->ob_type}), false};
 
         if (Debug) std::cout << "    - trying to convert object to " << t.name() << " " << from_unicode(+repr) << std::endl;
-        if (Debug) std::cout << bool(PyObject_TypeCheck(+o, &WrapType)) << std::endl;
+        if (Debug) std::cout << bool(cast_if<Variable>(o)) << std::endl;
     }
 
-    if (PyObject_TypeCheck(+o, &WrapType)) {
-        if (Debug) std::cout << "    - its a wrap" << std::endl;
-        auto &c = cast_object<Wrap>(+o);
-        if (std::holds_alternative<Value>(c))
-            v = Reference(std::get<Value>(c)).request(t);
-        else v = std::get<WeakReference>(c).lock().request(t);
+    if (auto p = cast_if<Variable>(o)) {
+        if (Debug) std::cout << "    - its a variable" << std::endl;
+        v = p->request(t);
     } else if (t == typeid(Object)) {
         v = std::move(o);
     } else if (t == typeid(Function)) {
         if (Debug) std::cout << "    - requested function" << std::endl;
         if (+o == Py_None) v = Function();
-        else if (PyObject_TypeCheck(+o, &FunctionType)) v = cast_object<Function>(+o);
+        else if (auto p = cast_if<Function>(o)) v = *p;
         else v = Function().emplace(PythonFunction({+o, true}, {Py_None, true}), {});
-    } else if (t == typeid(Vector<Value>)) {
-        if (PyTuple_Check(+o) || PyList_Check(+o)) {
+    } else if (t == typeid(Vector<Variable>)) {
+        if (PyTuple_Check(o) || PyList_Check(o)) {
             if (Debug) std::cout << "    - making a tuple" << std::endl;
-            Vector<Value> vals;
-            vals.reserve(PyObject_Length(+o));
+            Vector<Variable> vals;
+            vals.reserve(PyObject_Length(o));
             map_iterable(o, [&](Object o) {vals.emplace_back(std::move(o));});
             v = std::move(vals);
         }
@@ -209,23 +201,25 @@ std::string wrong_type_message(WrongType const &e) {
 /******************************************************************************/
 
 // Store the objects in args in pack
-ArgPack positional_args(Object const &args, std::deque<Object> &storage) {
+ArgPack args_from_python(Object const &args) {
     ArgPack v;
     v.reserve(PyObject_Length(+args));
-    map_iterable(args, [&v, &storage](Object o) {
-        if (PyObject_TypeCheck(+o, &FunctionType))
-            v.emplace_back(cast_object<Function>(+o));
-        else if (PyObject_TypeCheck(+o, &TypeIndexType))
-            v.emplace_back(cast_object<std::type_index>(+o));
-        else if (PyObject_TypeCheck(+o, &WrapType)) {
-            auto &w = cast_object<Wrap>(+o);
-            if (std::holds_alternative<Value>(w))
-                v.emplace_back(std::get<Value>(w));
-            else v.emplace_back(std::get<WeakReference>(w).lock());
+    map_iterable(args, [&v](Object o) {
+        if (auto p = cast_if<Function>(o))
+            v.emplace_back(Type<Function const &>(), *p);
+        else if (auto p = cast_if<std::type_index>(o))
+            v.emplace_back(Type<std::type_index>(), *p);
+        else if (auto p = cast_if<Variable>(o)) {
+            std::cout << "hmmmm1 " << int(p->qualifier()) << std::endl;
+            std::cout << "hmmmm2 " << int(p->reference().qualifier()) << std::endl;
+            std::cout << "got this " << reinterpret_cast<std::uintptr_t>(p->ptr) << std::endl;
+            v.emplace_back(p->reference()); // lvalue
+            std::cout << "put this1 " << reinterpret_cast<std::uintptr_t>(p->reference().ptr) << std::endl;
+            std::cout << "put this2 " << reinterpret_cast<std::uintptr_t>(p->reference().ptr) << std::endl;
+            std::cout << "put this " << reinterpret_cast<std::uintptr_t>(v.back().ptr) << std::endl;
+            std::cout << "hmmmm " << int(v.back().qualifier()) << std::endl;
         } else {
-            storage.emplace_back(std::move(o));
-            // v.emplace_back(Reference(std::move(storage.back())));
-            v.emplace_back(storage.back());
+            v.emplace_back(std::move(o));
         }
     });
     return v;

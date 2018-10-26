@@ -18,8 +18,8 @@ struct goo {
 
 // namespace cpy {
 //     template <>
-//     struct Simplify<goo> {
-//         Value operator()(goo g) const {return {std::in_place_t(), g};}
+//     struct Response<goo> {
+//         Variable operator()(goo g) const {return {std::in_place_t(), g};}
 //     };
 // }
 
@@ -67,7 +67,7 @@ UNIT_TEST("test-2", "This is a test 2") = [](cpy::Context ct) {
     std::cout << sizeof(std::complex<cpy::Real>)  << " sizeof(std::complex<Real>) " << std::endl;
     std::cout << sizeof(std::string)  << " sizeof(std::string) " << std::endl;
     std::cout << sizeof(std::string_view) << " sizeof(std::string_view)" << std::endl;
-    std::cout << sizeof(cpy::Value) << " sizeof(Value)" << std::endl;
+    std::cout << sizeof(cpy::Variable) << " sizeof(Variable)" << std::endl;
 
         return 8.9;
     //return "hello";
@@ -76,7 +76,7 @@ UNIT_TEST("test-2", "This is a test 2") = [](cpy::Context ct) {
 
 UNIT_TEST("test-3") = [](auto ct) {
     std::cout << "ok1" << std::endl;
-    std::cout << cpy::downcast<double>(cpy::Reference(cpy::get_value("max_time"))) << std::endl;
+    std::cout << cpy::downcast<double>(cpy::get_value("max_time")) << std::endl;
     std::cout << "ok2" << std::endl;
     throw std::runtime_error("runtime_error: uh oh");
 };

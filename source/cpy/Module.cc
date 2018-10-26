@@ -90,7 +90,8 @@ PyObject *type_index_compare(PyObject *self, PyObject *other, int op) {
     });
 }
 
-PyTypeObject TypeIndexType = {
+template <>
+PyTypeObject Holder<std::type_index>::type = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name = "cpy.TypeIndex",
     .tp_hash = type_index_hash,
@@ -117,11 +118,11 @@ PyObject * copy_from(PyObject *self, PyObject *args) noexcept {
 }
 
 int value_bool(PyObject *self) noexcept {
-    if (auto t = cast_if<Value>(self)) return t->has_value();
+    if (auto t = cast_if<Variable>(self)) return t->has_value();
     else return PyObject_IsTrue(self);
 }
 
-PyObject * value_has_value(PyObject *self, PyObject *) noexcept {
+PyObject * var_has_value(PyObject *self, PyObject *) noexcept {
     return PyLong_FromLong(value_bool(self));
 }
 
@@ -132,11 +133,11 @@ bool is_subclass(PyTypeObject *o, PyTypeObject *t) {
 
 /******************************************************************************/
 
-Object as_value(Reference const &ref, Object const &o);
+Object as_value(Variable &&ref, Object const &o);
 
 Object type_args(Object const &o) {
-    Object out = {PyObject_GetAttrString(+o, "__args__"), true};
-    if (out && !PyTuple_Check(+out))
+    Object out = {PyObject_GetAttrString(o, "__args__"), true};
+    if (out && !PyTuple_Check(out))
         throw python_error(type_error("expected __args__ to be a tuple"));
     return out;
 }
@@ -150,15 +151,15 @@ Object type_args(Object const &o, Py_ssize_t n) {
     return out;
 }
 
-Object as_list(Reference const &ref, Object const &o) {
+Object as_list(Variable &&ref, Object const &o) {
     if (auto args = type_args(o, 1)) {
-        if (Debug) std::cout << "is list " << PyList_Check(+o) << std::endl;
-        auto v = downcast<Vector<Value>>(ref);
+        if (Debug) std::cout << "is list " << PyList_Check(o) << std::endl;
+        auto v = downcast<Vector<Variable>>(ref);
         Object vt{PyTuple_GET_ITEM(+args, 0), true};
         auto list = Object::from(PyList_New(v.size()));
         for (Py_ssize_t i = 0; i != v.size(); ++i) {
             if (Debug) std::cout << "list index " << i << std::endl;
-            Object item = as_value(Reference(std::move(v[i])), vt);
+            Object item = as_value(Variable(std::move(v[i])), vt);
             if (!item) return {};
             Py_INCREF(+item);
             PyList_SET_ITEM(+list, i, +item);
@@ -167,52 +168,55 @@ Object as_list(Reference const &ref, Object const &o) {
     } else return {};
 }
 
-Object as_tuple(Reference const &ref, Object const &o) {
+Object as_tuple(Variable &&ref, Object const &o) {
     if (auto args = type_args(o)) {
         Py_ssize_t const len = PyTuple_GET_SIZE(+args);
-        auto v = downcast<Vector<Value>>(ref);
+        auto v = downcast<Vector<Variable>>(ref);
         if (len == 2 && PyTuple_GET_ITEM(+args, 1) == Py_Ellipsis) {
             Object vt{PyTuple_GET_ITEM(+args, 0), true};
             auto tup = Object::from(PyTuple_New(v.size()));
             for (Py_ssize_t i = 0; i != v.size(); ++i)
-                if (!set_tuple_item(tup, i, as_value(Reference(std::move(v[i])), vt))) return {};
+                if (!set_tuple_item(tup, i, as_value(Variable(std::move(v[i])), vt))) return {};
             return tup;
         } else {
             auto tup = Object::from(PyTuple_New(len));
             for (Py_ssize_t i = 0; i != len; ++i)
-                if (!set_tuple_item(tup, i, as_value(Reference(v[i]), {PyTuple_GET_ITEM(+args, i), true}))) return {};
+                if (!set_tuple_item(tup, i, as_value(Variable(v[i]), {PyTuple_GET_ITEM(+args, i), true}))) return {};
             return tup;
         }
     } else return {};
 }
 
-Object as_dict(Reference const &ref, Object const &o) {
+Object as_dict(Variable &&ref, Object const &o) {
     if (auto args = type_args(o, 2)) {
-        auto v = downcast<Vector<std::pair<Value, Value>>>(ref);
+        auto v = downcast<Vector<std::pair<Variable, Variable>>>(ref);
         auto out = Object::from(PyDict_New());
         Object key{PyTuple_GET_ITEM(+args, 0), true};
         Object val{PyTuple_GET_ITEM(+args, 1), true};
         for (auto &x : v) {
-            Object k = as_value(Reference(std::move(x.first)), key);
-            Object v = as_value(Reference(std::move(x.second)), val);
-            if (!k || !v || PyDict_SetItem(+out, +k, +v)) return {};
+            Object k = as_value(Variable(std::move(x.first)), key);
+            Object v = as_value(Variable(std::move(x.second)), val);
+            if (!k || !v || PyDict_SetItem(out, k, v)) return {};
         }
         return out;
     } else return {};
 }
 
 template <class T>
-Object any_as_wrap(T &&t) {
-    Object o{PyObject_CallObject(type_object(WrapType), nullptr), false};
-    cast_object<Wrap>(+o) = Value(static_cast<T &&>(t));
+Object any_as_variable(T &&t) {
+    Object o{PyObject_CallObject(type_object<Variable>(), nullptr), false};
+    cast_object<Variable>(o) = static_cast<T &&>(t);
     return o;
 }
 
-Object as_wrap(Reference const &ref, Object const &t={}) {
-    auto x = t ? +t : reinterpret_cast<PyObject *>(&WrapType);
-    auto o = Object::from((x == reinterpret_cast<PyObject *>(&WrapType)) ?
+Object as_variable(Variable &&v, Object const &t) {
+    auto x = t ? +t : reinterpret_cast<PyObject *>(type_object<Variable>);
+    auto o = Object::from((x == reinterpret_cast<PyObject *>(type_object<Variable>)) ?
         PyObject_CallObject(x, nullptr) : PyObject_CallMethod(x, "__new__", "O", x));
-    cast_object<Wrap>(+o) = Value(ref);
+
+    if (Debug) std::cout << "    -- making variable " << static_cast<int>(v.qualifier()) << " " << v.name() << std::endl;
+    cast_object<Variable>(o) = std::move(v);
+    if (Debug) std::cout << "    -- made variable " << static_cast<int>(cast_object<Variable>(o).qualifier()) << std::endl;
     return o;
 }
 
@@ -227,18 +231,18 @@ Object as_object(BinaryView s) {return {PyByteArray_FromStringAndSize(reinterpre
 Object as_object(Binary const &s) {return {PyByteArray_FromStringAndSize(reinterpret_cast<char const *>(s.data()), s.size()), false};}
 
 Object as_object(std::type_index t) {
-    auto o = Object::from(PyObject_CallObject(type_object(TypeIndexType), nullptr));
-    cast_object<std::type_index>(+o) = std::move(t);
+    auto o = Object::from(PyObject_CallObject(type_object<std::type_index>(), nullptr));
+    cast_object<std::type_index>(o) = std::move(t);
     return o;
 }
 
 Object as_object(Function f) {
-    auto o = Object::from(PyObject_CallObject(type_object(FunctionType), nullptr));
-    cast_object<Function>(+o) = std::move(f);
+    auto o = Object::from(PyObject_CallObject(type_object<Function>(), nullptr));
+    cast_object<Function>(o) = std::move(f);
     return o;
 }
 
-Object as_object(Reference const &ref) {
+Object as_object(Variable &&ref) {
     if (Debug) std::cout << "    - asking for object" << std::endl;
     if (!ref.has_value()) return {Py_None, true};
     if (auto v = ref.request<bool>())             return as_object(std::move(*v));
@@ -251,34 +255,32 @@ Object as_object(Reference const &ref) {
     if (auto v = ref.request<std::type_index>())  return as_object(std::move(*v));
     if (auto v = ref.request<Binary>())           return as_object(std::move(*v));
     if (auto v = ref.request<BinaryView>())       return as_object(std::move(*v));
-    if (auto v = ref.request<Vector<Reference>>())
+    if (auto v = ref.request<Vector<Variable>>())
         return map_as_tuple(std::move(*v), [](auto &&x) {return as_object(std::move(x));});
-    if (auto v = ref.request<Vector<Value>>())
-        return map_as_tuple(std::move(*v), [](auto &&x) {return as_object(Reference(std::move(x)));});
     return {};
 }
 
 /******************************************************************************/
 
-Object as_bool(Reference const &ref, Object const &t={}) {
+Object as_bool(Variable &&ref, Object const &t={}) {
     if (auto p = ref.request<bool>()) return as_object(*p);
     return {};
 }
 
-Object as_int(Reference const &ref, Object const &t={}) {
+Object as_int(Variable &&ref, Object const &t={}) {
     if (auto p = ref.request<Integer>()) return as_object(*p);
     if (Debug) std::cout << "    - bad int" << std::endl;
     return {};
 }
 
-Object as_float(Reference const &ref, Object const &t={}) {
+Object as_float(Variable &&ref, Object const &t={}) {
     if (auto p = ref.request<double>()) return as_object(*p);
     if (auto p = ref.request<Integer>()) return as_object(*p);
     if (Debug) std::cout << "    - bad float" << std::endl;
     return {};
 }
 
-Object as_str(Reference const &ref, Object const &t={}) {
+Object as_str(Variable &&ref, Object const &t={}) {
     if (auto p = ref.request<std::string_view>()) return as_object(std::move(*p));
     if (auto p = ref.request<std::string>()) return as_object(std::move(*p));
     if (auto p = ref.request<std::wstring_view>())
@@ -288,46 +290,46 @@ Object as_str(Reference const &ref, Object const &t={}) {
     return {};
 }
 
-Object as_bytes(Reference const &ref, Object const &t={}) {
+Object as_bytes(Variable &&ref, Object const &t={}) {
     if (auto p = ref.request<BinaryView>()) return as_object(std::move(*p));
     if (auto p = ref.request<Binary>()) return as_object(std::move(*p));
     return {};
 }
 
-Object as_type_index(Reference const &ref, Object const &t={}) {
+Object as_type_index(Variable &&ref, Object const &t={}) {
     if (auto p = ref.request<std::type_index>()) return as_object(std::move(*p));
     else return {};
 }
 
-Object as_function(Reference const &ref, Object const &t={}) {
+Object as_function(Variable &&ref, Object const &t={}) {
     if (auto p = ref.request<Function>()) return as_object(std::move(*p));
     else return {};
 }
 
-Object as_value(Reference const &ref, Object const &t={}) {
+Object as_value(Variable &&v, Object const &t={}) {
     if (!PyType_Check(+t))
         return type_error("expected type object");
     auto type = reinterpret_cast<PyTypeObject *>(+t);
     Object out;
-    if (Debug) std::cout << "    - is wrap " << is_subclass(type, &WrapType) << std::endl;
+    if (Debug) std::cout << "    - is wrap " << is_subclass(type, type_object<Variable>()) << std::endl;
     if (+type == Py_None->ob_type || +t == Py_None) return {Py_None, true};
-    else if (type == &PyBaseObject_Type)          out = as_object(ref);
-    else if (is_subclass(type, &PyBool_Type))     out = as_bool(ref, t);
-    else if (is_subclass(type, &PyLong_Type))     out = as_int(ref, t);
-    else if (is_subclass(type, &PyFloat_Type))    out = as_float(ref, t);
-    else if (is_subclass(type, &PyUnicode_Type))  out = as_str(ref, t);
-    else if (is_subclass(type, &PyBytes_Type))    out = as_bytes(ref, t);
-    else if (is_subclass(type, &TypeIndexType))   out = as_type_index(ref, t);
-    else if (is_subclass(type, &PyList_Type))     out = as_list(ref, t);
-    else if (is_subclass(type, &PyTuple_Type))    out = as_tuple(ref, t);
-    else if (is_subclass(type, &PyDict_Type))     out = as_dict(ref, t);
-    else if (is_subclass(type, &WrapType))        out = as_wrap(ref, t);
-    else if (is_subclass(type, &FunctionType))    out = as_function(ref, t);
-    else if (is_subclass(type, &PyFunction_Type)) out = as_function(ref, t);
+    else if (type == &PyBaseObject_Type)                        out = as_object(std::move(v));
+    else if (is_subclass(type, &PyBool_Type))                   out = as_bool(std::move(v), t);
+    else if (is_subclass(type, &PyLong_Type))                   out = as_int(std::move(v), t);
+    else if (is_subclass(type, &PyFloat_Type))                  out = as_float(std::move(v), t);
+    else if (is_subclass(type, &PyUnicode_Type))                out = as_str(std::move(v), t);
+    else if (is_subclass(type, &PyBytes_Type))                  out = as_bytes(std::move(v), t);
+    else if (is_subclass(type, type_object<std::type_index>())) out = as_type_index(std::move(v), t);
+    else if (is_subclass(type, &PyList_Type))                   out = as_list(std::move(v), t);
+    else if (is_subclass(type, &PyTuple_Type))                  out = as_tuple(std::move(v), t);
+    else if (is_subclass(type, &PyDict_Type))                   out = as_dict(std::move(v), t);
+    else if (is_subclass(type, type_object<Variable>()))        out = as_variable(std::move(v), t);
+    else if (is_subclass(type, type_object<Function>()))        out = as_function(std::move(v), t);
+    else if (is_subclass(type, &PyFunction_Type))               out = as_function(std::move(v), t);
     else if (auto p = type_conversions.find(t); p != type_conversions.end()) {
-        Object v = as_wrap(ref);
-        if (!v) return type_error("bad");
-        return Object::from(PyObject_CallFunctionObjArgs(+p->second, +v, nullptr));
+        Object o = as_variable(std::move(v));
+        if (!o) return type_error("bad");
+        return Object::from(PyObject_CallFunctionObjArgs(+p->second, +o, nullptr));
     }
     if (!out) return type_error("cannot convert value to type %R", +t);
     return out;
@@ -335,49 +337,70 @@ Object as_value(Reference const &ref, Object const &t={}) {
 
 /******************************************************************************/
 
-PyObject * value_request(PyObject *self, PyObject *args) noexcept {
+PyObject * var_request(PyObject *self, PyObject *args) noexcept {
     PyObject *t = one_argument(args);
     if (!t) return nullptr;
     return raw_object([=]() -> Object {
-        auto &w = cast_object<Wrap>(self);
-        Reference ref = std::holds_alternative<Value>(w) ?
-            Reference(std::get<Value>(w)) : std::get<WeakReference>(w).lock();
-        if (t == reinterpret_cast<PyObject *>(&PyBaseObject_Type)) return as_object(ref);
-        else return as_value(ref, Object(t, true));
+        auto &v = cast_object<Variable>(self);
+        if (t == reinterpret_cast<PyObject *>(&PyBaseObject_Type)) return as_object(std::move(v));
+        else return as_value(std::move(v), Object(t, true));
     });
 }
 
-PyObject * value_type_index(PyObject *self, PyObject *) noexcept {
+PyObject * var_type(PyObject *self, PyObject *) noexcept {
     return raw_object([=] {
-        auto o = Object::from(PyObject_CallObject(type_object(TypeIndexType), nullptr));
-        cast_object<std::type_index>(+o) = std::visit([](auto const &i) {return i.type();}, cast_object<Wrap>(self));
+        auto o = Object::from(PyObject_CallObject(type_object<std::type_index>(), nullptr));
+        cast_object<std::type_index>(o) = cast_object<Variable>(self).type();
         return o;
     });
 }
 
-PyNumberMethods WrapNumberMethods = {
+PyObject * var_qualifier(PyObject *self, PyObject *) noexcept {
+    return raw_object([=] {
+        return as_object(static_cast<Integer>(cast_object<Variable>(self).qualifier()));
+    });
+}
+
+PyObject * var_address(PyObject *self, PyObject *) noexcept {
+    return raw_object([=] {
+        return as_object(Integer(reinterpret_cast<std::uintptr_t>(cast_object<Variable>(self).ptr)));
+    });
+}
+
+PyObject * var_ward(PyObject *self, PyObject *) noexcept {
+    return raw_object([=] {
+        Object out = cast_object<Var>(self).ward;
+        return out ? out : Object(Py_None, true);
+    });
+}
+
+PyNumberMethods VarNumberMethods = {
     .nb_bool = static_cast<inquiry>(value_bool),
 };
 
-PyMethodDef WrapTypeMethods[] = {
-    {"type",      static_cast<PyCFunction>(value_type_index), METH_NOARGS, "index it"},
-    {"move_from", static_cast<PyCFunction>(move_from<Wrap>), METH_VARARGS, "move it"},
-    {"copy_from", static_cast<PyCFunction>(copy_from<Wrap>), METH_VARARGS, "copy it"},
-    {"has_value", static_cast<PyCFunction>(value_has_value), METH_VARARGS, "has value"},
-    {"request",   static_cast<PyCFunction>(value_request),   METH_VARARGS, "request given type"},
+PyMethodDef VarMethods[] = {
+    {"move_from", static_cast<PyCFunction>(move_from<Var>), METH_VARARGS, "move it"},
+    {"copy_from", static_cast<PyCFunction>(copy_from<Var>), METH_VARARGS, "copy it"},
+    {"address",   static_cast<PyCFunction>(var_address),    METH_NOARGS,  "qualifier it"},
+    {"ward",      static_cast<PyCFunction>(var_ward),       METH_NOARGS,  "qualifier it"},
+    {"qualifier", static_cast<PyCFunction>(var_qualifier),  METH_NOARGS,  "qualifier it"},
+    {"type",      static_cast<PyCFunction>(var_type),       METH_NOARGS, "index it"},
+    {"has_value", static_cast<PyCFunction>(var_has_value),  METH_VARARGS, "has value"},
+    {"request",   static_cast<PyCFunction>(var_request),    METH_VARARGS, "request given type"},
     {nullptr, nullptr, 0, nullptr}
 };
 
-PyTypeObject WrapType = {
+template <>
+PyTypeObject Holder<Var>::type = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "cpy.Value",
-    .tp_as_number = &WrapNumberMethods,
-    .tp_basicsize = sizeof(Holder<Wrap>),
-    .tp_dealloc = tp_delete<Wrap>,
+    .tp_name = "cpy.Variable",
+    .tp_as_number = &VarNumberMethods,
+    .tp_basicsize = sizeof(Holder<Var>),
+    .tp_dealloc = tp_delete<Var>,
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
     .tp_doc = "C++ class object",
-    .tp_new = tp_new<Wrap>, // no init (just use default constructor)
-    .tp_methods = WrapTypeMethods
+    .tp_new = tp_new<Var>, // no init (just use default constructor)
+    .tp_methods = VarMethods
 };
 
 /******************************************************************************/
@@ -385,23 +408,22 @@ PyTypeObject WrapType = {
 Object call_overload(ErasedFunction const &fun, Object const &args, bool gil) {
     if (auto py = fun.target<PythonFunction>())
         return {PyObject_CallObject(+py->function, +args), false};
-    std::deque<Object> storage;
-    auto pack = positional_args(args, storage);
+    auto pack = args_from_python(args);
     if (Debug) std::cout << "    - constructed python args " << pack.size();
     if (Debug) for (auto const &p : pack) std::cout << ", " << p.type().name();
     if (Debug) std::cout << std::endl;
-    Value out;
+    Variable out;
     {
         auto lk = std::make_shared<PythonEntry>(!gil);
         Caller ct(lk);
         if (Debug) std::cout << "    - calling the args: size=" << pack.size() << std::endl;
         out = fun(ct, std::move(pack));
     }
-    if (Debug) std::cout << "    - got the output " << out.type().name() << std::endl;
-    if (auto p = out.target<Object>()) return std::move(*p);
-    if (auto p = out.target<PyObject>()) {std::cout << "fff" << std::endl;}
-    if (auto p = out.target<PyObject *>()) return {*p, true};
-    return any_as_wrap(std::move(out));
+    if (Debug) std::cout << "    - got the output " << out.type().name() << int(out.qualifier()) << std::endl;
+    if (auto p = out.target<Object &>()) return std::move(*p);
+    if (auto p = out.target<PyObject &>()) {std::cout << "fff" << std::endl;}
+    // if (auto p = out.target<PyObject * &>()) return {*p, true};
+    return any_as_variable(std::move(out));
 }
 
 PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept {
@@ -476,7 +498,8 @@ int function_init(PyObject *self, PyObject *args, PyObject *kws) noexcept {
     return 0;
 }
 
-PyTypeObject FunctionType = {
+template <>
+PyTypeObject Holder<Function>::type = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name = "cpy.Function",
     .tp_basicsize = sizeof(Holder<Function>),
@@ -498,7 +521,7 @@ bool attach_type(Object const &m, char const *name, PyTypeObject *t) noexcept {
 }
 
 bool attach(Object const &m, char const *name, Object o) noexcept {
-    return o && PyDict_SetItemString(+m, name, +o) >= 0;
+    return o && PyDict_SetItemString(m, name, o) >= 0;
 }
 
 /******************************************************************************/
@@ -509,26 +532,26 @@ Object initialize(Document const &doc) {
         if (p.second) type_names.emplace(p.first, p.first.name());//p.second->first);
 
 
-    bool ok = attach_type(m, "Value", &WrapType)
-        && attach_type(m, "Function", &FunctionType)
-        && attach_type(m, "TypeIndex", &TypeIndexType)
+    bool ok = attach_type(m, "Variable", type_object<Variable>())
+        && attach_type(m, "Function", type_object<Function>())
+        && attach_type(m, "TypeIndex", type_object<std::type_index>())
             // Tuple[Tuple[int, TypeIndex, int], ...]
         && attach(m, "scalars", map_as_tuple(scalars, [](auto const &x) {
-            return args_as_tuple(as_int(Reference(static_cast<Integer>(std::get<0>(x)))),
-                                 as_type_index(Reference(std::get<1>(x))),
-                                 as_int(Reference(std::get<2>(x))));
+            return args_as_tuple(as_int(Variable(static_cast<Integer>(std::get<0>(x)))),
+                                 as_type_index(Variable(std::get<1>(x))),
+                                 as_int(Variable(std::get<2>(x))));
         }))
             // Tuple[Tuple[TypeIndex, Tuple[Tuple[str, function], ...]], ...]
         && attach(m, "contents", map_as_tuple(doc.contents, [](auto const &x) {
             Object o;
-            if (auto p = x.second.template target<Function>()) o = as_object(std::move(*p));
-            else if (auto p = x.second.template target<std::type_index>()) o = as_object(std::move(*p));
-            else if (auto p = x.second.template target<TypeData>()) o = args_as_tuple(
-                map_as_tuple(p->methods, [](auto const &x) {return args_as_tuple(as_str(Reference(x.first)), as_object(x.second));}),
-                map_as_tuple(p->data, [](auto const &x) {return args_as_tuple(as_object(x.first), any_as_wrap(x.second));})
+            if (auto p = x.second.template target<Function const &>()) o = as_object(*p);
+            else if (auto p = x.second.template target<std::type_index const &>()) o = as_object(*p);
+            else if (auto p = x.second.template target<TypeData const &>()) o = args_as_tuple(
+                map_as_tuple(p->methods, [](auto const &x) {return args_as_tuple(as_str(Variable(x.first)), as_object(x.second));}),
+                map_as_tuple(p->data, [](auto const &x) {return args_as_tuple(as_object(x.first), any_as_variable(x.second));})
             );
-            else o = any_as_wrap(x.second);
-            return args_as_tuple(as_str(Reference(x.first)), std::move(o));
+            else o = any_as_variable(x.second);
+            return args_as_tuple(as_str(Variable(x.first)), std::move(o));
         }))
         && attach(m, "set_conversion", as_object(Function().emplace([](Object t, Object o) {
             std::cout << "insert " << (t == o) << (+t == Py_None) << std::endl;

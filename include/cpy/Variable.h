@@ -38,31 +38,56 @@ class Variable;
 
 /******************************************************************************/
 
-enum class ActionType : unsigned char {destroy, copy, move, make_value, make_reference};
 
+enum class ActionType : unsigned char {destroy, copy, move, make_value, make_reference};
 using ActionFunction = void *(*)(ActionType, void *, Variable *);
+// destroy: delete the ptr
+// copy: return a new ptr holding a copy
+// copy: return a new ptr holding a move
+// make_value: assign the fields in the Variable pointer
+// make_reference: return a pointer to the requested type
 
 /******************************************************************************/
 
-struct Variable {
+template <class T>
+struct SameType {using type=T;};
+
+/******************************************************************************/
+
+class Variable {
+
+    template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
+    std::remove_reference_t<T> *target(Type<T> t, Qualifier q) const {
+        if (std::is_rvalue_reference_v<T>)
+            return (idx == +t && q == Qualifier::R) ? static_cast<std::remove_reference_t<T> *>(ptr) : nullptr;
+        else if (std::is_const_v<std::remove_reference_t<T>>)
+            return (idx == +t) ? static_cast<std::remove_reference_t<T> *>(ptr) : nullptr;
+        else // Qualifier assumed not to be V
+            return (idx == +t && q == Qualifier::L) ? static_cast<std::remove_reference_t<T> *>(ptr) : nullptr;
+    }
+
+public:
     Variable(void *p, std::type_index t, ActionFunction f, Qualifier q)
         : ptr(p), idx(t), fun(f), qual(q) {}
-// public:
+
     void *ptr = nullptr;
     std::type_index idx = typeid(void);
     ActionFunction fun = nullptr;
     Qualifier qual;
 
+    bool valued() const {return ptr && qual == Qualifier::V;}
+
     Variable() = default;
 
     // template <class V, std::enable_if_t<std::is_same_v<no_qualifier<V>, Variable>, int> = 0>
-    // explicit Variable(V &&v) : Info{static_cast<V &&>(v)}, qual(::cpy::qualifier<V &&>) {}
+    // explicit Variable(V &&v) : Info{static_cast<V &&>(v)}, qual(qualifier_of<V &&>) {}
 
-    // template <class T, std::enable_if_t<!std::is_base_of_v<Info, no_qualifier<T>>, int> = 0>
-    // explicit Variable(T &&t) : Info{const_cast<no_qualifier<T> *>(static_cast<no_qualifier<T> const *>(std::addressof(t))),
-    //                                  typeid(no_qualifier<T>), Action<no_qualifier<T>>::apply}, qual(::cpy::qualifier<T &&>) {}
-    template <class T, class ...Ts>
-    Variable(Type<T> t, Ts &&...ts) : Variable(new T(static_cast<Ts &&>(ts)...), typeid(T), Action<T>::apply, Qualifier::V) {
+    template <class T, std::enable_if_t<!(std::is_same_v<std::decay_t<T>, T>), int> = 0>
+    Variable(Type<T>, typename SameType<T>::type t) : Variable(
+        const_cast<void *>(static_cast<void const *>(std::addressof(t))), typeid(T), Action<std::decay_t<T>>::apply, qualifier_of<T>) {}
+
+    template <class T, class ...Ts, std::enable_if_t<(std::is_same_v<std::decay_t<T>, T>), int> = 0>
+    Variable(Type<T>, Ts &&...ts) : Variable(new T(static_cast<Ts &&>(ts)...), typeid(T), Action<T>::apply, Qualifier::V) {
             static_assert(std::is_same_v<no_qualifier<T>, T>);
             static_assert(!std::is_same_v<no_qualifier<T>, Variable>);
             static_assert(!std::is_same_v<no_qualifier<T>, void *>);
@@ -74,27 +99,32 @@ struct Variable {
         static_assert(!std::is_same_v<no_qualifier<T>, void *>);
     }
 
-    Variable(Variable &&v) noexcept : Variable(std::exchange(v.ptr, nullptr), std::exchange(v.idx, typeid(void)), v.fun, v.qual) {}
+    /// Take variables and reset the old ones
+    Variable(Variable &&v) noexcept : Variable(std::exchange(v.ptr, nullptr), std::exchange(v.idx, typeid(void)),
+                                               v.fun, std::exchange(v.qual, Qualifier::V)) {}
 
-    Variable(Variable const &v) : Variable(v.ptr ? v.fun(ActionType::copy, v.ptr, nullptr) : nullptr, v.idx, v.fun, v.qual) {}
+    /// Only call variable copy constructor if bool() and not reference
+    Variable(Variable const &v) : Variable(v.valued() ? v.fun(ActionType::copy, v.ptr, nullptr) : v.ptr, v.idx, v.fun, v.qual) {}
 
     Variable & operator=(Variable &&v) noexcept {
-        if (ptr) fun(ActionType::destroy, ptr, nullptr);
+        if (valued()) fun(ActionType::destroy, ptr, nullptr);
         ptr = std::exchange(v.ptr, nullptr);
         idx = std::exchange(v.idx, typeid(void));
         fun = v.fun;
+        qual = std::exchange(v.qual, Qualifier::V);
         return *this;
     }
 
     Variable & operator=(Variable const &v) {
-        if (ptr) fun(ActionType::destroy, ptr, nullptr);
-        ptr = v.ptr ? v.fun(ActionType::copy, v.ptr, nullptr) : nullptr;
+        if (valued()) fun(ActionType::destroy, ptr, nullptr);
+        ptr = v.valued() ? v.fun(ActionType::copy, v.ptr, nullptr) : v.ptr;
         idx = v.idx;
         fun = v.fun;
+        qual = v.qual;
         return *this;
     }
 
-    ~Variable() {if (ptr && qual == Qualifier::V) fun(ActionType::destroy, ptr, nullptr);}
+    ~Variable() {if (valued()) fun(ActionType::destroy, ptr, nullptr);}
 
     explicit constexpr operator bool() const {return ptr;}
     constexpr bool has_value() const {return ptr;}
@@ -113,26 +143,15 @@ struct Variable {
     template <class T>
     std::remove_reference_t<T> *request_reference(Type<T> t={}) const;
 
-    template <class T>
-    T *target() {return idx == typeid(T) ? static_cast<T *>(ptr) : nullptr;}
-
-    template <class T>
-    T const *target() const {return idx == typeid(T) ? static_cast<T const *>(ptr) : nullptr;}
-
     // return pointer to target if it is trivially convertible to requested type
     template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
-    std::remove_reference_t<T> *target(Type<T> t={}) const {
-        if (std::is_rvalue_reference_v<T>)
-            return (idx == +t && qual == Qualifier::R) ? static_cast<std::remove_reference_t<T> *>(ptr) : nullptr;
-        else if (std::is_const_v<std::remove_reference_t<T>>)
-            return (idx == +t) ? static_cast<std::remove_reference_t<T> *>(ptr) : nullptr;
-        else
-            return (idx == +t && qual == Qualifier::L) ? static_cast<std::remove_reference_t<T> *>(ptr) : nullptr;
+    std::remove_reference_t<T> *target(Type<T> t={}) const & {
+        return target(t, (qual == Qualifier::V) ? Qualifier::L : qual);
     }
 
-    Variable reference() const & {Variable out = *this; out.qualifier = Qualifier::C; return out;}
-    Variable reference() & {Variable out = *this; out.qualifier = Qualifier::L; return out;}
-    Variable reference() && {Variable out = *this; out.qualifier = Qualifier::R; return out;}
+    Variable reference() & {return {ptr, idx, fun, qual == Qualifier::V ? Qualifier::L : qual};}
+    Variable reference() const & {return {ptr, idx, fun, qual == Qualifier::V ? Qualifier::C : qual};}
+    Variable reference() && {return {ptr, idx, fun, qual == Qualifier::V ? Qualifier::R : qual};}
 };
 
 /******************************************************************************/
@@ -164,7 +183,7 @@ struct Action {
         else if (a == ActionType::make_value) {
             std::type_index t = out->idx;
             out->idx = typeid(void);
-            Qualifier q = static_cast<Variable *>(out)->qual;;
+            Qualifier q{static_cast<unsigned char>(reinterpret_cast<std::uintptr_t>(out->fun))};
             out->fun = nullptr;
             Response<T>()(*static_cast<Variable *>(out), *static_cast<T const *>(ptr), std::move(t));
         } else if (a == ActionType::make_reference) {
@@ -191,8 +210,8 @@ inline Variable Variable::request(std::type_index const t) const {
          static_cast<Variable &>(v) = {fun(ActionType::copy, ptr, nullptr), t, fun, Qualifier::V};
      } else {
          v.idx = t;
-         v.qual = Qualifier::C;
-         void * new_ptr = fun(ActionType::make_value, ptr, &v);
+         v.fun = reinterpret_cast<ActionFunction>(static_cast<std::uintptr_t>(Qualifier::C));
+         (void) fun(ActionType::make_value, ptr, &v);
     }
     if (v.idx != t) v = Variable();
     return v;
@@ -202,7 +221,8 @@ template <class T>
 std::optional<T> Variable::request(Type<T> t) const {
     std::optional<T> out;
     auto &&v = request(typeid(T));
-    if (auto p = v.target<T>()) out.emplace(std::move(*p));
+    if (auto p = v.target<T const &>()) out.emplace(*p);
+    return out;
 }
 
 template <class T>

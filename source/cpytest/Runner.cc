@@ -11,30 +11,30 @@ struct ValueHandler {
     Function fun;
     bool operator()(Event e, Scopes const &scopes, Logs &&logs) {
         auto out = fun(context, Integer(e), scopes, std::move(logs));
-        if (auto b = Reference(out).request<bool>()) return *b;
-        std::cout << "not bool " << Reference(out).type().name() << std::endl;
+        if (auto b = out.request<bool>()) return *b;
+        std::cout << "not bool " << Variable(out).type().name() << std::endl;
         return true;
     }
 };
 
 struct ValueTest {
     Function fun;
-    Value operator()(Context &ct, ArgPack args) const {
+    Variable operator()(Context &ct, ArgPack args) const {
         return fun(static_cast<Caller &>(ct), args);
     }
 };
 
 /******************************************************************************/
 
-Vector<Value> run_test(Caller &ct0, std::size_t i, Vector<Function> calls,
-                        Value args, bool cout, bool cerr) {
+Vector<Variable> run_test(Caller &ct0, std::size_t i, Vector<Function> calls,
+                        Variable args, bool cout, bool cerr) {
     auto const test = suite().at(i);
     if (!test.function) throw std::runtime_error("Test case has invalid Function");
     ArgPack pack;
-    if (auto p = args.target<Integer>())
+    if (auto p = args.target<Integer const &>())
         pack = test.parameters.at(*p);
     std::stringstream out, err;
-    Value return_value;
+    Variable return_value;
     double test_time = 0;
     Vector<Counter> counts(calls.size());
     for (auto &c : counts) c.store(0u);
@@ -62,7 +62,7 @@ Vector<Value> run_test(Caller &ct0, std::size_t i, Vector<Function> calls,
         test_time = std::chrono::duration<double>(Clock::now() - start).count();
     }
 
-    return {std::move(return_value), test_time, mapped<Value>(counts, [](auto const &i) {
+    return {std::move(return_value), test_time, mapped<Variable>(counts, [](auto const &i) {
         return i.load(std::memory_order_relaxed);
     }), out.str(), err.str()};
 }
@@ -80,10 +80,10 @@ bool make_document() {
     });
 
     doc.function("test_names", [] {
-        return mapped<Value>(suite(), [](auto &&x) {return x.name;});
+        return mapped<Variable>(suite(), [](auto &&x) {return x.name;});
     });
 
-    doc.function("test_info", [](std::size_t i) -> Vector<Value> {
+    doc.function("test_info", [](std::size_t i) -> Vector<Variable> {
         auto const &c = suite().at(i);
         return {c.name, c.comment.location.file, Integer(c.comment.location.line), c.comment.comment};
     });
@@ -92,11 +92,11 @@ bool make_document() {
         return suite().at(i).parameters.size();
     });
 
-    doc.function("add_value", [](std::string_view s, Value v) {
+    doc.function("add_value", [](std::string_view s, Variable v) {
         add_test(TestCase{std::string(s), {}, ValueAdaptor{std::move(v)}, {}});
     });
 
-    doc.function("run_test", [](Caller ct, std::size_t i, Vector<Function> calls, Value args, bool cout, bool cerr) {
+    doc.function("run_test", [](Caller ct, std::size_t i, Vector<Function> calls, Variable args, bool cout, bool cerr) {
         return run_test(ct, i, std::move(calls), std::move(args), cout, cerr);
     });
 

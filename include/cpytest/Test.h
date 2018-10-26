@@ -31,13 +31,13 @@ struct TestSignature<F, std::void_t<typename Signature<F>::return_type>> : Signa
 /******************************************************************************/
 
 template <class F, class ...Ts>
-Value context_invoke(std::true_type, F const &f, Context &c, Ts &&...ts) {
+Variable context_invoke(std::true_type, F const &f, Context &c, Ts &&...ts) {
     if (Debug) std::cout << "invoking with context" << std::endl;
     return value_invoke(f, c, static_cast<Ts &&>(ts)...);
 }
 
 template <class F, class ...Ts>
-Value context_invoke(std::false_type, F const &f, Context &c, Ts &&...ts) {
+Variable context_invoke(std::false_type, F const &f, Context &c, Ts &&...ts) {
     if (Debug) std::cout << "invoking context guard" << std::endl;
     return value_invoke(f, static_cast<Ts &&>(ts)...);
 }
@@ -50,7 +50,7 @@ struct TestAdaptor {
     using Sig = decltype(skip_head<1 + int(Ctx::value)>(TestSignature<F>()));
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
-    Value operator()(Context &ct, ArgPack args) {
+    Variable operator()(Context &ct, ArgPack args) {
         if (Debug) std::cout << typeid(Sig).name() << std::endl;
         if (Debug) std::cout << args.size() << std::endl;
         if (Debug) std::cout << Ctx::value << std::endl;
@@ -83,10 +83,10 @@ struct TestAdaptor {
 
 /******************************************************************************/
 
-/// Basic wrapper to make a fixed Value into a std::function
+/// Basic wrapper to make a fixed Variable into a std::function
 struct ValueAdaptor {
-    Value value;
-    Value operator()(Context &, ArgPack const &) const {return value;}
+    Variable value;
+    Variable operator()(Context &, ArgPack const &) const {return value;}
 };
 
 /******************************************************************************/
@@ -105,7 +105,7 @@ struct TestCaseComment {
 struct TestCase {
     std::string name;
     TestCaseComment comment;
-    std::function<Value(Context &, ArgPack)> function;
+    std::function<Variable(Context &, ArgPack)> function;
     Vector<ArgPack> parameters;
 };
 
@@ -165,17 +165,17 @@ struct AnonymousClosure {
 
 /// Call a registered unit test with type-erased arguments and output
 /// Throw std::runtime_error if test not found or test throws exception
-Value call(std::string_view s, Context c, ArgPack pack);
+Variable call(std::string_view s, Context c, ArgPack pack);
 
 /// Call a registered unit test with non-type-erased arguments and output
 template <class ...Ts>
-Value call(std::string_view s, Context c, Ts &&...ts) {
+Variable call(std::string_view s, Context c, Ts &&...ts) {
     return call(s, std::move(c), ArgPack{make_output(static_cast<Ts &&>(ts))...});
 }
 
 /// Get a stored value from its unit test name
-/// Throw std::runtime_error if test not found or test does not hold a Value
-Value get_value(std::string_view s);
+/// Throw std::runtime_error if test not found or test does not hold a Variable
+Variable get_value(std::string_view s);
 
 /******************************************************************************/
 

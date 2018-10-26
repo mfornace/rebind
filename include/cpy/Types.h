@@ -1,5 +1,5 @@
 #pragma once
-#include "Value.h"
+#include "Variable.h"
 #include "Conversions.h"
 #include <cstdlib>
 
@@ -40,8 +40,8 @@ struct ArrayData {
 /******************************************************************************/
 
 template <>
-struct Simplify<char const *> {
-    void operator()(Value &out, char const *s, std::type_index const &t) const {
+struct Response<char const *> {
+    void operator()(Variable &out, char const *s, std::type_index const &t) const {
         if (t == typeid(std::string_view))
             out = s ? std::string_view(s) : std::string_view();
         else
@@ -87,23 +87,23 @@ BinaryView make_binary_view(V const &v) {
 }
 
 template <>
-struct Simplify<BinaryData> {
-    void operator()(Value &out, BinaryData const &v, std::type_index t) const {
+struct Response<BinaryData> {
+    void operator()(Variable &out, BinaryData const &v, std::type_index t) const {
         if (t == typeid(BinaryView)) out = BinaryView(v.begin(), v.size());
         else out = Binary(v.begin(), v.size());
     }
 };
 
 template <>
-struct Simplify<BinaryView> {
-    void operator()(Value &out, BinaryView const &v, std::type_index) const {
+struct Response<BinaryView> {
+    void operator()(Variable &out, BinaryView const &v, std::type_index) const {
         out = Binary(v.begin(), v.size());
     }
 };
 
 template <>
 struct Request<BinaryView> {
-    BinaryView operator()(Reference const &r, Dispatch &msg) const {
+    BinaryView operator()(Variable const &r, Dispatch &msg) const {
         if (auto p = r.request<BinaryView>())
             return std::move(*p);
         if (auto p = r.request<BinaryData>())
@@ -114,7 +114,7 @@ struct Request<BinaryView> {
 
 template <>
 struct Request<BinaryData> {
-    BinaryData operator()(Reference const &r, Dispatch &msg) const {
+    BinaryData operator()(Variable const &r, Dispatch &msg) const {
         if (auto p = r.request<BinaryData>())
             return {p->data(), p->size()};
         throw msg.error("not convertible to BinaryData");
@@ -124,22 +124,22 @@ struct Request<BinaryData> {
 /******************************************************************************/
 
 template <class T>
-struct Simplify<T, std::enable_if_t<(std::is_integral_v<T>)>> {
-    void operator()(Value &out, T t, std::type_index i) const {
+struct Response<T, std::enable_if_t<(std::is_integral_v<T>)>> {
+    void operator()(Variable &out, T t, std::type_index i) const {
         if (i == typeid(Integer)) out = static_cast<Integer>(t);
     }
 };
 
 template <class T>
-struct Simplify<T, std::enable_if_t<(std::is_floating_point_v<T>)>> {
-    void operator()(Value &out, T t, std::type_index i) const {
+struct Response<T, std::enable_if_t<(std::is_floating_point_v<T>)>> {
+    void operator()(Variable &out, T t, std::type_index i) const {
         if (i == typeid(Real)) out = static_cast<Real>(t);
     }
 };
 
 template <class T>
 struct Request<T, std::enable_if_t<std::is_arithmetic_v<T>>> {
-    T operator()(Reference const &r, Dispatch &msg) const {
+    T operator()(Variable const &r, Dispatch &msg) const {
         if (Debug) std::cout << "convert to arithmetic" << std::endl;
         if (auto p = r.request<Real>())    return static_cast<T>(*p);
         if (auto p = r.request<Integer>()) return static_cast<T>(*p);
@@ -150,7 +150,7 @@ struct Request<T, std::enable_if_t<std::is_arithmetic_v<T>>> {
 
 template <class T, class Traits, class Alloc>
 struct Request<std::basic_string<T, Traits, Alloc>> {
-    std::basic_string<T, Traits, Alloc> operator()(Reference const &r, Dispatch &msg) const {
+    std::basic_string<T, Traits, Alloc> operator()(Variable const &r, Dispatch &msg) const {
         if (Debug) std::cout << "trying to convert to string" << std::endl;
         if (auto p = r.request<std::basic_string<T, Traits, Alloc>>())
             return std::move(*p);
@@ -164,7 +164,7 @@ struct Request<std::basic_string<T, Traits, Alloc>> {
 
 template <class T, class Traits>
 struct Request<std::basic_string_view<T, Traits>> {
-    std::basic_string_view<T, Traits> operator()(Reference const &r, Dispatch &msg) const {
+    std::basic_string_view<T, Traits> operator()(Variable const &r, Dispatch &msg) const {
         if (auto p = r.request<std::basic_string_view<T, Traits>>())
             return std::move(*p);
         throw msg.error("not convertible to string view", r.type(), typeid(T));
@@ -173,26 +173,26 @@ struct Request<std::basic_string_view<T, Traits>> {
 
 /******************************************************************************/
 
-using ArgPack = Vector<Reference>;
+using ArgPack = Vector<Variable>;
 
 /******************************************************************************/
 
 template <class V>
 struct SimplifyVector {
-    void operator()(Value &out, V v, std::type_index t) const {
-        if (t == typeid(Vector<Value>)) {
-            Vector<Value> o;
+    void operator()(Variable &out, V v, std::type_index t) const {
+        if (t == typeid(Vector<Variable>)) {
+            Vector<Variable> o;
             o.reserve(std::size(v));
             for (auto &&x : v) o.emplace_back(static_cast<decltype(x) &&>(x));
             out = std::move(o);
-        } else if (t == typeid(Vector<Reference>)) {
-            out = Vector<Reference>(std::begin(v), std::end(v));
+        } else if (t == typeid(Vector<Variable>)) {
+            out = Vector<Variable>(std::begin(v), std::end(v));
         }
     }
 };
 
 template <class T>
-struct Simplify<Vector<T>, std::enable_if_t<!std::is_same_v<T, Reference>>> : SimplifyVector<Vector<T>> {};
+struct Response<Vector<T>, std::enable_if_t<!std::is_same_v<T, Variable>>> : SimplifyVector<Vector<T>> {};
 
 /******************************************************************************/
 
@@ -206,16 +206,16 @@ struct VectorRequest {
         out.reserve(pack.size());
         msg.indices.emplace_back(0);
         for (auto &x : pack) {
-            out.emplace_back(downcast<T>(Reference(std::move(x)), msg));
+            out.emplace_back(downcast<T>(Variable(std::move(x)), msg));
             ++msg.indices.back();
         }
         msg.indices.pop_back();
         return out;
     }
 
-    V operator()(Reference const &r, Dispatch &msg) const {
-        if (auto p = r.request<Vector<Reference>>()) return get(*p, msg);
-        if (auto p = r.request<Vector<Value>>()) return get(*p, msg);
+    V operator()(Variable const &r, Dispatch &msg) const {
+        if (auto p = r.request<Vector<Variable>>()) return get(*p, msg);
+        if (auto p = r.request<Vector<Variable>>()) return get(*p, msg);
         throw msg.error("expected sequence", r.type(), typeid(V));
     }
 };
