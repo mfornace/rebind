@@ -1,11 +1,14 @@
 
 // #ifndef REQUIRE
-// #   define REQUIRE(cond, ...) require(glue(#cond, cond), ::cpy::line_number(__LINE__), ::cpy::file_name(__FILE__),  __VA_ARGS__)
+// #   define REQUIRE(cond, ...) require(glue(#cond, cond), ::lilwil::line_number(__LINE__), ::lilwil::file_name(__FILE__),  __VA_ARGS__)
 // #endif
 
 
 #define LILWIL_CAT_IMPL(s1, s2) s1##s2
 #define LILWIL_CAT(s1, s2) LILWIL_CAT_IMPL(s1, s2)
+
+#define LILWIL_STRING_IMPL(x) #x
+#define LILWIL_STRING(x) LILWIL_STRING_IMPL(x)
 
 #define LILWIL_HERE ::lilwil::file_line(__FILE__, __LINE__)
 #define LILWIL_COMMENT(...) ::lilwil::comment(__VA_ARGS__ "", __FILE__, __LINE__)

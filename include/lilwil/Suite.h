@@ -7,11 +7,9 @@ namespace lilwil {
 
 /******************************************************************************/
 
-template <class X>
-using Suite = std::deque<TestCase<X>>;
+using Suite = std::deque<TestCase>;
 
-template <class X>
-Suite<X> & suite();
+Suite & suite();
 
 struct Timer {
     Clock::time_point start;
@@ -20,9 +18,9 @@ struct Timer {
     ~Timer() {duration = std::chrono::duration<double>(Clock::now() - start).count();}
 };
 
-template <class X, class... Ts>
+template <class... Ts>
 void add_test(Ts &&...ts) {
-    suite<X>().emplace_back(static_cast<Ts &&>(ts)...);
+    suite().emplace_back(static_cast<Ts &&>(ts)...);
 }
 
 /******************************************************************************/

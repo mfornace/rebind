@@ -19,7 +19,7 @@ DELIMITER = '/'
 TRANSLATE = {'~~': u'\u2248\u2248'}
 
 class Event(enum.IntEnum):
-    '''Enum mirroring the libcpy C++ one'''
+    '''Enum mirroring the libwil C++ one'''
 
     failure = 0
     success = 1
@@ -104,8 +104,8 @@ def import_library(lib, name=None):
         raise e
 
 def import_suite(lib, name=None):
-    from cpy.build import render_module
-    from cpy import template
+    from lilwil.build import render_module
+    from lilwil import template
     lib = import_library(lib, name)
     [setattr(lib, k, getattr(template, k)) for k in dir(template) if not k.startswith('_')]
     return Suite(render_module(lib.__name__, lib.document))
@@ -165,7 +165,7 @@ def test_indices(names, exclude=False, tests=None, regex=''):
 def parametrized_indices(lib, indices, params=(None,), default=(None,)):
     '''
     Yield tuple of (index, parameter_pack) for each test to run
-        lib: the cpy library object
+        lib: the lilwil library object
         indices: the possible indices to yield from
         params: dict or list of specified parameters (e.g. from load_parameters())
     If params is not dict-like, it is assumed to give the default parameters for all tests.
@@ -257,7 +257,7 @@ def readable_logs(keys, values, indent):
 ################################################################################
 
 def readable_message(kind, scopes, logs, indent='    '):
-    '''Return readable string for a C++ cpy callback'''
+    '''Return readable string for a C++ lilwil callback'''
     keys, values = map(list, zip(*logs)) if logs else ((), ())
     return readable_header(keys, values, kind, scopes) + readable_logs(keys, values, indent)
 

@@ -5,11 +5,9 @@
 
 namespace lilwil {
 
-template <class X>
-using KeyPair = std::pair<std::string_view, X>;
+using KeyPair = std::pair<std::string_view, Value>;
 
-template <class X>
-using LogVec = Vector<KeyPair<X>>;
+using LogVec = Vector<KeyPair>;
 
 /******************************************************************************/
 
@@ -23,10 +21,10 @@ decltype(auto) unglue(T const &t) {return Ungluer<T>()(t);}
 
 /******************************************************************************/
 
-template <class X, class T, class=void>
+template <class T, class=void>
 struct AddKeyPairs {
-    void operator()(LogVec<X> &v, T const &t) const {v.emplace_back(KeyPair<T>{{}, t});}
-    void operator()(LogVec<X> &v, T &&t) const {v.emplace_back(KeyPair<T>{{}, std::move(t)});}
+    void operator()(LogVec &v, T const &t) const {v.emplace_back(KeyPair{{}, t});}
+    void operator()(LogVec &v, T &&t) const {v.emplace_back(KeyPair{{}, std::move(t)});}
 };
 
 /******************************************************************************/
@@ -59,10 +57,10 @@ struct Ungluer<Glue<K, V>> {
     decltype(auto) operator()(Glue<K, V> const &t) const {return Ungluer<V>()(t.value);}
 };
 
-template <class X, class K, class V>
-struct AddKeyPairs<X, Glue<K, V>> {
-    void operator()(LogVec<X> &v, Glue<K, V> const &g) const {
-        v.emplace_back(KeyPair<X>{g.key, g.value});
+template <class K, class V>
+struct AddKeyPairs<Value, Glue<K, V>> {
+    void operator()(LogVec &v, Glue<K, V> const &g) const {
+        v.emplace_back(KeyPair{g.key, g.value});
     }
 };
 
@@ -75,11 +73,11 @@ struct FileLine {
 
 inline constexpr auto file_line(char const *s, int i) {return FileLine{i, s};}
 
-template <class X>
-struct AddKeyPairs<X, FileLine> {
-    void operator()(LogVec<X> &v, FileLine const &g) const {
-        v.emplace_back(KeyPair<X>{"file", g.file});
-        v.emplace_back(KeyPair<X>{"line", static_cast<Integer>(g.line)});
+template <>
+struct AddKeyPairs<Value, FileLine> {
+    void operator()(LogVec &v, FileLine const &g) const {
+        v.emplace_back(KeyPair{"file", g.file});
+        v.emplace_back(KeyPair{"line", static_cast<Integer>(g.line)});
     }
 };
 
@@ -92,11 +90,11 @@ struct Comment {
 template <class T>
 Comment<T> comment(T t, char const *s, int i) {return {t, {i, s}};}
 
-template <class X, class T>
-struct AddKeyPairs<X, Comment<T>> {
-    void operator()(LogVec<X> &v, Comment<T> const &c) const {
-        AddKeyPairs<X, FileLine>()(v, c.location);
-        v.emplace_back(KeyPair<X>{"comment", c.comment});
+template <class T>
+struct AddKeyPairs<Value, Comment<T>> {
+    void operator()(LogVec &v, Comment<T> const &c) const {
+        AddKeyPairs<Value, FileLine>()(v, c.location);
+        v.emplace_back(KeyPair{"comment", c.comment});
     }
 };
 
@@ -114,12 +112,12 @@ ComparisonGlue<L const &, R const &> comparison_glue(L const &l, R const &r, cha
     return {l, r, op};
 }
 
-template <class X, class L, class R>
-struct AddKeyPairs<X, ComparisonGlue<L, R>> {
-    void operator()(LogVec<X> &v, ComparisonGlue<L, R> const &t) const {
-        v.emplace_back(KeyPair<X>{"__lhs", t.lhs});
-        v.emplace_back(KeyPair<X>{"__rhs", t.rhs});
-        v.emplace_back(KeyPair<X>{"__op", std::string_view(t.op)});
+template <class L, class R>
+struct AddKeyPairs<Value, ComparisonGlue<L, R>> {
+    void operator()(LogVec &v, ComparisonGlue<L, R> const &t) const {
+        v.emplace_back(KeyPair{"__lhs", t.lhs});
+        v.emplace_back(KeyPair{"__rhs", t.rhs});
+        v.emplace_back(KeyPair{"__op", std::string_view(t.op)});
     }
 };
 

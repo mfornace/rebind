@@ -4,7 +4,6 @@
 #include "Value.h"
 
 #include <cpy/Signature.h>
-#include <cpy/Variable.h>
 #include <functional>
 #include <atomic>
 #include <chrono>
@@ -21,30 +20,30 @@ using Scopes = Vector<std::string>;
 
 using Clock = std::chrono::high_resolution_clock;
 
-template <class X>
-using Handler = std::function<bool(Event, Scopes const &, LogVec<X> &&)>;
+using Handler = std::function<bool(Event, Scopes const &, LogVec &&)>;
 
 using Counter = std::atomic<std::size_t>;
 
 /******************************************************************************/
 
-template <class X>
 struct Context {
     /// Vector of Handlers for each registered Event
-    Vector<Handler<X>> handlers;
+    Vector<Handler> handlers;
     /// Vector of strings making up the current Context scope
     Scopes scopes;
     /// Keypairs that have been logged prior to an event being called
-    LogVec<X> logs;
+    LogVec logs;
     /// Start time of the current test case or section
     typename Clock::time_point start_time;
     /// Possibly null handle to a vector of atomic counters for each Event. Test runner has responsibility for lifetime
     Vector<Counter> *counters = nullptr;
+    /// Metadata for use by handlers
+    void *metadata = nullptr;
 
     Context() = default;
 
     /// Opens a Context and sets the start_time to the current time
-    Context(Scopes s, Vector<Handler<X>> h, Vector<Counter> *c=nullptr);
+    Context(Scopes s, Vector<Handler> h, Vector<Counter> *c=nullptr, void *metadata=nullptr);
 
     /// Opens a new section with a reset start_time
     template <class F, class ...Ts>
@@ -63,13 +62,13 @@ struct Context {
 
     template <class T>
     Context & info(T &&t) {
-        AddKeyPairs<X, std::decay_t<T>>()(logs, static_cast<T &&>(t));
+        AddKeyPairs<std::decay_t<T>>()(logs, static_cast<T &&>(t));
         return *this;
     }
 
     template <class K, class V>
     Context & info(K &&k, V &&v) {
-        logs.emplace_back(KeyPair<X>{static_cast<K &&>(k), static_cast<V &&>(v)});
+        logs.emplace_back(KeyPair{static_cast<K &&>(k), static_cast<V &&>(v)});
         return *this;
     }
 
@@ -80,7 +79,7 @@ struct Context {
         return *this;
     }
 
-    Context & operator()(std::initializer_list<KeyPair<X>> const &v) {
+    Context & operator()(std::initializer_list<KeyPair> const &v) {
         logs.insert(logs.end(), v.begin(), v.end());
         return *this;
     }

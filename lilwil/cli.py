@@ -4,9 +4,9 @@ from .common import ExitStack, Suite, test_indices, parametrized_indices
 
 ################################################################################
 
-def parser(prog='cpy', lib='libcpy', description='Run C++ unit tests from Python with the cpy library', **kwargs):
+def parser(prog='lilwil', lib='libwil', description='Run C++ unit tests from Python with the lilwil library', **kwargs):
     '''
-    Return an ArgumentParser for cpy tests. Parameters:
+    Return an ArgumentParser for lilwil tests. Parameters:
         prog: program name that is shown with --help
         lib: default library path
         description: description that is shown with --help
@@ -28,7 +28,7 @@ def parser(prog='cpy', lib='libcpy', description='Run C++ unit tests from Python
     o(p, str, '', 'tests', nargs='*',  help='test names (if not given, specifies all tests)')
 
     t = p.add_argument_group('output options')
-    s(t, '--quiet',            '-q', help='prevent command line output (from cpy at least)')
+    s(t, '--quiet',            '-q', help='prevent command line output (from lilwil at least)')
     s(t, '--failure',          '-f', help='show failures')
     s(t, '--success',          '-s', help='show successes')
     s(t, '--exception',        '-e', help='show exceptions')
@@ -42,7 +42,7 @@ def parser(prog='cpy', lib='libcpy', description='Run C++ unit tests from Python
     r = p.add_argument_group('reporter options')
     o(r, str, 'PATH', '--xml',         help="XML file path")
     o(r, str, 'MODE', '--xml-mode',    help="XML file open mode (default 'a+b')", default='a+b')
-    o(r, str, 'NAME', '--suite',       help="test suite output name (default 'cpy')", default='cpy')
+    o(r, str, 'NAME', '--suite',       help="test suite output name (default 'lilwil')", default='lilwil')
     o(r, str, 'PATH', '--teamcity',    help="TeamCity file path")
     o(r, str, 'PATH', '--json',        help="JSON file path")
     o(r, int, 'INT',  '--json-indent', help="JSON indentation (default None)")
@@ -81,11 +81,11 @@ def run_suite(lib, keypairs, masks, gil, cout, cerr, exe=map):
 
 ################################################################################
 
-def main(run=run_suite, lib='libcpy', list=False, failure=False, success=False, brief=False,
+def main(run=run_suite, lib='libwil', list=False, failure=False, success=False, brief=False,
     exception=False, timing=False, quiet=False, capture=False, gil=False, exclude=False,
-    no_color=False, regex=None, out='stdout', out_mode='w', xml=None, xml_mode='a+b', suite='cpy',
+    no_color=False, regex=None, out='stdout', out_mode='w', xml=None, xml_mode='a+b', suite='lilwil',
     teamcity=None, json=None, json_indent=None, jobs=0, tests=None, params=None, skip=False):
-    '''Main non-argparse function for running a subset of cpy tests with given options'''
+    '''Main non-argparse function for running a subset of lilwil tests with given options'''
 
     lib = import_suite(lib)
     indices = test_indices(lib.test_names(), exclude, tests, regex)

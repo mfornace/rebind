@@ -1,12 +1,11 @@
 #include <lilwil/Test.h>
 #include <lilwil/Macros.h>
-#include <cpy/Types.h>
 #include <iostream>
 #include <any>
 #include <complex>
 #include <shared_mutex>
 
-using Context = lilwil::Context<cpy::Variable>;
+using namespace lilwil;
 
 template <class T>
 using SizeOf = std::integral_constant<std::size_t, sizeof(T)>;
@@ -27,7 +26,7 @@ struct goo {
 
 /******************************************************************************/
 
-auto test1 = lilwil::unit_test<cpy::Variable>("test-1", COMMENT("This is a test"), [](Context ct) {
+auto test1 = unit_test("test-1", COMMENT("This is a test"), [](Context ct) {
     ct("a message");
     int n = ct.section("new-section", [](Context ct) {
         ct.equal(3, 4);
@@ -64,9 +63,9 @@ UNIT_TEST("test-2", "This is a test 2") = [](Context ct) {
 
     // std::cout << sizeof(bool)  << " sizeof(bool) " << std::endl;
     // std::cout << sizeof(std::any)  << " sizeof(std::any) " << std::endl;
-    // std::cout << sizeof(lilwil::Integer)  << " sizeof(Integer) " << std::endl;
-    // std::cout << sizeof(lilwil::Real)  << " sizeof(Real) " << std::endl;
-    // std::cout << sizeof(std::complex<lilwil::Real>)  << " sizeof(std::complex<Real>) " << std::endl;
+    // std::cout << sizeof(Integer)  << " sizeof(Integer) " << std::endl;
+    // std::cout << sizeof(Real)  << " sizeof(Real) " << std::endl;
+    // std::cout << sizeof(std::complex<Real>)  << " sizeof(std::complex<Real>) " << std::endl;
     // std::cout << sizeof(std::string)  << " sizeof(std::string) " << std::endl;
     // std::cout << sizeof(std::string_view) << " sizeof(std::string_view)" << std::endl;
     // std::cout << sizeof(cpy::Variable) << " sizeof(Variable)" << std::endl;
@@ -78,7 +77,7 @@ UNIT_TEST("test-2", "This is a test 2") = [](Context ct) {
 
 UNIT_TEST("test-3") = [](auto ct) {
     std::cout << "ok1" << std::endl;
-    std::cout << cpy::downcast<double>(lilwil::get_value<cpy::Variable>("max_time")) << std::endl;
+    std::cout << get_value("max_time").convert() << std::endl;
     std::cout << "ok2" << std::endl;
     throw std::runtime_error("runtime_error: uh oh");
 };
@@ -86,24 +85,24 @@ UNIT_TEST("test-3") = [](auto ct) {
 UNIT_TEST("test-4") = [](Context ct, goo const &) {
     // return goo();
     ct.equal(5, 5);
-    throw lilwil::Skip("this test is skipped");
+    throw Skip("this test is skipped");
 };
 
 void each(double) {}
 
-// void each(lilwil::KeyPair) {}
+// void each(KeyPair) {}
 
-// template <class T=lilwil::KeyPair>
+// template <class T=KeyPair>
 // void test_var(T t) {each(t);}
 
-// template <class T=lilwil::KeyPair, class U=lilwil::KeyPair>
+// template <class T=KeyPair, class U=KeyPair>
 // void test_var(T t, U u) {each(t); each(u);}
 
 
 // template <class ...Ts>
 // void test_var2(Ts ...ts) {(each(ts), ...);}
 
-// template <class T=std::initializer_list<lilwil::KeyPair>>
+// template <class T=std::initializer_list<KeyPair>>
 // void test_var2(T t) {for (auto i: t) each(std::move(i));}
 
 // UNIT_TEST("test-5") = [](auto ct) {

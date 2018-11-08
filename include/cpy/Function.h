@@ -99,7 +99,7 @@ struct Callback {
 
 /// Invoke a function and arguments, storing output in a Variable if it doesn't return void
 template <class F, class ...Ts>
-Variable value_invoke(F const &f, Ts &&... ts) {
+Variable variable_invoke(F const &f, Ts &&... ts) {
     using O = std::remove_cv_t<std::invoke_result_t<F, Ts...>>;
     if (Debug) std::cout << "    -- making output " << typeid(Type<O>).name() << std::endl;
     if constexpr(std::is_same_v<void, O>) {
@@ -111,7 +111,7 @@ Variable value_invoke(F const &f, Ts &&... ts) {
 template <class F, class ...Ts>
 Variable caller_invoke(std::true_type, F const &f, Caller &&c, Ts &&...ts) {
     if (Debug) std::cout << "    - invoking with context" << std::endl;
-    return value_invoke(f, std::move(c)(), static_cast<Ts &&>(ts)...);
+    return variable_invoke(f, std::move(c)(), static_cast<Ts &&>(ts)...);
 }
 
 template <class F, class ...Ts>
@@ -119,7 +119,7 @@ Variable caller_invoke(std::false_type, F const &f, Caller &&c, Ts &&...ts) {
     if (Debug) std::cout << "    - invoking context guard" << std::endl;
     auto new_frame = std::move(c)();
     if (Debug) std::cout << "    - invoked context guard" << std::endl;
-    return value_invoke(f, static_cast<Ts &&>(ts)...);
+    return variable_invoke(f, static_cast<Ts &&>(ts)...);
 }
 
 /******************************************************************************/

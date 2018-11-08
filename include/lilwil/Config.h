@@ -4,9 +4,6 @@
 
 namespace lilwil {
 
-// template <class=void>
-// struct ValueType {using type = int;};
-
 template <class T>
 struct VectorType {using type = std::vector<T>;};
 
@@ -14,6 +11,8 @@ template <class T>
 using Vector = typename VectorType<T>::type;
 
 using Integer = std::ptrdiff_t;
+
+using Real = double;
 
 struct ClientError : std::exception {
     std::string_view message;
