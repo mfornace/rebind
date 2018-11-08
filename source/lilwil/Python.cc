@@ -30,7 +30,7 @@ PythonError python_error() noexcept {
 
 bool from_python(Value &v, Object o) {
     if (+o == Py_None) {
-        // v = std::monostate();
+        v = Value();
     } else if (PyBool_Check(+o)) {
         v = (+o == Py_True) ? true : false;
     } else if (PyLong_Check(+o)) {
@@ -54,9 +54,9 @@ bool from_python(Value &v, Object o) {
 #endif
         if (c) v = std::string(static_cast<char const *>(c), size);
         else return false;
-    } else if (PyObject_CheckBuffer(+o)) {
+    // } else if (PyObject_CheckBuffer(+o)) {
 // hmm
-    } else if (PyMemoryView_Check(+o)) {
+    // } else if (PyMemoryView_Check(+o)) {
 // hmm
     } else {
         PyErr_SetString(PyExc_TypeError, "Invalid type for conversion to C++");

@@ -83,8 +83,18 @@ template <class T, class Alloc>
 Object to_python(std::vector<T, Alloc> const &v) {return to_tuple(v);}
 
 template <class T, std::enable_if_t<std::is_same_v<T, Value>, int> = 0>
-Object to_python(T const &s) noexcept {
-    return {Py_None, true};
+Object to_python(T const &v) noexcept {
+    if (!v.has_value()) return {Py_None, true};
+    if (auto p = v.template target<bool>()) return to_python(*p);
+    if (auto p = v.template target<float>()) return to_python(*p);
+    if (auto p = v.template target<double>()) return to_python(*p);
+    if (auto p = v.template target<std::string_view>()) return to_python(*p);
+    if (auto p = v.template target<std::string>()) return to_python(*p);
+    if (auto p = v.template target<std::wstring>()) return to_python(*p);
+    if (auto p = v.template target<std::wstring_view>()) return to_python(*p);
+    if (auto p = v.template target<char const *>()) return to_python(*p);
+    if (auto p = v.template target<Integer>()) return to_python(*p);
+    return to_python(v.convert());
     // return std::visit([](auto const &x) {return to_python(x);}, s.var);
 }
 
