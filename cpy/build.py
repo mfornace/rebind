@@ -1,4 +1,4 @@
-import sys, types, importlib, functools, inspect, logging, enum, typing
+import sys, types, importlib, functools, inspect, logging, enum, typing, atexit
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -26,6 +26,11 @@ def render_scalars(info):
             'int32':   find(Scalar.Signed, 32),
             'int64':   find(Scalar.Signed, 64)}
 
+def finalize(func):
+    '''Finalize C++ held Python objects from cpy'''
+    log.info('cleaning up Python C++ resources')
+    func()
+
 def render_module(pkg: str, doc: dict):
     log.info('rendering document into module %s', repr(pkg))
     out = doc.copy()
@@ -44,6 +49,8 @@ def render_module(pkg: str, doc: dict):
     for k, v in out.items():
         setattr(mod, k, v)
     log.info('finished rendering document into module %s', repr(pkg))
+
+    atexit.register(finalize, doc['_finalize'])
 
     return out
 
@@ -69,8 +76,12 @@ def signatures(function):
 translations = {'{}': '__str__', '[]': '__getitem__', '()': '__call__'}
 
 def split_module(pkg, name):
-    x, y = '{}.{}'.format(pkg, name).rsplit('.', maxsplit=1)
-    return importlib.import_module(x), y
+    for i in range(1, 10):
+        x, y = '{}.{}'.format(pkg, name).rsplit('.', maxsplit=i)
+        try:
+            return importlib.import_module(x), y
+        except ModuleNotFoundError:
+            pass
 
 def set_global_type(pkg: str, bases: tuple, name: str, methods, lookup={}):
     '''Define a new type in pkg'''
@@ -107,8 +118,7 @@ def set_global_type(pkg: str, bases: tuple, name: str, methods, lookup={}):
                 if _return is not None:
                     ret = eval_type(typing._type_check(_return, 'expected type'), globalns, {})
                     out = out.request(ret)
-                out._set_ward(self)
-                return out
+                return out._set_ward(self)
 
             def setter(self, other, _old=v, _return=old):
                 print('setting')
@@ -175,9 +185,9 @@ def dispatch(fun, old, globalns={}, localns={}):
     elif sig.return_annotation is inspect._empty:
         def bound(*args, _orig=fun, _bind=sig.bind, gil=None, **kwargs):
             x = _bind(*args, **kwargs).args
-            for x, p in zip(x, sig.parameters.values()):
-                print('aaa', x, p)
-            print(x, sig.parameters)
+            # for x, p in zip(x, sig.parameters.values()):
+            #     print('aaa', x, p)
+            # print(x, sig.parameters)
             return _orig(*_bind(*args, **kwargs).args) or None
     else:
         ret = eval_type(typing._type_check(sig.return_annotation, 'expected type'), globalns, localns)

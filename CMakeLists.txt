@@ -37,7 +37,7 @@ target_include_directories(cpy_interface INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/i
 # Maybe change in future to user provided interface library?
 add_library(libcpy STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/source/cpy/Value.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/cpytest/Source.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/lilwil/Source.cc
 )
 set_target_properties(libcpy PROPERTIES OUTPUT_NAME cpy ${CPY_STATIC_PROPERTIES})
 target_link_libraries(libcpy PUBLIC cpy_interface)
@@ -47,12 +47,12 @@ target_link_libraries(libcpy PUBLIC cpy_interface)
 # Module.cc has to be recompiled based on the exported module name
 # Could just build Python.cc as its own library, but here it's built together with Module.cc
 set_property(GLOBAL PROPERTY cpy_module_files
-    # ${CMAKE_CURRENT_SOURCE_DIR}/source/cpytest/Module.cc
+    # ${CMAKE_CURRENT_SOURCE_DIR}/source/lilwil/Module.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/source/cpy/Python.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/source/cpy/Module.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/source/cpy/Globals.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/cpytest/Runner.cc
-    # ${CMAKE_CURRENT_SOURCE_DIR}/source/cpytest/Python.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/lilwil/Runner.cc
+    # ${CMAKE_CURRENT_SOURCE_DIR}/source/lilwil/Python.cc
 )
 
 function(cpy_module module_name)
@@ -73,7 +73,7 @@ endfunction(cpy_module)
 
 ################################################################################
 
-add_library(testcpy SHARED EXCLUDE_FROM_ALL source/Test.cc source/cpytest/Runner.cc)
+add_library(testcpy SHARED EXCLUDE_FROM_ALL source/Test.cc source/lilwil/Runner.cc)
 set_property(TARGET testcpy PROPERTY OUTPUT_NAME test)
 target_link_libraries(testcpy PRIVATE libcpy)
 cpy_module(mymodule testcpy)

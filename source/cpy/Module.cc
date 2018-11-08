@@ -6,6 +6,7 @@
 #include <cpy/Document.h>
 #include <any>
 #include <iostream>
+#include <numeric>
 
 #ifndef CPY_MODULE
 #   define CPY_MODULE libcpy
@@ -213,8 +214,8 @@ Object any_as_variable(T &&t) {
 }
 
 Object as_variable(Variable &&v, Object const &t) {
-    auto x = t ? +t : reinterpret_cast<PyObject *>(type_object<Variable>);
-    auto o = Object::from((x == reinterpret_cast<PyObject *>(type_object<Variable>)) ?
+    PyObject * x = t ? +t : type_object<Variable>();
+    auto o = Object::from((x == type_object<Variable>()) ?
         PyObject_CallObject(x, nullptr) : PyObject_CallMethod(x, "__new__", "O", x));
 
     if (Debug) std::cout << "    -- making variable " << static_cast<int>(v.qualifier()) << " " << v.name() << std::endl;
@@ -284,6 +285,7 @@ Object as_float(Variable &&ref, Object const &t={}) {
 }
 
 Object as_str(Variable &&ref, Object const &t={}) {
+    if (Debug) std::cout << "converting " << ref.name() << " to str" << std::endl;
     if (auto p = ref.request<std::string_view>()) return as_object(std::move(*p));
     if (auto p = ref.request<std::string>()) return as_object(std::move(*p));
     if (auto p = ref.request<std::wstring_view>())
@@ -309,7 +311,29 @@ Object as_function(Variable &&ref, Object const &t={}) {
     else return {};
 }
 
+Object as_memory(Variable &&ref, Object const &t={}) {
+    if (auto p = ref.request<ArrayData>()) {
+        Py_buffer view;
+        view.buf = p->data;
+        view.obj = nullptr;
+        view.itemsize = Buffer::itemsize(p->type);
+        if (p->shape.empty()) view.len = 0;
+        else view.len = std::accumulate(p->shape.begin(), p->shape.end(), view.itemsize, std::multiplies<>());
+        view.readonly = !p->mutate;
+        view.format = const_cast<char *>(Buffer::format(p->type).data());
+        view.ndim = p->shape.size();
+        std::vector<Py_ssize_t> shape(p->shape.begin(), p->shape.end());
+        std::vector<Py_ssize_t> strides(p->strides.begin(), p->strides.end());
+        for (auto &s : strides) s *= view.itemsize;
+        view.shape = shape.data();
+        view.strides = strides.data();
+        view.suboffsets = nullptr;
+        return {PyMemoryView_FromBuffer(&view), false};
+    } else return {};
+}
+
 Object as_value(Variable &&v, Object const &t={}) {
+    auto const name = v.name();
     if (auto p = cast_if<std::type_index>(t)) {
         std::cout << "not done" << std::endl;
         // if (auto var = std::move(v).request(*p)) return as_variable(std::move(var));
@@ -334,12 +358,19 @@ Object as_value(Variable &&v, Object const &t={}) {
     else if (is_subclass(type, type_object<Variable>()))        out = as_variable(std::move(v), t);
     else if (is_subclass(type, type_object<Function>()))        out = as_function(std::move(v), t);
     else if (is_subclass(type, &PyFunction_Type))               out = as_function(std::move(v), t);
-    else if (auto p = type_conversions.find(t); p != type_conversions.end()) {
-        Object o = as_variable(std::move(v));
-        if (!o) return type_error("bad");
-        return Object::from(PyObject_CallFunctionObjArgs(+p->second, +o, nullptr));
+    else if (is_subclass(type, &PyMemoryView_Type))             out = as_memory(std::move(v), t);
+    else {
+        std::cout << "custom convert " << type_conversions.size() << std::endl;
+        if (auto p = type_conversions.find(t); p != type_conversions.end()) {
+            if (Debug) std::cout << " conversion " << std::endl;
+            Object o = as_variable(std::move(v));
+            if (Debug) std::cout << " did something " << bool(o) << std::endl;
+            if (!o) return type_error("bad");
+            std::cout << "calling function" << std::endl;
+            return Object::from(PyObject_CallFunctionObjArgs(+p->second, +o, nullptr));
+        }
     }
-    if (!out) return type_error("cannot convert value to type %R", +t);
+    if (!out) return type_error("cannot convert value to type %R from type %s", +t, name);
     return out;
 }
 
@@ -393,7 +424,7 @@ PyObject * var_set_ward(PyObject *self, PyObject *args) noexcept {
                 root = p->ward;
             }
             cast_object<Var>(self).ward = std::move(root);
-            return {Py_None, true};
+            return {self, true};
         } else return {};
     });
 }
@@ -484,7 +515,7 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
             if (Debug) std::cout << "**** call overload ****" << std::endl;
             try {return call_overload(o.second, {args, true}, gil);}
             catch (DispatchError const &e) {
-                std::cout << "error " << e.what() << std::endl;
+                if (Debug) std::cout << "error: " << e.what() << std::endl;
             }
         }
         return type_error("C++: no overloads worked");
@@ -579,8 +610,12 @@ Object initialize(Document const &doc) {
             return args_as_tuple(as_str(Variable(x.first)), std::move(o));
         }))
         && attach(m, "set_conversion", as_object(Function().emplace([](Object t, Object o) {
-            std::cout << "insert " << (t == o) << (+t == Py_None) << std::endl;
+            if (Debug) std::cout << "insert type conversion " << (t == o) << (+t == Py_None) << std::endl;
             type_conversions.insert_or_assign(std::move(t), std::move(o));
+            if (Debug) std::cout << "inserted type conversion " << std::endl;
+        })))
+        && attach(m, "_finalize", as_object(Function().emplace([] {
+            type_conversions.clear();
         })))
         && attach(m, "set_type_names", as_object(Function().emplace(
             [](Zip<std::type_index, std::string_view> v) {

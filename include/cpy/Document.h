@@ -6,8 +6,14 @@ namespace cpy {
 
 /******************************************************************************/
 
+struct Document;
+
+struct NoRender {void operator()(Document &) const {}};
+
 template <class T, class=void>
-struct Renderer;
+struct Renderer {
+    void operator()(Document &) const {std::cout << "no render " << typeid(T).name() << std::endl;}
+};// : NoRender {};
 
 template <class T, class=void>
 struct Opaque : std::false_type {};
@@ -102,8 +108,6 @@ struct Document {
 
 Document & document() noexcept;
 
-struct NoRender {void operator()(Document &) const {}};
-
 template <class ...Ts>
 struct Renderer<Pack<Ts...>> {
     void operator()(Document &doc) {
@@ -120,10 +124,16 @@ struct Renderer<Vector<T>, std::enable_if_t<!Opaque<T>::value>> {
 };
 
 /// The default implementation is to call render(Document &, Type<T>) via ADL
-template <class T, class>
-struct Renderer {
+template <class T>
+struct Renderer<T, std::void_t<decltype(render(std::declval<Document &>(), Type<T>()))>> {
     void operator()(Document &doc) const {render(doc, Type<T>());}
 };
+
+/// The default implementation is to call render(Document &, Type<T>) via ADL
+// template <class T>
+// struct Renderer<T, std::void_t<decltype(T::render(std::declval<Document &>(), Type<T>()))>> {
+//     void operator()(Document &doc) const {T::render(doc, Type<T>());}
+// };
 
 /******************************************************************************/
 

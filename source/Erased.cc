@@ -13,13 +13,13 @@ struct Blah {
     void dump() const {std::cout << name << std::endl;}
 };
 
-Variable simplify(std::type_index t, Blah b) {
+Variable response(std::type_index t, Blah b) {
     if (t == typeid(std::string)) return std::move(b.name);
     return {};
 }
 
 template <class T>
-Blah from_reference(Type<Blah>, T &&, Dispatch &msg) {
+Blah request(Type<Blah>, T &&, Dispatch &msg) {
     if constexpr(std::is_same_v<no_qualifier<T>, std::string>)
         return Blah("haha");
     throw msg.error("bad blah", typeid(Blah), typeid(T));
@@ -47,7 +47,7 @@ struct Goo {
 };
 
 template <class Q>
-auto simplify(Q, qualified<Goo, Q> b, std::type_index t) {
+auto response(Q, qualified<Goo, Q> b, std::type_index t) {
     std::cout << "casting Blah to double const &" << std::endl;
     return (t == typeid(double)) ? &b.x : nullptr;
 }

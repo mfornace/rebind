@@ -1,6 +1,7 @@
 #pragma once
 #include "Approx.h"
 #include "Glue.h"
+#include "Value.h"
 
 #include <cpy/Signature.h>
 #include <cpy/Variable.h>
@@ -8,7 +9,7 @@
 #include <atomic>
 #include <chrono>
 
-namespace cpy {
+namespace lilwil {
 
 /******************************************************************************/
 
@@ -20,19 +21,21 @@ using Scopes = Vector<std::string>;
 
 using Clock = std::chrono::high_resolution_clock;
 
-using Handler = std::function<bool(Event, Scopes const &, Logs &&)>;
+template <class X>
+using Handler = std::function<bool(Event, Scopes const &, LogVec<X> &&)>;
 
 using Counter = std::atomic<std::size_t>;
 
 /******************************************************************************/
 
-struct Context : Caller {
+template <class X>
+struct Context {
     /// Vector of Handlers for each registered Event
-    Vector<Handler> handlers;
+    Vector<Handler<X>> handlers;
     /// Vector of strings making up the current Context scope
     Scopes scopes;
     /// Keypairs that have been logged prior to an event being called
-    Logs logs;
+    LogVec<X> logs;
     /// Start time of the current test case or section
     typename Clock::time_point start_time;
     /// Possibly null handle to a vector of atomic counters for each Event. Test runner has responsibility for lifetime
@@ -41,12 +44,12 @@ struct Context : Caller {
     Context() = default;
 
     /// Opens a Context and sets the start_time to the current time
-    Context(Caller ct, Scopes s, Vector<Handler> h, Vector<Counter> *c=nullptr);
+    Context(Scopes s, Vector<Handler<X>> h, Vector<Counter> *c=nullptr);
 
     /// Opens a new section with a reset start_time
     template <class F, class ...Ts>
     auto section(std::string name, F &&functor, Ts &&...ts) const {
-        Context ctx(Caller::operator()(), scopes, handlers, counters);
+        Context ctx(scopes, handlers, counters);
         ctx.scopes.push_back(std::move(name));
         return static_cast<F &&>(functor)(ctx, static_cast<Ts &&>(ts)...);
     }
@@ -60,13 +63,13 @@ struct Context : Caller {
 
     template <class T>
     Context & info(T &&t) {
-        AddKeyPairs<std::decay_t<T>>()(logs, static_cast<T &&>(t));
+        AddKeyPairs<X, std::decay_t<T>>()(logs, static_cast<T &&>(t));
         return *this;
     }
 
     template <class K, class V>
     Context & info(K &&k, V &&v) {
-        logs.emplace_back(KeyPair{static_cast<K &&>(k), static_cast<V &&>(v)});
+        logs.emplace_back(KeyPair<X>{static_cast<K &&>(k), static_cast<V &&>(v)});
         return *this;
     }
 
@@ -77,7 +80,7 @@ struct Context : Caller {
         return *this;
     }
 
-    Context & operator()(std::initializer_list<KeyPair> const &v) {
+    Context & operator()(std::initializer_list<KeyPair<X>> const &v) {
         logs.insert(logs.end(), v.begin(), v.end());
         return *this;
     }
@@ -122,58 +125,58 @@ struct Context : Caller {
 
     /******************************************************************************/
 
-    template <class X, class Y, class ...Ts>
-    auto equal(X const &x, Y const &y, Ts &&...ts) {
-        return require(unglue(x) == unglue(y), comparison_glue(x, y, "=="), static_cast<Ts &&>(ts)...);
+    template <class L, class R, class ...Ts>
+    auto equal(L const &l, R const &r, Ts &&...ts) {
+        return require(unglue(l) == unglue(r), comparison_glue(l, r, "=="), static_cast<Ts &&>(ts)...);
     }
 
-    template <class X, class Y, class ...Ts>
-    auto all_equal(X const &x, Y const &y, Ts &&...ts) {
-        auto const &x2 = unglue(x);
-        auto const &y2 = unglue(y);
-        return require(std::equal(begin(x2), end(x2), begin(y2), end(y2)), comparison_glue(x, y, "=="), static_cast<Ts &&>(ts)...);
+    template <class L, class R, class ...Ts>
+    auto all_equal(L const &l, R const &r, Ts &&...ts) {
+        auto const &x2 = unglue(l);
+        auto const &y2 = unglue(r);
+        return require(std::equal(begin(x2), end(x2), begin(y2), end(y2)), comparison_glue(l, r, "=="), static_cast<Ts &&>(ts)...);
     }
 
-    template <class X, class Y, class ...Ts>
-    bool not_equal(X const &x, Y const &y, Ts &&...ts) {
-        return require(unglue(x) != unglue(y), comparison_glue(x, y, "!="), static_cast<Ts &&>(ts)...);
+    template <class L, class R, class ...Ts>
+    bool not_equal(L const &l, R const &r, Ts &&...ts) {
+        return require(unglue(l) != unglue(r), comparison_glue(l, r, "!="), static_cast<Ts &&>(ts)...);
     }
 
-    template <class X, class Y, class ...Ts>
-    bool less(X const &x, Y const &y, Ts &&...ts) {
-        return require(unglue(x) < unglue(y), comparison_glue(x, y, "<"), static_cast<Ts &&>(ts)...);
+    template <class L, class R, class ...Ts>
+    bool less(L const &l, R const &r, Ts &&...ts) {
+        return require(unglue(l) < unglue(r), comparison_glue(l, r, "<"), static_cast<Ts &&>(ts)...);
     }
 
-    template <class X, class Y, class ...Ts>
-    bool greater(X const &x, Y const &y, Ts &&...ts) {
-        return require(unglue(x) > unglue(y), comparison_glue(x, y, ">"), static_cast<Ts &&>(ts)...);
+    template <class L, class R, class ...Ts>
+    bool greater(L const &l, R const &r, Ts &&...ts) {
+        return require(unglue(l) > unglue(r), comparison_glue(l, r, ">"), static_cast<Ts &&>(ts)...);
     }
 
-    template <class X, class Y, class ...Ts>
-    bool less_eq(X const &x, Y const &y, Ts &&...ts) {
-        return require(unglue(x) <= unglue(y), comparison_glue(x, y, "<="), static_cast<Ts &&>(ts)...);
+    template <class L, class R, class ...Ts>
+    bool less_eq(L const &l, R const &r, Ts &&...ts) {
+        return require(unglue(l) <= unglue(r), comparison_glue(l, r, "<="), static_cast<Ts &&>(ts)...);
     }
 
-    template <class X, class Y, class ...Ts>
-    bool greater_eq(X const &x, Y const &y, Ts &&...ts) {
-        return require(unglue(x) >= unglue(y), comparison_glue(x, y, ">="), static_cast<Ts &&>(ts)...);
+    template <class L, class R, class ...Ts>
+    bool greater_eq(L const &l, R const &r, Ts &&...ts) {
+        return require(unglue(l) >= unglue(r), comparison_glue(l, r, ">="), static_cast<Ts &&>(ts)...);
     }
 
-    template <class X, class Y, class T, class ...Ts>
-    bool within(X const &x, Y const &y, T const &tol, Ts &&...ts) {
-        ComparisonGlue<X const &, Y const &> expr{x, y, "~~"};
-        if (x == y)
+    template <class L, class R, class T, class ...Ts>
+    bool within(L const &l, R const &r, T const &tol, Ts &&...ts) {
+        ComparisonGlue<L const &, R const &> expr{l, r, "~~"};
+        if (l == r)
             return require(true, expr, static_cast<Ts &&>(ts)...);
-        auto const a = x - y;
-        auto const b = y - x;
+        auto const a = l - r;
+        auto const b = r - l;
         bool ok = (a < b) ? static_cast<bool>(b < tol) : static_cast<bool>(a < tol);
         return require(ok, expr, glue("tolerance", tol), glue("difference", b), static_cast<Ts &&>(ts)...);
     }
 
-    template <class X, class Y, class ...Args>
-    bool near(X const &x, Y const &y, Args &&...args) {
-        bool ok = ApproxEquals<typename ApproxType<X, Y>::type>()(unglue(x), unglue(y));
-        return require(ok, ComparisonGlue<X const &, Y const &>{x, y, "~~"}, static_cast<Args &&>(args)...);
+    template <class L, class R, class ...Args>
+    bool near(L const &l, R const &r, Args &&...args) {
+        bool ok = ApproxEquals<typename ApproxType<L, R>::type>()(unglue(l), unglue(r));
+        return require(ok, ComparisonGlue<L const &, R const &>{l, r, "~~"}, static_cast<Args &&>(args)...);
     }
 
     template <class Exception, class F, class ...Args>
@@ -190,8 +193,6 @@ struct Context : Caller {
             std::invoke(static_cast<F &&>(f), static_cast<Args &&>(args)...);
             return require(true);
         } catch (ClientError const &e) {
-            throw;
-        } catch (DispatchError const &e) {
             throw;
         } catch (...) {return require(false);}
     }

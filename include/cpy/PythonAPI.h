@@ -105,8 +105,10 @@ struct Buffer {
     Buffer(PyObject *o, int flags) {ok = PyObject_GetBuffer(o, &view, flags) == 0;}
 
     static std::type_index format(std::string_view s);
-    static Binary binary(Py_buffer *view, std::size_t len);
-    static Variable binary_view(Py_buffer *view, std::size_t len);
+    static std::string_view format(std::type_index t);
+    static std::size_t itemsize(std::type_index t);
+    // static Binary binary(Py_buffer *view, std::size_t len);
+    // static Variable binary_view(Py_buffer *view, std::size_t len);
 
     ~Buffer() {PyBuffer_Release(&view);}
 };
@@ -165,11 +167,9 @@ Object args_as_tuple(Ts &&...ts) {
     return (go(ts) && ...) ? out : Object();
 }
 
-struct NoDeleter {void operator()(void *) {}};
-
 Object as_variable(Variable &&v, Object const &t={});
 
-inline Object args_to_python(ArgPack &&s, Vector<std::shared_ptr<void>> &storage, Object const &sig={}) {
+inline Object args_to_python(ArgPack &&s, Object const &sig={}) {
     if (sig && !PyTuple_Check(+sig))
         throw python_error(type_error("expected tuple but got %R", (+sig)->ob_type));
     std::size_t len = sig ? PyTuple_GET_SIZE(+sig) : 0;
@@ -179,8 +179,8 @@ inline Object args_to_python(ArgPack &&s, Vector<std::shared_ptr<void>> &storage
     for (auto &v : s) {
         if (i < len) {
             PyObject *t = PyTuple_GET_ITEM(+sig, i);
+            std::cout << "not done" << std::endl;
         } else {
-            storage.emplace_back(v.ptr, NoDeleter());
             if (!set_tuple_item(out, i, as_variable(std::move(v).reference()))) return {};
         }
         ++i;
@@ -262,8 +262,7 @@ struct PythonFunction {
         auto p = c.target<SuspendedPython>();
         if (!p) throw DispatchError("Python context is expired or invalid");
         ActivePython lk(*p);
-        Vector<std::shared_ptr<void>> storage;
-        Object o = args_to_python(std::move(args), storage, signature);
+        Object o = args_to_python(std::move(args), signature);
         if (!o) throw python_error();
         return Variable(Object::from(PyObject_CallObject(function, o)));
     }

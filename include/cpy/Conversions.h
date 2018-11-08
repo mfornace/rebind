@@ -6,7 +6,7 @@ namespace cpy {
 /******************************************************************************/
 
 template <class T, class=void>
-struct SimplifyValue {
+struct ValueResponse {
     void operator()(Variable &out, T const &t, std::type_index) const {
         if (Debug) std::cout << "    - default simplifyvalue " << typeid(T).name() << std::endl;
         out = t;
@@ -15,16 +15,16 @@ struct SimplifyValue {
 };
 
 template <class T>
-struct SimplifyValue<T, std::void_t<decltype(simplify(std::declval<T const &>(), std::declval<std::type_index &&>()))>> {
+struct ValueResponse<T, std::void_t<decltype(response(std::declval<T const &>(), std::declval<std::type_index &&>()))>> {
     void operator()(Variable &out, T const &t, std::type_index idx) const {
         if (Debug) std::cout << "    - adl simplifyvalue" << typeid(T).name() << std::endl;
-        out = simplify(t, std::move(idx));
+        out = response(t, std::move(idx));
         if (Debug) std::cout << "    - adl simplifyvalue" << typeid(T).name() << " 2" << std::endl;
     }
 };
 
 template <class T, class=void>
-struct SimplifyReference {
+struct ReferenceResponse {
     using custom = std::false_type;
     void * operator()(Qualifier q, T const &t, std::type_index i) const {
         if (Debug) std::cout << "    - no conversion for reference " << typeid(T).name() << " "
@@ -34,18 +34,18 @@ struct SimplifyReference {
 };
 
 template <class T>
-struct SimplifyReference<T, std::void_t<decltype(simplify(cvalue(), std::declval<T const &>(), std::declval<std::type_index &&>()))>> {
+struct ReferenceResponse<T, std::void_t<decltype(response(std::declval<T const &>(), std::declval<std::type_index &&>(), cvalue()))>> {
     using custom = std::true_type;
     template <class Q>
     void * operator()(Q q, qualified<T, Q> t, std::type_index idx) const {
         if (Debug) std::cout << "    - convert reference via ADL " << typeid(T).name() << std::endl;
-        return const_cast<void *>(static_cast<void const *>(simplify(q, static_cast<decltype(t) &&>(t), std::move(idx))));
+        return const_cast<void *>(static_cast<void const *>(response(static_cast<decltype(t) &&>(t), std::move(idx), q)));
     }
 };
 
 
 template <class T, class>
-struct Response : SimplifyValue<T>, SimplifyReference<T> {
+struct Response : ValueResponse<T>, ReferenceResponse<T> {
     static_assert(std::is_same_v<no_qualifier<T>, T>);
 };
 
@@ -91,15 +91,15 @@ struct Request<T &&, C> {
 };
 
 
-void from_reference(int, int, int);
+void request(int, int, int);
 
 /// ADL version
 template <class T>
 struct Request<T, std::void_t<decltype(
-    from_reference(Type<T>(), std::declval<Variable const &>(), std::declval<Dispatch &>()))>> {
+    request(Type<T>(), std::declval<Variable const &>(), std::declval<Dispatch &>()))>> {
 
     T operator()(Variable const &r, Dispatch &msg) const {
-        return static_cast<T>(from_reference(Type<T>(), r, msg));
+        return static_cast<T>(request(Type<T>(), r, msg));
     }
 };
 

@@ -42,28 +42,40 @@ std::type_index Buffer::format(std::string_view s) {
     return it == Buffer::formats.end() ? typeid(void) : it->second;
 }
 
-Binary Buffer::binary(Py_buffer *view, std::size_t len) {
-    if (Debug) std::cout << "make new Binary from PyBuffer" << std::endl;
-    Binary bin(len, typename Binary::value_type());
-    if (PyBuffer_ToContiguous(bin.data(), view, bin.size(), 'C') < 0)
-        throw python_error(type_error("C++: could not make contiguous buffer"));
-    return bin;
+std::string_view Buffer::format(std::type_index t) {
+    auto it = std::find_if(Buffer::formats.begin(), Buffer::formats.end(),
+        [&](auto const &p) {return p.second == t;});
+    return it == Buffer::formats.end() ? std::string_view() : it->first;
 }
 
-Variable Buffer::binary_view(Py_buffer *view, std::size_t len) {
-    if (Debug) std::cout << "Contiguous " << PyBuffer_IsContiguous(view, 'C') << PyBuffer_IsContiguous(view, 'F') << std::endl;
-    if (PyBuffer_IsContiguous(view, 'F')) {
-        if (view->readonly) {
-            if (Debug) std::cout << "read only view from PyBuffer" << std::endl;
-            return BinaryView(reinterpret_cast<unsigned char const *>(view), view->len);
-        } else {
-            if (Debug) std::cout << "mutable view from PyBuffer" << std::endl;
-            return BinaryData(reinterpret_cast<unsigned char *>(view->buf), view->len);
-        }
-    }
-    if (Debug) std::cout << "copy view from PyBuffer" << std::endl;
-    return binary(view, len);
+std::size_t Buffer::itemsize(std::type_index t) {
+    auto it = std::find_if(scalars.begin(), scalars.end(),
+        [&](auto const &p) {return std::get<1>(p) == t;});
+    return it == scalars.end() ? 0u : std::get<2>(*it) / CHAR_BIT;
 }
+
+// Binary Buffer::binary(Py_buffer *view, std::size_t len) {
+//     if (Debug) std::cout << "make new Binary from PyBuffer" << std::endl;
+//     Binary bin(len, typename Binary::value_type());
+//     if (PyBuffer_ToContiguous(bin.data(), view, bin.size(), 'C') < 0)
+//         throw python_error(type_error("C++: could not make contiguous buffer"));
+//     return bin;
+// }
+
+// Variable Buffer::binary_view(Py_buffer *view, std::size_t len) {
+//     if (Debug) std::cout << "Contiguous " << PyBuffer_IsContiguous(view, 'C') << PyBuffer_IsContiguous(view, 'F') << std::endl;
+//     if (PyBuffer_IsContiguous(view, 'F')) {
+//         if (view->readonly) {
+//             if (Debug) std::cout << "read only view from PyBuffer" << std::endl;
+//             return BinaryView(reinterpret_cast<unsigned char const *>(view), view->len);
+//         } else {
+//             if (Debug) std::cout << "mutable view from PyBuffer" << std::endl;
+//             return BinaryData(reinterpret_cast<unsigned char *>(view->buf), view->len);
+//         }
+//     }
+//     if (Debug) std::cout << "copy view from PyBuffer" << std::endl;
+//     return binary(view, len);
+// }
 
 std::string_view from_unicode(PyObject *o) {
     Py_ssize_t size;

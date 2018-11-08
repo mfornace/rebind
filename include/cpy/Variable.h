@@ -174,7 +174,7 @@ public:
 /******************************************************************************/
 
 template <class V>
-void *simplify_to_reference(Qualifier dest, V &&v, std::type_index &&t) {
+void *reference_response(Qualifier dest, V &&v, std::type_index &&t) {
     using S = Response<no_qualifier<V>>;
     if (dest == Qualifier::R) {
         if constexpr(!std::is_invocable_v<S, rvalue &&, V &&, std::type_index &&>) return nullptr;
@@ -208,11 +208,11 @@ struct Action {
             Qualifier src{static_cast<unsigned char>(reinterpret_cast<std::uintptr_t>(out->ptr))};
             Qualifier dest{static_cast<unsigned char>(reinterpret_cast<std::uintptr_t>(out->fun))};
             if (src == Qualifier::R)
-                return simplify_to_reference(dest, static_cast<T &&>(*static_cast<T *>(ptr)), std::move(out->idx));
+                return reference_response(dest, static_cast<T &&>(*static_cast<T *>(ptr)), std::move(out->idx));
             else if (src == Qualifier::L)
-                return simplify_to_reference(dest, *static_cast<T *>(ptr), std::move(out->idx));
+                return reference_response(dest, *static_cast<T *>(ptr), std::move(out->idx));
             else
-                return simplify_to_reference(dest, *static_cast<T const *>(ptr), std::move(out->idx));
+                return reference_response(dest, *static_cast<T const *>(ptr), std::move(out->idx));
         } else if (a == ActionType::assign) {
             if (Debug) std::cout << "    - assign " << out->idx.name() << std::endl;
             if constexpr(std::is_move_assignable_v<T>) {

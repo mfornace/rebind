@@ -4,6 +4,36 @@ Function is a model of `Vector<Reference> -> Value`.
 
 ## Conversion
 
+`Request` takes a `Variable`, tries to return the given type `T`, throws `msg.error(...)` if impossible.
+
+
+```c++
+template <class T, class SFINAE=void>
+struct Request {
+    T operator()(Variable const &r, Dispatch &msg);
+};
+```
+
+`Response` takes a `Variable` tries to put a requested type `idx` in it, otherwise does nothing.
+
+```c++
+template <class T, class SFINAE=void>
+struct Response {
+    void operator()(Variable &out, T const &t, std::type_index idx);
+};
+```
+
+`Renderer` modifies a `Document`.
+
+```c++
+template <class T, class SFINAE=void>
+struct Renderer {
+    void operator()(Document &doc);
+};
+```
+
+
+
 `Request<T>` models `Reference, Dispatch & -> T` and attempts to return a `T` from a `Reference` and `Dispatch &`.
 
 It could be changed to return `optional<T>`.
@@ -753,7 +783,7 @@ struct Value {
     std::string_view         as_view()    const &;
 
     std::string              as_string()  const &; // also with signature && (rvalue)
-    Binary                   as_binary()  const &; // also with signature && (rvalue)
+    // Binary                   as_binary()  const &; // also with signature && (rvalue)
     std::any                 as_any()     const &; // also with signature && (rvalue)
     Vector<Value>            as_values()  const &; // also with signature && (rvalue)
 };

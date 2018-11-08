@@ -2,8 +2,6 @@
 
 namespace cpy {
 
-std::vector<std::pair<PyTypeObject *, std::function<Object(Object)>>> python_types;
-
 std::map<Object, Object> type_conversions{};
 
 std::unordered_map<std::type_index, std::string> type_names = {
@@ -12,7 +10,6 @@ std::unordered_map<std::type_index, std::string> type_names = {
     {typeid(PyObject),         "PyObject"},
     {typeid(PyObject *),       "PyObject *"},
     {typeid(bool),             "bool"},
-    // {typeid(Integer),          "int"},
     {typeid(Real),             "float64"},
     {typeid(std::string_view), "str"},
     {typeid(std::string),      "str"},
@@ -20,9 +17,9 @@ std::unordered_map<std::type_index, std::string> type_names = {
     {typeid(Binary),           "Binary"},
     {typeid(BinaryView),       "BinaryView"},
     {typeid(BinaryData),       "BinaryData"},
+    {typeid(ArrayData),        "ArrayData"},
     {typeid(Function),         "Function"},
     {typeid(Variable),         "Variable"},
-    // {typeid(ValuePack),        "ValuePack"},
     {typeid(ArgPack),          "ArgPack"},
     {typeid(char),             "char"},
     {typeid(unsigned char),    "unsigned_char"},

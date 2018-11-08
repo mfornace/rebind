@@ -3,7 +3,7 @@
 #include <vector>
 #include <ostream>
 
-namespace cpy {
+namespace lilwil {
 
 /******************************************************************************/
 

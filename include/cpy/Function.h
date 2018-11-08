@@ -101,7 +101,7 @@ struct Callback {
 template <class F, class ...Ts>
 Variable value_invoke(F const &f, Ts &&... ts) {
     using O = std::remove_cv_t<std::invoke_result_t<F, Ts...>>;
-    std::cout << "    -- making output " << typeid(Type<O>).name() << std::endl;
+    if (Debug) std::cout << "    -- making output " << typeid(Type<O>).name() << std::endl;
     if constexpr(std::is_same_v<void, O>) {
         std::invoke(f, static_cast<Ts &&>(ts)...);
         return {};

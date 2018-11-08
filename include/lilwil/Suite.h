@@ -3,13 +3,15 @@
 #include "Test.h"
 #include <deque>
 
-namespace cpy {
+namespace lilwil {
 
 /******************************************************************************/
 
-using Suite = std::deque<TestCase>;
+template <class X>
+using Suite = std::deque<TestCase<X>>;
 
-Suite & suite();
+template <class X>
+Suite<X> & suite();
 
 struct Timer {
     Clock::time_point start;
@@ -18,9 +20,9 @@ struct Timer {
     ~Timer() {duration = std::chrono::duration<double>(Clock::now() - start).count();}
 };
 
-template <class... Ts>
+template <class X, class... Ts>
 void add_test(Ts &&...ts) {
-    suite().emplace_back(static_cast<Ts &&>(ts)...);
+    suite<X>().emplace_back(static_cast<Ts &&>(ts)...);
 }
 
 /******************************************************************************/

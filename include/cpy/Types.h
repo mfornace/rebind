@@ -66,25 +66,25 @@ public:
     operator BinaryView() const {return {m_begin, size()};}
 };
 
-template <class V>
-Binary make_binary(V const &v) {
-    using T = no_qualifier<decltype(*std::begin(v))>;
-    static_assert(__STDCPP_DEFAULT_NEW_ALIGNMENT__ >= alignof(T));
-    static_assert(std::is_trivially_destructible_v<T>);
-    return {
-        reinterpret_cast<unsigned char const *>(std::addressof(*std::begin(v))),
-        reinterpret_cast<unsigned char const *>(std::addressof(*std::end(v))),
-    };
-}
+// template <class V>
+// Binary make_binary(V const &v) {
+//     using T = no_qualifier<decltype(*std::begin(v))>;
+//     static_assert(__STDCPP_DEFAULT_NEW_ALIGNMENT__ >= alignof(T));
+//     static_assert(std::is_trivially_destructible_v<T>);
+//     return {
+//         reinterpret_cast<unsigned char const *>(std::addressof(*std::begin(v))),
+//         reinterpret_cast<unsigned char const *>(std::addressof(*std::end(v))),
+//     };
+// }
 
-template <class V>
-BinaryView make_binary_view(V const &v) {
-    using T = no_qualifier<decltype(*std::begin(v))>;
-    static_assert(__STDCPP_DEFAULT_NEW_ALIGNMENT__ >= alignof(T));
-    static_assert(std::is_trivially_destructible_v<T>);
-    auto b = reinterpret_cast<unsigned char const *>(std::addressof(*std::begin(v)));
-    return {b, static_cast<std::size_t>(reinterpret_cast<unsigned char const *>(std::addressof(*std::end(v))) - b)};
-}
+// template <class V>
+// BinaryView make_binary_view(V const &v) {
+//     using T = no_qualifier<decltype(*std::begin(v))>;
+//     static_assert(__STDCPP_DEFAULT_NEW_ALIGNMENT__ >= alignof(T));
+//     static_assert(std::is_trivially_destructible_v<T>);
+//     auto b = reinterpret_cast<unsigned char const *>(std::addressof(*std::begin(v)));
+//     return {b, static_cast<std::size_t>(reinterpret_cast<unsigned char const *>(std::addressof(*std::end(v))) - b)};
+// }
 
 template <>
 struct Response<BinaryData> {
