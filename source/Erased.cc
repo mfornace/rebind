@@ -22,7 +22,7 @@ template <class T>
 Blah request(Type<Blah>, T &&, Dispatch &msg) {
     if constexpr(std::is_same_v<no_qualifier<T>, std::string>)
         return Blah("haha");
-    throw msg.error("bad blah", typeid(Blah), typeid(T));
+    msg.error("bad blah", typeid(Blah), typeid(T));
 }
 
 //remove iostream

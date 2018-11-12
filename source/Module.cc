@@ -12,6 +12,12 @@
 #   define CPY_MODULE libcpy
 #endif
 
+#define CPY_CAT_IMPL(s1, s2) s1##s2
+#define CPY_CAT(s1, s2) CPY_CAT_IMPL(s1, s2)
+
+#define CPY_STRING_IMPL(x) #x
+#define CPY_STRING(x) CPY_STRING_IMPL(x)
+
 namespace cpy {
 
 PyObject *one_argument(PyObject *args, PyTypeObject *type=nullptr) noexcept {
@@ -158,7 +164,7 @@ Object type_args(Object const &o, Py_ssize_t n) {
 Object as_list(Variable &&ref, Object const &o) {
     if (auto args = type_args(o, 1)) {
         if (Debug) std::cout << "is list " << PyList_Check(o) << std::endl;
-        auto v = downcast<Vector<Variable>>(ref);
+        auto v = ref.downcast<Vector<Variable>>();
         Object vt{PyTuple_GET_ITEM(+args, 0), true};
         auto list = Object::from(PyList_New(v.size()));
         for (Py_ssize_t i = 0; i != v.size(); ++i) {
@@ -175,7 +181,7 @@ Object as_list(Variable &&ref, Object const &o) {
 Object as_tuple(Variable &&ref, Object const &o) {
     if (auto args = type_args(o)) {
         Py_ssize_t const len = PyTuple_GET_SIZE(+args);
-        auto v = downcast<Vector<Variable>>(ref);
+        auto v = ref.downcast<Vector<Variable>>();
         if (len == 2 && PyTuple_GET_ITEM(+args, 1) == Py_Ellipsis) {
             Object vt{PyTuple_GET_ITEM(+args, 0), true};
             auto tup = Object::from(PyTuple_New(v.size()));
@@ -193,7 +199,7 @@ Object as_tuple(Variable &&ref, Object const &o) {
 
 Object as_dict(Variable &&ref, Object const &o) {
     if (auto args = type_args(o, 2)) {
-        auto v = downcast<Vector<std::pair<Variable, Variable>>>(ref);
+        auto v = ref.downcast<Vector<std::pair<Variable, Variable>>>();
         auto out = Object::from(PyDict_New());
         Object key{PyTuple_GET_ITEM(+args, 0), true};
         Object val{PyTuple_GET_ITEM(+args, 1), true};
@@ -249,10 +255,10 @@ Object as_object(Function f) {
 Object as_object(Variable &&ref) {
     if (Debug) std::cout << "    - asking for object" << std::endl;
     if (!ref.has_value()) return {Py_None, true};
-    if (auto v = ref.request<bool>())             return as_object(std::move(*v));
-    if (auto v = ref.request<Integer>())          return as_object(std::move(*v));
-    if (auto v = ref.request<Real>())             return as_object(std::move(*v));
     if (auto v = ref.request<Object>())           return std::move(*v);
+    if (auto v = ref.request<Real>())             return as_object(std::move(*v));
+    if (auto v = ref.request<Integer>())          return as_object(std::move(*v));
+    if (auto v = ref.request<bool>())             return as_object(std::move(*v));
     if (auto v = ref.request<std::string_view>()) return as_object(std::move(*v));
     if (auto v = ref.request<std::string>())      return as_object(std::move(*v));
     if (auto v = ref.request<Function>())         return as_object(std::move(*v));
@@ -360,13 +366,13 @@ Object as_value(Variable &&v, Object const &t={}) {
     else if (is_subclass(type, &PyFunction_Type))               out = as_function(std::move(v), t);
     else if (is_subclass(type, &PyMemoryView_Type))             out = as_memory(std::move(v), t);
     else {
-        std::cout << "custom convert " << type_conversions.size() << std::endl;
+        if (Debug) std::cout << "custom convert " << type_conversions.size() << std::endl;
         if (auto p = type_conversions.find(t); p != type_conversions.end()) {
             if (Debug) std::cout << " conversion " << std::endl;
             Object o = as_variable(std::move(v));
             if (Debug) std::cout << " did something " << bool(o) << std::endl;
             if (!o) return type_error("bad");
-            std::cout << "calling function" << std::endl;
+            if (Debug) std::cout << "calling function" << std::endl;
             return Object::from(PyObject_CallFunctionObjArgs(+p->second, +o, nullptr));
         }
     }
@@ -499,6 +505,16 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
         auto const &overloads = cast_object<Function>(self).overloads;
         if (overloads.size() == 1)
             return call_overload(overloads[0].second, {args, true}, gil);
+
+        if (s && PyLong_Check(s)) {
+            auto i = PyLong_AsLongLong(s);
+            if (i < 0) i += overloads.size();
+            if (i <= overloads.size() || i < 0)
+                return call_overload(overloads[i].second, {args, true}, gil);
+            PyErr_SetString(PyExc_IndexError, "signature index out of bounds");
+            return Object();
+        }
+
         for (auto const &o : overloads) {
             if (Debug) std::cout << "signature " << bool(s) << std::endl;
             if (s && s != Py_None) {
@@ -514,7 +530,10 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
             }
             if (Debug) std::cout << "**** call overload ****" << std::endl;
             try {return call_overload(o.second, {args, true}, gil);}
-            catch (DispatchError const &e) {
+            catch (WrongType const &e) {
+                // if (Debug)
+                std::cout << wrong_type_message(e) << std::endl;
+            } catch (DispatchError const &e) {
                 if (Debug) std::cout << "error: " << e.what() << std::endl;
             }
         }

@@ -7,6 +7,7 @@
 #include <string>
 #include <any>
 #include <deque>
+#include <optional>
 
 namespace cpy {
 
@@ -55,22 +56,37 @@ struct Dispatch {
     std::vector<unsigned int> indices;
     std::type_index source = typeid(void);
     std::type_index dest = typeid(void);
-    unsigned int index;
+    unsigned int index = 0, expected = 0, received = 0;
 
-    WrongType error() noexcept {
-        return {scope, std::move(indices), source, dest, index};
+    std::nullopt_t error() noexcept {return std::nullopt;}
+
+    std::nullopt_t error(std::string msg) noexcept {
+        scope = std::move(msg);
+        return std::nullopt;
     }
 
-    WrongType error(std::string const &scope2) noexcept {
-        return {scope2, std::move(indices), source, dest, index};
+    std::nullopt_t error(std::type_index s, std::type_index d) noexcept {
+        source = s;
+        dest = d;
+        return std::nullopt;
     }
 
-    WrongType error(std::type_index s, std::type_index d) noexcept {
-        return {scope, std::move(indices), s, d, index};
+    std::nullopt_t error(std::string msg, std::type_index s, std::type_index d, unsigned int e=0, unsigned int r=0) noexcept {
+        scope = std::move(msg);
+        source = s;
+        dest = d;
+        expected = e;
+        received = r;
+        return std::nullopt;
     }
 
-    WrongType error(std::string const &scope2, std::type_index s, std::type_index d, unsigned int e=0, unsigned int r=0) noexcept {
-        return {scope2, std::move(indices), s, d, index, e, r};
+    WrongType exception() noexcept {
+        return {std::move(scope), std::move(indices), source, dest, index, expected, received};
+    }
+
+    template <class T>
+    auto store(T &&t) {
+        return std::addressof(storage.emplace_back().emplace<no_qualifier<T>>(static_cast<T &&>(t)));
     }
 
     Dispatch(char const *s="mismatched type") : scope(s) {indices.reserve(8);}

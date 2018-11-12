@@ -4,7 +4,7 @@
 
 namespace cpy {
 
-static constexpr bool Debug = true;
+static constexpr bool Debug = false;
 
 /******************************************************************************/
 

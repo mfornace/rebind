@@ -91,7 +91,7 @@ struct Callback {
         ArgPack pack;
         pack.reserve(sizeof...(Ts));
         (pack.emplace_back(static_cast<Ts &&>(ts)), ...);
-        return downcast<R>(function(caller, std::move(pack)));
+        return function(caller, std::move(pack)).downcast(true, Type<R>());
     }
 };
 
@@ -128,7 +128,7 @@ Variable caller_invoke(std::false_type, F const &f, Caller &&c, Ts &&...ts) {
 template <class T>
 decltype(auto) cast_index(ArgPack const &v, Dispatch &msg, IndexedType<T> i) {
     msg.index = i.index;
-    return downcast<T>(v[i.index], msg);
+    return v[i.index].downcast(msg, true, Type<T>());
 }
 
 /******************************************************************************/

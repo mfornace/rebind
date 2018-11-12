@@ -54,29 +54,6 @@ std::size_t Buffer::itemsize(std::type_index t) {
     return it == scalars.end() ? 0u : std::get<2>(*it) / CHAR_BIT;
 }
 
-// Binary Buffer::binary(Py_buffer *view, std::size_t len) {
-//     if (Debug) std::cout << "make new Binary from PyBuffer" << std::endl;
-//     Binary bin(len, typename Binary::value_type());
-//     if (PyBuffer_ToContiguous(bin.data(), view, bin.size(), 'C') < 0)
-//         throw python_error(type_error("C++: could not make contiguous buffer"));
-//     return bin;
-// }
-
-// Variable Buffer::binary_view(Py_buffer *view, std::size_t len) {
-//     if (Debug) std::cout << "Contiguous " << PyBuffer_IsContiguous(view, 'C') << PyBuffer_IsContiguous(view, 'F') << std::endl;
-//     if (PyBuffer_IsContiguous(view, 'F')) {
-//         if (view->readonly) {
-//             if (Debug) std::cout << "read only view from PyBuffer" << std::endl;
-//             return BinaryView(reinterpret_cast<unsigned char const *>(view), view->len);
-//         } else {
-//             if (Debug) std::cout << "mutable view from PyBuffer" << std::endl;
-//             return BinaryData(reinterpret_cast<unsigned char *>(view->buf), view->len);
-//         }
-//     }
-//     if (Debug) std::cout << "copy view from PyBuffer" << std::endl;
-//     return binary(view, len);
-// }
-
 std::string_view from_unicode(PyObject *o) {
     Py_ssize_t size;
 #if PY_MAJOR_VERSION > 2
@@ -103,14 +80,9 @@ void to_arithmetic(Object const &o, Variable &v) {
     else if (PyBool_Check(o)) v = static_cast<T>(+o == Py_True);
 }
 
-void *Response<Object>::operator()(Qualifier q, Object o, std::type_index t) const {
+void Response<Object>::operator()(Variable &v, Object o, std::type_index t, Qualifier q) const {
     if (Debug) std::cout << "    - trying to get reference from Object " << bool(o) << std::endl;
-    if (auto p = cast_if<Variable>(o)) {
-        if (Debug) std::cout << "    - its a variable" << std::endl;
-        if (Debug) std::cout << "    - qualifier " << p->name() << " " << static_cast<int>(p->qualifier()) << std::endl;
-        if (p->type() == t) return p->ptr;
-    }
-    return nullptr;
+    if (auto p = cast_if<Variable>(o)) if (p->type() == t) v = *p;
 }
 
 void Response<Object>::operator()(Variable &v, Object o, std::type_index t) const {
@@ -123,7 +95,10 @@ void Response<Object>::operator()(Variable &v, Object o, std::type_index t) cons
 
     if (auto p = cast_if<Variable>(o)) {
         if (Debug) std::cout << "    - its a variable" << std::endl;
-        v = p->request(t);
+        Dispatch msg;
+        v = p->request_variable(msg, t);
+    } else if (auto p = cast_if<std::type_index>(o)) {
+        v = *p;
     } else if (t == typeid(Object)) {
         v = std::move(o);
     } else if (t == typeid(Function)) {
@@ -144,8 +119,7 @@ void Response<Object>::operator()(Variable &v, Object o, std::type_index t) cons
     else if (t == typeid(bool)) {
         if ((+o)->ob_type == Py_None->ob_type) { // fix, doesnt work with Py_None...
             v = false;
-        }
-        else to_arithmetic<bool>(o, v);
+        } else to_arithmetic<bool>(o, v);
         // if (!v) {
         //     throw python_error(type_error("what %R %R", +o, (+o)->ob_type));
         // }
@@ -166,13 +140,10 @@ void Response<Object>::operator()(Variable &v, Object o, std::type_index t) cons
             if (Debug) std::cout << (nullptr == buff.view.buf) << bool(buff.view.readonly) << std::endl;
             auto a = ArrayData(buff.view.buf, Buffer::format(buff.view.format ? buff.view.format : ""),
                 !buff.view.readonly, Vector<Integer>(buff.view.shape, buff.view.shape + buff.view.ndim),
-                Vector<Integer>()
-                // Vector<Integer>(buff.view.strides, buff.view.strides + buff.view.ndim)
-                );
+                Vector<Integer>(buff.view.strides, buff.view.strides + buff.view.ndim));
+            for (auto &x : a.strides) x /= buff.view.itemsize;
             if (Debug) for (auto i : a.shape) std::cout << i << ", ";
             if (Debug) std::cout << std::endl;
-            if (Debug) // for (auto i : a.strides) std::cout << i << ", ";
-            if (Debug) // std::cout << std::endl;
             if (Debug) std::cout << "made data" << std::endl;
             if (Debug) std::cout << *static_cast<float *>(buff.view.buf) << " " << *static_cast<float *>(a.data) << std::endl;
             if (Debug) std::cout << *static_cast<std::uint16_t *>(buff.view.buf) << " " << *static_cast<std::uint16_t *>(a.data) << std::endl;

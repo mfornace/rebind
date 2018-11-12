@@ -135,28 +135,30 @@ struct Response<std::pair<T, U>> : FromCompiledSequence<std::pair<T, U>> {};
 template <class V, class S, std::size_t ...Is>
 V to_compiled_sequence(S &s, Dispatch &msg, std::index_sequence<Is...>) {
     msg.indices.emplace_back(0);
-    return {(msg.indices.back() = Is, downcast<std::tuple_element_t<Is, V>>(Variable(s[Is]), msg))...};
+    return {(msg.indices.back() = Is, Variable(s[Is]).downcast(msg, true, Type<std::tuple_element_t<Is, V>>()))...};
 }
 
 template <class V, class S>
-V to_compiled_sequence(S &&s, Dispatch &msg) {
+std::optional<V> to_compiled_sequence(S &&s, Dispatch &msg) {
     if (s.size() != std::tuple_size_v<V>) {
-        throw msg.error("wrong sequence length", typeid(S), typeid(V), std::tuple_size_v<V>, s.size());
+        return msg.error("wrong sequence length", typeid(S), typeid(V), std::tuple_size_v<V>, s.size());
+    } else {
+        auto v = to_compiled_sequence<V>(s, msg, std::make_index_sequence<std::tuple_size_v<V>>());
+        msg.indices.pop_back();
+        return std::move(v);
     }
-    V &&v = to_compiled_sequence<V>(s, msg, std::make_index_sequence<std::tuple_size_v<V>>());
-    msg.indices.pop_back();
-    return std::move(v);
 }
 
 // /******************************************************************************/
 
 template <class V>
 struct CompiledSequenceRequest {
-    V operator()(Variable r, Dispatch &msg) const {
+    std::optional<V> operator()(Variable r, Dispatch &msg) const {
         if (Debug) std::cout << "trying CompiledSequenceRequest " << r.type().name() << std::endl;
-        if (auto p = r.request<Vector<Variable>>())
-            return to_compiled_sequence<V>(std::move(*p), msg);
-        throw msg.error("mismatched class", r.type(), typeid(V));
+        if (!std::is_same_v<V, Vector<Variable>>)
+            if (auto p = r.request<Vector<Variable>>())
+                return to_compiled_sequence<V>(std::move(*p), msg);
+        return msg.error("mismatched class", r.type(), typeid(V));
     }
 };
 
