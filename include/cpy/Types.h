@@ -5,6 +5,7 @@
 
 namespace cpy {
 
+/******************************************************************************/
 
 #ifdef INTPTR_MAX
     using Integer = std::intptr_t;
@@ -13,6 +14,12 @@ namespace cpy {
 #endif
 
 using Real = double;
+
+using Sequence = Vector<Variable>;
+
+using Dictionary = Vector<std::pair<std::string_view, Variable>>;
+
+/******************************************************************************/
 
 struct ArrayData {
     Vector<Integer> shape, strides;
@@ -44,7 +51,7 @@ struct Response<char const *> {
     void operator()(Variable &out, char const *s, std::type_index const &t) const {
         if (t == typeid(std::string_view))
             out = s ? std::string_view(s) : std::string_view();
-        else
+        else if (t == typeid(std::string))
             out = s ? std::string(s) : std::string();
     }
 };
@@ -83,21 +90,16 @@ struct Response<BinaryView> {
 
 template <>
 struct Request<BinaryView> {
-    BinaryView operator()(Variable const &r, Dispatch &msg) const {
-        if (auto p = r.request<BinaryView>())
-            return std::move(*p);
-        if (auto p = r.request<BinaryData>())
-            return {p->data(), p->size()};
-        throw msg.error("not convertible to BinaryView");
+    std::optional<BinaryView> operator()(Variable const &v, Dispatch &msg) const {
+        if (auto p = v.request<BinaryData>()) return BinaryView(p->data(), p->size());
+        return msg.error("not convertible to binary view", v.type(), typeid(BinaryView));
     }
 };
 
 template <>
 struct Request<BinaryData> {
-    BinaryData operator()(Variable const &r, Dispatch &msg) const {
-        if (auto p = r.request<BinaryData>())
-            return {p->data(), p->size()};
-        throw msg.error("not convertible to BinaryData");
+    std::optional<BinaryData> operator()(Variable const &v, Dispatch &msg) const {
+        return msg.error("not convertible to binary data", v.type(), typeid(BinaryData));
     }
 };
 
@@ -107,6 +109,7 @@ template <class T>
 struct Response<T, std::enable_if_t<(std::is_integral_v<T>)>> {
     void operator()(Variable &out, T t, std::type_index i) const {
         if (i == typeid(Integer)) out = static_cast<Integer>(t);
+        if (i == typeid(Real)) out = static_cast<Real>(t);
     }
 };
 
@@ -114,59 +117,61 @@ template <class T>
 struct Response<T, std::enable_if_t<(std::is_floating_point_v<T>)>> {
     void operator()(Variable &out, T t, std::type_index i) const {
         if (i == typeid(Real)) out = static_cast<Real>(t);
+        if (i == typeid(Integer)) out = static_cast<Integer>(t);
     }
 };
 
 template <class T>
-struct Request<T, std::enable_if_t<std::is_arithmetic_v<T>>> {
-    T operator()(Variable const &r, Dispatch &msg) const {
-        if (Debug) std::cout << "convert to arithmetic" << std::endl;
-        if (auto p = r.request<Real>())    return static_cast<T>(*p);
-        if (auto p = r.request<Integer>()) return static_cast<T>(*p);
-        if (auto p = r.request<bool>())    return static_cast<T>(*p);
-        throw msg.error("not convertible to arithmetic value", r.type(), typeid(T));
+struct Request<T, std::enable_if_t<std::is_floating_point_v<T>>> {
+    std::optional<T> operator()(Variable const &v, Dispatch &msg) const {
+        DUMP("convert to floating");
+        if (!std::is_same_v<Real, T>)    if (auto p = v.request<Real>())    return static_cast<T>(*p);
+        return msg.error("not convertible to floating point", v.type(), typeid(T));
     }
 };
 
+template <class T>
+struct Request<T, std::enable_if_t<std::is_integral_v<T>>> {
+    std::optional<T> operator()(Variable const &v, Dispatch &msg) const {
+        DUMP("convert to arithmetic");
+        if (!std::is_same_v<Integer, T>) if (auto p = v.request<Integer>()) return static_cast<T>(*p);
+        return msg.error("not convertible to integer", v.type(), typeid(T));
+    }
+};
+
+
 template <class T, class Traits, class Alloc>
 struct Request<std::basic_string<T, Traits, Alloc>> {
-    std::basic_string<T, Traits, Alloc> operator()(Variable const &r, Dispatch &msg) const {
-        if (Debug) std::cout << "trying to convert to string" << std::endl;
-        if (auto p = r.request<std::basic_string<T, Traits, Alloc>>())
-            return std::move(*p);
-        if (auto p = r.request<std::basic_string_view<T, Traits>>())
+    std::optional<std::basic_string<T, Traits, Alloc>> operator()(Variable const &v, Dispatch &msg) const {
+        DUMP("trying to convert to string");
+        if (auto p = v.request<std::basic_string_view<T, Traits>>())
             return std::basic_string<T, Traits, Alloc>(std::move(*p));
-        if (auto p = r.request<std::basic_string<T, Traits>>())
-            return std::move(*p);
-        throw msg.error("not convertible to arithmetic value", r.type(), typeid(T));
+        if (!std::is_same_v<std::basic_string<T, Traits, Alloc>, std::basic_string<T, Traits>>)
+            if (auto p = v.request<std::basic_string<T, Traits>>())
+                return std::move(*p);
+        return msg.error("not convertible to string", v.type(), typeid(T));
     }
 };
 
 template <class T, class Traits>
 struct Request<std::basic_string_view<T, Traits>> {
-    std::basic_string_view<T, Traits> operator()(Variable const &r, Dispatch &msg) const {
-        if (auto p = r.request<std::basic_string_view<T, Traits>>())
-            return std::move(*p);
-        throw msg.error("not convertible to string view", r.type(), typeid(T));
+    std::optional<std::basic_string_view<T, Traits>> operator()(Variable const &v, Dispatch &msg) const {
+        return msg.error("not convertible to string view", v.type(), typeid(T));
     }
 };
-
-/******************************************************************************/
-
-using ArgPack = Vector<Variable>;
 
 /******************************************************************************/
 
 template <class V>
 struct SimplifyVector {
     void operator()(Variable &out, V v, std::type_index t) const {
-        if (t == typeid(Vector<Variable>)) {
-            Vector<Variable> o;
+        if (t == typeid(Sequence)) {
+            Sequence o;
             o.reserve(std::size(v));
             for (auto &&x : v) o.emplace_back(static_cast<decltype(x) &&>(x));
             out = std::move(o);
-        } else if (t == typeid(Vector<Variable>)) {
-            out = Vector<Variable>(std::begin(v), std::end(v));
+        } else if (t == typeid(Sequence)) {
+            out = Sequence(std::begin(v), std::end(v));
         }
     }
 };
@@ -181,22 +186,23 @@ struct VectorRequest {
     using T = no_qualifier<typename V::value_type>;
 
     template <class P>
-    static V get(P &pack, Dispatch &msg) {
+    static std::optional<V> get(P &pack, Dispatch &msg) {
         V out;
         out.reserve(pack.size());
         msg.indices.emplace_back(0);
         for (auto &x : pack) {
-            out.emplace_back(downcast<T>(Variable(std::move(x)), msg));
+            if (auto p = std::move(x).request(msg, Type<T>()))
+                out.emplace_back(std::move(*p));
+            else return msg.error();
             ++msg.indices.back();
         }
         msg.indices.pop_back();
         return out;
     }
 
-    V operator()(Variable const &r, Dispatch &msg) const {
-        if (auto p = r.request<Vector<Variable>>()) return get(*p, msg);
-        if (auto p = r.request<Vector<Variable>>()) return get(*p, msg);
-        throw msg.error("expected sequence", r.type(), typeid(V));
+    std::optional<V> operator()(Variable const &v, Dispatch &msg) const {
+        if (auto p = v.request<Sequence>()) return get(*p, msg);
+        return msg.error("expected sequence", v.type(), typeid(V));
     }
 };
 

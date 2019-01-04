@@ -28,7 +28,7 @@ template <> struct Opaque<BinaryData>       : std::true_type {};
 template <> struct Opaque<Binary>           : std::true_type {};
 template <> struct Opaque<Function>         : std::true_type {};
 template <> struct Opaque<Variable>         : std::true_type {};
-template <> struct Opaque<ArgPack>          : std::true_type {};
+template <> struct Opaque<Sequence>         : std::true_type {};
 template <> struct Opaque<Caller>           : std::true_type {};
 
 template <class T>
@@ -55,9 +55,9 @@ struct Document {
             types[t] = &(*it);
             return *p;
         }
-        std::cout << typeid(Type<decltype(it->second)>).name() << std::endl;
-        std::cout << t.name() << " " << s << " " << data.name() << std::endl;
-        std::cout << it->second.name() << static_cast<unsigned char>(it->second.qualifier()) << std::endl;
+        DUMP(typeid(Type<decltype(it->second)>).name());
+        DUMP(t.name(), " ", s, " ", data.name());
+        DUMP(it->second.name(), it->second.qualifier());
         throw std::runtime_error("should be TypeData");
     }
 

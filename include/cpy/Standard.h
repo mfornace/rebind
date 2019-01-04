@@ -50,66 +50,91 @@ struct Response<boost::container::small_vector<T, N, A>> : SimplifyVector<boost:
 template <class T, std::size_t N>
 struct Response<std::array<T, N>> : SimplifyVector<std::array<T, N>> {};
 
-
-// template <class T, std::size_t N, class A>
-// struct Response<boost::container::small_vector<T, N, A>> {
-//     Variable value(boost::container::small_vector<T, N, A> t) const {return {ValuePack(std::move(t)), bool()};}
-// };
-
-// /******************************************************************************/
+/******************************************************************************/
 
 template <class T>
 struct Response<std::optional<T>> {
     void operator()(Variable &out, std::optional<T> const &v, std::type_index t) const {
         if (v) Response<T>()(out, v, std::move(t));
     }
+    void operator()(Variable &out, std::optional<T> const &p, std::type_index t, Qualifier q) const {
+        if (p) Response<std::remove_cv_t<T>>()(out, *p, std::move(t), q);
+    }
 };
 
-// template <class T>
-// struct FromValue<std::optional<T>> {
-//     std::optional<T> operator()(Variable u, Dispatch &msg) const {
-//         if (!u.has_value()) return {};
-//         return downcast<T>(std::move(u), msg);
-//     }
-// };
+template <class T>
+struct Request<std::optional<T>> {
+    std::optional<std::optional<T>> operator()(Variable const &v, Dispatch &msg) const {
+        std::optional<std::optional<T>> out;
+        if (!v) out.emplace();
+        else if (auto p = v.request<std::remove_cv_t<T>>(msg))
+            out.emplace(std::move(*p));
+        return out;
+    }
+};
 
-// template <class ...Ts>
-// struct Response<std::variant<Ts...>> {
-//     Variable value(std::variant<Ts...> t) const {
-//         return std::visit([](auto &&t) -> Variable {
-//             return Response<no_qualifier<decltype(t)>>()(static_cast<decltype(t) &&>(t));
-//         }, t);
-//     }
-// };
+/******************************************************************************/
 
+template <class T>
+struct Response<std::shared_ptr<T>> {
+    void operator()(Variable &out, std::shared_ptr<T> const &p, std::type_index t) const {
+        DUMP("value", t.name(), bool(p));
+        if (!p) return;
+        if (t == typeid(std::remove_cv_t<T>)) out = *p;
+        else Response<std::remove_cv_t<T>>()(out, *p, std::move(t));
+    }
+    void operator()(Variable &out, std::shared_ptr<T> const &p, std::type_index t, Qualifier q) const {
+        DUMP("reference", t.name(), typeid(std::remove_cv_t<T>).name(), bool(p), q);
+        if (!p) return;
+        if (t == typeid(std::remove_cv_t<T>)) out = {Type<T &>(), *p};
+        else Response<std::remove_cv_t<T>>()(out, *p, std::move(t), q);
+    }
+};
 
-// template <class T, class ...Ts>
-// struct FromValue<std::variant<T, Ts...>> {
-//     template <class V1, class U>
-//     std::variant<T, Ts...> scan(Pack<V1>, U &u, Dispatch &tmp, Dispatch &msg) const {
-//         try {return downcast<V1>(std::move(u), tmp);}
-//         catch (DispatchError const &err) {}
-//         throw msg.error("no conversions succeeded", typeid(std::variant<T, Ts...>), typeid(U));
-//     }
+template <class T>
+struct Request<std::shared_ptr<T>> {
+    std::optional<std::shared_ptr<T>> operator()(Variable const &v, Dispatch &msg) const {
+        std::optional<std::shared_ptr<T>> out;
+        if (!v) out.emplace();
+        else if (auto p = v.request<std::remove_cv_t<T>>(msg))
+            out.emplace(std::make_shared<T>(std::move(*p)));
+        return out;
+    }
+};
 
-//     template <class V1, class V2, class U, class ...Vs>
-//     std::variant<T, Ts...> scan(Pack<V1, V2, Vs...>, U &u, Dispatch &tmp, Dispatch &msg) const {
-//         try {return downcast<V1>(std::move(u), tmp);}
-//         catch (DispatchError const &err) {}
-//         return scan(Pack<V2, Vs...>(), u, tmp, msg);
-//     }
+/******************************************************************************/
 
-//     template <class U>
-//     std::variant<T, Ts...> operator()(U u, Dispatch &msg) const {
-//         Dispatch tmp = msg;
-//         return scan(Pack<T, Ts...>(), u, tmp, msg);
-//     }
-// };
+template <class ...Ts>
+struct Response<std::variant<Ts...>> {
+    void operator()(Variable &out, std::variant<Ts...> v, std::type_index t) const {
+        DUMP(out.name(), typeid(v).name(), t.name());
+        DUMP(v.index());
+        std::visit([&](auto const &x) {
+            DUMP(typeid(x).name());
+            Response<no_qualifier<decltype(x)>>()(out, x, t);
+        }, v);
+    }
+};
 
-// /******************************************************************************/
+template <class ...Ts>
+struct Request<std::variant<Ts...>> {
+    template <class T>
+    static bool put(std::optional<std::variant<Ts...>> &out, Variable const &v, Dispatch &msg) {
+        if (auto p = v.request<T>(msg)) return out.emplace(std::move(*p)), true;
+        return false;
+    }
+
+    std::optional<std::variant<Ts...>> operator()(Variable const &v, Dispatch &msg) const {
+        std::optional<std::variant<Ts...>> out;
+        (void) (put<Ts>(out, v, msg) || ...);
+        return out;
+    }
+};
+
+/******************************************************************************/
 
 template <class V>
-struct FromCompiledSequence {
+struct CompiledSequenceResponse {
     template <class O, std::size_t ...Is>
     O put(V const &v, std::index_sequence<Is...>) const {
         O o;
@@ -119,44 +144,58 @@ struct FromCompiledSequence {
     }
 
     void operator()(Variable &out, V const &v, std::type_index t) const {
-        if (t == typeid(Vector<Variable>))
-            out = put<Vector<Variable>>(v, std::make_index_sequence<std::tuple_size_v<V>>());
+        if (t == typeid(Sequence))
+            out = put<Sequence>(v, std::make_index_sequence<std::tuple_size_v<V>>());
     }
 };
 
 template <class ...Ts>
-struct Response<std::tuple<Ts...>> : FromCompiledSequence<std::tuple<Ts...>> {};
+struct Response<std::tuple<Ts...>> : CompiledSequenceResponse<std::tuple<Ts...>> {};
 
 template <class T, class U>
-struct Response<std::pair<T, U>> : FromCompiledSequence<std::pair<T, U>> {};
+struct Response<std::pair<T, U>> : CompiledSequenceResponse<std::pair<T, U>> {};
 
 /******************************************************************************/
 
-template <class V, class S, std::size_t ...Is>
-V to_compiled_sequence(S &s, Dispatch &msg, std::index_sequence<Is...>) {
-    msg.indices.emplace_back(0);
-    return {(msg.indices.back() = Is, downcast<std::tuple_element_t<Is, V>>(Variable(s[Is]), msg))...};
-}
-
-template <class V, class S>
-V to_compiled_sequence(S &&s, Dispatch &msg) {
-    if (s.size() != std::tuple_size_v<V>) {
-        throw msg.error("wrong sequence length", typeid(S), typeid(V), std::tuple_size_v<V>, s.size());
-    }
-    V &&v = to_compiled_sequence<V>(s, msg, std::make_index_sequence<std::tuple_size_v<V>>());
-    msg.indices.pop_back();
-    return std::move(v);
-}
-
-// /******************************************************************************/
-
 template <class V>
 struct CompiledSequenceRequest {
-    V operator()(Variable r, Dispatch &msg) const {
-        if (Debug) std::cout << "trying CompiledSequenceRequest " << r.type().name() << std::endl;
-        if (auto p = r.request<Vector<Variable>>())
-            return to_compiled_sequence<V>(std::move(*p), msg);
-        throw msg.error("mismatched class", r.type(), typeid(V));
+    template <class ...Ts>
+    static void combine(std::optional<V> &out, Ts &&...ts) {
+        DUMP("trying CompiledSequenceRequest combine", bool(ts)...);
+        if ((bool(ts) && ...)) out = V{*static_cast<Ts &&>(ts)...};
+    }
+
+    template <class S, std::size_t ...Is>
+    static void request_each(std::optional<V> &out, S &s, Dispatch &msg, std::index_sequence<Is...>) {
+        DUMP("trying CompiledSequenceRequest request");
+        combine(out, std::move(s[Is]).request(msg, Type<std::tuple_element_t<Is, V>>())...);
+    }
+
+    template <class S>
+    static void check(std::optional<V> &out, S &s, Dispatch &msg) {
+        DUMP("trying CompiledSequenceRequest check");
+        if (std::size(s) != std::tuple_size_v<V>) {
+            msg.error("wrong sequence length", typeid(S), typeid(V), std::tuple_size_v<V>, s.size());
+        } else {
+            msg.indices.emplace_back(0);
+            request_each(out, s, msg, std::make_index_sequence<std::tuple_size_v<V>>());
+            msg.indices.pop_back();
+        }
+    }
+
+    std::optional<V> operator()(Variable r, Dispatch &msg) const {
+        std::optional<V> out;
+        DUMP("trying CompiledSequenceRequest", r.type().name());
+        if constexpr(!std::is_same_v<V, Sequence>) {
+            if (auto p = r.request<Sequence>()) {
+                DUMP("trying CompiledSequenceRequest2", r.type().name());
+                check(out, *p, msg);
+            } else {
+                DUMP("trying CompiledSequenceRequest3", r.type().name());
+                msg.error("expected sequence to make compiled sequence", r.type(), typeid(V));
+            }
+        }
+        return out;
     }
 };
 
@@ -164,52 +203,10 @@ struct CompiledSequenceRequest {
 template <class T>
 struct Request<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : CompiledSequenceRequest<T> {};
 
-// template <class V>
-// struct CompiledSequenceFromArg {
-//     V operator()(Arg &out, Arg &&in, Dispatch &msg) const {
-//         if (auto p = std::any_cast<ArgPack>(&in)) {
-//             if (Debug) std::cout << "from argpack "  << p->size() << " " << typeid(V).name() << std::endl;
-//             return to_compiled_sequence<V>(std::move(*p), msg);
-//         }
-//         if (auto p = std::any_cast<ValuePack>(&in)) {
-//             if (Debug) std::cout << "from valuepack " << typeid(V).name() << std::endl;
-//             return to_compiled_sequence<V>(std::move(*p), msg);
-//         }
-//         throw msg.error(in.has_value() ? "mismatched class" : "object was already moved", in.type(), typeid(V));
-//     }
-// };
-
-// /// The default implementation is to accept convertible arguments or Variable of the exact typeid match
-// template <class T>
-// struct FromArg<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : CompiledSequenceFromArg<T> {};
-
 /******************************************************************************/
 
 template <class R, class ...Ts>
 struct Renderer<std::function<R(Ts...)>> : Renderer<Pack<no_qualifier<R>, no_qualifier<Ts>...>> {};
-
-// template <class R, class ...Ts>
-// struct Request<std::function<R(Ts...)>> {
-//     std::function<R(Ts...)> operator()(Reference v, Dispatch &msg) const {
-//         if (auto f = v.request(Function))
-
-//         return {};
-//     }
-// };
-
-/******************************************************************************/
-
-// template <class T>
-// void render(cpy::Document &doc, Type<std::future<T>> t) {
-//     using F = std::future<T>;
-//     doc.type(t, "Future");
-//     doc.method(t, "valid", &F::valid);
-//     doc.method(t, "wait", &F::wait);
-//     doc.method(t, "get", &F::get);
-//     doc.method(t, "wait_for", [](F const &f, double t) {
-//         return f.wait_for(std::chrono::duration<double>(t)) == std::future_status::ready;
-//     });
-// }
 
 /******************************************************************************/
 

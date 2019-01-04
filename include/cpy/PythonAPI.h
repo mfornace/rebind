@@ -131,12 +131,12 @@ T & cast_object(PyObject *o) {
 /******************************************************************************/
 
 Variable variable_from_object(Object o);
-ArgPack args_from_python(Object const &pypack);
+Sequence args_from_python(Object const &pypack);
 
 template <>
 struct Response<Object> {
     void operator()(Variable &, Object, std::type_index) const;
-    void *operator()(Qualifier, Object, std::type_index) const;
+    void operator()(Variable &, Object, std::type_index, Qualifier) const;
 };
 
 /******************************************************************************/
@@ -169,7 +169,7 @@ Object args_as_tuple(Ts &&...ts) {
 
 Object as_variable(Variable &&v, Object const &t={});
 
-inline Object args_to_python(ArgPack &&s, Object const &sig={}) {
+inline Object args_to_python(Sequence &&s, Object const &sig={}) {
     if (sig && !PyTuple_Check(+sig))
         throw python_error(type_error("expected tuple but got %R", (+sig)->ob_type));
     std::size_t len = sig ? PyTuple_GET_SIZE(+sig) : 0;
@@ -181,7 +181,9 @@ inline Object args_to_python(ArgPack &&s, Object const &sig={}) {
             PyObject *t = PyTuple_GET_ITEM(+sig, i);
             std::cout << "not done" << std::endl;
         } else {
-            if (!set_tuple_item(out, i, as_variable(std::move(v).reference()))) return {};
+            // special case: if given an rvalue reference, make it into a value
+            if (!set_tuple_item(out, i, as_variable(
+                v.qualifier() == Qualifier::R ? v.copy() : std::move(v)))) return {};
         }
         ++i;
     }
@@ -202,42 +204,39 @@ void map_iterable(Object iterable, F &&f) {
 /******************************************************************************/
 
 /// RAII release of Python GIL
-struct SuspendedPython final : Frame {
-    PyThreadState *state;
+struct PythonFrame final : Frame {
     std::mutex mutex;
+    PyThreadState *state = nullptr;
+    bool no_gil;
 
-    SuspendedPython(bool no_gil) : state(no_gil ? PyEval_SaveThread() : nullptr) {
-        if (Debug) std::cout << "running with nogil=" << no_gil << std::endl;
+    PythonFrame(bool no_gil) : no_gil(no_gil) {}
+
+    void enter() override {
+        DUMP("running with nogil=", no_gil);
+        if (no_gil && !state) state = PyEval_SaveThread(); // release GIL
     }
 
     std::shared_ptr<Frame> operator()(std::shared_ptr<Frame> &&t) override {
-        if (Debug) std::cout << "suspended Python " << bool(t) << std::endl;
-        return std::move(t);
+        DUMP("suspended Python ", bool(t));
+        if (no_gil || state) return std::move(t); // return this
+        else return std::make_shared<PythonFrame>(no_gil); // return a new frame
     }
 
-    // lock to prevent multiple threads trying to get the thread going
+    // acquire GIL; lock mutex to prevent multiple threads trying to get the thread going
     void acquire() noexcept {if (state) {mutex.lock(); PyEval_RestoreThread(state);}}
-
+    // release GIL; unlock mutex
     void release() noexcept {if (state) {state = PyEval_SaveThread(); mutex.unlock();}}
 
-    ~SuspendedPython() {if (state) PyEval_RestoreThread(state);}
+    ~PythonFrame() {if (state) PyEval_RestoreThread(state);}
 };
 
-struct PythonEntry final : Frame {
-    bool no_gil;
-    PythonEntry(bool no_gil) : no_gil(no_gil) {}
-    std::shared_ptr<Frame> operator()(std::shared_ptr<Frame> &&) override {
-        if (Debug) std::cout << "entered C++ from Python nogil=" << no_gil << std::endl;
-        return std::make_shared<SuspendedPython>(no_gil);
-    }
-    ~PythonEntry() = default;
-};
+/******************************************************************************/
 
 /// RAII reacquisition of Python GIL
 struct ActivePython {
-    SuspendedPython &lock; //< SuspendedPython object; can be nullptr
+    PythonFrame &lock;
 
-    ActivePython(SuspendedPython &u) : lock(u) {lock.acquire();}
+    ActivePython(PythonFrame &u) : lock(u) {lock.acquire();}
     ~ActivePython() {lock.release();}
 };
 
@@ -257,9 +256,9 @@ struct PythonFunction {
     }
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
-    Variable operator()(Caller c, ArgPack args) const {
-        if (Debug) std::cout << "calling python function" << std::endl;
-        auto p = c.target<SuspendedPython>();
+    Variable operator()(Caller c, Sequence args) const {
+        DUMP("calling python function");
+        auto p = c.target<PythonFrame>();
         if (!p) throw DispatchError("Python context is expired or invalid");
         ActivePython lk(*p);
         Object o = args_to_python(std::move(args), signature);

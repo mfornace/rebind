@@ -85,7 +85,7 @@ template <class ...Ts> struct Pack {
     static constexpr auto indexed(F &&f) {return indexed(static_cast<F &&>(f), indices());}
 
     template <class F>
-    static constexpr auto apply2(F &&f) {f(Type<Ts>()...);}
+    static constexpr decltype(auto) apply(F &&f) {return f(Type<Ts>()...);}
 
     template <class F>
     static void for_each(F &&f) {(f(Type<Ts>()), ...);}

@@ -3,33 +3,59 @@
 
 namespace cpy {
 
+template <class T, class=void>
+struct ImplicitConversions {
+    using types = Pack<>;
+};
+
+template <class T>
+bool implicit_match(Variable &out, T &&t, Qualifier const q) {
+    using U = std::decay_t<T>;
+    if constexpr(std::is_convertible_v<T &&, U>)
+        if (q == Qualifier::V) out = {Type<U>(), static_cast<T &&>(t)};
+    if constexpr(std::is_convertible_v<T &&, U &>)
+        if (q == Qualifier::L) out = {Type<U &>(), static_cast<T &&>(t)};
+    if constexpr(std::is_convertible_v<T &&, U &&>)
+        if (q == Qualifier::R) out = {Type<U &&>(), static_cast<T &&>(t)};
+    if constexpr(std::is_convertible_v<T &&, U const &>)
+        if (q == Qualifier::C) out = {Type<U const &>(), static_cast<T &&>(t)};
+    return out.has_value();
+}
+
+template <class T>
+bool implicit_response(Variable &out, T &&t, std::type_index idx, Qualifier q) {
+    return ImplicitConversions<std::decay_t<T>>::types::apply([&](auto ...ts) {
+        return ((std::type_index(ts) == idx && implicit_match(out, static_cast<T &&>(t), q)) || ...)
+            || (implicit_response(out, static_cast<copy_qualifier<T &&, decltype(*ts)>>(t), idx, q) || ...);
+    });
+}
+
 /******************************************************************************/
 
 template <class T, class=void>
 struct ValueResponse {
-    void operator()(Variable &out, T const &t, std::type_index) const {
-        if (Debug) std::cout << "    - default simplifyvalue " << typeid(T).name() << std::endl;
-        out = t;
-        if (Debug) std::cout << "    - default simplifyvalue " << typeid(T).name() << " 2" << std::endl;
+    void operator()(Variable &out, T const &t, std::type_index idx) const {
+        DUMP("default simplifyvalue ", typeid(T).name());
+        implicit_response(out, t, idx, Qualifier::V);
     }
 };
 
 template <class T>
 struct ValueResponse<T, std::void_t<decltype(response(std::declval<T const &>(), std::declval<std::type_index &&>()))>> {
     void operator()(Variable &out, T const &t, std::type_index idx) const {
-        if (Debug) std::cout << "    - adl simplifyvalue" << typeid(T).name() << std::endl;
+        DUMP("adl simplifyvalue", typeid(T).name());
         out = response(t, std::move(idx));
-        if (Debug) std::cout << "    - adl simplifyvalue" << typeid(T).name() << " 2" << std::endl;
+        if (!out) implicit_response(out, t, idx, Qualifier::V);
+        DUMP("adl simplifyvalue", typeid(T).name(), " 2");
     }
 };
 
 template <class T, class=void>
 struct ReferenceResponse {
     using custom = std::false_type;
-    void * operator()(Qualifier q, T const &t, std::type_index i) const {
-        if (Debug) std::cout << "    - no conversion for reference " << typeid(T).name() << " "
-            << int(static_cast<unsigned char>(q)) << " " << i.name() << std::endl;
-        return nullptr;
+    void operator()(Variable &out, T const &t, std::type_index idx, Qualifier q) const {
+        DUMP("no conversion for reference ", typeid(T).name(), q, idx.name());
+        implicit_response(out, t, idx, q);
     }
 };
 
@@ -37,9 +63,10 @@ template <class T>
 struct ReferenceResponse<T, std::void_t<decltype(response(std::declval<T const &>(), std::declval<std::type_index &&>(), cvalue()))>> {
     using custom = std::true_type;
     template <class Q>
-    void * operator()(Q q, qualified<T, Q> t, std::type_index idx) const {
-        if (Debug) std::cout << "    - convert reference via ADL " << typeid(T).name() << std::endl;
-        return const_cast<void *>(static_cast<void const *>(response(static_cast<decltype(t) &&>(t), std::move(idx), q)));
+    void operator()(Variable &out, qualified<T, Q> t, std::type_index idx, Q q) const {
+        DUMP("convert reference via ADL ", typeid(T).name());
+        out = response(static_cast<decltype(t) &&>(t), std::move(idx), q);
+        if (!out) implicit_response(out, t, idx, q);
     }
 };
 
@@ -56,37 +83,40 @@ template <class T, class>
 struct Request {
     static_assert(std::is_same_v<no_qualifier<T>, T>);
 
-    T operator()(Variable const &r, Dispatch &msg) const {
-        if (auto v = r.request<T>()) return static_cast<T &&>(*v);
-        throw msg.error("mismatched class type", r.type(), typeid(T));
+    std::optional<T> operator()(Variable const &r, Dispatch &msg) const {
+        return msg.error("mismatched class type", r.type(), typeid(T));
     }
 };
 
+void lvalue_fails(Variable const &, Dispatch &, std::type_index);
+void rvalue_fails(Variable const &, Dispatch &, std::type_index);
+
 template <class T, class C>
 struct Request<T &, C> {
-    T & operator()(Variable const &r, Dispatch &msg) const {
-        throw msg.error("could not bind to lvalue reference", r.type(), typeid(T));
+    T * operator()(Variable const &v, Dispatch &msg) const {
+        lvalue_fails(v, msg, typeid(T));
+        return nullptr;
     }
 };
 
 template <class T, class C>
 struct Request<T const &, C> {
-    T const & operator()(Variable const &r, Dispatch &msg) const {
-        try {
-            if (Debug) std::cout << "    - trying & -> const & " << typeid(T).name() << std::endl;
-            return Request<T &>()(r, msg);
-        } catch (DispatchError const &) {
-            if (Debug) std::cout << "    - trying temporary const & storage " << typeid(T).name() << std::endl;
-            return msg.storage.emplace_back().emplace<T>(Request<T>()(r, msg));
-        }
+    T const * operator()(Variable const &v, Dispatch &msg) const {
+        DUMP("trying & -> const & ", typeid(T).name());
+        if (auto p = v.request<T &>(msg)) return p;
+        DUMP("trying temporary const & storage ", typeid(T).name());
+        if (auto p = v.request<T>(msg)) return msg.store(std::move(*p));
+        return msg.error("could not bind to const lvalue reference", v.type(), typeid(T)), nullptr;
     }
 };
 
 template <class T, class C>
 struct Request<T &&, C> {
-    T && operator()(Variable const &r, Dispatch &msg) const {
-        if (Debug) std::cout << "    - trying temporary && storage " << typeid(T).name() << std::endl;
-        return static_cast<T &&>(msg.storage.emplace_back().emplace<T>(Request<T>()(r, msg)));
+    T * operator()(Variable const &v, Dispatch &msg) const {
+        DUMP("trying temporary && storage ", typeid(T).name());
+        if (auto p = v.request<T>(msg)) return msg.store(std::move(*p));
+        rvalue_fails(v, msg, typeid(T));
+        return nullptr;
     }
 };
 
@@ -95,11 +125,10 @@ void request(int, int, int);
 
 /// ADL version
 template <class T>
-struct Request<T, std::void_t<decltype(
-    request(Type<T>(), std::declval<Variable const &>(), std::declval<Dispatch &>()))>> {
+struct Request<T, std::void_t<decltype(request(Type<T>(), std::declval<Variable const &>(), std::declval<Dispatch &>()))>> {
 
-    T operator()(Variable const &r, Dispatch &msg) const {
-        return static_cast<T>(request(Type<T>(), r, msg));
+    std::optional<T> operator()(Variable const &r, Dispatch &msg) const {
+        return static_cast<std::optional<T>>(request(Type<T>(), r, msg));
     }
 };
 
