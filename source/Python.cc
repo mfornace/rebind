@@ -75,26 +75,38 @@ std::string_view from_bytes(PyObject *o) {
 
 template <class T>
 void to_arithmetic(Object const &o, Variable &v) {
+    DUMP("cast arithmetic", v.name(), v.qualifier());
     if (PyFloat_Check(o)) v = static_cast<T>(PyFloat_AsDouble(+o));
     else if (PyLong_Check(o)) v = static_cast<T>(PyLong_AsLongLong(+o));
     else if (PyBool_Check(o)) v = static_cast<T>(+o == Py_True);
+    DUMP("cast arithmetic", v.name(), v.qualifier());
 }
 
 void Response<Object>::operator()(Variable &v, Object o, std::type_index t, Qualifier q) const {
-    if (Debug) std::cout << "    - trying to get reference from Object " << bool(o) << std::endl;
-    if (auto p = cast_if<Variable>(o)) if (p->type() == t) v = *p;
+    DUMP("trying to get reference from Object ", bool(o));
+    if (auto p = cast_if<Variable>(o)) {
+        Dispatch msg;
+        DUMP("requested qualified variable", q, t.name(), p->type().name(), p->qualifier());
+        v = p->reference().request_variable(msg, t, q);
+        DUMP(p->type().name(), t.name(), v.name());
+        // Dispatch msg;
+        // if (p->type() == t) {
+        //     DUMP("worked");
+        //     v = {Type<decltype(*p)>(), *p};
+        // }
+    }
 }
 
 void Response<Object>::operator()(Variable &v, Object o, std::type_index t) const {
     if (Debug) {
         Object repr{PyObject_Repr(TypeObject{(+o)->ob_type}), false};
 
-        if (Debug) std::cout << "    - trying to convert object to " << t.name() << " " << from_unicode(+repr) << std::endl;
-        if (Debug) std::cout << bool(cast_if<Variable>(o)) << std::endl;
+        DUMP("trying to convert object to ", t.name(), " ", from_unicode(+repr));
+        DUMP(bool(cast_if<Variable>(o)));
     }
 
     if (auto p = cast_if<Variable>(o)) {
-        if (Debug) std::cout << "    - its a variable" << std::endl;
+        DUMP("its a variable");
         Dispatch msg;
         v = p->request_variable(msg, t);
     } else if (auto p = cast_if<std::type_index>(o)) {
@@ -102,14 +114,14 @@ void Response<Object>::operator()(Variable &v, Object o, std::type_index t) cons
     } else if (t == typeid(Object)) {
         v = std::move(o);
     } else if (t == typeid(Function)) {
-        if (Debug) std::cout << "    - requested function" << std::endl;
+        DUMP("requested function");
         if (+o == Py_None) v = Function();
         else if (auto p = cast_if<Function>(o)) v = *p;
         else v = Function().emplace(PythonFunction({+o, true}, {Py_None, true}), {});
-    } else if (t == typeid(Vector<Variable>)) {
+    } else if (t == typeid(Sequence)) {
         if (PyTuple_Check(o) || PyList_Check(o)) {
-            if (Debug) std::cout << "    - making a tuple" << std::endl;
-            Vector<Variable> vals;
+            DUMP("making a tuple");
+            Sequence vals;
             vals.reserve(PyObject_Length(o));
             map_iterable(o, [&](Object o) {vals.emplace_back(std::move(o));});
             v = std::move(vals);
@@ -131,32 +143,33 @@ void Response<Object>::operator()(Variable &v, Object o, std::type_index t) cons
         if (PyUnicode_Check(+o)) v = std::string(from_unicode(+o));
         if (PyBytes_Check(+o)) v = std::string(from_bytes(+o));
     } else if (t == typeid(ArrayData)) {
-        Buffer buff(+o, PyBUF_FULL_RO); // Read in the shape but ignore strides, suboffsets
-        if (Debug) std::cout << "    - cast buffer " << std::endl;
-        if (buff.ok) {
-            if (Debug) std::cout << "    - making data" << std::endl;
-            if (Debug) std::cout << Buffer::format(buff.view.format ? buff.view.format : "").name() << std::endl;
-            if (Debug) std::cout << buff.view.ndim << std::endl;
-            if (Debug) std::cout << (nullptr == buff.view.buf) << bool(buff.view.readonly) << std::endl;
-            auto a = ArrayData(buff.view.buf, Buffer::format(buff.view.format ? buff.view.format : ""),
-                !buff.view.readonly, Vector<Integer>(buff.view.shape, buff.view.shape + buff.view.ndim),
-                Vector<Integer>(buff.view.strides, buff.view.strides + buff.view.ndim));
-            for (auto &x : a.strides) x /= buff.view.itemsize;
-            if (Debug) for (auto i : a.shape) std::cout << i << ", ";
-            if (Debug) std::cout << std::endl;
-            if (Debug) std::cout << "made data" << std::endl;
-            if (Debug) std::cout << *static_cast<float *>(buff.view.buf) << " " << *static_cast<float *>(a.data) << std::endl;
-            if (Debug) std::cout << *static_cast<std::uint16_t *>(buff.view.buf) << " " << *static_cast<std::uint16_t *>(a.data) << std::endl;
-            v = std::move(a);
-        } else throw python_error(type_error("C++: could not get buffer"));
+        if (PyObject_CheckBuffer(+o)) {
+            Buffer buff(o, PyBUF_FULL_RO); // Read in the shape but ignore strides, suboffsets
+            DUMP("cast buffer", buff.ok);
+            if (buff.ok) {
+                DUMP("making data");
+                DUMP(Buffer::format(buff.view.format ? buff.view.format : "").name());
+                DUMP("ndim", buff.view.ndim);
+                DUMP((nullptr == buff.view.buf), bool(buff.view.readonly));
+                auto a = ArrayData(buff.view.buf, Buffer::format(buff.view.format ? buff.view.format : ""),
+                    !buff.view.readonly, Vector<Integer>(buff.view.shape, buff.view.shape + buff.view.ndim),
+                    Vector<Integer>(buff.view.strides, buff.view.strides + buff.view.ndim));
+                for (auto &x : a.strides) x /= buff.view.itemsize;
+                for (auto i : a.shape) DUMP(i);
+                DUMP(*static_cast<float *>(buff.view.buf), " ", *static_cast<float *>(a.data));
+                DUMP(*static_cast<std::uint16_t *>(buff.view.buf), " ", *static_cast<std::uint16_t *>(a.data));
+                DUMP("made data! ", a.strides.size());
+                v = std::move(a);
+            } else throw python_error(type_error("C++: could not get buffer"));
+        }
     } else if (t == typeid(std::complex<double>)) {
         if (PyComplex_Check(+o)) v = std::complex<double>{PyComplex_RealAsDouble(+o), PyComplex_ImagAsDouble(+o)};
     } else if (+o == Py_None) {
-        if (Debug) std::cout << "got none " << t.name() << std::endl;
+        DUMP("got none ", t.name());
     } else {
-        if (Debug) std::cout << "cannot create type " << t.name() << std::endl;
+        DUMP("cannot create type ", t.name());
     }
-    if (Debug) std::cout << "requested " << t.name() << std::endl;
+    DUMP("requested ", v.name(), t.name());
 }
 
 /******************************************************************************/
@@ -175,6 +188,7 @@ std::string wrong_type_message(WrongType const &e) {
         os << ", scopes=[";
         for (auto i : e.indices) os << i << ", ";
     };
+    os << " expected=" << e.expected << " received=" << e.received;
     os << ')';
     auto s = std::move(os).str();
     if (!e.indices.empty()) {s.end()[-3] = ']'; s.end()[-2] = ')'; s.pop_back();}
@@ -186,13 +200,18 @@ std::string wrong_type_message(WrongType const &e) {
 Variable variable_from_object(Object o) {
     if (auto p = cast_if<Function>(o)) return {Type<Function const &>(), *p};
     else if (auto p = cast_if<std::type_index>(o)) return {Type<std::type_index>(), *p};
-    else if (auto p = cast_if<Variable>(o)) return p->reference();
+    else if (auto p = cast_if<Variable>(o)) {
+        DUMP(p, p->data());
+        DUMP(p->qualifier(), p->reference().qualifier());
+        DUMP(p->qualifier(), p->reference().qualifier());
+        return p->reference();
+    }
     else return std::move(o);
 }
 
 // Store the objects in args in pack
-ArgPack args_from_python(Object const &args) {
-    ArgPack v;
+Sequence args_from_python(Object const &args) {
+    Sequence v;
     v.reserve(PyObject_Length(+args));
     map_iterable(args, [&v](Object o) {v.emplace_back(variable_from_object(std::move(o)));});
     return v;

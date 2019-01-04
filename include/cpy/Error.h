@@ -56,6 +56,7 @@ struct Dispatch {
     std::vector<unsigned int> indices;
     std::type_index source = typeid(void);
     std::type_index dest = typeid(void);
+    Caller caller;
     unsigned int index = 0, expected = 0, received = 0;
 
     std::nullopt_t error() noexcept {return std::nullopt;}
@@ -89,7 +90,7 @@ struct Dispatch {
         return std::addressof(storage.emplace_back().emplace<no_qualifier<T>>(static_cast<T &&>(t)));
     }
 
-    Dispatch(char const *s="mismatched type") : scope(s) {indices.reserve(8);}
+    Dispatch(Caller c={}, char const *s="mismatched type") : scope(s), caller(std::move(c)) {indices.reserve(8);}
 };
 
 /******************************************************************************/
