@@ -18,30 +18,6 @@ auto binary_search(V const &v, typename V::value_type::first_type t) {
     return (it != v.end() && it->first == t) ? it : v.end();
 }
 
-// struct Identity {
-//     template <class T>
-//     T const & operator()(T const &t) const {return t;}
-// };
-
-// struct Ignore {
-//     template <class T>
-//     Ignore(T const &) {}
-
-//     template <class T>
-//     Ignore &operator=(T const &) {return *this;}
-// };
-
-/******************************************************************************/
-
-// template <class T, class U>
-// static constexpr bool Reinterpretable = sizeof(T) == sizeof(U) && alignof(T) == alignof(U)
-//                                       && std::is_pod_v<T> && std::is_pod_v<U>;
-
-// static_assert(!std::is_same_v<unsigned char, char>);
-// static_assert(Reinterpretable<unsigned char, char>);
-// Standard: a char, a signed char, and an unsigned char occupy
-// the same amount of storage and have the same alignment requirements
-
 /******************************************************************************/
 
 template <class T>
@@ -110,23 +86,6 @@ template <class T>
 static constexpr Qualifier qualifier_of = (!std::is_reference_v<T>) ? Qualifier::V
     : (std::is_rvalue_reference_v<T> ? Qualifier::R :
         (std::is_const_v<std::remove_reference_t<T>> ? Qualifier::C : Qualifier::L));
-
-/******************************************************************************/
-
-// template <class T>
-// struct UnqualifiedID {static constexpr bool id = true;}
-
-// template <class T>
-// struct QualifiedID {static constexpr bool * id_ptr = &UnqualifiedID<std::decay_t<T>>::id;};
-
-// class TypeID {
-//     bool **ptr;
-// public:
-//     template <class T>
-//     constexpr TypeID(Type<T>) : ptr(&QualifiedTypeID<T>::id_ptr) {}
-
-//     friend operator=(TypeID)
-// };
 
 /******************************************************************************/
 

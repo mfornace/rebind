@@ -129,12 +129,6 @@ struct Renderer<T, std::void_t<decltype(render(std::declval<Document &>(), Type<
     void operator()(Document &doc) const {render(doc, Type<T>());}
 };
 
-/// The default implementation is to call render(Document &, Type<T>) via ADL
-// template <class T>
-// struct Renderer<T, std::void_t<decltype(T::render(std::declval<Document &>(), Type<T>()))>> {
-//     void operator()(Document &doc) const {T::render(doc, Type<T>());}
-// };
-
 /******************************************************************************/
 
 }
