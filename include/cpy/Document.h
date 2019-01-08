@@ -88,7 +88,7 @@ struct Document {
         render(typename Signature<F>::no_qualifier());
         auto it = contents.find(s);
         if (it == contents.end()) {
-            contents.emplace(std::move(s), Function().emplace(std::move(functor)));
+            contents.emplace(std::move(s), Function::of(std::move(functor)));
         } else {
             if (auto f = it->second.target<Function &>())
                 f->emplace(std::move(functor));

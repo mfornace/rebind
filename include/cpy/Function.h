@@ -43,6 +43,9 @@ struct Function {
 
     Function() = default;
 
+    template <class F>
+    static Function of(F &&f) {Function p; p.emplace(static_cast<F &&>(f)); return p;}
+
     explicit operator bool() const {return !overloads.empty();}
 
     template <class ...Ts>
@@ -59,12 +62,6 @@ struct Function {
         return *this;
     }
 
-
-    Function && emplace(ErasedFunction f, ErasedSignature const &s) && {
-        overloads.emplace_back(s, std::move(f));
-        return std::move(*this);
-    }
-
     /******************************************************************************/
 
     template <int N = -1, class F>
@@ -74,9 +71,6 @@ struct Function {
         overloads.emplace_back(SimpleSignature<decltype(fun)>(), Adapter<n, decltype(fun)>{std::move(fun)});
         return *this;
     }
-
-    template <int N = -1, class F>
-    Function && emplace(F f) && {emplace<N>(std::move(f)); return std::move(*this);}
 };
 
 /******************************************************************************/

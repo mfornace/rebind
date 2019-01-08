@@ -2,7 +2,7 @@
 
 namespace cpy {
 
-bool const Debug = false;
+bool Debug = false;
 
 Document & document() noexcept {
     static Document static_document;

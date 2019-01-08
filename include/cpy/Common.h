@@ -8,7 +8,7 @@
 
 namespace cpy {
 
-extern bool const Debug;
+extern bool Debug;
 
 template <class From, class To> struct copy_qualifier_t {using type = To;};
 template <class From, class To> struct copy_qualifier_t<From &, To> {using type = To &;};

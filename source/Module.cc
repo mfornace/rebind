@@ -678,15 +678,17 @@ Object initialize(Document const &doc) {
             else o = any_as_variable(x.second);
             return args_as_tuple(as_object(x.first), std::move(o));
         }))
-        && attach(m, "set_conversion", as_object(Function().emplace([](Object t, Object o) {
+        && attach(m, "set_conversion", as_object(Function::of([](Object t, Object o) {
             DUMP("insert type conversion ", (t == o), (+t == Py_None));
             type_conversions.insert_or_assign(std::move(t), std::move(o));
             DUMP("inserted type conversion ");
         })))
-        && attach(m, "_finalize", as_object(Function().emplace([] {
+        && attach(m, "_finalize", as_object(Function::of([] {
             type_conversions.clear();
         })))
-        && attach(m, "set_type_names", as_object(Function().emplace(
+        && attach(m, "set_debug", as_object(Function::of([](bool b) {return std::exchange(Debug, b);})))
+        && attach(m, "debug", as_object(Function::of([] {return Debug;})))
+        && attach(m, "set_type_names", as_object(Function::of(
             [](Zip<std::type_index, std::string_view> v) {
                 for (auto const &p : v) type_names.insert_or_assign(p.first, p.second);
             })));

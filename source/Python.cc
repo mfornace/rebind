@@ -117,7 +117,11 @@ void Response<Object>::operator()(Variable &v, Object o, std::type_index t) cons
         DUMP("requested function");
         if (+o == Py_None) v = Function();
         else if (auto p = cast_if<Function>(o)) v = *p;
-        else v = Function().emplace(PythonFunction({+o, true}, {Py_None, true}), {});
+        else {
+            Function f;
+            f.emplace(PythonFunction({+o, true}, {Py_None, true}), {});
+            v = std::move(f);
+        }
     } else if (t == typeid(Sequence)) {
         if (PyTuple_Check(o) || PyList_Check(o)) {
             DUMP("making a tuple");
@@ -154,7 +158,10 @@ void Response<Object>::operator()(Variable &v, Object o, std::type_index t) cons
                 auto a = ArrayData(buff.view.buf, Buffer::format(buff.view.format ? buff.view.format : ""),
                     !buff.view.readonly, Vector<Integer>(buff.view.shape, buff.view.shape + buff.view.ndim),
                     Vector<Integer>(buff.view.strides, buff.view.strides + buff.view.ndim));
+                DUMP("itemsize", buff.view.itemsize);
+                for (auto i : a.strides) DUMP(i);
                 for (auto &x : a.strides) x /= buff.view.itemsize;
+                for (auto i : a.strides) DUMP(i);
                 for (auto i : a.shape) DUMP(i);
                 DUMP(*static_cast<float *>(buff.view.buf), " ", *static_cast<float *>(a.data));
                 DUMP(*static_cast<std::uint16_t *>(buff.view.buf), " ", *static_cast<std::uint16_t *>(a.data));
