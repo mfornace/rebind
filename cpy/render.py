@@ -90,7 +90,7 @@ def render_type(pkg: str, bases: tuple, name: str, methods, lookup={}):
             log.info("deriving member '%s.%s%s' from %s", mod.__name__, name, k, repr(old))
             props[k[1:]] = render_member(k[1:], v, old, globalns)
         else:
-            old = props.get(k)
+            old = props.get(k, common.default_methods.get(k))
             log.info("deriving method '%s.%s.%s' from %s", mod.__name__, name, k, repr(old))
             props[k] = render_function(v, old, globalns)
 

@@ -34,13 +34,30 @@ translations = {
     '-': '__sub__',
     '/': '__div__',
     '*': '__mul__',
+    'bool': '__bool__',
 }
 
 ################################################################################
 
-def opaque_signature(*args):  # this is just used for its signature
+ # The following functions are just used for their signatures
+
+def opaque_signature(*args):
     '''Call a function from a cpy.Document'''
-    pass
+
+def default_str(self) -> str:
+    '''Convert self to a str via C++'''
+
+def default_repr(self) -> str:
+    '''Convert self to a str via C++'''
+
+def default_bool(self) -> bool:
+    '''Convert self to a boolean via C++'''
+
+default_methods = {
+    '__str__': default_str,
+    '__repr__': default_repr,
+    '__bool__': default_bool,
+}
 
 ################################################################################
 
