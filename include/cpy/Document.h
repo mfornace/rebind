@@ -83,7 +83,7 @@ struct Document {
     }
 
     /// Export function and its signature
-    template <class F>
+    template <int N=-1, class F>
     void function(std::string s, F functor) {
         render(typename Signature<F>::no_qualifier());
         auto it = contents.find(s);
@@ -91,17 +91,17 @@ struct Document {
             contents.emplace(std::move(s), Function::of(std::move(functor)));
         } else {
             if (auto f = it->second.target<Function &>())
-                f->emplace(std::move(functor));
+                f->emplace<N>(std::move(functor));
             else throw std::runtime_error("function with nonfunction");
         }
     }
 
     /// Always a function - no vagueness here
-    template <class F, class ...Ts>
+    template <int N=-1, class F, class ...Ts>
     void method(std::type_index t, std::string name, F f) {
         Signature<F>::no_qualifier::for_each([&](auto r) {if (t != +r) render(+r);});
         if (auto p = types.at(t)->second.target<TypeData &>())
-            p->methods[std::move(name)].emplace(std::move(f));
+            p->methods[std::move(name)].emplace<N>(std::move(f));
         else throw std::runtime_error("bad");
     }
 };
