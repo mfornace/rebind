@@ -119,19 +119,40 @@ decltype(auto) cast_index(Sequence const &v, Dispatch &msg, IndexedType<T> i) {
 
 template <class R, class ...Ts>
 struct Construct {
-    constexpr R operator()(Ts ...ts) const {return R(static_cast<Ts &&>(ts)...);}
+    using full_type = Construct<R, Ts...>;
+
+    constexpr R operator()(Ts ...ts) const {
+        if constexpr(std::is_constructible_v<R, Ts &&...>) {
+            return R(static_cast<Ts &&>(ts)...);
+        } else {
+            return R(static_cast<Ts &&>(ts)...);
+        }
+    }
 };
+
+/******************************************************************************/
+
+template <class ...Ts>
+struct VariadicBases : Ts... {};
 
 template <class R, class ...Ts>
-struct BraceConstruct {
-    constexpr R operator()(Ts ...ts) const {return R{static_cast<Ts &&>(ts)...};}
+Construct<R, Ts...> one_construct(Pack<R, Ts...>);
+
+template <std::size_t N, class R, class ...Ts, std::size_t ...Is>
+VariadicBases<decltype(one_construct(Pack<R, Ts...>::template slice<0, (sizeof...(Ts) - Is)>()))...> all_constructs(Pack<R, Ts...>, std::index_sequence<Is...>);
+
+template <std::size_t N, class R, class ...Ts>
+struct PartialConstruct : decltype(all_constructs(Pack<R, Ts...>(), std::make_index_sequence<1 + sizeof...(Ts) - N>())) {
+    using full_type = Construct<R, Ts...>;
 };
 
+/******************************************************************************/
+
 template <class ...Ts, class R>
-constexpr auto construct(Type<R>) {
-    return std::conditional_t<std::is_constructible_v<R, Ts...>,
-        Construct<R, Ts...>, BraceConstruct<R, Ts...>>();
-}
+constexpr auto construct(Type<R>) {return Construct<R, Ts...>();}
+
+template <std::size_t N, class ...Ts, class R>
+constexpr auto construct(Type<R>) {return PartialConstruct<N, R, Ts...>();}
 
 template <class T>
 struct Streamable {
