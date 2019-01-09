@@ -103,3 +103,20 @@ def eval_type(type, globalns={}, localns={}):
         return type._eval_type(globalns, localns)
     except AttributeError:
         return type
+
+################################################################################
+
+def update_module(dest, source, pattern):
+    if isinstance(source, str):
+        source = importlib.import_module(source)
+    if pattern == '*':
+        pattern = getattr(source, '__all__', pattern):
+    if pattern == '*':
+        for k, v in dir(source):
+            if not k.startswith('_'):
+                setattr(dest, k, v)
+    else:
+        if isinstance(pattern, str):
+            pattern = pattern.split()
+        for k in pattern:
+            setattr(dest, k, getattr(source, k))
