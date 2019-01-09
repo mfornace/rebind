@@ -47,6 +47,10 @@ auto simplify_argument(Type<T>) {
     static_assert(std::is_convertible_v<Out, T>, "simplified type should be compatible with original");
     return Type<Out>();
 }
+template <class T>
+auto simplify_argument(IndexedType<T> t) {
+    return IndexedType<typename decltype(simplify_argument(Type<T>()))::type>{t.index};
+}
 
 template <class ...Ts>
 Pack<decltype(*simplify_argument(Type<Ts>()))...> simplify_signature(Pack<Ts...>) {return {};}
@@ -77,7 +81,7 @@ struct Adapter {
     template <class P>
     void call_each(P, Variable &out, Caller &&c, Dispatch &msg, Sequence &args) const {
         P::indexed([&](auto ...ts) {
-            out = caller_invoke(Ctx(), function, std::move(c), cast_index(args, msg, simplify_argument_type(ts))...);
+            out = caller_invoke(Ctx(), function, std::move(c), cast_index(args, msg, simplify_argument(ts))...);
         });
     }
 
@@ -94,7 +98,7 @@ struct Adapter {
         Dispatch msg(handle);
         if (args.size() == Sig::size)
             return Sig::indexed([&](auto ...ts) {
-                return caller_invoke(Ctx(), function, std::move(handle), cast_index(args, msg, simplify_argument_type(ts))...);
+                return caller_invoke(Ctx(), function, std::move(handle), cast_index(args, msg, simplify_argument(ts))...);
             });
         else if (args.size() < Sig::size - N)
             throw WrongNumber(Sig::size - N, args.size());

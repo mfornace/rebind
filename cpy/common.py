@@ -47,17 +47,21 @@ def opaque_signature(*args):
 def default_str(self) -> str:
     '''Convert self to a str via C++'''
 
-def default_repr(self) -> str:
-    '''Convert self to a str via C++'''
-
 def default_bool(self) -> bool:
     '''Convert self to a boolean via C++'''
 
-default_methods = {
-    '__str__': default_str,
-    '__repr__': default_repr,
-    '__bool__': default_bool,
-}
+def default_logical(self, other) -> bool:
+    '''Run a logical operation via C++'''
+
+def default_int(self) -> int:
+    '''Run an integer operation via C++'''
+
+default_methods = {('__%s__' % k, f) for k, f in (
+    [('str', default_str), ('repr', default_str)] +
+    [('bool', default_bool), ('contains', default_logical)] +
+    [(k, default_logical) for k in 'eq ne lt gt le ge'.split()] +
+    [(k, default_int) for k in 'int len index hash'.split()]
+)}
 
 ################################################################################
 

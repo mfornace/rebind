@@ -16,6 +16,7 @@ using no_qualifier = std::remove_cv_t<std::remove_reference_t<T>>;
 
 template <class T>
 struct Type  {
+    using type = T;
     T operator*() const; // undefined
     constexpr Type<no_qualifier<T>> operator+() const {return {};}
     operator std::type_index() const {return typeid(T);}
@@ -71,7 +72,7 @@ template <class ...Ts> struct Pack {
     static constexpr auto position(Type<T> t={}) {return position_impl<T>(indices());}
 
     template <std::size_t B, std::size_t ...Is>
-    static constexpr auto slice_sequence(std::index_sequence<Is...>) {return Pack<decltype(at<B + Is>())...>();}
+    static constexpr auto slice_sequence(std::index_sequence<Is...>) {return Pack<typename decltype(at<B + Is>())::type...>();}
 
     template <std::size_t B, std::size_t E>
     static constexpr auto slice() {return slice_sequence<B>(std::make_index_sequence<E - B>());}

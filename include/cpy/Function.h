@@ -117,10 +117,9 @@ decltype(auto) cast_index(Sequence const &v, Dispatch &msg, IndexedType<T> i) {
 
 /******************************************************************************/
 
-template <class R, class ...Ts>
+template <class R, class ...Args>
 struct Construct {
-    using full_type = Construct<R, Ts...>;
-
+    template <class ...Ts>
     constexpr R operator()(Ts ...ts) const {
         if constexpr(std::is_constructible_v<R, Ts &&...>) {
             return R(static_cast<Ts &&>(ts)...);
@@ -130,29 +129,53 @@ struct Construct {
     }
 };
 
+template <class R, class ...Args>
+struct Signature<Construct<R, Args...>> : Pack<R, Args...> {};
+
 /******************************************************************************/
 
-template <class ...Ts>
-struct VariadicBases : Ts... {};
+// template <class ...Ts>
+// struct VariadicBases : Ts... {};
 
-template <class R, class ...Ts>
-Construct<R, Ts...> one_construct(Pack<R, Ts...>);
+// template <class R, class ...Ts>
+// Construct<R, Ts...> one_construct(Pack<R, Ts...>);
 
-template <std::size_t N, class R, class ...Ts, std::size_t ...Is>
-VariadicBases<decltype(one_construct(Pack<R, Ts...>::template slice<0, (sizeof...(Ts) - Is)>()))...> all_constructs(Pack<R, Ts...>, std::index_sequence<Is...>);
+// template <class R, class ...Ts, std::size_t ...Is>
+// auto all_constructs(Pack<R, Ts...>, std::index_sequence<Is...>) {
+//     return VariadicBases<decltype(one_construct(Pack<R, Ts...>::template slice<0, (1 + sizeof...(Ts) - Is)>()))...>{};
+// }
 
-template <std::size_t N, class R, class ...Ts>
-struct PartialConstruct : decltype(all_constructs(Pack<R, Ts...>(), std::make_index_sequence<1 + sizeof...(Ts) - N>())) {
-    using full_type = Construct<R, Ts...>;
-};
+// template <std::size_t N, class R, class ...Ts>
+// struct PartialConstruct : decltype(all_constructs(Pack<R, Ts...>(), std::make_index_sequence<1 + sizeof...(Ts) - N>())) {
+//     using full_type = Construct<R, Ts...>;
+// };
+
+// template <std::size_t N, class R, class ...Ts>
+// struct Signature<PartialConstruct<N, R, Ts...>> : Pack<R, Ts...> {};
+
+// template <class R>
+// struct PartialConstruct {
+//     template <class ...Ts>
+//     constexpr R operator()(Ts &&...ts) const {
+//         if constexpr(std::is_constructible_v<R, Ts &&...>) {
+//             return R(static_cast<Ts &&>(ts)...);
+//         } else {
+//             return R(static_cast<Ts &&>(ts)...);
+//         }
+//     }
+// };
 
 /******************************************************************************/
 
 template <class ...Ts, class R>
 constexpr auto construct(Type<R>) {return Construct<R, Ts...>();}
 
-template <std::size_t N, class ...Ts, class R>
-constexpr auto construct(Type<R>) {return PartialConstruct<N, R, Ts...>();}
+// template <std::size_t N, class ...Ts, class R>
+// Function construct(Type<R>) {
+//     Function out;
+//     out.emplace<N>(PartialConstruct<N, R, Ts...>());
+//     return out;
+// }
 
 template <class T>
 struct Streamable {
