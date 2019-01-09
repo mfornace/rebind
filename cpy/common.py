@@ -110,7 +110,7 @@ def update_module(dest, source, pattern):
     if isinstance(source, str):
         source = importlib.import_module(source)
     if pattern == '*':
-        pattern = getattr(source, '__all__', pattern):
+        pattern = getattr(source, '__all__', pattern)
     if pattern == '*':
         for k, v in dir(source):
             if not k.startswith('_'):
