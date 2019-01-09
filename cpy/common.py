@@ -112,11 +112,9 @@ def update_module(dest, source, pattern):
     if pattern == '*':
         pattern = getattr(source, '__all__', pattern)
     if pattern == '*':
-        for k, v in dir(source):
+        for k, v in dir(source).items():
             if not k.startswith('_'):
                 setattr(dest, k, v)
     else:
-        if isinstance(pattern, str):
-            pattern = pattern.split()
-        for k in pattern:
+        for k in (pattern.split() if isinstance(pattern, str) else pattern):
             setattr(dest, k, getattr(source, k))
