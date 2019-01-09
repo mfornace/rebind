@@ -56,12 +56,12 @@ def default_logical(self, other) -> bool:
 def default_int(self) -> int:
     '''Run an integer operation via C++'''
 
-default_methods = {('__%s__' % k, f) for k, f in (
+default_methods = dict(('__%s__' % k, f) for k, f in (
     [('str', default_str), ('repr', default_str)] +
     [('bool', default_bool), ('contains', default_logical)] +
     [(k, default_logical) for k in 'eq ne lt gt le ge'.split()] +
     [(k, default_int) for k in 'int len index hash'.split()]
-)}
+))
 
 ################################################################################
 
