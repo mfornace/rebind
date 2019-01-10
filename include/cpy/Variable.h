@@ -157,6 +157,7 @@ public:
     template <class T, std::enable_if_t<!std::is_reference_v<T>, int> = 0>
     std::optional<T> request(Dispatch &msg, Type<T> t={}) const {
         static_assert(std::is_same_v<T, no_qualifier<T>>);
+        if constexpr(std::is_same_v<T, Variable>) return *this;
         if (!has_value()) return {};
         if (auto p = target<T const &>()) {
             DUMP(qual, p, &buff, reinterpret_cast<void * const &>(buff), stack, typeid(p).name(), typeid(Type<T>).name());
@@ -262,8 +263,22 @@ struct Action {
         } else if (a == ActionType::assign) { // Assign from another variable
             DUMP("assign", v->idx->name(), typeid(T).name(), v->qual);
             if constexpr(std::is_move_assignable_v<T>) {
-                if (auto r = reinterpret_cast<Variable &&>(*v).request<T>())
+                if (auto r = reinterpret_cast<Variable &&>(*v).request<T>()) {
+
+                    DUMP("got the assignable", v->idx->name(), typeid(T).name(), v->qual, typeid(T).name());
+
+                    if constexpr(std::is_same_v<T, std::vector< std::pair<std::vector<std::string>, double> >>) {
+                        DUMP(r->size());
+                    }
+
                     *static_cast<T *>(p) = std::move(*r);
+                    reinterpret_cast<Variable &>(*v).reset(); // signifies that assignment took place
+
+                    if constexpr(std::is_same_v<T, std::vector< std::pair<std::vector<std::string>, double> >>) {
+                        DUMP(static_cast<T *>(p)->size());
+                        DUMP(r->size());
+                    }
+                }
             }
         }
     }

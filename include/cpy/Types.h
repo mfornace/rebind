@@ -220,13 +220,13 @@ struct CompiledSequenceRequest {
     std::optional<V> operator()(Variable r, Dispatch &msg) const {
         std::optional<V> out;
         DUMP("trying CompiledSequenceRequest", r.type().name());
-        if constexpr(!std::is_same_v<V, Array>) {
-            if (auto p = r.request<std::array<Variable, std::tuple_size_v<V>>>()) {
-                DUMP("trying array CompiledSequenceRequest2", r.type().name());
-                request(out, std::move(*p), msg);
-            }
-            return out;
-        }
+        // if constexpr(!std::is_same_v<V, Array>) {
+        //     if (auto p = r.request<std::array<Variable, std::tuple_size_v<V>>>()) {
+        //         DUMP("trying array CompiledSequenceRequest2", r.type().name());
+        //         request(out, std::move(*p), msg);
+        //     }
+        //     return out;
+        // }
         if (auto p = r.request<Sequence>()) {
             DUMP("trying CompiledSequenceRequest2", r.type().name());
             request(out, std::move(*p), msg);

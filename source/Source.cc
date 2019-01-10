@@ -51,10 +51,11 @@ void Variable::assign(Variable v) {
         DUMP("assign bad");
         throw std::invalid_argument("Cannot assign to const Variable");
     } else { // qual == Qualifier::L or Qualifier::R
-        DUMP("assigning reference");
+        DUMP("assigning reference", name(), &buff, pointer(), v.name());
         // qual, type, etc are unchanged
         act(ActionType::assign, pointer(), &v);
-        if (!has_value()) throw std::invalid_argument("Could not coerce Variable to matching type");
+        if (v.has_value())
+            throw std::invalid_argument("Could not coerce Variable to matching type");
     }
 }
 
