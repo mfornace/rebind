@@ -34,13 +34,30 @@ struct Renderer<std::variant<Ts...>> : Renderer<Pack<no_qualifier<Ts>...>> {};
 
 /******************************************************************************/
 
-template <class T, std::size_t N, class A>
-struct Opaque<boost::container::small_vector<T, N, A>> : Opaque<T> {};
+template <class V>
+struct VectorRenderer {
+    void operator()(Document &doc) const {
+        doc.render<typename V::value_type>();
+        doc.type(typeid(V), "std.Vector");
+        doc.method(typeid(V), "append", [](V &v, typename V::value_type o) {v.emplace_back(std::move(o));});
+        doc.method(typeid(V), "[]", [](V &v, std::size_t i) -> decltype(v[i]) {return v[i];});
+        doc.method(typeid(V), "__len__", [](V const &v) {return v.size();});
+    }
+};
+
+template <class T, class A>
+struct Renderer<std::vector<T, A>> : VectorRenderer<std::vector<T, A>> {};
 
 template <class T, std::size_t N, class A>
-struct Renderer<boost::container::small_vector<T, N, A>, std::enable_if_t<!Opaque<T>::value>> {
-    void operator()(Document &doc) {doc.render(Type<T>());}
-};
+struct Renderer<boost::container::small_vector<T, N, A>> : VectorRenderer<boost::container::small_vector<T, N, A>> {};
+
+// template <class T, std::size_t N, class A>
+// struct Opaque<boost::container::small_vector<T, N, A>> : Opaque<T> {};
+
+// template <class T, std::size_t N, class A>
+// struct Renderer<boost::container::small_vector<T, N, A>, std::enable_if_t<!Opaque<T>::value>> {
+//     void operator()(Document &doc) {doc.render(Type<T>());}
+// };
 
 template <class T, std::size_t N, class A>
 struct Request<boost::container::small_vector<T, N, A>> : VectorRequest<boost::container::small_vector<T, N, A>> {};

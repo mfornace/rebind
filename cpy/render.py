@@ -9,11 +9,17 @@ logging.basicConfig(level=logging.INFO)
 def render_module(pkg: str, doc: dict):
     log.info('rendering document into module %s', repr(pkg))
     out = doc.copy()
+    modules, translate = set(), {}
 
     out['types'] = {k: v for k, v in doc['contents'] if isinstance(v, tuple)}
     for k, (meth, data) in out['types'].items():
-        cls = render_type(pkg, (doc['Variable'],), k, dict(meth), {})
+        mod, old, cls = render_type(pkg, (doc['Variable'],), k, dict(meth), {})
+        if old is not None:
+            translate[old] = cls
+        modules.add(mod)
         cls.metadata = {k: v or None for k, v in data}
+        for k, v in data:
+            doc['set_type'](k, cls)
 
     names = tuple((o[0], k) for k, v in out['types'].items() for o in v[1])
     # out['set_type_names'](names)
@@ -27,6 +33,21 @@ def render_module(pkg: str, doc: dict):
     for k, v in out.items():
         setattr(mod, k, v)
     log.info('finished rendering document into module %s', repr(pkg))
+
+    for k, v in translate.items():
+        assert isinstance(k, type), k
+        assert isinstance(v, type), v
+        print(k, v)
+
+    for mod in modules:
+        for k in dir(mod):
+            if isinstance(getattr(mod, k), type):
+                print(mod, k, getattr(mod, k) in translate)
+                try:
+                    setattr(mod, k, translate[getattr(mod, k)])
+                    print('GOOD')
+                except (TypeError, KeyError):
+                    pass
 
     atexit.register(common.finalize, doc['_finalize'], log)
     return out
@@ -77,8 +98,10 @@ def render_type(pkg: str, bases: tuple, name: str, methods, lookup={}):
     globalns = mod.__dict__#.copy()
     # globalns.update(lookup)
     try:
-        props = dict(getattr(mod, name).__dict__)
+        old_cls = getattr(mod, name)
+        props = dict(old_cls.__dict__)
     except AttributeError:
+        old_cls = None
         props = {'__module__': mod.__name__}
 
     methods['__init__'] = render_init(methods.pop('new', None))
@@ -99,7 +122,7 @@ def render_type(pkg: str, bases: tuple, name: str, methods, lookup={}):
     cls = type(name, bases, props)
     log.info("rendering class '%s.%s'", mod.__name__, name)
     setattr(mod, name, cls)
-    return cls
+    return mod, old_cls, cls
 
 ################################################################################
 

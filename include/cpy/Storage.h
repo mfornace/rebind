@@ -11,7 +11,7 @@ struct VariableData;
 using Storage = std::aligned_storage_t<3 * sizeof(void*), std::alignment_of_v<void *>>;
 
 template <class T, class=void>
-struct UseStack : std::integral_constant<bool, false && (sizeof(T) <= sizeof(Storage))
+struct UseStack : std::integral_constant<bool, (sizeof(T) <= sizeof(Storage))
     && (std::alignment_of_v<Storage> % std::alignment_of_v<T> == 0)
     && std::is_nothrow_move_constructible_v<T>> {
     static_assert(std::is_same_v<T, std::decay_t<T>>);
@@ -28,7 +28,7 @@ struct RequestData {
     Qualifier source, dest;
 };
 
-// static_assert(UseStack<RequestData>::value);
+static_assert(UseStack<RequestData>::value);
 static_assert(std::is_trivially_destructible_v<RequestData>);
 
 // destroy: delete the value stored at (void *)

@@ -4,6 +4,8 @@ namespace cpy {
 
 std::map<Object, Object> type_conversions{};
 
+std::map<std::type_index, Object> python_types{};
+
 std::unordered_map<std::type_index, std::string> type_names = {
     {typeid(void),             "void"},
     {typeid(void *),           "pointer"},

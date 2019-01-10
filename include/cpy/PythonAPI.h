@@ -85,7 +85,7 @@ struct Object {
 };
 
 extern std::map<Object, Object> type_conversions;
-
+extern std::map<std::type_index, Object> python_types;
 
 struct Var : Variable {
     using Variable::Variable;

@@ -185,7 +185,7 @@ Object as_object(Variable &&ref) {
 
 /******************************************************************************/
 
-Object as_value(Variable &&ref, Object const &o);
+Object as_python(Variable &&ref, Object const &o);
 
 Object type_args(Object const &o) {
     Object out = {PyObject_GetAttrString(o, "__args__"), true};
@@ -211,7 +211,7 @@ Object as_list(Variable &&ref, Object const &o) {
         auto list = Object::from(PyList_New(v.size()));
         for (Py_ssize_t i = 0; i != v.size(); ++i) {
             DUMP("list index ", i);
-            Object item = as_value(std::move(v[i]), vt);
+            Object item = as_python(std::move(v[i]), vt);
             if (!item) return {};
             Py_INCREF(+item);
             PyList_SET_ITEM(+list, i, +item);
@@ -228,12 +228,12 @@ Object as_tuple(Variable &&ref, Object const &o) {
             Object vt{PyTuple_GET_ITEM(+args, 0), true};
             auto tup = Object::from(PyTuple_New(v.size()));
             for (Py_ssize_t i = 0; i != v.size(); ++i)
-                if (!set_tuple_item(tup, i, as_value(std::move(v[i]), vt))) return {};
+                if (!set_tuple_item(tup, i, as_python(std::move(v[i]), vt))) return {};
             return tup;
         } else if (len == v.size()) {
             auto tup = Object::from(PyTuple_New(len));
             for (Py_ssize_t i = 0; i != len; ++i)
-                if (!set_tuple_item(tup, i, as_value(std::move(v[i]), {PyTuple_GET_ITEM(+args, i), true}))) return {};
+                if (!set_tuple_item(tup, i, as_python(std::move(v[i]), {PyTuple_GET_ITEM(+args, i), true}))) return {};
             return tup;
         }
     }
@@ -250,7 +250,7 @@ Object as_dict(Variable &&ref, Object const &o) {
                 auto out = Object::from(PyDict_New());
                 for (auto &x : *v) {
                     Object k = as_object(x.first);
-                    Object v = as_value(std::move(x.second), val);
+                    Object v = as_python(std::move(x.second), val);
                     if (!k || !v || PyDict_SetItem(out, k, v)) return {};
                 }
                 return out;
@@ -260,8 +260,8 @@ Object as_dict(Variable &&ref, Object const &o) {
         if (auto v = ref.request<Vector<std::pair<Variable, Variable>>>()) {
             auto out = Object::from(PyDict_New());
             for (auto &x : *v) {
-                Object k = as_value(std::move(x.first), key);
-                Object v = as_value(std::move(x.second), val);
+                Object k = as_python(std::move(x.first), key);
+                Object v = as_python(std::move(x.second), val);
                 if (!k || !v || PyDict_SetItem(out, k, v)) return {};
             }
             return out;
@@ -270,15 +270,13 @@ Object as_dict(Variable &&ref, Object const &o) {
     return {};
 }
 
-template <class T>
-Object any_as_variable(T &&t) {
-    Object o{PyObject_CallObject(type_object<Variable>(), nullptr), false};
-    cast_object<Variable>(o) = static_cast<T &&>(t);
-    return o;
-}
-
+// Convert Variable to a class which is a subclass of cpy.Variable
 Object as_variable(Variable &&v, Object const &t) {
-    PyObject * x = t ? +t : type_object<Variable>();
+    PyObject *x;
+    if (t) x = +t;
+    else if (auto it = python_types.find(v.type()); it != python_types.end()) x = +it->second;
+    else x = type_object<Variable>();
+
     auto o = Object::from((x == type_object<Variable>()) ?
         PyObject_CallObject(x, nullptr) : PyObject_CallMethod(x, "__new__", "O", x));
 
@@ -362,7 +360,7 @@ Object as_memory(Variable &&ref, Object const &t={}) {
 // None, object, bool, int, float, str, bytes, TypeIndex, list, tuple, dict, Variable, Function, memoryview
 // Then, the type_conversions map is queried for Python function callable with the Variable
 
-Object as_value(Variable &&v, Object const &t={}) {
+Object as_python(Variable &&v, Object const &t={}) {
     auto const name = v.name();
     if (auto p = cast_if<std::type_index>(t)) {
         std::cout << "not done" << std::endl;
@@ -413,7 +411,7 @@ PyObject * var_request(PyObject *self, PyObject *args) noexcept {
         auto &v = cast_object<Variable>(self);
 
         if (t == reinterpret_cast<PyObject *>(&PyBaseObject_Type)) return as_object(std::move(v));
-        else return as_value(std::move(v), Object(t, true));
+        else return as_python(std::move(v), Object(t, true));
     });
 }
 
@@ -515,7 +513,8 @@ Object call_overload(ErasedFunction const &fun, Object const &args, bool gil) {
     if (auto p = out.target<Object &>()) return std::move(*p);
     if (auto p = out.target<PyObject &>()) DUMP("fff");
     // if (auto p = out.target<PyObject * &>()) return {*p, true};
-    return any_as_variable(std::move(out));
+    // Convert the C++ Variable to a cpy.Variable
+    return as_variable(std::move(out));
 }
 
 PyObject * not_none(PyObject *o) {return o == Py_None ? nullptr : o;}
@@ -673,9 +672,9 @@ Object initialize(Document const &doc) {
             else if (auto p = x.second.template target<std::type_index const &>()) o = as_object(*p);
             else if (auto p = x.second.template target<TypeData const &>()) o = args_as_tuple(
                 map_as_tuple(p->methods, [](auto const &x) {return args_as_tuple(as_object(x.first), as_object(x.second));}),
-                map_as_tuple(p->data, [](auto const &x) {return args_as_tuple(as_object(x.first), any_as_variable(x.second));})
+                map_as_tuple(p->data, [](auto const &x) {return args_as_tuple(as_object(x.first), as_variable(Variable(x.second)));})
             );
-            else o = any_as_variable(x.second);
+            else o = as_variable(Variable(x.second));
             return args_as_tuple(as_object(x.first), std::move(o));
         }))
         && attach(m, "set_conversion", as_object(Function::of([](Object t, Object o) {
@@ -688,6 +687,9 @@ Object initialize(Document const &doc) {
         })))
         && attach(m, "set_debug", as_object(Function::of([](bool b) {return std::exchange(Debug, b);})))
         && attach(m, "debug", as_object(Function::of([] {return Debug;})))
+        && attach(m, "set_type", as_object(Function::of([](std::type_index idx, Object o) {
+            python_types.emplace(std::move(idx), std::move(o));
+        })))
         && attach(m, "set_type_names", as_object(Function::of(
             [](Zip<std::type_index, std::string_view> v) {
                 for (auto const &p : v) type_names.insert_or_assign(p.first, p.second);
