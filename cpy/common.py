@@ -83,12 +83,13 @@ def finalize(func, log):
 ################################################################################
 
 def split_module(pkg, name):
-    for i in range(1, 10):
-        x, y = '{}.{}'.format(pkg, name).rsplit('.', maxsplit=i)
-        try:
-            return importlib.import_module(x), y
-        except ModuleNotFoundError:
-            pass
+    # for i in range(1, 10):
+        # print('{}.{}'.format(pkg, name).rsplit('.', maxsplit=i))
+    x, y = '{}.{}'.format(pkg, name).rsplit('.', maxsplit=1)
+    # try:
+    return importlib.import_module(x), y
+    # except ModuleNotFoundError:
+    #     pass
 
 ################################################################################
 
@@ -112,9 +113,9 @@ def update_module(dest, source, pattern):
     if pattern == '*':
         pattern = getattr(source, '__all__', pattern)
     if pattern == '*':
-        for k, v in dir(source).items():
+        for k in dir(source):
             if not k.startswith('_'):
-                setattr(dest, k, v)
+                setattr(dest, k, getattr(source, k))
     else:
         for k in (pattern.split() if isinstance(pattern, str) else pattern):
             setattr(dest, k, getattr(source, k))
