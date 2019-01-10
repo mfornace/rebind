@@ -56,8 +56,8 @@ struct MapRenderer {
     void operator()(Document &doc) const {
         doc.render<typename V::value_type>();
         doc.type(typeid(V), "std.Map");
-        doc.method(typeid(V), "emplace", [](V &v, typename V::key_type k, typename V::mapped_type p) {v.emplace(std::move(k), std::move(p));});
-        doc.method(typeid(V), "[]", [](V &v, typename V::mapped_type const &t) -> decltype(v.at(t)) {return v.at(t);});
+        doc.method(typeid(V), "__setitem__", [](V &v, typename V::key_type k, typename V::mapped_type p) {v.insert_or_assign(std::move(k), std::move(p));});
+        doc.method(typeid(V), "[]", [](V &v, typename V::key_type const &t) -> decltype(v.at(t)) {return v.at(t);});
         doc.method(typeid(V), "__len__", [](V const &v) {return v.size();});
     }
 };
