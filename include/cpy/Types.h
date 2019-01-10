@@ -191,6 +191,8 @@ struct Response<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : CompiledS
 /******************************************************************************/
 template <class V>
 struct CompiledSequenceRequest {
+    using Array = std::array<Variable, std::tuple_size_v<V>>;
+
     template <class ...Ts>
     static void combine(std::optional<V> &out, Ts &&...ts) {
         DUMP("trying CompiledSequenceRequest combine", bool(ts)...);
@@ -218,10 +220,14 @@ struct CompiledSequenceRequest {
     std::optional<V> operator()(Variable r, Dispatch &msg) const {
         std::optional<V> out;
         DUMP("trying CompiledSequenceRequest", r.type().name());
-        if (auto p = r.request<std::array<Variable, std::tuple_size_v<V>>>()) {
-            DUMP("trying array CompiledSequenceRequest2", r.type().name());
-            request(out, std::move(*p), msg);
-        } else if (auto p = r.request<Sequence>()) {
+        if constexpr(!std::is_same_v<V, Array>) {
+            if (auto p = r.request<std::array<Variable, std::tuple_size_v<V>>>()) {
+                DUMP("trying array CompiledSequenceRequest2", r.type().name());
+                request(out, std::move(*p), msg);
+            }
+            return out;
+        }
+        if (auto p = r.request<Sequence>()) {
             DUMP("trying CompiledSequenceRequest2", r.type().name());
             request(out, std::move(*p), msg);
         } else {
