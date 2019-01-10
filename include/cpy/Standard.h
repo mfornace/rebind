@@ -6,6 +6,7 @@
 #include <array>
 #include <optional>
 #include <variant>
+#include <map>
 
 namespace boost {
     namespace container {
@@ -45,10 +46,7 @@ template <class T, std::size_t N, class A>
 struct Request<boost::container::small_vector<T, N, A>> : VectorRequest<boost::container::small_vector<T, N, A>> {};
 
 template <class T, std::size_t N, class A>
-struct Response<boost::container::small_vector<T, N, A>> : SimplifyVector<boost::container::small_vector<T, N, A>> {};
-
-template <class T, std::size_t N>
-struct Response<std::array<T, N>> : SimplifyVector<std::array<T, N>> {};
+struct Response<boost::container::small_vector<T, N, A>> : VectorResponse<boost::container::small_vector<T, N, A>> {};
 
 /******************************************************************************/
 
@@ -133,80 +131,38 @@ struct Request<std::variant<Ts...>> {
 
 /******************************************************************************/
 
-template <class V>
-struct CompiledSequenceResponse {
-    template <class O, std::size_t ...Is>
-    O put(V const &v, std::index_sequence<Is...>) const {
-        O o;
-        o.reserve(sizeof...(Is));
-        (o.emplace_back(std::get<Is>(v)), ...);
-        return o;
-    }
-
-    void operator()(Variable &out, V const &v, std::type_index t) const {
-        if (t == typeid(Sequence))
-            out = put<Sequence>(v, std::make_index_sequence<std::tuple_size_v<V>>());
-    }
-};
-
-template <class ...Ts>
-struct Response<std::tuple<Ts...>> : CompiledSequenceResponse<std::tuple<Ts...>> {};
-
-template <class T, class U>
-struct Response<std::pair<T, U>> : CompiledSequenceResponse<std::pair<T, U>> {};
+template <class R, class ...Ts>
+struct Renderer<std::function<R(Ts...)>> : Renderer<Pack<no_qualifier<R>, no_qualifier<Ts>...>> {};
 
 /******************************************************************************/
 
 template <class V>
-struct CompiledSequenceRequest {
-    template <class ...Ts>
-    static void combine(std::optional<V> &out, Ts &&...ts) {
-        DUMP("trying CompiledSequenceRequest combine", bool(ts)...);
-        if ((bool(ts) && ...)) out = V{*static_cast<Ts &&>(ts)...};
-    }
+struct MapResponse {
+    using T = std::pair<typename V::key_type, typename V::mapped_type>;
 
-    template <class S, std::size_t ...Is>
-    static void request_each(std::optional<V> &out, S &s, Dispatch &msg, std::index_sequence<Is...>) {
-        DUMP("trying CompiledSequenceRequest request");
-        combine(out, std::move(s[Is]).request(msg, Type<std::tuple_element_t<Is, V>>())...);
+    void operator()(Variable &out, V const &v, std::type_index t) const {
+        Vector<T> o(std::begin(v), std::end(v));
+        if (t == typeid(Vector<T>)) out = o;
+        if (t == typeid(Sequence)) out = Sequence(std::begin(o), std::end(o));
     }
+};
 
-    template <class S>
-    static void check(std::optional<V> &out, S &s, Dispatch &msg) {
-        DUMP("trying CompiledSequenceRequest check");
-        if (std::size(s) != std::tuple_size_v<V>) {
-            msg.error("wrong sequence length", typeid(S), typeid(V), std::tuple_size_v<V>, s.size());
-        } else {
-            msg.indices.emplace_back(0);
-            request_each(out, s, msg, std::make_index_sequence<std::tuple_size_v<V>>());
-            msg.indices.pop_back();
-        }
-    }
+template <class V>
+struct MapRequest {
+    using T = std::pair<typename V::key_type, typename V::mapped_type>;
 
-    std::optional<V> operator()(Variable r, Dispatch &msg) const {
+    std::optional<V> operator()(Variable const &v, Dispatch &msg) const {
         std::optional<V> out;
-        DUMP("trying CompiledSequenceRequest", r.type().name());
-        if constexpr(!std::is_same_v<V, Sequence>) {
-            if (auto p = r.request<Sequence>()) {
-                DUMP("trying CompiledSequenceRequest2", r.type().name());
-                check(out, *p, msg);
-            } else {
-                DUMP("trying CompiledSequenceRequest3", r.type().name());
-                msg.error("expected sequence to make compiled sequence", r.type(), typeid(V));
-            }
-        }
+        if (auto p = v.request<Vector<T>>()) out.emplace(std::begin(*p), std::end(*p));
         return out;
     }
 };
 
-/// The default implementation is to accept convertible arguments or Variable of the exact typeid match
-template <class T>
-struct Request<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : CompiledSequenceRequest<T> {};
+template <class K, class V, class C, class A>
+struct Request<std::map<K, V, C, A>> : MapRequest<std::map<K, V, C, A>> {};
 
-/******************************************************************************/
-
-template <class R, class ...Ts>
-struct Renderer<std::function<R(Ts...)>> : Renderer<Pack<no_qualifier<R>, no_qualifier<Ts>...>> {};
+template <class K, class V, class C, class A>
+struct Response<std::map<K, V, C, A>> : MapResponse<std::map<K, V, C, A>> {};
 
 /******************************************************************************/
 

@@ -79,7 +79,8 @@ public:
 
     /// Only call variable copy constructor if its lifetime is being managed
     Variable(Variable const &v) : VariableData(static_cast<VariableData const &>(v)) {
-        if (auto p = handle()) act(ActionType::copy, p, this);
+        DUMP(v.handle(), &buff, stack);
+        if (auto p = v.handle()) act(ActionType::copy, p, this);
     }
 
     /// Only call variable move constructor if its lifetime is being managed inside the buffer

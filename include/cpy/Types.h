@@ -160,24 +160,101 @@ struct Request<std::basic_string_view<T, Traits>> {
     }
 };
 
+
 /******************************************************************************/
 
 template <class V>
-struct SimplifyVector {
-    void operator()(Variable &out, V v, std::type_index t) const {
-        if (t == typeid(Sequence)) {
-            Sequence o;
-            o.reserve(std::size(v));
-            for (auto &&x : v) o.emplace_back(static_cast<decltype(x) &&>(x));
-            out = std::move(o);
-        } else if (t == typeid(Sequence)) {
-            out = Sequence(std::begin(v), std::end(v));
-        }
+struct CompiledSequenceResponse {
+    using Array = std::array<Variable, std::tuple_size_v<V>>;
+
+    template <std::size_t ...Is>
+    static Sequence sequence(V const &v, std::index_sequence<Is...>) {
+        Sequence o;
+        o.reserve(sizeof...(Is));
+        (o.emplace_back(std::get<Is>(v)), ...);
+        return o;
+    }
+
+    template <std::size_t ...Is>
+    static Array array(V const &v, std::index_sequence<Is...>) {
+        return {std::get<Is>(v)...};
+    }
+
+    void operator()(Variable &out, V const &v, std::type_index t) const {
+        auto idx = std::make_index_sequence<std::tuple_size_v<V>>();
+        if (t == typeid(Sequence)) out = sequence(v, idx);
+        if (t == typeid(Array)) out = array(v, idx);
     }
 };
 
 template <class T>
-struct Response<Vector<T>, std::enable_if_t<!std::is_same_v<T, Variable>>> : SimplifyVector<Vector<T>> {};
+struct Response<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : CompiledSequenceResponse<T> {};
+
+/******************************************************************************/
+template <class V>
+struct CompiledSequenceRequest {
+    template <class ...Ts>
+    static void combine(std::optional<V> &out, Ts &&...ts) {
+        DUMP("trying CompiledSequenceRequest combine", bool(ts)...);
+        if ((bool(ts) && ...)) out = V{*static_cast<Ts &&>(ts)...};
+    }
+
+    template <class S, std::size_t ...Is>
+    static void request_each(std::optional<V> &out, S &&s, Dispatch &msg, std::index_sequence<Is...>) {
+        DUMP("trying CompiledSequenceRequest request");
+        combine(out, std::move(s[Is]).request(msg, Type<std::tuple_element_t<Is, V>>())...);
+    }
+
+    template <class S>
+    static void request(std::optional<V> &out, S &&s, Dispatch &msg) {
+        DUMP("trying CompiledSequenceRequest request");
+        if (std::size(s) != std::tuple_size_v<V>) {
+            msg.error("wrong sequence length", typeid(S), typeid(V), std::tuple_size_v<V>, s.size());
+        } else {
+            msg.indices.emplace_back(0);
+            request_each(out, std::move(s), msg, std::make_index_sequence<std::tuple_size_v<V>>());
+            msg.indices.pop_back();
+        }
+    }
+
+    std::optional<V> operator()(Variable r, Dispatch &msg) const {
+        std::optional<V> out;
+        DUMP("trying CompiledSequenceRequest", r.type().name());
+        if (auto p = r.request<std::array<Variable, std::tuple_size_v<V>>>()) {
+            DUMP("trying array CompiledSequenceRequest2", r.type().name());
+            request(out, std::move(*p), msg);
+        } else if (auto p = r.request<Sequence>()) {
+            DUMP("trying CompiledSequenceRequest2", r.type().name());
+            request(out, std::move(*p), msg);
+        } else {
+            DUMP("trying CompiledSequenceRequest3", r.type().name());
+            msg.error("expected sequence to make compiled sequence", r.type(), typeid(V));
+        }
+        return out;
+    }
+};
+
+/// The default implementation is to accept convertible arguments or Variable of the exact typeid match
+template <class T>
+struct Request<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : CompiledSequenceRequest<T> {};
+
+/******************************************************************************/
+
+template <class V>
+struct VectorResponse {
+    using T = no_qualifier<typename V::value_type>;
+
+    void operator()(Variable &out, V v, std::type_index t) const {
+        if (t == typeid(Sequence)) {
+            out = Sequence(std::begin(v), std::end(v));
+        }
+        else if (t == typeid(Vector<T>))
+            out = Vector<T>(std::begin(v), std::end(v));
+    }
+};
+
+template <class T, class A>
+struct Response<std::vector<T, A>, std::enable_if_t<!std::is_same_v<T, Variable>>> : VectorResponse<std::vector<T, A>> {};
 
 /******************************************************************************/
 
@@ -201,12 +278,13 @@ struct VectorRequest {
     }
 
     std::optional<V> operator()(Variable const &v, Dispatch &msg) const {
+        // if (auto p = v.request<Vector<T>>()) return get(*p, msg);
         if (auto p = v.request<Sequence>()) return get(*p, msg);
         return msg.error("expected sequence", v.type(), typeid(V));
     }
 };
 
-template <class T>
-struct Request<Vector<T>> : VectorRequest<Vector<T>> {};
+template <class T, class A>
+struct Request<std::vector<T, A>> : VectorRequest<std::vector<T, A>> {};
 
 }
