@@ -40,7 +40,7 @@ struct VectorRenderer {
         doc.render<typename V::value_type>();
         doc.type(typeid(V), "std.Vector");
         doc.method(typeid(V), "append", [](V &v, typename V::value_type o) {v.emplace_back(std::move(o));});
-        doc.method(typeid(V), "[]", [](V &v, std::size_t i) -> decltype(v[i]) {return v[i];});
+        doc.method(typeid(V), "[]", [](V &v, std::size_t i) -> decltype(v.at(i)) {return v.at(i);});
         doc.method(typeid(V), "__len__", [](V const &v) {return v.size();});
     }
 };
@@ -50,6 +50,20 @@ struct Renderer<std::vector<T, A>> : VectorRenderer<std::vector<T, A>> {};
 
 template <class T, std::size_t N, class A>
 struct Renderer<boost::container::small_vector<T, N, A>> : VectorRenderer<boost::container::small_vector<T, N, A>> {};
+
+template <class V>
+struct MapRenderer {
+    void operator()(Document &doc) const {
+        doc.render<typename V::value_type>();
+        doc.type(typeid(V), "std.Map");
+        doc.method(typeid(V), "emplace", [](V &v, typename V::key_type k, typename V::mapped_type p) {v.emplace(std::move(k), std::move(p));});
+        doc.method(typeid(V), "[]", [](V &v, typename V::mapped_type const &t) -> decltype(v.at(t)) {return v.at(t);});
+        doc.method(typeid(V), "__len__", [](V const &v) {return v.size();});
+    }
+};
+
+template <class T, class C, class A>
+struct Renderer<std::map<T, C, A>> : MapRenderer<std::map<T, C, A>> {};
 
 // template <class T, std::size_t N, class A>
 // struct Opaque<boost::container::small_vector<T, N, A>> : Opaque<T> {};

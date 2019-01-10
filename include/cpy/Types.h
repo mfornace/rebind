@@ -293,7 +293,8 @@ struct VectorRequest {
 
     std::optional<V> operator()(Variable const &v, Dispatch &msg) const {
         // if (auto p = v.request<Vector<T>>()) return get(*p, msg);
-        if (auto p = v.request<Sequence>()) return get(*p, msg);
+        if (!std::is_same_v<V, Sequence>)
+            if (auto p = v.request<Sequence>()) return get(*p, msg);
         return msg.error("expected sequence", v.type(), typeid(V));
     }
 };
