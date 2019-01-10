@@ -34,18 +34,11 @@ def render_module(pkg: str, doc: dict):
         setattr(mod, k, v)
     log.info('finished rendering document into module %s', repr(pkg))
 
-    for k, v in translate.items():
-        assert isinstance(k, type), k
-        assert isinstance(v, type), v
-        print(k, v)
-
     for mod in modules:
         for k in dir(mod):
             if isinstance(getattr(mod, k), type):
-                print(mod, k, getattr(mod, k) in translate)
                 try:
                     setattr(mod, k, translate[getattr(mod, k)])
-                    print('GOOD')
                 except (TypeError, KeyError):
                     pass
 
