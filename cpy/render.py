@@ -154,16 +154,10 @@ def render_function(fun, old, globalns={}, localns={}):
     ev = lambda t: common.eval_type(t, globalns, localns)
 
     sig = inspect.signature(old)
-    ret = sig.return_annotation
-    if ret is not inspect._empty:
-        ret = ev(typing._type_check(ret, 'expected type'))
 
-    if '_fun_' in sig.parameters:
+    has_fun = '_fun_' in sig.parameters
+    if has_fun:
         sig = common.discard_parameter(sig, '_fun_')
-        has_fun = True
-    else:
-        has_fun = False
-
 
     types = [p.annotation for p in sig.parameters.values()]
     types = [tuple(map(ev, p.__args__[:-1])) if isinstance(p, typing.CallableMeta) else ev(p) for p in types]
@@ -172,13 +166,15 @@ def render_function(fun, old, globalns={}, localns={}):
         raise ValueError('Function {} was already wrapped'.format(fun))
 
     if has_fun:
-        def wrap(*args, _orig=fun, _bind=sig.bind, _old=old, _return=ret, gil=None, signature=None, **kwargs):
+        def wrap(*args, _orig=fun, _bind=sig.bind, _old=old, gil=None, signature=None, **kwargs):
             bound = _bind(*args, **kwargs)
             bound.apply_defaults()
-            args = [a if t is inspect._empty else render_callback(a, t) for a, t in zip(bound.args, types)]
-            out = _old(*args, _fun_=_orig)
-            return out if _return is inspect._empty else out.request(_return)
+            args = (a if t is inspect._empty else render_callback(a, t) for a, t in zip(bound.args, types))
+            return _old(*args, _fun_=_orig)
     else:
+        ret = sig.return_annotation
+        if ret is not inspect._empty:
+            ret = ev(typing._type_check(ret, 'expected type'))
         def wrap(*args, _orig=fun, _bind=sig.bind, _return=ret, gil=None, signature=None, **kwargs):
             bound = _bind(*args, **kwargs)
             bound.apply_defaults()

@@ -83,13 +83,9 @@ def finalize(func, log):
 ################################################################################
 
 def split_module(pkg, name):
-    # for i in range(1, 10):
-        # print('{}.{}'.format(pkg, name).rsplit('.', maxsplit=i))
+    '''Return the module containing pkg.name, and the last string in name'''
     x, y = '{}.{}'.format(pkg, name).rsplit('.', maxsplit=1)
-    # try:
     return importlib.import_module(x), y
-    # except ModuleNotFoundError:
-    #     pass
 
 ################################################################################
 

@@ -176,9 +176,7 @@ struct CompiledSequenceResponse {
     }
 
     template <std::size_t ...Is>
-    static Array array(V const &v, std::index_sequence<Is...>) {
-        return {std::get<Is>(v)...};
-    }
+    static Array array(V const &v, std::index_sequence<Is...>) {return {std::get<Is>(v)...};}
 
     void operator()(Variable &out, V const &v, std::type_index t) const {
         auto idx = std::make_index_sequence<std::tuple_size_v<V>>();
@@ -240,16 +238,26 @@ struct Request<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : CompiledSe
 
 /******************************************************************************/
 
+template <class R, class V>
+R from_iters(V &&v) {return R(std::make_move_iterator(std::begin(v)), std::make_move_iterator(std::end(v)));}
+
+template <class R, class V>
+R from_iters(V const &v) {return R(std::begin(v), std::end(v));}
+
+/******************************************************************************/
+
 template <class V>
 struct VectorResponse {
     using T = no_qualifier<typename V::value_type>;
 
-    void operator()(Variable &out, V v, std::type_index t) const {
-        if (t == typeid(Sequence)) {
-            out = Sequence(std::begin(v), std::end(v));
-        }
-        else if (t == typeid(Vector<T>))
-            out = Vector<T>(std::begin(v), std::end(v));
+    void operator()(Variable &out, V const &v, std::type_index t) const {
+        if (t == typeid(Sequence)) out = from_iters<Sequence>(v);
+        else if (t == typeid(Vector<T>)) out = from_iters<Vector<T>>(v);
+    }
+
+    void operator()(Variable &out, V &&v, std::type_index t) const {
+        if (t == typeid(Sequence)) out = from_iters<Sequence>(std::move(v));
+        else if (t == typeid(Vector<T>)) out = from_iters<Vector<T>>(std::move(v));
     }
 };
 
