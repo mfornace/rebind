@@ -142,8 +142,8 @@ struct MapResponse {
 
     void operator()(Variable &out, V const &v, std::type_index t) const {
         Vector<T> o(std::begin(v), std::end(v));
-        if (t == typeid(Vector<T>)) out = o;
-        if (t == typeid(Sequence)) out = Sequence(std::begin(o), std::end(o));
+        if (t == typeid(Vector<T>)) out = std::move(o);
+        if (t == typeid(Sequence)) out = Sequence(std::make_move_iterator(std::begin(o)), std::make_move_iterator(std::end(o)));
     }
 };
 
@@ -153,7 +153,8 @@ struct MapRequest {
 
     std::optional<V> operator()(Variable const &v, Dispatch &msg) const {
         std::optional<V> out;
-        if (auto p = v.request<Vector<T>>()) out.emplace(std::begin(*p), std::end(*p));
+        if (auto p = v.request<Vector<T>>())
+            out.emplace(std::make_move_iterator(std::begin(*p)), std::make_move_iterator(std::end(*p)));
         return out;
     }
 };
