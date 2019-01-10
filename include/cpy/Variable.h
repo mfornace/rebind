@@ -104,9 +104,7 @@ public:
     }
 
     ~Variable() {
-        DUMP("destroy", qualifier(), name());
         if (auto p = handle()) act(ActionType::destroy, p, nullptr);
-        DUMP("destroyed", qualifier(), name());
     }
 
     /**************************************************************************/
@@ -245,7 +243,6 @@ struct Action {
     }
 
     static void apply(ActionType a, void *p, VariableData *v) {
-        DUMP(int(a), typeid(T).name());
         if (a == ActionType::destroy) { // Delete the object (known to be non-reference)
             if constexpr(UseStack<T>::value) static_cast<T *>(p)->~T();
             else delete static_cast<T *>(p);
