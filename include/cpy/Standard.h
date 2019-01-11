@@ -38,8 +38,13 @@ template <class V>
 struct VectorRenderer {
     void operator()(Document &doc) const {
         doc.render<typename V::value_type>();
-        doc.type(typeid(V), "std.Vector");
-        doc.method(typeid(V), "append", [](V &v, typename V::value_type o) {v.emplace_back(std::move(o));});
+        if constexpr(std::is_same_v<typename V::value_type, char>) {
+            doc.type(typeid(V), "std.String");
+            doc.method(typeid(V), "append", [](V &v, typename V::value_type o) {v.push_back(std::move(o));});
+        } else {
+            doc.type(typeid(V), "std.Vector");
+            doc.method(typeid(V), "append", [](V &v, typename V::value_type o) {v.emplace_back(std::move(o));});
+        }
         doc.method(typeid(V), "[]", [](V &v, std::size_t i) -> decltype(v.at(i)) {return v.at(i);});
         doc.method(typeid(V), "__len__", [](V const &v) {return v.size();});
     }
@@ -48,22 +53,57 @@ struct VectorRenderer {
 template <class T, class A>
 struct Renderer<std::vector<T, A>> : VectorRenderer<std::vector<T, A>> {};
 
+template <class T, class C, class A>
+struct Renderer<std::basic_string<T, C, A>> : VectorRenderer<std::basic_string<T, C, A>> {};
+
 template <class T, std::size_t N, class A>
 struct Renderer<boost::container::small_vector<T, N, A>> : VectorRenderer<boost::container::small_vector<T, N, A>> {};
 
-template <class V>
-struct MapRenderer {
+/******************************************************************************/
+
+template <>
+struct Renderer<bool> {
     void operator()(Document &doc) const {
-        doc.render<typename V::value_type>();
-        doc.type(typeid(V), "std.Map");
-        doc.method(typeid(V), "__setitem__", [](V &v, typename V::key_type k, typename V::mapped_type p) {v.insert_or_assign(std::move(k), std::move(p));});
-        doc.method(typeid(V), "[]", [](V &v, typename V::key_type const &t) -> decltype(v.at(t)) {return v.at(t);});
-        doc.method(typeid(V), "__len__", [](V const &v) {return v.size();});
+        doc.type(typeid(bool), "std.Bool");
+    }
+};
+
+template <class T>
+struct Renderer<T, std::enable_if_t<std::is_floating_point_v<T>>> {
+    void operator()(Document &doc) const {
+        doc.type(typeid(T), "std.Float");
+    }
+};
+
+template <class T>
+struct Renderer<T, std::enable_if_t<std::is_integral_v<T>>> {
+    void operator()(Document &doc) const {
+        doc.type(typeid(T), "std.Integer");
+    }
+};
+
+/******************************************************************************/
+
+template <class M>
+struct MapRenderer {
+    using K = typename M::key_type;
+    using V = typename M::mapped_type;
+
+    void operator()(Document &doc) const {
+        doc.render<typename M::value_type>();
+        doc.type(typeid(M), "std.Map");
+        doc.method(typeid(M), "__setitem__", [](M &m, K k, V p) {m.insert_or_assign(std::move(k), std::move(p));});
+        doc.method(typeid(M), "[]", [](M &m, K const &t) -> decltype(m.at(t)) {return m.at(t);});
+        doc.method(typeid(M), "__len__", [](M const &m) {return m.size();});
+        doc.method(typeid(M), "items", [](M const &m) {return std::vector<std::pair<K, V>>(std::begin(m), std::end(m));});
     }
 };
 
 template <class T, class C, class A>
 struct Renderer<std::map<T, C, A>> : MapRenderer<std::map<T, C, A>> {};
+
+/******************************************************************************/
+
 
 // template <class T, std::size_t N, class A>
 // struct Opaque<boost::container::small_vector<T, N, A>> : Opaque<T> {};
