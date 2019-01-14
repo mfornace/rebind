@@ -33,15 +33,15 @@ def _render_module(pkg, doc):
     mod = importlib.import_module(pkg)
     for k, v in out.items():
         setattr(mod, k, v)
-    log.info('finished rendering document into module %s', repr(pkg))
 
     for mod in modules:
         for k in dir(mod):
-            if isinstance(getattr(mod, k), type):
-                try:
-                    setattr(mod, k, translate[getattr(mod, k)])
-                except (TypeError, KeyError):
-                    pass
+            try:
+                setattr(mod, k, translate[getattr(mod, k)])
+            except (TypeError, KeyError):
+                pass
+
+    log.info('finished rendering document into module %s', repr(pkg))
     return out
 
 ################################################################################
@@ -69,19 +69,20 @@ def render_init(init):
 ################################################################################
 
 def render_member(key, value, old, globalns={}, localns={}):
-    def fget(self, _old=value, _return=old):
-        out = _old(self)
-        try:
-            if _return is not None:
-                ret = common.eval_type(typing._type_check(_return, 'expected type'), globalns, localns)
-                out = out.cast(ret)
-            return out._set_ward(self)
-        except AttributeError:
-            return out
+    if old is None:
+        def fget(self, _old=value):
+            return _old(self)._set_ward(self)
+    else:
+        def fget(self, _old=value, _return=old):
+            ret = common.eval_type(typing._type_check(_return, 'expected type'), globalns, localns)
+            out = _old(self).cast(ret)
+            try:
+                return out._set_ward(self)
+            except AttributeError:
+                return out
 
-    def fset(self, other, _old=value, _return=old):
-        ref = _old(self)
-        ref.assign(other)
+    def fset(self, other, _old=value):
+        _old(self).assign(other)
 
     return property(fget=fget, fset=fset, doc='C++ member of type {}'.format(old))
 
@@ -192,6 +193,7 @@ def render_function(fun, old, globalns={}, localns={}):
 
     types = [p.annotation for p in sig.parameters.values()]
     types = [tuple(map(ev, p.__args__[:-1])) if isinstance(p, typing.CallableMeta) else ev(p) for p in types]
+    empty = inspect.Parameter.empty
 
     if '_old' in sig.parameters:
         raise ValueError('Function {} was already wrapped'.format(fun))
@@ -200,16 +202,17 @@ def render_function(fun, old, globalns={}, localns={}):
         def wrap(*args, _orig=fun, _bind=sig.bind, _old=old, gil=None, signature=None, **kwargs):
             bound = _bind(*args, **kwargs)
             bound.apply_defaults()
-            args = (a if t is inspect._empty or a is None else render_callback(a, t) for a, t in zip(bound.args, types))
+            args = (a if t is empty or a is None else render_callback(a, t) for a, t in zip(bound.args, types))
             return _old(*args, _fun_=_orig)
     else:
         ret = sig.return_annotation
-        if ret is not inspect._empty:
+        if ret is not empty:
             ret = ev(typing._type_check(ret, 'expected type'))
+
         def wrap(*args, _orig=fun, _bind=sig.bind, _return=ret, gil=None, signature=None, **kwargs):
             bound = _bind(*args, **kwargs)
             bound.apply_defaults()
             out = _orig(*(render_callback(a, t) if isinstance(t, tuple) else a for a, t in zip(bound.args, types)))
-            return (out or None) if ret is inspect._empty else out.cast(_return)
+            return (out or None) if ret is empty else out.cast(_return)
 
     return functools.update_wrapper(wrap, old)
