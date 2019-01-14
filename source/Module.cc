@@ -509,14 +509,15 @@ Object call_overload(ErasedFunction const &fun, Object const &args, bool gil) {
         out = fun(ct, std::move(pack));
     }
     DUMP("got the output ", out.type().name(), int(out.qualifier()));
-    if (auto p = out.target<Object &>()) return std::move(*p);
-    if (auto p = out.target<PyObject &>()) DUMP("fff");
+    if (auto p = out.target<Object const &>()) return *p;
     // if (auto p = out.target<PyObject * &>()) return {*p, true};
     // Convert the C++ Variable to a cpy.Variable
     return as_variable(std::move(out));
 }
 
 PyObject * not_none(PyObject *o) {return o == Py_None ? nullptr : o;}
+
+/******************************************************************************/
 
 PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept {
     bool gil = true;
@@ -539,10 +540,11 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
 
     return raw_object([=]() -> Object {
         auto const &overloads = cast_object<Function>(self).overloads;
-        if (overloads.size() == 1)
+
+        if (overloads.size() == 1) // only 1 overload
             return call_overload(overloads[0].second, {args, true}, gil);
 
-        if (sig && PyLong_Check(sig)) {
+        if (sig && PyLong_Check(sig)) { // signature given as an integer index
             auto i = PyLong_AsLongLong(sig);
             if (i < 0) i += overloads.size();
             if (i <= overloads.size() || i < 0)
@@ -550,19 +552,18 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
             PyErr_SetString(PyExc_IndexError, "signature index out of bounds");
             return Object();
         }
+
         auto const n = PyTuple_GET_SIZE(args);
         Variable *first = n ? cast_if<Variable>(PyTuple_GET_ITEM(args, 0)) : nullptr;
+        auto errors = Object::from(PyList_New(0));
 
-        auto list = Object::from(PyList_New(0));
-
-        // maybe we should check for equivalence on the first argument first?
+        //  Check for equivalence on the first argument first -- provides short-circuiting for methods
         for (auto const exact : {true, false}) {
             for (auto const &o : overloads) {
                 bool const match = (o.first.size() < 2) || (first && first->type() == o.first[1]);
                 if (match != exact) continue;
-                DUMP("signature ", bool(sig));
-                if (sig) {
-                    if (PyTuple_Check(sig)) { // beginning list of arguments
+                if (sig) { // check the explicit signature that was passed in
+                    if (PyTuple_Check(sig)) {
                         auto const len = PyObject_Length(sig);
                         if (len > o.first.size())
                             return type_error("C++: too many types given in signature");
@@ -571,31 +572,32 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
                             if (x != Py_None && cast_object<std::type_index>(x) != o.first[i]) continue;
                         }
                     } else return type_error("C++: expected 'signature' to be a tuple");
-                } else if (t0) {
+                } else if (t0) { // check that the return type matches if specified
                     if (o.first.size() > 0 && o.first[0] != t0) continue; // assumed to be return type
-                } else if (t1) {
+                } else if (t1) { // check that the first argument type matches if specified
                     if (o.first.size() > 1 && o.first[1] != t1) continue; // assumed to be return type
                 }
 
-                DUMP("**** call overload ****");
-                try {return call_overload(o.second, {args, true}, gil);}
-                catch (WrongType const &e) {
-                    if (PyList_Append(+list, +as_object(wrong_type_message(e)))) return {};
+                try {
+                    return call_overload(o.second, {args, true}, gil);
+                } catch (WrongType const &e) {
+                    if (PyList_Append(+errors, +as_object(wrong_type_message(e)))) return {};
                 } catch (WrongNumber const &e) {
                     unsigned int n0 = e.expected, n = e.received;
                     auto s = Object::from(PyUnicode_FromFormat("C++: wrong number of arguments (expected %u, got %u)", n0, n));
-                    if (PyList_Append(+list, +s)) return {};
+                    if (PyList_Append(+errors, +s)) return {};
                 } catch (DispatchError const &e) {
-                    if (PyList_Append(+list, +as_object(std::string_view(e.what())))) return {};
+                    if (PyList_Append(+errors, +as_object(std::string_view(e.what())))) return {};
                 }
             }
         }
 
-
-        // make a list of the messages
-        return type_error("C++: no overloads worked %S", +list); // HERE
+        // Raise an exception with a list of the messages
+        return type_error("C++: no overloads worked %S", +errors); // HERE
     });
 }
+
+/******************************************************************************/
 
 PyObject * function_signatures(PyObject *self, PyObject *) noexcept {
     return raw_object([=]() -> Object {

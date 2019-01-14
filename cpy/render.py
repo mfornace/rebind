@@ -6,7 +6,7 @@ logging.basicConfig(level=logging.INFO)
 
 ################################################################################
 
-def render_module(pkg: str, doc: dict):
+def _render_module(pkg, doc):
     log.info('rendering document into module %s', repr(pkg))
     out = doc.copy()
     modules, translate = set(), {}
@@ -14,6 +14,7 @@ def render_module(pkg: str, doc: dict):
     out['types'] = {k: v for k, v in doc['contents'] if isinstance(v, tuple)}
     for k, (meth, data) in out['types'].items():
         mod, old, cls = render_type(pkg, (doc['Variable'],), k, dict(meth), lookup=doc)
+
         if old is not None:
             translate[old] = cls
         modules.add(mod)
@@ -41,9 +42,18 @@ def render_module(pkg: str, doc: dict):
                     setattr(mod, k, translate[getattr(mod, k)])
                 except (TypeError, KeyError):
                     pass
-
-    atexit.register(common.finalize, doc['_finalize'], log)
     return out
+
+################################################################################
+
+def render_module(pkg: str, doc: dict):
+    try:
+        return _render_module(pkg, doc)
+    except BaseException:
+        doc['_finalize']()
+        raise
+    finally:
+        atexit.register(common.finalize, doc['_finalize'], log)
 
 ################################################################################
 
@@ -99,6 +109,9 @@ def render_type(pkg: str, bases: tuple, name: str, methods, lookup={}):
         for cls in old_cls.mro()[:-1]: # skip base class 'object'
             props.update(cls.__dict__)
 
+    new = props.pop('__new__', None)
+    if callable(new) and new is not forward.not_implemented_new:
+        log.warning('{}.{}.__new__ will not be rendered'.format(pkg, name))
     methods['__init__'] = render_init(methods.pop('new', None))
 
     for k, v in methods.items():
