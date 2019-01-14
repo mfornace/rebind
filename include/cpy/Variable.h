@@ -170,11 +170,11 @@ public:
 
     /**************************************************************************/
 
-    void downcast(Dispatch &msg, Type<void> t={}) const {}
-    void downcast(Type<void> t={}) const {}
+    void cast(Dispatch &msg, Type<void> t={}) const {}
+    void cast(Type<void> t={}) const {}
 
     template <class T>
-    T downcast(Dispatch &msg, Type<T> t={}) const {
+    T cast(Dispatch &msg, Type<T> t={}) const {
         if (auto p = request(msg, t)) return static_cast<T>(*p);
         throw msg.exception();
     }
@@ -185,11 +185,11 @@ public:
 
     // request non-reference T by custom conversions
     template <class T>
-    T downcast(Type<T> t={}) const {
+    T cast(Type<T> t={}) const {
         Dispatch msg;
         if (auto p = request(msg, t))
             return msg.storage.empty() ? static_cast<T>(*p) : throw std::runtime_error("contains temporaries");
-        return downcast(msg, t);
+        return cast(msg, t);
     }
 
     // return pointer to target if it is trivially convertible to requested type

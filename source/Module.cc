@@ -206,7 +206,7 @@ Object type_args(Object const &o, Py_ssize_t n) {
 Object as_list(Variable &&ref, Object const &o) {
     if (auto args = type_args(o, 1)) {
         DUMP("is list ", PyList_Check(o));
-        auto v = ref.downcast<Sequence>();
+        auto v = ref.cast<Sequence>();
         Object vt{PyTuple_GET_ITEM(+args, 0), true};
         auto list = Object::from(PyList_New(v.size()));
         for (Py_ssize_t i = 0; i != v.size(); ++i) {
@@ -223,7 +223,7 @@ Object as_list(Variable &&ref, Object const &o) {
 Object as_tuple(Variable &&ref, Object const &o) {
     if (auto args = type_args(o)) {
         Py_ssize_t const len = PyTuple_GET_SIZE(+args);
-        auto v = ref.downcast<Sequence>();
+        auto v = ref.cast<Sequence>();
         if (len == 2 && PyTuple_GET_ITEM(+args, 1) == Py_Ellipsis) {
             Object vt{PyTuple_GET_ITEM(+args, 0), true};
             auto tup = Object::from(PyTuple_New(v.size()));
@@ -398,18 +398,17 @@ Object as_python(Variable &&v, Object const &t={}) {
             return Object::from(PyObject_CallFunctionObjArgs(+p->second, +o, nullptr));
         }
     }
-    if (!out) return type_error("cannot convert value to type %R from type %s", +t, name);
+    if (!out) return type_error("cannot convert value to type %R from type %S", +t, +as_type_index(v.type()));
     return out;
 }
 
 /******************************************************************************/
 
-PyObject * var_request(PyObject *self, PyObject *args) noexcept {
+PyObject * var_cast(PyObject *self, PyObject *args) noexcept {
     PyObject *t = one_argument(args);
     if (!t) return nullptr;
     return raw_object([=]() -> Object {
         auto &v = cast_object<Variable>(self);
-
         if (t == reinterpret_cast<PyObject *>(&PyBaseObject_Type)) return as_object(std::move(v));
         else return as_python(std::move(v), Object(t, true));
     });
@@ -468,16 +467,16 @@ PyNumberMethods VarNumberMethods = {
 };
 
 PyMethodDef VarMethods[] = {
-    {"assign",    static_cast<PyCFunction>(var_assign),     METH_VARARGS, "move it"},
-    {"copy_from", static_cast<PyCFunction>(copy_from<Var>), METH_VARARGS, "copy it"},
-    {"address",   static_cast<PyCFunction>(var_address),    METH_NOARGS,  "qualifier it"},
-    {"_ward",     static_cast<PyCFunction>(var_ward),       METH_NOARGS,  "qualifier it"},
-    {"_set_ward", static_cast<PyCFunction>(var_set_ward),   METH_VARARGS, "qualifier it"},
-    {"qualifier", static_cast<PyCFunction>(var_qualifier),  METH_NOARGS,  "qualifier it"},
-    {"is_stack_type",     static_cast<PyCFunction>(var_is_stack_type),  METH_NOARGS,  "qualifier it"},
-    {"type",      static_cast<PyCFunction>(var_type),       METH_NOARGS,  "index it"},
-    {"has_value", static_cast<PyCFunction>(var_has_value),  METH_VARARGS, "has value"},
-    {"request",   static_cast<PyCFunction>(var_request),    METH_VARARGS, "request given type"},
+    {"assign",        static_cast<PyCFunction>(var_assign),        METH_VARARGS, "assign from other using C++ move constructor"},
+    {"copy_from",     static_cast<PyCFunction>(copy_from<Var>),    METH_VARARGS, "assign from other using C++ copy constructor"},
+    {"address",       static_cast<PyCFunction>(var_address),       METH_NOARGS,  "get C++ pointer address"},
+    {"_ward",         static_cast<PyCFunction>(var_ward),          METH_NOARGS,  "get ward object"},
+    {"_set_ward",     static_cast<PyCFunction>(var_set_ward),      METH_VARARGS, "set ward object and return self"},
+    {"qualifier",     static_cast<PyCFunction>(var_qualifier),     METH_NOARGS,  "return qualifier of self"},
+    {"is_stack_type", static_cast<PyCFunction>(var_is_stack_type), METH_NOARGS, "return if object is held in stack storage"},
+    {"type",          static_cast<PyCFunction>(var_type),          METH_NOARGS,  "return TypeIndex of the held C++ object"},
+    {"has_value",     static_cast<PyCFunction>(var_has_value),     METH_VARARGS, "return if a C++ object is being held"},
+    {"cast",          static_cast<PyCFunction>(var_cast),          METH_VARARGS, "cast to a given Python type"},
     {nullptr, nullptr, 0, nullptr}
 };
 
@@ -554,6 +553,8 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
         auto const n = PyTuple_GET_SIZE(args);
         Variable *first = n ? cast_if<Variable>(PyTuple_GET_ITEM(args, 0)) : nullptr;
 
+        auto list = Object::from(PyList_New(0));
+
         // maybe we should check for equivalence on the first argument first?
         for (auto const exact : {true, false}) {
             for (auto const &o : overloads) {
@@ -579,14 +580,20 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
                 DUMP("**** call overload ****");
                 try {return call_overload(o.second, {args, true}, gil);}
                 catch (WrongType const &e) {
-                    // if (Debug)
-                    std::cout << wrong_type_message(e) << std::endl;
+                    if (PyList_Append(+list, +as_object(wrong_type_message(e)))) return {};
+                } catch (WrongNumber const &e) {
+                    unsigned int n0 = e.expected, n = e.received;
+                    auto s = Object::from(PyUnicode_FromFormat("C++: wrong number of arguments (expected %u, got %u)", n0, n));
+                    if (PyList_Append(+list, +s)) return {};
                 } catch (DispatchError const &e) {
-                    DUMP("error", e.what());
+                    if (PyList_Append(+list, +as_object(std::string_view(e.what())))) return {};
                 }
             }
         }
-        return type_error("C++: no overloads worked");
+
+
+        // make a list of the messages
+        return type_error("C++: no overloads worked %S", +list); // HERE
     });
 }
 

@@ -17,14 +17,14 @@ namespace boost {
 
 namespace cpy {
 
-template <class T, class U>
-struct Renderer<std::pair<T, U>> : Renderer<Pack<no_qualifier<T>, no_qualifier<U>>> {};
+// template <class T, class U>
+// struct Renderer<std::pair<T, U>> : Renderer<Pack<no_qualifier<T>, no_qualifier<U>>> {};
 
-template <class ...Ts>
-struct Renderer<std::tuple<Ts...>> : Renderer<Pack<no_qualifier<Ts>...>> {};
+// template <class ...Ts>
+// struct Renderer<std::tuple<Ts...>> : Renderer<Pack<no_qualifier<Ts>...>> {};
 
-template <class T, std::size_t N>
-struct Renderer<std::array<T, N>> : Renderer<Pack<no_qualifier<T>>> {};
+// template <class T, std::size_t N>
+// struct Renderer<std::array<T, N>> : Renderer<Pack<no_qualifier<T>>> {};
 
 template <class T>
 struct Renderer<std::optional<T>> : Renderer<Pack<no_qualifier<T>>> {};
@@ -47,6 +47,7 @@ struct VectorRenderer {
         }
         doc.method(typeid(V), "[]", [](V &v, std::size_t i) -> decltype(v.at(i)) {return v.at(i);});
         doc.method(typeid(V), "__len__", [](V const &v) {return v.size();});
+        doc.method(typeid(V), "value_type", [](V const &) {return std::type_index(typeid(typename V::value_type));});
     }
 };
 
@@ -58,6 +59,34 @@ struct Renderer<std::basic_string<T, C, A>> : VectorRenderer<std::basic_string<T
 
 template <class T, std::size_t N, class A>
 struct Renderer<boost::container::small_vector<T, N, A>> : VectorRenderer<boost::container::small_vector<T, N, A>> {};
+
+/******************************************************************************/
+
+template <class V>
+struct TupleRenderer {
+    template <std::size_t I>
+    static bool put(Variable &out, V const &v) {
+        out = Variable(Type<decltype(std::get<I>(v))>(), std::get<I>(v));
+        return true;
+    }
+
+    template <std::size_t ...Is>
+    static void apply(Document &doc, std::index_sequence<Is...>) {
+        doc.type(typeid(V), "std.Tuple");
+        (doc.render<no_qualifier<std::tuple_element_t<Is, V>>>(), ...);
+        doc.method(typeid(V), "[]", [](V &v, std::size_t i) {
+            Variable out;
+            if (i >= std::tuple_size_v<V>) throw std::out_of_range("index out of range");
+            ((Is == i && put<Is>(out, v)) || ...);
+            return out;
+        });
+        doc.method(typeid(V), "__len__", [](V const &) {return std::tuple_size_v<V>;});
+    }
+    void operator()(Document &doc) const {apply(doc, std::make_index_sequence<std::tuple_size_v<V>>());}
+};
+
+template <class V>
+struct Renderer<V, std::enable_if_t<std::tuple_size<V>::value >= 0>> : TupleRenderer<V> {};
 
 /******************************************************************************/
 
@@ -84,17 +113,39 @@ struct Renderer<T, std::enable_if_t<std::is_integral_v<T>>> {
 
 /******************************************************************************/
 
+template <class It, class T>
+struct Iter {
+    It iter, end;
+    void next() {if (iter != end) ++iter;}
+    bool good() const {return iter != end;}
+    T get() const {return iter != end ? *iter : throw std::out_of_range("invalid iterator");}
+};
+
+template <class It, class T>
+struct Renderer<Iter<It, T>> {
+    using I = Iter<It, T>;
+    void operator()(Document &doc) const {
+        doc.type(typeid(I), "std.Iterator");
+        doc.method(typeid(I), "next", &I::next);
+        doc.method(typeid(I), "good", &I::good);
+        doc.method(typeid(I), "get", &I::get);
+    }
+};
+
 template <class M>
 struct MapRenderer {
     using K = typename M::key_type;
     using V = typename M::mapped_type;
 
     void operator()(Document &doc) const {
-        doc.render<typename M::value_type>();
+        using P = std::pair<typename M::key_type, typename M::mapped_type>;
+        doc.render<P>();
         doc.type(typeid(M), "std.Map");
         doc.method(typeid(M), "__setitem__", [](M &m, K k, V p) {m.insert_or_assign(std::move(k), std::move(p));});
         doc.method(typeid(M), "[]", [](M &m, K const &t) -> decltype(m.at(t)) {return m.at(t);});
+        doc.method(typeid(M), "__iter__", [](M &m) {return Iter<typename M::iterator, P>{m.begin(), m.end()};});
         doc.method(typeid(M), "__len__", [](M const &m) {return m.size();});
+        doc.method(typeid(M), "value_type", [](M const &) {return std::type_index(typeid(typename M::value_type));});
         doc.method(typeid(M), "items", [](M const &m) {return std::vector<std::pair<K, V>>(std::begin(m), std::end(m));});
     }
 };

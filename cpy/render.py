@@ -13,7 +13,7 @@ def render_module(pkg: str, doc: dict):
 
     out['types'] = {k: v for k, v in doc['contents'] if isinstance(v, tuple)}
     for k, (meth, data) in out['types'].items():
-        mod, old, cls = render_type(pkg, (doc['Variable'],), k, dict(meth), {})
+        mod, old, cls = render_type(pkg, (doc['Variable'],), k, dict(meth), lookup=doc)
         if old is not None:
             translate[old] = cls
         modules.add(mod)
@@ -58,13 +58,13 @@ def render_init(init):
 
 ################################################################################
 
-def render_member(key, value, old, globalns):
+def render_member(key, value, old, globalns={}, localns={}):
     def fget(self, _old=value, _return=old):
         out = _old(self)
         try:
             if _return is not None:
-                ret = common.eval_type(typing._type_check(_return, 'expected type'), globalns, {})
-                out = out.request(ret)
+                ret = common.eval_type(typing._type_check(_return, 'expected type'), globalns, localns)
+                out = out.cast(ret)
             return out._set_ward(self)
         except AttributeError:
             return out
@@ -87,9 +87,9 @@ def copy(self):
 def render_type(pkg: str, bases: tuple, name: str, methods, lookup={}):
     '''Define a new type in pkg'''
     mod, name = common.split_module(pkg, name)
-    assert not lookup
-    globalns = mod.__dict__#.copy()
-    # globalns.update(lookup)
+    localns, globalns = mod.__dict__, lookup
+    # globalns = mod.__dict__.copy()
+    #globalns.update(lookup)
     try:
         old_cls = getattr(mod, name)
         props = dict(old_cls.__dict__)
@@ -104,11 +104,11 @@ def render_type(pkg: str, bases: tuple, name: str, methods, lookup={}):
         if k.startswith('.'):
             old = props.get('__annotations__', {}).get(k[1:])
             log.info("deriving member '%s.%s%s' from %s", mod.__name__, name, k, repr(old))
-            props[k[1:]] = render_member(k[1:], v, old, globalns)
+            props[k[1:]] = render_member(k[1:], v, old, globalns=globalns, localns=localns)
         else:
             old = props.get(k, common.default_methods.get(k))
             log.info("deriving method '%s.%s.%s' from %s", mod.__name__, name, k, repr(old))
-            props[k] = render_function(v, old, globalns)
+            props[k] = render_function(v, old, globalns=globalns, localns=localns)
 
     props.setdefault('copy', copy)
 
@@ -138,7 +138,7 @@ def render_object(pkg, key, value, lookup={}):
         if not isinstance(old, type):
             print(value.type())
             raise TypeError('expected placeholder {} to be a type'.format(old))
-        value = value.request(common.eval_type(old, globalns))
+        value = value.cast(common.eval_type(old, globalns))
 
     setattr(mod, key, value)
     return value
@@ -147,7 +147,7 @@ def render_object(pkg, key, value, lookup={}):
 
 def render_callback(_orig, _types):
     def callback(*args):
-        return _orig(*(a.request(t) for a, t in zip(args, _types)))
+        return _orig(*(a.cast(t) for a, t in zip(args, _types)))
     return callback
 
 ################################################################################
@@ -185,7 +185,7 @@ def render_function(fun, old, globalns={}, localns={}):
         def wrap(*args, _orig=fun, _bind=sig.bind, _old=old, gil=None, signature=None, **kwargs):
             bound = _bind(*args, **kwargs)
             bound.apply_defaults()
-            args = (a if t is inspect._empty else render_callback(a, t) for a, t in zip(bound.args, types))
+            args = (a if t is inspect._empty or a is None else render_callback(a, t) for a, t in zip(bound.args, types))
             return _old(*args, _fun_=_orig)
     else:
         ret = sig.return_annotation
@@ -195,6 +195,6 @@ def render_function(fun, old, globalns={}, localns={}):
             bound = _bind(*args, **kwargs)
             bound.apply_defaults()
             out = _orig(*(render_callback(a, t) if isinstance(t, tuple) else a for a, t in zip(bound.args, types)))
-            return (out or None) if ret is inspect._empty else out.request(_return)
+            return (out or None) if ret is inspect._empty else out.cast(_return)
 
     return functools.update_wrapper(wrap, old)

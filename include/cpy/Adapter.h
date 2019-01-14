@@ -15,7 +15,11 @@ Variable variable_invoke(F const &f, Ts &&... ts) {
     if constexpr(std::is_same_v<void, O>) {
         std::invoke(f, static_cast<Ts &&>(ts)...);
         return {};
-    } else return Variable(Type<O>(), std::invoke(f, static_cast<Ts &&>(ts)...));
+    } else if constexpr(std::is_same_v<Variable, std::decay_t<O>>) {
+        return std::invoke(f, static_cast<Ts &&>(ts)...);
+    } else {
+        return Variable(Type<O>(), std::invoke(f, static_cast<Ts &&>(ts)...));
+    }
 }
 
 template <class F, class ...Ts>
@@ -141,16 +145,16 @@ struct Adapter<0, R C::*, std::enable_if_t<std::is_member_object_pointer_v<R C::
         Caller handle(frame);
         Dispatch msg(handle);
         if (s.qualifier() == Qualifier::L) {
-            C &self = std::move(s).downcast<C &>(msg);
+            C &self = std::move(s).cast<C &>(msg);
             frame->enter();
             return {Type<R &>(), std::invoke(function, self)};
         }
         if (s.qualifier() == Qualifier::C) {
-            C const &self = std::move(s).downcast<C const &>(msg);
+            C const &self = std::move(s).cast<C const &>(msg);
             frame->enter();
             return {Type<R const &>(), std::invoke(function, self)};
         }
-        C self = std::move(s).downcast<C>(msg);
+        C self = std::move(s).cast<C>(msg);
         frame->enter();
         return {Type<std::remove_cv_t<R>>(), std::invoke(function, std::move(self))};
     }

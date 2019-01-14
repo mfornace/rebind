@@ -16,9 +16,7 @@ namespace cpy {
 PythonError python_error(std::nullptr_t) noexcept {
     PyObject *type, *value, *traceback;
     PyErr_Fetch(&type, &value, &traceback);
-    if (!type) {
-        std::cout << "bad no error" << std::endl;
-    }
+    if (!type) return PythonError("Expected Python exception to be set");
     PyObject *str = PyObject_Str(value);
     char const *c = nullptr;
     if (str) {

@@ -86,7 +86,7 @@ struct AnnotatedCallback {
         Sequence pack;
         pack.reserve(sizeof...(Ts));
         (pack.emplace_back(static_cast<Ts &&>(ts)), ...);
-        return function(caller, std::move(pack)).downcast(Type<R>());
+        return function(caller, std::move(pack)).cast(Type<R>());
     }
 };
 
@@ -102,7 +102,7 @@ struct Callback {
         Sequence pack;
         pack.reserve(sizeof...(Ts));
         (pack.emplace_back(static_cast<Ts &&>(ts)), ...);
-        return function(caller, std::move(pack)).downcast(Type<R>());
+        return function(caller, std::move(pack)).cast(Type<R>());
     }
 };
 
@@ -112,7 +112,7 @@ struct Callback {
 template <class T>
 decltype(auto) cast_index(Sequence const &v, Dispatch &msg, IndexedType<T> i) {
     msg.index = i.index;
-    return v[i.index].downcast(msg, Type<T>());
+    return v[i.index].cast(msg, Type<T>());
 }
 
 /******************************************************************************/
