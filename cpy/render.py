@@ -88,14 +88,16 @@ def render_type(pkg: str, bases: tuple, name: str, methods, lookup={}):
     '''Define a new type in pkg'''
     mod, name = common.split_module(pkg, name)
     localns, globalns = mod.__dict__, lookup
-    # globalns = mod.__dict__.copy()
-    #globalns.update(lookup)
     try:
         old_cls = getattr(mod, name)
-        props = dict(old_cls.__dict__)
+        props = {}
     except AttributeError:
         old_cls = None
         props = {'__module__': mod.__name__}
+
+    if old_cls is not None:
+        for cls in old_cls.mro()[:-1]: # skip base class 'object'
+            props.update(cls.__dict__)
 
     methods['__init__'] = render_init(methods.pop('new', None))
 
