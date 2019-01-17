@@ -94,6 +94,9 @@ template <class ...Ts> struct Pack {
     using no_qualifier = Pack<std::remove_cv_t<std::remove_reference_t<Ts>>...>;
 };
 
+template <class ...Ts, class ...Us>
+Pack<Ts..., Us...> concat(Pack<Ts...>, Pack<Us...>) {return {};}
+
 /******************************************************************************************/
 
 template <class F, class ...Ts>
