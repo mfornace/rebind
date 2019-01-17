@@ -124,7 +124,7 @@ struct Construct {
         if constexpr(std::is_constructible_v<R, Ts &&...>) {
             return R(static_cast<Ts &&>(ts)...);
         } else {
-            return R(static_cast<Ts &&>(ts)...);
+            return R{static_cast<Ts &&>(ts)...};
         }
     }
 };

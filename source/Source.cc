@@ -9,7 +9,6 @@ Document & document() noexcept {
     return static_document;
 }
 
-
 void lvalue_fails(Variable const &v, Dispatch &msg, std::type_index t) {
     char const *s = "could not bind to lvalue reference";
     if (v.type() == t) {

@@ -167,7 +167,7 @@ Object args_as_tuple(Ts &&...ts) {
     return (go(ts) && ...) ? out : Object();
 }
 
-Object as_variable(Variable &&v, Object const &t={});
+Object variable_cast(Variable &&v, Object const &t={});
 
 inline Object args_to_python(Sequence &&s, Object const &sig={}) {
     if (sig && !PyTuple_Check(+sig))
@@ -182,7 +182,7 @@ inline Object args_to_python(Sequence &&s, Object const &sig={}) {
             std::cout << "not done" << std::endl;
         } else {
             // special case: if given an rvalue reference, make it into a value
-            if (!set_tuple_item(out, i, as_variable(
+            if (!set_tuple_item(out, i, variable_cast(
                 v.qualifier() == Qualifier::R ? v.copy() : std::move(v)))) return {};
         }
         ++i;

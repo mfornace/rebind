@@ -99,11 +99,6 @@ struct Request<std::variant<Ts...>> {
 
 /******************************************************************************/
 
-template <class R, class ...Ts>
-struct Renderer<std::function<R(Ts...)>> : Renderer<Pack<no_qualifier<R>, no_qualifier<Ts>...>> {};
-
-/******************************************************************************/
-
 template <class V>
 struct MapResponse {
     using T = std::pair<typename V::key_type, typename V::mapped_type>;
@@ -132,6 +127,19 @@ struct Request<std::map<K, V, C, A>> : MapRequest<std::map<K, V, C, A>> {};
 
 template <class K, class V, class C, class A>
 struct Response<std::map<K, V, C, A>> : MapResponse<std::map<K, V, C, A>> {};
+
+/******************************************************************************/
+
+template <class F>
+struct FunctionRequest {
+    std::optional<F> operator()(Variable const &v, Dispatch &msg) const {
+        if (auto p = v.request<Callback<typename F::result_type>>(msg)) return F{std::move(*p)};
+        return {};
+    }
+};
+
+template <class R, class ...Ts>
+struct Request<std::function<R(Ts...)>> : FunctionRequest<std::function<R(Ts...)>> {};
 
 /******************************************************************************/
 
