@@ -12,30 +12,10 @@ struct NoRender {void operator()(Document &) const {}};
 
 template <class T, class=void>
 struct Renderer {
-    void operator()(Document &) const {std::cout << "no render " << typeid(T).name() << std::endl;}
-};// : NoRender {};
-
-template <class T, class=void>
-struct Opaque : std::false_type {};
-
-// template <> struct Opaque<char const *>     : std::true_type {};
-// template <> struct Opaque<void>             : std::true_type {};
-// template <> struct Opaque<std::string>      : std::true_type {};
-// template <> struct Opaque<std::string_view> : std::true_type {};
-// template <> struct Opaque<std::type_index>  : std::true_type {};
-// template <> struct Opaque<BinaryView>       : std::true_type {};
-// template <> struct Opaque<BinaryData>       : std::true_type {};
-// template <> struct Opaque<Binary>           : std::true_type {};
-// template <> struct Opaque<Function>         : std::true_type {};
-// template <> struct Opaque<Variable>         : std::true_type {};
-// template <> struct Opaque<Sequence>         : std::true_type {};
-// template <> struct Opaque<Caller>           : std::true_type {};
-
-// template <class T>
-// struct Opaque<T, std::enable_if_t<(std::is_arithmetic_v<T>)>> : std::true_type {};
-
-// template <class T>
-// struct Opaque<Vector<T>> : Opaque<T> {};
+    void operator()(Document &) const {
+        if (Debug) std::cout << "no render " << typeid(T).name() << std::endl;
+    }
+};
 
 /******************************************************************************/
 
@@ -61,13 +41,7 @@ struct Document {
         throw std::runtime_error("should be TypeData");
     }
 
-    template <class T, std::enable_if_t<Opaque<T>::value, int> = 0>
-    bool render(Type<T> t={}) {
-        static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
-        return types.emplace(typeid(T), nullptr).second;
-    }
-
-    template <class T, std::enable_if_t<!Opaque<T>::value, int> = 0>
+    template <class T>
     bool render(Type<T> t={}) {
         static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
         return types.emplace(typeid(T), nullptr).second ? Renderer<T>()(*this), true : false;
@@ -110,18 +84,10 @@ Document & document() noexcept;
 
 template <class ...Ts>
 struct Renderer<Pack<Ts...>> {
-    void operator()(Document &doc) {
-        (doc.render(Type<std::conditional_t<Opaque<Ts>::value, void, Ts>>()), ...);
-    }
+    void operator()(Document &doc) {(doc.render(Type<Ts>()), ...);}
 };
 
 void render(int, int); // undefined
-
-// Opaque never handled because of short-circuiting above
-// template <class T>
-// struct Renderer<Vector<T>, std::enable_if_t<!Opaque<T>::value>> {
-//     void operator()(Document &doc) {doc.render(Type<T>());}
-// };
 
 /// The default implementation is to call render(Document &, Type<T>) via ADL
 template <class T>
