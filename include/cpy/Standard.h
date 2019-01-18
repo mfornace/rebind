@@ -44,13 +44,13 @@ struct Request<std::optional<T>> {
 template <class T>
 struct Response<std::shared_ptr<T>> {
     void operator()(Variable &out, std::shared_ptr<T> const &p, std::type_index t) const {
-        DUMP("value", t.name(), bool(p));
+        DUMP("shared_ptr value", t.name(), bool(p));
         if (!p) return;
         if (t == typeid(std::remove_cv_t<T>)) out = *p;
         else Response<std::remove_cv_t<T>>()(out, *p, std::move(t));
     }
     void operator()(Variable &out, std::shared_ptr<T> const &p, std::type_index t, Qualifier q) const {
-        DUMP("reference", t.name(), typeid(std::remove_cv_t<T>).name(), bool(p), q);
+        DUMP("shared_ptr reference", t.name(), typeid(std::remove_cv_t<T>).name(), (t == typeid(std::remove_cv_t<T>)), bool(p), q, out.qualifier());
         if (!p) return;
         if (t == typeid(std::remove_cv_t<T>)) out = {Type<T &>(), *p};
         else Response<std::remove_cv_t<T>>()(out, *p, std::move(t), q);

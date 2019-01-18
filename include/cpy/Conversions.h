@@ -24,6 +24,7 @@ bool implicit_match(Variable &out, T &&t, Qualifier const q) {
 
 template <class T>
 bool implicit_response(Variable &out, T &&t, std::type_index idx, Qualifier q) {
+    DUMP("implicit_response", typeid(Type<T &&>).name(), idx.name(), typeid(typename ImplicitConversions<std::decay_t<T>>::types).name(), q);
     return ImplicitConversions<std::decay_t<T>>::types::apply([&](auto ...ts) {
         return ((std::type_index(ts) == idx && implicit_match(out, static_cast<T &&>(t), q)) || ...)
             || (implicit_response(out, static_cast<copy_qualifier<T &&, decltype(*ts)>>(t), idx, q) || ...);
