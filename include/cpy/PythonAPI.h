@@ -113,6 +113,22 @@ struct Buffer {
     ~Buffer() {PyBuffer_Release(&view);}
 };
 
+struct ArrayBuffer {
+    std::vector<Py_ssize_t> shape, strides;
+    Object base;
+    void *data;
+    std::type_index type = typeid(void);
+    bool mutate;
+
+    ArrayBuffer() noexcept = default;
+    ArrayBuffer(ArrayData const &a, Object const &b)
+        : shape(a.shape.begin(), a.shape.end()),
+        strides(a.strides.begin(), a.strides.end()),
+        base(b), data(a.data), type(a.type), mutate(a.mutate) {
+        for (auto &s : strides) s *= Buffer::itemsize(type);
+    }
+};
+
 /******************************************************************************/
 
 template <class T>
@@ -182,8 +198,8 @@ inline Object args_to_python(Sequence &&s, Object const &sig={}) {
             std::cout << "not done" << std::endl;
         } else {
             // special case: if given an rvalue reference, make it into a value
-            if (!set_tuple_item(out, i, variable_cast(
-                v.qualifier() == Qualifier::R ? v.copy() : std::move(v)))) return {};
+            Variable &&var = v.qualifier() == Qualifier::R ? v.copy() : std::move(v);
+            if (!set_tuple_item(out, i, variable_cast(std::move(var)))) return {};
         }
         ++i;
     }

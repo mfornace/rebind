@@ -176,7 +176,7 @@ public:
     template <class T>
     T cast(Dispatch &msg, Type<T> t={}) const {
         if (auto p = request(msg, t)) return static_cast<T>(*p);
-        throw msg.exception();
+        throw std::move(msg).exception();
     }
 
     // request non-reference T by custom conversions

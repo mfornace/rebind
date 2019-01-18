@@ -11,15 +11,17 @@ namespace cpy {
 template <class F, class ...Ts>
 Variable variable_invoke(F const &f, Ts &&... ts) {
     using O = std::remove_cv_t<std::invoke_result_t<F, Ts...>>;
-    DUMP("    -- making output ", typeid(Type<O>).name());
+    DUMP("    -- invoking function with output type ", typeid(Type<O>).name());
+    Variable out;
     if constexpr(std::is_same_v<void, O>) {
         std::invoke(f, static_cast<Ts &&>(ts)...);
-        return {};
     } else if constexpr(std::is_same_v<Variable, std::decay_t<O>>) {
-        return std::invoke(f, static_cast<Ts &&>(ts)...);
+        out = std::invoke(f, static_cast<Ts &&>(ts)...);
     } else {
-        return Variable(Type<O>(), std::invoke(f, static_cast<Ts &&>(ts)...));
+        out = {Type<O>(), std::invoke(f, static_cast<Ts &&>(ts)...)};
     }
+    DUMP("    -- invoked function successfully")
+    return out;
 }
 
 template <class F, class ...Ts>
@@ -33,7 +35,6 @@ template <class F, class ...Ts>
 Variable caller_invoke(std::false_type, F const &f, Caller &&c, Ts &&...ts) {
     DUMP("    - invoking context guard");
     c.enter();
-    DUMP("    - invoked context guard");
     return variable_invoke(f, static_cast<Ts &&>(ts)...);
 }
 
@@ -51,6 +52,7 @@ auto simplify_argument(Type<T>) {
     static_assert(std::is_convertible_v<Out, T>, "simplified type should be compatible with original");
     return Type<Out>();
 }
+
 template <class T>
 auto simplify_argument(IndexedType<T> t) {
     return IndexedType<typename decltype(simplify_argument(Type<T>()))::type>{t.index};
@@ -76,23 +78,25 @@ std::is_convertible<T, C> has_head(Pack<R, T, Ts...>);
 
 /******************************************************************************/
 
+// N is the number of trailing optional arguments
 template <std::size_t N, class F, class SFINAE=void>
 struct Adapter {
     F function;
-    using Ctx = decltype(has_head<Caller>(SimpleSignature<F>()));
-    using Sig = decltype(skip_head<1 + int(Ctx::value)>(SimpleSignature<F>()));
+    using UsesCaller = decltype(has_head<Caller>(SimpleSignature<F>()));
+    using ArgTypes = decltype(skip_head<1 + int(UsesCaller::value)>(SimpleSignature<F>()));
 
     template <class P>
-    void call_each(P, Variable &out, Caller &&c, Dispatch &msg, Sequence &args) const {
+    void call_one(P, Variable &out, Caller &&c, Dispatch &msg, Sequence &args) const {
         P::indexed([&](auto ...ts) {
-            out = caller_invoke(Ctx(), function, std::move(c), cast_index(args, msg, simplify_argument(ts))...);
+            out = caller_invoke(UsesCaller(), function, std::move(c), cast_index(args, msg, simplify_argument(ts))...);
         });
     }
 
     template <std::size_t ...Is>
     Variable call(Sequence &args, Caller &&c, Dispatch &msg, std::index_sequence<Is...>) const {
         Variable out;
-        ((args.size() == N - Is - 1 ? call_each(Sig::template slice<0, N - Is - 1>(), out, std::move(c), msg, args) : void()), ...);
+        // check the number of arguments given and call with the under-specified arguments
+        ((args.size() == N - Is - 1 ? call_one(ArgTypes::template slice<0, N - Is - 1>(), out, std::move(c), msg, args) : void()), ...);
         return out;
     }
 
@@ -100,14 +104,14 @@ struct Adapter {
         auto frame = c();
         Caller handle(frame);
         Dispatch msg(handle);
-        if (args.size() == Sig::size)
-            return Sig::indexed([&](auto ...ts) {
-                return caller_invoke(Ctx(), function, std::move(handle), cast_index(args, msg, simplify_argument(ts))...);
+        if (args.size() == ArgTypes::size) // handle fully specified arguments
+            return ArgTypes::indexed([&](auto ...ts) {
+                return caller_invoke(UsesCaller(), function, std::move(handle), cast_index(args, msg, simplify_argument(ts))...);
             });
-        else if (args.size() < Sig::size - N)
-            throw WrongNumber(Sig::size - N, args.size());
-        else if (args.size() > Sig::size)
-            throw WrongNumber(Sig::size, args.size());
+        else if (args.size() < ArgTypes::size - N)
+            throw WrongNumber(ArgTypes::size - N, args.size());
+        else if (args.size() > ArgTypes::size)
+            throw WrongNumber(ArgTypes::size, args.size()); // try under-specified arguments
         return call(args, std::move(handle), msg, std::make_index_sequence<N>());
     }
 };

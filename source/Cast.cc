@@ -159,23 +159,10 @@ Object function_cast(Variable &&ref) {
 
 Object memory_cast(Variable &&ref, Object const &root) {
     if (auto p = ref.request<ArrayData>()) {
-        Py_buffer view;
-        view.buf = p->data;
-        if (root) {Py_INCREF(root); view.obj = +root;}
-        else view.obj = nullptr;
-        view.itemsize = Buffer::itemsize(p->type);
-        if (p->shape.empty()) view.len = 0;
-        else view.len = std::accumulate(p->shape.begin(), p->shape.end(), view.itemsize, std::multiplies<>());
-        view.readonly = !p->mutate;
-        view.format = const_cast<char *>(Buffer::format(p->type).data());
-        view.ndim = p->shape.size();
-        std::vector<Py_ssize_t> shape(p->shape.begin(), p->shape.end());
-        std::vector<Py_ssize_t> strides(p->strides.begin(), p->strides.end());
-        for (auto &s : strides) s *= view.itemsize;
-        view.shape = shape.data();
-        view.strides = strides.data();
-        view.suboffsets = nullptr;
-        return {PyMemoryView_FromBuffer(&view), false};
+        auto x = type_object<ArrayBuffer>();
+        auto obj = Object::from(PyObject_CallObject(x, nullptr));
+        cast_object<ArrayBuffer>(obj) = {std::move(*p), root};
+        return Object::from(PyMemoryView_FromObject(obj));
     } else return {};
 }
 

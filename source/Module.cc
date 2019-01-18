@@ -62,6 +62,41 @@ PyObject * var_assign(PyObject *self, PyObject *args) noexcept {
 
 /******************************************************************************/
 
+int array_data_buffer(PyObject *self, Py_buffer *view, int flags) {
+    auto &p = cast_object<ArrayBuffer>(self);
+    view->buf = p.data;
+    if (p.base) {Py_INCREF(p.base); view->obj = +p.base;}
+    else view->obj = nullptr;
+    view->itemsize = Buffer::itemsize(p.type);
+    if (p.shape.empty()) view->len = 0;
+    else view->len = std::accumulate(p.shape.begin(), p.shape.end(), view->itemsize, std::multiplies<>());
+    view->readonly = !p.mutate;
+    view->format = const_cast<char *>(Buffer::format(p.type).data());
+    view->ndim = p.shape.size();
+    view->shape = p.shape.data();
+    view->strides = p.strides.data();
+    view->suboffsets = nullptr;
+    return 0;
+}
+
+PyBufferProcs buffer_procs{array_data_buffer, nullptr};
+
+template <>
+PyTypeObject Holder<ArrayBuffer>::type = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "cpy.ArrayBuffer",
+    //tp_traverse
+    //tp_clear
+    .tp_as_buffer = &buffer_procs,
+    .tp_basicsize = sizeof(Holder<ArrayBuffer>),
+    .tp_dealloc = tp_delete<ArrayBuffer>,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .tp_doc = "C++ ArrayBuffer object",
+    .tp_new = tp_new<ArrayBuffer>
+};
+
+/******************************************************************************/
+
 PyObject *type_index_new(PyTypeObject *subtype, PyObject *, PyObject *) noexcept {
     PyObject* o = subtype->tp_alloc(subtype, 0); // 0 unused
     if (o) new (&cast_object<std::type_index>(o)) std::type_index(typeid(void)); // noexcept
@@ -332,7 +367,7 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
 /******************************************************************************/
 
 PyObject * function_signatures(PyObject *self, PyObject *) noexcept {
-    return raw_object([=]() -> Object {
+    return raw_object([=] {
         return map_as_tuple(cast_object<Function>(self).overloads, [](auto const &p) -> Object {
             if (!p.first) return {Py_None, true};
             return map_as_tuple(p.first, [](auto const &o) {return as_object(o);});
@@ -396,6 +431,8 @@ Object initialize(Document const &doc) {
     for (auto const &p : doc.types)
         if (p.second) type_names.emplace(p.first, p.first.name());//p.second->first);
 
+    if (PyType_Ready(type_object<ArrayBuffer>()) < 0) return {};
+    Py_INCREF(type_object<ArrayBuffer>());
 
     bool ok = attach_type(m, "Variable", type_object<Variable>())
         && attach_type(m, "Function", type_object<Function>())
