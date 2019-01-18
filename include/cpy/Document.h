@@ -28,18 +28,11 @@ struct Document {
     std::map<std::string, Variable> contents;
     std::map<std::type_index, std::pair<std::string const, Variable> *> types;
 
-    TypeData & type(std::type_index t, std::string s, Variable data={}) {
-        auto it = contents.emplace(std::move(s), TypeData()).first;
-        if (auto p = it->second.target<TypeData &>()) {
-            p->data.emplace(t, std::move(data));
-            types[t] = &(*it);
-            return *p;
-        }
-        DUMP(typeid(Type<decltype(it->second)>).name());
-        DUMP(t.name(), " ", s, " ", data.name());
-        DUMP(it->second.name(), it->second.qualifier());
-        throw std::runtime_error("should be TypeData");
-    }
+    TypeData & type(std::type_index t, std::string s, Variable data={});
+
+    Function & find_method(std::type_index t, std::string name);
+
+    Function & find_function(std::string s);
 
     template <class T>
     bool render(Type<T> t={}) {
@@ -51,32 +44,24 @@ struct Document {
     void render(Pack<Ts...>) {(render(Type<no_qualifier<Ts>>()), ...);}
 
     template <class T>
-    void object(std::string_view s, T value) {
+    void object(std::string s, T value) {
         render(Type<T>());
-        contents.emplace(std::move(s), std::move(value));
+        if (auto p = contents.emplace(std::move(s), std::move(value)); !p.second)
+            throw std::runtime_error("already rendered object with key " + p.first->first);
     }
 
     /// Export function and its signature
     template <int N=-1, class F>
-    void function(std::string s, F functor) {
+    void function(std::string name, F functor) {
         render(typename Signature<F>::no_qualifier());
-        auto it = contents.find(s);
-        if (it == contents.end()) {
-            contents.emplace(std::move(s), Function::of(std::move(functor)));
-        } else {
-            if (auto f = it->second.target<Function &>())
-                f->emplace<N>(std::move(functor));
-            else throw std::runtime_error("function with nonfunction");
-        }
+        find_function(std::move(name)).emplace<N>(std::move(functor));
     }
 
     /// Always a function - no vagueness here
     template <int N=-1, class F, class ...Ts>
     void method(std::type_index t, std::string name, F f) {
         Signature<F>::no_qualifier::for_each([&](auto r) {if (t != +r) render(+r);});
-        if (auto p = types.at(t)->second.target<TypeData &>())
-            p->methods[std::move(name)].emplace<N>(std::move(f));
-        else throw std::runtime_error("bad");
+        find_method(t, std::move(name)).emplace<N>(std::move(f));
     }
 };
 

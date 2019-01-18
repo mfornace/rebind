@@ -4,10 +4,13 @@ namespace cpy {
 
 bool Debug = false;
 
+/******************************************************************************/
+
 Document & document() noexcept {
     static Document static_document;
     return static_document;
 }
+/******************************************************************************/
 
 void lvalue_fails(Variable const &v, Dispatch &msg, std::type_index t) {
     char const *s = "could not bind to lvalue reference";
@@ -18,6 +21,7 @@ void lvalue_fails(Variable const &v, Dispatch &msg, std::type_index t) {
     }
     msg.error(s, v.type(), t);
 }
+/******************************************************************************/
 
 void rvalue_fails(Variable const &v, Dispatch &msg, std::type_index t) {
     char const *s = "could not bind to rvalue reference";
@@ -27,6 +31,7 @@ void rvalue_fails(Variable const &v, Dispatch &msg, std::type_index t) {
     }
     msg.error(s, v.type(), t);
 }
+/******************************************************************************/
 
 void Variable::assign(Variable v) {
     DUMP("assigning!", qual, v.qual, name(), v.name());
@@ -58,6 +63,7 @@ void Variable::assign(Variable v) {
     }
 }
 
+/******************************************************************************/
 
 Variable Variable::request_variable(Dispatch &msg, std::type_index const t, Qualifier q) const {
     DUMP((act != nullptr), " asking for ", t.name(), "from", name());
@@ -104,6 +110,43 @@ Variable Variable::request_variable(Dispatch &msg, std::type_index const t, Qual
     DUMP(v.has_value(), v.type() == t, v.qualifier() == q, v.type().name(), q, t.name());
     auto v2 = v;
     return v;
+}
+
+/******************************************************************************/
+
+TypeData & Document::type(std::type_index t, std::string s, Variable data) {
+    auto it = contents.try_emplace(std::move(s), TypeData()).first;
+    if (auto p = it->second.target<TypeData &>()) {
+        p->data[t] = std::move(data);
+        types[t] = &(*it);
+        return *p;
+    }
+    DUMP(typeid(Type<decltype(it->second)>).name());
+    DUMP(t.name(), " ", s, " ", data.name());
+    DUMP(it->second.name(), it->second.qualifier());
+    s.insert(0, "tried to declare both a non-type and a type for the same key ");
+    throw std::runtime_error(std::move(s));
+}
+
+Function & Document::find_method(std::type_index t, std::string name) {
+    if (auto it = types.find(t); it != types.end()) {
+        if (auto p = it->second->second.target<TypeData &>())
+            return p->methods.emplace(std::move(name), Function()).first->second;
+        name.insert(0, "tried to declare a method ");
+        name.insert(name.size(), "for a non-type key ");
+        name += it->second->first;
+        throw std::runtime_error(std::move(name));
+    }
+    name.insert(0, "tried to declare a method ");
+    name.insert(name.size(), "for the undeclared type ");
+    name.insert(name.size(), t.name());
+    throw std::runtime_error(std::move(name));
+}
+
+Function & Document::find_function(std::string s) {
+    auto it = contents.emplace(std::move(s), Type<Function>()).first;
+    if (auto f = it->second.target<Function &>()) return *f;
+    throw std::runtime_error("tried to declare both a non-function and a function for the same key " + it->first);
 }
 
 /******************************************************************************/
