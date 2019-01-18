@@ -161,6 +161,8 @@ def render_object(pkg, key, value, lookup={}):
 ################################################################################
 
 def render_callback(_orig, _types):
+    if not callable(_orig):
+        return _orig
     def callback(*args):
         return _orig(*(a.cast(t) for a, t in zip(args, _types)))
     return callback
