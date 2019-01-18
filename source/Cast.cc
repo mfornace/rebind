@@ -157,7 +157,7 @@ Object function_cast(Variable &&ref) {
     else return {};
 }
 
-Object memory_cast(Variable &&ref, Object const &root) {
+Object memoryview_cast(Variable &&ref, Object const &root) {
     if (auto p = ref.request<ArrayData>()) {
         auto x = type_object<ArrayBuffer>();
         auto obj = Object::from(PyObject_CallObject(x, nullptr));
@@ -223,7 +223,7 @@ Object python_cast(Variable &&v, Object const &t, Object const &root) {
     else if (is_subclass(type, type_object<Variable>()))        out = variable_cast(std::move(v), t);
     else if (is_subclass(type, type_object<Function>()))        out = function_cast(std::move(v));
     else if (is_subclass(type, &PyFunction_Type))               out = function_cast(std::move(v));
-    else if (is_subclass(type, &PyMemoryView_Type))             out = memory_cast(std::move(v), root);
+    else if (is_subclass(type, &PyMemoryView_Type))             out = memoryview_cast(std::move(v), root);
     else {
         DUMP("custom convert ", type_conversions.size());
         if (auto p = type_conversions.find(t); p != type_conversions.end()) {

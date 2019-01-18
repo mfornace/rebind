@@ -68,11 +68,12 @@ struct WrongType : DispatchError {
 /******************************************************************************/
 
 struct Dispatch {
-    std::deque<std::any> storage; // deque is used so references don't go bad when doing emplace_back()
     std::string scope;
-    std::vector<unsigned int> indices;
-    std::type_index source, dest;
     Caller caller;
+    std::deque<std::any> storage; // deque is used so references don't go bad when doing emplace_back()
+    std::vector<unsigned int> indices;
+    std::type_index source = typeid(void);
+    std::type_index dest = typeid(void);
     int index = -1, expected = -1, received = -1;
 
     std::nullopt_t error() noexcept {return std::nullopt;}

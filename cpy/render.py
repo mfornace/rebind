@@ -2,7 +2,6 @@ import inspect, importlib, functools, logging, typing, atexit
 from . import common
 
 log = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
 
 ################################################################################
 
