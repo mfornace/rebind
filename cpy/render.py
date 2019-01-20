@@ -73,12 +73,9 @@ def render_member(key, value, old, globalns={}, localns={}):
             return _old(self)._set_ward(self)
     else:
         def fget(self, _old=value, _return=old):
+            out = _old(self)._set_ward(self)
             ret = common.eval_type(typing._type_check(_return, 'expected type'), globalns, localns)
-            out = _old(self).cast(ret)
-            try:
-                return out._set_ward(self)
-            except AttributeError:
-                return out
+            return out.cast(ret)
 
     def fset(self, other, _old=value):
         _old(self).assign(other)

@@ -232,7 +232,8 @@ Object python_cast(Variable &&v, Object const &t, Object const &root) {
             DUMP(" did something ", bool(o));
             if (!o) return type_error("could not cast Variable to Python object");
             DUMP("calling function");
-            static_cast<Var &>(cast_object<Variable>(o)).ward = root;
+            auto &obj = static_cast<Var &>(cast_object<Variable>(o)).ward;
+            if (!obj) obj = root;
             return Object::from(PyObject_CallFunctionObjArgs(+p->second, +o, nullptr));
         }
     }
