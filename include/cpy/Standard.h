@@ -10,12 +10,6 @@
 
 namespace cpy {
 
-template <class T>
-struct Renderer<std::optional<T>> : Renderer<Pack<no_qualifier<T>>> {};
-
-template <class ...Ts>
-struct Renderer<std::variant<Ts...>> : Renderer<Pack<no_qualifier<Ts>...>> {};
-
 /******************************************************************************/
 
 template <class T>

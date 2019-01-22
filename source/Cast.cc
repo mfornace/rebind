@@ -228,7 +228,7 @@ Object python_cast(Variable &&v, Object const &t, Object const &root) {
         DUMP("custom convert ", type_conversions.size());
         if (auto p = type_conversions.find(t); p != type_conversions.end()) {
             DUMP(" conversion ");
-            Object o = variable_cast(std::move(v)); // make this contain root object
+            Object o = variable_cast(std::move(v));
             DUMP(" did something ", bool(o));
             if (!o) return type_error("could not cast Variable to Python object");
             DUMP("calling function");

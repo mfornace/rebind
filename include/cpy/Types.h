@@ -34,11 +34,11 @@ struct ArrayData {
         return static_cast<T *>(data);
     }
 
-    template <class V, class U>
+    template <class V=Vector<Integer>, class U=Vector<Integer>>
     ArrayData(void *p, std::type_index t, bool mut, V const &v, U const &u)
         : shape(std::begin(v), std::end(v)), strides(std::begin(u), std::end(u)), type(t), data(p), mutate(mut) {}
 
-    template <class T, class V, class U>
+    template <class T, class V=Vector<Integer>, class U=Vector<Integer>>
     ArrayData(T *t, V const &v, U const &u)
         : ArrayData(const_cast<std::remove_cv_t<T> *>(static_cast<T const *>(t)),
                     typeid(std::remove_cv_t<T>), std::is_const_v<T>, v, u) {}
@@ -252,6 +252,14 @@ R from_iters(V const &v) {return R(std::begin(v), std::end(v));}
 
 /******************************************************************************/
 
+template <class T, class=void>
+struct HasData : std::false_type {};
+
+template <class T>
+struct HasData<T, std::void_t<decltype(std::declval<T>().data())>> : std::true_type {};
+
+/******************************************************************************/
+
 template <class V>
 struct VectorResponse {
     using T = no_qualifier<typename V::value_type>;
@@ -259,11 +267,19 @@ struct VectorResponse {
     void operator()(Variable &out, V const &v, std::type_index t) const {
         if (t == typeid(Sequence)) out = from_iters<Sequence>(v);
         else if (t == typeid(Vector<T>)) out = from_iters<Vector<T>>(v);
+        else if (t == typeid(ArrayData)) {
+            if constexpr(HasData<V const &>::value) // e.g. guard against std::vector<bool>
+                out = ArrayData(v.data(), {Integer(v.size())}, {Integer(1)});
+        }
     }
 
     void operator()(Variable &out, V &&v, std::type_index t) const {
         if (t == typeid(Sequence)) out = from_iters<Sequence>(std::move(v));
         else if (t == typeid(Vector<T>)) out = from_iters<Vector<T>>(std::move(v));
+        else if (t == typeid(ArrayData)) {
+            if constexpr(HasData<V &&>::value) // e.g. guard against std::vector<bool>
+                out = ArrayData(v.data(), {Integer(v.size())}, {Integer(1)});
+        }
     }
 };
 
