@@ -187,16 +187,20 @@ std::string_view get_type_name(std::type_index idx) noexcept {
 
 std::string wrong_type_message(WrongType const &e) {
     std::ostringstream os;
-    os << "C++: " << e.what() << " (#" << e.index << ", "
-        << get_type_name(e.source) << " \u2192 " << get_type_name(e.dest);
+    os << "C++: " << e.what() << " (#" << e.index << ", ";
+    if (e.source != typeid(void))
+        os << get_type_name(e.source) << " \u2192 " << get_type_name(e.dest) << ", ";
     if (!e.indices.empty()) {
-        os << ", scopes=[";
-        for (auto i : e.indices) os << i << ", ";
-    };
-    os << " expected=" << e.expected << " received=" << e.received;
-    os << ')';
-    auto s = std::move(os).str();
-    if (!e.indices.empty()) {s.end()[-3] = ']'; s.end()[-2] = ')'; s.pop_back();}
+        auto it = e.indices.begin();
+        os << "scopes=[" << *it;
+        while (++it != e.indices.end()) os << ", " << *it;
+        os << "], ";
+    }
+    if (e.expected != -1)
+        os << "expected=" << e.expected << " received=" << e.received << ", ";
+    std::string s = os.str();
+    s.pop_back();
+    s.back() = ')';
     return s;
 }
 

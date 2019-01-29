@@ -8,9 +8,8 @@ struct ImplicitConversions {
     using types = Pack<>;
 };
 
-template <class T>
-bool implicit_match(Variable &out, T &&t, Qualifier const q) {
-    using U = std::decay_t<T>;
+template <class T, class U>
+bool implicit_match(Variable &out, Type<U>, T &&t, Qualifier const q) {
     if constexpr(std::is_convertible_v<T &&, U>)
         if (q == Qualifier::V) out = {Type<U>(), static_cast<T &&>(t)};
     if constexpr(std::is_convertible_v<T &&, U &>)
@@ -19,15 +18,17 @@ bool implicit_match(Variable &out, T &&t, Qualifier const q) {
         if (q == Qualifier::R) out = {Type<U &&>(), static_cast<T &&>(t)};
     if constexpr(std::is_convertible_v<T &&, U const &>)
         if (q == Qualifier::C) out = {Type<U const &>(), static_cast<T &&>(t)};
+    DUMP("implicit_response result ", out.has_value(), typeid(Type<T &&>).name(), typeid(U).name(), q);
     return out.has_value();
 }
 
+/// Ask for variable of type "idx", qualifier "q" from current variable "t"
 template <class T>
 bool implicit_response(Variable &out, T &&t, std::type_index idx, Qualifier q) {
     DUMP("implicit_response", typeid(Type<T &&>).name(), idx.name(), typeid(typename ImplicitConversions<std::decay_t<T>>::types).name(), q);
-    return ImplicitConversions<std::decay_t<T>>::types::apply([&](auto ...ts) {
-        return ((std::type_index(ts) == idx && implicit_match(out, static_cast<T &&>(t), q)) || ...)
-            || (implicit_response(out, static_cast<copy_qualifier<T &&, decltype(*ts)>>(t), idx, q) || ...);
+    return ImplicitConversions<std::decay_t<T>>::types::no_qualifier::apply([&](auto ...us) {
+        return ((std::type_index(us) == idx && implicit_match(out, us, static_cast<T &&>(t), q)) || ...)
+            || (implicit_response(out, static_cast<copy_qualifier<T &&, decltype(*us)>>(t), idx, q) || ...);
     });
 }
 
