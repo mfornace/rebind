@@ -2,6 +2,7 @@ import inspect, importlib, functools, logging, typing, atexit
 from . import common
 
 log = logging.getLogger(__name__)
+# logging.basicConfig(level=logging.INFO)
 
 ################################################################################
 
@@ -135,8 +136,8 @@ def render_object(pkg, key, value, lookup={}):
     '''put in the module level functions and objects'''
     mod, key = common.split_module(pkg, key)
     log.info("rendering object '%s.%s'", mod.__name__, key)
-    globalns = mod.__dict__.copy()
-    globalns.update(lookup)
+    localns = mod.__dict__
+    globalns = lookup
 
     old = getattr(mod, key, None)
     if old is None:
@@ -144,13 +145,13 @@ def render_object(pkg, key, value, lookup={}):
     elif callable(value):
         log.info("deriving function '%s.%s' from %s", mod.__name__, key, repr(old))
         assert callable(old), 'expected annotation to be a function'
-        value = render_function(value, old, globalns)
+        value = render_function(value, old, localns=localns, globalns=globalns)
     else:
         log.info("deriving object '%s.%s' from %s", mod.__name__, key, repr(old))
         if not isinstance(old, type):
             print(value.type())
             raise TypeError('expected placeholder {} to be a type'.format(old))
-        value = value.cast(common.eval_type(old, globalns))
+        value = value.cast(common.eval_type(old, localns=localns, globalns=globalns))
 
     setattr(mod, key, value)
     return value
@@ -180,7 +181,6 @@ def render_function(fun, old, globalns={}, localns={}):
 
     if isinstance(old, property):
         return property(render_function(fun, old.fget))
-
     ev = lambda t: common.eval_type(t, globalns, localns)
 
     sig = inspect.signature(old)
@@ -194,7 +194,7 @@ def render_function(fun, old, globalns={}, localns={}):
     empty = inspect.Parameter.empty
 
     if '_old' in sig.parameters:
-        raise ValueError('Function {} was already wrapped'.format(fun))
+        raise ValueError('Function {} was already wrapped'.format(old))
 
     if has_fun:
         def wrap(*args, _orig=fun, _bind=sig.bind, _old=old, gil=None, signature=None, **kwargs):
@@ -204,13 +204,13 @@ def render_function(fun, old, globalns={}, localns={}):
             return _old(*args, _fun_=_orig)
     else:
         ret = sig.return_annotation
-        if ret is not empty:
-            ret = ev(typing._type_check(ret, 'expected type'))
 
         def wrap(*args, _orig=fun, _bind=sig.bind, _return=ret, gil=None, signature=None, **kwargs):
             bound = _bind(*args, **kwargs)
             bound.apply_defaults()
             out = _orig(*(render_callback(a, t) if isinstance(t, tuple) else a for a, t in zip(bound.args, types)))
-            return (out or None) if ret is empty else out.cast(_return)
+            if _return is empty:
+                return out or None
+            return out.cast(ev(typing._type_check(_return, 'expected type')))
 
     return functools.update_wrapper(wrap, old)
