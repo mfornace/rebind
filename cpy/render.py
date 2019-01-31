@@ -201,7 +201,7 @@ def render_function(fun, old, globalns={}, localns={}):
             bound = _bind(*args, **kwargs)
             bound.apply_defaults()
             args = (a if t is empty or a is None else render_callback(a, t) for a, t in zip(bound.args, types))
-            return _old(*args, _fun_=_orig)
+            return _old(*args, _fun_=_orig, **bound.kwargs)
     else:
         ret = sig.return_annotation
 
