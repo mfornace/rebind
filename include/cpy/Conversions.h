@@ -8,9 +8,9 @@ struct ImplicitConversions {
     using types = Pack<>;
 };
 
-template <class T>
+template <class U, class T>
 bool implicit_match(Variable &out, T &&t, Qualifier const q) {
-    using U = std::decay_t<T>;
+    DUMP("implicit_match", typeid(U).name(), typeid(Type<T &&>).name(), q);
     if constexpr(std::is_convertible_v<T &&, U>)
         if (q == Qualifier::V) out = {Type<U>(), static_cast<T &&>(t)};
     if constexpr(std::is_convertible_v<T &&, U &>)
@@ -22,13 +22,30 @@ bool implicit_match(Variable &out, T &&t, Qualifier const q) {
     return out.has_value();
 }
 
+template <class U, class T>
+bool recurse_implicit(Variable &out, T &&t, std::type_index idx, Qualifier q);
+
 template <class T>
 bool implicit_response(Variable &out, T &&t, std::type_index idx, Qualifier q) {
     DUMP("implicit_response", typeid(Type<T &&>).name(), idx.name(), typeid(typename ImplicitConversions<std::decay_t<T>>::types).name(), q);
     return ImplicitConversions<std::decay_t<T>>::types::apply([&](auto ...ts) {
-        return ((std::type_index(ts) == idx && implicit_match(out, static_cast<T &&>(t), q)) || ...)
-            || (implicit_response(out, static_cast<copy_qualifier<T &&, decltype(*ts)>>(t), idx, q) || ...);
+        static_assert((!std::is_same_v<std::decay_t<T>, std::decay_t<decltype(*ts)>> && ...));
+        return ((std::type_index(ts) == idx && implicit_match<decltype(*ts)>(out, static_cast<T &&>(t), q)) || ...)
+            || (recurse_implicit<decltype(*ts)>(out, static_cast<T &&>(t), idx, q) || ...);
     });
+}
+
+template <class U, class T>
+bool recurse_implicit(Variable &out, T &&t, std::type_index idx, Qualifier q) {
+    if constexpr(std::is_convertible_v<T &&, U &&>)
+        return implicit_response(out, static_cast<U &&>(t), idx, q);
+    else if constexpr(std::is_convertible_v<T &&, U &>)
+        return implicit_response(out, static_cast<U &>(t), idx, q);
+    else if constexpr(std::is_convertible_v<T &&, U const &>)
+        return implicit_response(out, static_cast<U const &>(t), idx, q);
+    else if constexpr(std::is_convertible_v<T &&, U>)
+        return implicit_response(out, static_cast<U>(t), idx, q);
+    return false;
 }
 
 /******************************************************************************/
@@ -55,7 +72,15 @@ template <class T, class=void>
 struct ReferenceResponse {
     using custom = std::false_type;
     void operator()(Variable &out, T const &t, std::type_index idx, Qualifier q) const {
-        DUMP("no conversion for reference ", typeid(T).name(), q, idx.name());
+        DUMP("no conversion for const reference ", typeid(T).name(), q, idx.name());
+        implicit_response(out, t, idx, q);
+    }
+    void operator()(Variable &out, T &&t, std::type_index idx, Qualifier q) const {
+        DUMP("no conversion for rvalue reference ", typeid(T).name(), q, idx.name());
+        implicit_response(out, std::move(t), idx, q);
+    }
+    void operator()(Variable &out, T &t, std::type_index idx, Qualifier q) const {
+        DUMP("no conversion for lvalue reference ", typeid(T).name(), q, idx.name());
         implicit_response(out, t, idx, q);
     }
 };
