@@ -256,7 +256,7 @@ template <class T, class=void>
 struct HasData : std::false_type {};
 
 template <class T>
-struct HasData<T, std::void_t<decltype(std::declval<T>().data())>> : std::true_type {};
+struct HasData<T, std::enable_if_t<(!std::is_same_v<decltype(std::declval<T>().data()), void>)>> : std::true_type {};
 
 /******************************************************************************/
 

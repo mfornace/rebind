@@ -22,6 +22,9 @@ struct Type  {
     operator std::type_index() const {return typeid(T);}
 };
 
+template <class T, class U>
+constexpr std::is_same<T, U> is_same(Type<T>, Type<U>) {return {};}
+
 template <class T>
 static constexpr Type<T> ctype = {};
 

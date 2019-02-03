@@ -3,6 +3,7 @@
 #include <vector>
 #include <iostream>
 #include <string_view>
+#include <memory>
 
 #define DUMP(...) ::cpy::dump(__FILE__, __LINE__, __VA_ARGS__);
 

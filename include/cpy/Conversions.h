@@ -9,7 +9,7 @@ struct ImplicitConversions {
 };
 
 template <class U, class T>
-bool implicit_match(Variable &out, T &&t, Qualifier const q) {
+bool implicit_match(Variable &out, Type<U>, T &&t, Qualifier const q) {
     DUMP("implicit_match", typeid(U).name(), typeid(Type<T &&>).name(), q);
     if constexpr(std::is_convertible_v<T &&, U>)
         if (q == Qualifier::V) out = {Type<U>(), static_cast<T &&>(t)};
@@ -19,24 +19,25 @@ bool implicit_match(Variable &out, T &&t, Qualifier const q) {
         if (q == Qualifier::R) out = {Type<U &&>(), static_cast<T &&>(t)};
     if constexpr(std::is_convertible_v<T &&, U const &>)
         if (q == Qualifier::C) out = {Type<U const &>(), static_cast<T &&>(t)};
+    DUMP("implicit_response result ", out.has_value(), typeid(Type<T &&>).name(), typeid(U).name(), q);
     return out.has_value();
 }
 
 template <class U, class T>
-bool recurse_implicit(Variable &out, T &&t, std::type_index idx, Qualifier q);
+bool recurse_implicit(Variable &out, Type<U>, T &&t, std::type_index idx, Qualifier q);
 
 template <class T>
 bool implicit_response(Variable &out, T &&t, std::type_index idx, Qualifier q) {
     DUMP("implicit_response", typeid(Type<T &&>).name(), idx.name(), typeid(typename ImplicitConversions<std::decay_t<T>>::types).name(), q);
     return ImplicitConversions<std::decay_t<T>>::types::apply([&](auto ...ts) {
-        static_assert((!std::is_same_v<std::decay_t<T>, std::decay_t<decltype(*ts)>> && ...));
-        return ((std::type_index(ts) == idx && implicit_match<decltype(*ts)>(out, static_cast<T &&>(t), q)) || ...)
-            || (recurse_implicit<decltype(*ts)>(out, static_cast<T &&>(t), idx, q) || ...);
+        static_assert((!decltype(is_same(+Type<T>(), +ts))::value && ...), "Implicit conversion creates a cycle");
+        return ((std::type_index(ts) == idx && implicit_match(out, ts, static_cast<T &&>(t), q)) || ...)
+            || (recurse_implicit(out, ts, static_cast<T &&>(t), idx, q) || ...);
     });
 }
 
 template <class U, class T>
-bool recurse_implicit(Variable &out, T &&t, std::type_index idx, Qualifier q) {
+bool recurse_implicit(Variable &out, Type<U>, T &&t, std::type_index idx, Qualifier q) {
     if constexpr(std::is_convertible_v<T &&, U &&>)
         return implicit_response(out, static_cast<U &&>(t), idx, q);
     else if constexpr(std::is_convertible_v<T &&, U &>)
