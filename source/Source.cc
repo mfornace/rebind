@@ -66,7 +66,7 @@ void Variable::assign(Variable v) {
 /******************************************************************************/
 
 Variable Variable::request_variable(Dispatch &msg, std::type_index const t, Qualifier q) const {
-    DUMP((act != nullptr), " asking for ", t.name(), "from", name());
+    DUMP((act != nullptr), " asking for ", t.name(), q, "from", name(), qualifier());
     Variable v;
     if (t == type()) { // Exact type match
         auto info = reinterpret_cast<std::type_info const * const &>(t);
