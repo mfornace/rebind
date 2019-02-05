@@ -14,11 +14,11 @@ namespace cpy {
 
 template <class T>
 struct Response<std::optional<T>> {
-    void operator()(Variable &out, std::optional<T> const &v, std::type_index t) const {
-        if (v) Response<T>()(out, v, std::move(t));
+    bool operator()(Variable &out, std::optional<T> const &v, std::type_index t) const {
+        return v ? Response<T>()(out, v, std::move(t)), true : false;
     }
-    void operator()(Variable &out, std::optional<T> const &p, std::type_index t, Qualifier q) const {
-        if (p) Response<std::remove_cv_t<T>>()(out, *p, std::move(t), q);
+    bool operator()(Variable &out, std::optional<T> const &p, std::type_index t, Qualifier q) const {
+        return p ? Response<std::remove_cv_t<T>>()(out, *p, std::move(t), q), true : false;
     }
 };
 
@@ -26,7 +26,7 @@ template <class T>
 struct Request<std::optional<T>> {
     std::optional<std::optional<T>> operator()(Variable const &v, Dispatch &msg) const {
         std::optional<std::optional<T>> out;
-        if (!v) out.emplace();
+        if (!v || v.request<std::nullptr_t>()) out.emplace();
         else if (auto p = v.request<std::remove_cv_t<T>>(msg))
             out.emplace(std::move(*p));
         return out;
@@ -37,17 +37,17 @@ struct Request<std::optional<T>> {
 
 template <class T>
 struct Response<std::shared_ptr<T>> {
-    void operator()(Variable &out, std::shared_ptr<T> const &p, std::type_index t) const {
+    bool operator()(Variable &out, std::shared_ptr<T> const &p, std::type_index t) const {
         DUMP("shared_ptr value", t.name(), bool(p));
-        if (!p) return;
-        if (t == typeid(std::remove_cv_t<T>)) out = *p;
-        else Response<std::remove_cv_t<T>>()(out, *p, std::move(t));
+        if (!p) return false;
+        if (t == typeid(std::remove_cv_t<T>)) return out = *p, true;
+        else return Response<std::remove_cv_t<T>>()(out, *p, std::move(t));
     }
-    void operator()(Variable &out, std::shared_ptr<T> const &p, std::type_index t, Qualifier q) const {
+    bool operator()(Variable &out, std::shared_ptr<T> const &p, std::type_index t, Qualifier q) const {
         DUMP("shared_ptr reference", t.name(), typeid(std::remove_cv_t<T>).name(), (t == typeid(std::remove_cv_t<T>)), bool(p), q, out.qualifier());
-        if (!p) return;
-        if (t == typeid(std::remove_cv_t<T>)) out = {Type<T &>(), *p};
-        else Response<std::remove_cv_t<T>>()(out, *p, std::move(t), q);
+        if (!p) return false;
+        if (t == typeid(std::remove_cv_t<T>)) return out = {Type<T &>(), *p}, true;
+        else return Response<std::remove_cv_t<T>>()(out, *p, std::move(t), q);
     }
 };
 
@@ -66,12 +66,12 @@ struct Request<std::shared_ptr<T>> {
 
 template <class ...Ts>
 struct Response<std::variant<Ts...>> {
-    void operator()(Variable &out, std::variant<Ts...> v, std::type_index t) const {
+    bool operator()(Variable &out, std::variant<Ts...> v, std::type_index t) const {
         DUMP(out.name(), typeid(v).name(), t.name());
         DUMP(v.index());
-        std::visit([&](auto const &x) {
+        return std::visit([&](auto const &x) {
             DUMP(typeid(x).name());
-            Response<no_qualifier<decltype(x)>>()(out, x, t);
+            return Response<no_qualifier<decltype(x)>>()(out, x, t);
         }, v);
     }
 };
@@ -97,10 +97,11 @@ template <class V>
 struct MapResponse {
     using T = std::pair<typename V::key_type, typename V::mapped_type>;
 
-    void operator()(Variable &out, V const &v, std::type_index t) const {
+    bool operator()(Variable &out, V const &v, std::type_index t) const {
         Vector<T> o(std::begin(v), std::end(v));
-        if (t == typeid(Vector<T>)) out = std::move(o);
-        if (t == typeid(Sequence)) out = Sequence(std::make_move_iterator(std::begin(o)), std::make_move_iterator(std::end(o)));
+        if (t == typeid(Vector<T>)) return out = std::move(o), true;
+        if (t == typeid(Sequence)) return out = Sequence(std::make_move_iterator(std::begin(o)), std::make_move_iterator(std::end(o))), true;
+        return false;
     }
 };
 

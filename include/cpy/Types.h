@@ -48,11 +48,14 @@ struct ArrayData {
 
 template <>
 struct Response<char const *> {
-    void operator()(Variable &out, char const *s, std::type_index const &t) const {
-        if (t == typeid(std::string_view))
+    bool operator()(Variable &out, char const *s, std::type_index const &t) const {
+        if (t == typeid(std::string_view)) {
             out = s ? std::string_view(s) : std::string_view();
-        else if (t == typeid(std::string))
+            return true;
+        } else if (t == typeid(std::string)) {
             out = s ? std::string(s) : std::string();
+            return true;
+        } else return false;
     }
 };
 
@@ -75,16 +78,16 @@ public:
 
 template <>
 struct Response<BinaryData> {
-    void operator()(Variable &out, BinaryData const &v, std::type_index t) const {
-        if (t == typeid(BinaryView)) out = BinaryView(v.begin(), v.size());
-        else out = Binary(v.begin(), v.size());
+    bool operator()(Variable &out, BinaryData const &v, std::type_index t) const {
+        if (t == typeid(BinaryView)) return out = BinaryView(v.begin(), v.size()), true;
+        return false;
     }
 };
 
 template <>
 struct Response<BinaryView> {
-    void operator()(Variable &out, BinaryView const &v, std::type_index) const {
-        out = Binary(v.begin(), v.size());
+    bool operator()(Variable &out, BinaryView const &v, std::type_index) const {
+        return false;
     }
 };
 
@@ -92,14 +95,14 @@ template <>
 struct Request<BinaryView> {
     std::optional<BinaryView> operator()(Variable const &v, Dispatch &msg) const {
         if (auto p = v.request<BinaryData>()) return BinaryView(p->data(), p->size());
-        return msg.error("not convertible to binary view", v.type(), typeid(BinaryView));
+        return msg.error("not convertible to binary view", typeid(BinaryView));
     }
 };
 
 template <>
 struct Request<BinaryData> {
     std::optional<BinaryData> operator()(Variable const &v, Dispatch &msg) const {
-        return msg.error("not convertible to binary data", v.type(), typeid(BinaryData));
+        return msg.error("not convertible to binary data", typeid(BinaryData));
     }
 };
 
@@ -107,17 +110,21 @@ struct Request<BinaryData> {
 
 template <class T>
 struct Response<T, std::enable_if_t<(std::is_integral_v<T>)>> {
-    void operator()(Variable &out, T t, std::type_index i) const {
-        if (i == typeid(Integer)) out = static_cast<Integer>(t);
-        if (i == typeid(Real)) out = static_cast<Real>(t);
+    bool operator()(Variable &out, T t, std::type_index i) const {
+        DUMP("response from integer", typeid(T).name(), i.name());
+        if (i == typeid(Integer)) return out = static_cast<Integer>(t), true;
+        if (i == typeid(Real)) return out = static_cast<Real>(t), true;
+        DUMP("no response from integer");
+        return false;
     }
 };
 
 template <class T>
 struct Response<T, std::enable_if_t<(std::is_floating_point_v<T>)>> {
-    void operator()(Variable &out, T t, std::type_index i) const {
-        if (i == typeid(Real)) out = static_cast<Real>(t);
-        if (i == typeid(Integer)) out = static_cast<Integer>(t);
+    bool operator()(Variable &out, T t, std::type_index i) const {
+        if (i == typeid(Real)) return out = static_cast<Real>(t), true;
+        if (i == typeid(Integer)) return out = static_cast<Integer>(t), true;
+        return false;
     }
 };
 
@@ -125,17 +132,17 @@ template <class T>
 struct Request<T, std::enable_if_t<std::is_floating_point_v<T>>> {
     std::optional<T> operator()(Variable const &v, Dispatch &msg) const {
         DUMP("convert to floating");
-        if (!std::is_same_v<Real, T>)    if (auto p = v.request<Real>())    return static_cast<T>(*p);
-        return msg.error("not convertible to floating point", v.type(), typeid(T));
+        if (!std::is_same_v<Real, T>) if (auto p = v.request<Real>()) return static_cast<T>(*p);
+        return msg.error("not convertible to floating point", typeid(T));
     }
 };
 
 template <class T>
 struct Request<T, std::enable_if_t<std::is_integral_v<T>>> {
     std::optional<T> operator()(Variable const &v, Dispatch &msg) const {
-        DUMP("convert to arithmetic");
+        DUMP("trying convert to arithmetic", v.name(), typeid(T).name());
         if (!std::is_same_v<Integer, T>) if (auto p = v.request<Integer>()) return static_cast<T>(*p);
-        return msg.error("not convertible to integer", v.type(), typeid(T));
+        return msg.error("not convertible to integer", typeid(T));
     }
 };
 
@@ -149,14 +156,14 @@ struct Request<std::basic_string<T, Traits, Alloc>> {
         if (!std::is_same_v<std::basic_string<T, Traits, Alloc>, std::basic_string<T, Traits>>)
             if (auto p = v.request<std::basic_string<T, Traits>>())
                 return std::move(*p);
-        return msg.error("not convertible to string", v.type(), typeid(T));
+        return msg.error("not convertible to string", typeid(T));
     }
 };
 
 template <class T, class Traits>
 struct Request<std::basic_string_view<T, Traits>> {
     std::optional<std::basic_string_view<T, Traits>> operator()(Variable const &v, Dispatch &msg) const {
-        return msg.error("not convertible to string view", v.type(), typeid(T));
+        return msg.error("not convertible to string view", typeid(T));
     }
 };
 
@@ -178,10 +185,11 @@ struct CompiledSequenceResponse {
     template <std::size_t ...Is>
     static Array array(V const &v, std::index_sequence<Is...>) {return {std::get<Is>(v)...};}
 
-    void operator()(Variable &out, V const &v, std::type_index t) const {
+    bool operator()(Variable &out, V const &v, std::type_index t) const {
         auto idx = std::make_index_sequence<std::tuple_size_v<V>>();
-        if (t == typeid(Sequence)) out = sequence(v, idx);
-        if (t == typeid(Array)) out = array(v, idx);
+        if (t == typeid(Sequence)) return out = sequence(v, idx), true;
+        if (t == typeid(Array)) return out = array(v, idx), true;
+        return false;
     }
 };
 
@@ -209,7 +217,7 @@ struct CompiledSequenceRequest {
     static void request(std::optional<V> &out, S &&s, Dispatch &msg) {
         DUMP("trying CompiledSequenceRequest request");
         if (std::size(s) != std::tuple_size_v<V>) {
-            msg.error("wrong sequence length", typeid(S), typeid(V), std::tuple_size_v<V>, s.size());
+            msg.error("wrong sequence length", typeid(V), std::tuple_size_v<V>, s.size());
         } else {
             msg.indices.emplace_back(0);
             request_each(out, std::move(s), msg, std::make_index_sequence<std::tuple_size_v<V>>());
@@ -232,7 +240,7 @@ struct CompiledSequenceRequest {
             request(out, std::move(*p), msg);
         } else {
             DUMP("trying CompiledSequenceRequest3", r.type().name());
-            msg.error("expected sequence to make compiled sequence", r.type(), typeid(V));
+            msg.error("expected sequence to make compiled sequence", typeid(V));
         }
         return out;
     }
@@ -264,22 +272,24 @@ template <class V>
 struct VectorResponse {
     using T = no_qualifier<typename V::value_type>;
 
-    void operator()(Variable &out, V const &v, std::type_index t) const {
-        if (t == typeid(Sequence)) out = from_iters<Sequence>(v);
-        else if (t == typeid(Vector<T>)) out = from_iters<Vector<T>>(v);
-        else if (t == typeid(ArrayData)) {
+    bool operator()(Variable &out, V const &v, std::type_index t) const {
+        if (t == typeid(Sequence)) return out = from_iters<Sequence>(v), true;
+        if (t == typeid(Vector<T>)) return out = from_iters<Vector<T>>(v), true;
+        if (t == typeid(ArrayData)) {
             if constexpr(HasData<V const &>::value) // e.g. guard against std::vector<bool>
-                out = ArrayData(v.data(), {Integer(v.size())}, {Integer(1)});
+                return out = ArrayData(v.data(), {Integer(v.size())}, {Integer(1)}), true;
         }
+        return false;
     }
 
-    void operator()(Variable &out, V &&v, std::type_index t) const {
-        if (t == typeid(Sequence)) out = from_iters<Sequence>(std::move(v));
-        else if (t == typeid(Vector<T>)) out = from_iters<Vector<T>>(std::move(v));
-        else if (t == typeid(ArrayData)) {
+    bool operator()(Variable &out, V &&v, std::type_index t) const {
+        if (t == typeid(Sequence)) return out = from_iters<Sequence>(std::move(v)), true;
+        if (t == typeid(Vector<T>)) return out = from_iters<Vector<T>>(std::move(v)), true;
+        if (t == typeid(ArrayData)) {
             if constexpr(HasData<V &&>::value) // e.g. guard against std::vector<bool>
-                out = ArrayData(v.data(), {Integer(v.size())}, {Integer(1)});
+                return out = ArrayData(v.data(), {Integer(v.size())}, {Integer(1)}), true;
         }
+        return false;
     }
 };
 
@@ -311,7 +321,7 @@ struct VectorRequest {
         // if (auto p = v.request<Vector<T>>()) return get(*p, msg);
         if (!std::is_same_v<V, Sequence>)
             if (auto p = v.request<Sequence>()) return get(*p, msg);
-        return msg.error("expected sequence", v.type(), typeid(V));
+        return msg.error("expected sequence", typeid(V));
     }
 };
 

@@ -19,7 +19,7 @@ void lvalue_fails(Variable const &v, Dispatch &msg, std::type_index t) {
         if (v.qualifier() == Qualifier::C) s = "could not convert const value to lvalue reference";
         if (v.qualifier() == Qualifier::V) s = "could not convert value to lvalue reference";
     }
-    msg.error(s, v.type(), t);
+    msg.error(s, t);
 }
 /******************************************************************************/
 
@@ -29,7 +29,7 @@ void rvalue_fails(Variable const &v, Dispatch &msg, std::type_index t) {
         if (v.qualifier() == Qualifier::L) s = "could not convert lvalue to rvalue reference";
         if (v.qualifier() == Qualifier::C) s = "could not convert const value to rvalue reference";
     }
-    msg.error(s, v.type(), t);
+    msg.error(s, t);
 }
 /******************************************************************************/
 
@@ -68,7 +68,9 @@ void Variable::assign(Variable v) {
 Variable Variable::request_variable(Dispatch &msg, std::type_index const t, Qualifier q) const {
     DUMP((act != nullptr), " asking for ", t.name(), q, "from", name(), qualifier());
     Variable v;
-    if (t == type()) { // Exact type match
+    if (!has_value()) {
+        // Nothing to do; request always fails
+    } else if (t == type()) { // Exact type match
         auto info = reinterpret_cast<std::type_info const * const &>(t);
         if (q == Qualifier::V) { // Make a copy or move
             v.qual = Qualifier::V;
@@ -108,8 +110,14 @@ Variable Variable::request_variable(Dispatch &msg, std::type_index const t, Qual
         }
     }
     DUMP(v.has_value(), v.type() == t, v.qualifier() == q, v.type().name(), q, t.name());
-    auto v2 = v;
     return v;
+}
+
+/******************************************************************************/
+
+void set_source(Dispatch &msg, std::type_info const &t, Variable &&v) {
+    if (v.has_value()) {} //msg.source = std::move(v);
+    else msg.source = std::type_index(t);
 }
 
 /******************************************************************************/
