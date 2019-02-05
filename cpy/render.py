@@ -108,7 +108,7 @@ def render_type(pkg: str, bases: tuple, name: str, methods, lookup={}):
             props.update(cls.__dict__)
 
     new = props.pop('__new__', None)
-    if callable(new) and new is not forward.not_implemented_new:
+    if callable(new):
         log.warning('{}.{}.__new__ will not be rendered'.format(pkg, name))
     methods['__init__'] = render_init(methods.pop('new', None))
 
