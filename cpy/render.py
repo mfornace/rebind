@@ -108,7 +108,7 @@ def render_type(pkg: str, bases: tuple, name: str, methods, lookup={}):
             props.update(cls.__dict__)
 
     new = props.pop('__new__', None)
-    if callable(new) and new is not forward.not_implemented_new:
+    if callable(new):
         log.warning('{}.{}.__new__ will not be rendered'.format(pkg, name))
     methods['__init__'] = render_init(methods.pop('new', None))
 
@@ -201,7 +201,7 @@ def render_function(fun, old, globalns={}, localns={}):
             bound = _bind(*args, **kwargs)
             bound.apply_defaults()
             args = (a if t is empty or a is None else render_callback(a, t) for a, t in zip(bound.args, types))
-            return _old(*args, _fun_=_orig)
+            return _old(*args, _fun_=_orig, **bound.kwargs)
     else:
         ret = sig.return_annotation
 

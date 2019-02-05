@@ -151,8 +151,8 @@ Sequence args_from_python(Object const &pypack);
 
 template <>
 struct Response<Object> {
-    void operator()(Variable &, Object, std::type_index) const;
-    void operator()(Variable &, Object, std::type_index, Qualifier) const;
+    bool operator()(Variable &, Object, std::type_index) const;
+    bool operator()(Variable &, Object, std::type_index, Qualifier) const;
 };
 
 /******************************************************************************/

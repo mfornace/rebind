@@ -194,7 +194,7 @@ Streamable<T> streamable(Type<T> t={}) {return {};}
 template <class R>
 struct Request<Callback<R>> {
     std::optional<Callback<R>> operator()(Variable const &v, Dispatch &msg) const {
-        if (!msg.caller) msg.error("Calling context expired", v.type(), typeid(Callback<R>));
+        if (!msg.caller) msg.error("Calling context expired", typeid(Callback<R>));
         else if (auto p = v.request<Function>(msg)) return Callback<R>{std::move(*p), msg.caller};
         return {};
     }
@@ -205,7 +205,7 @@ template <class R, class ...Ts>
 struct Request<AnnotatedCallback<R, Ts...>> {
     using type = AnnotatedCallback<R, Ts...>;
     std::optional<type> operator()(Variable const &v, Dispatch &msg) const {
-        if (!msg.caller) msg.error("Calling context expired", v.type(), typeid(type));
+        if (!msg.caller) msg.error("Calling context expired", typeid(type));
         else if (auto p = v.request<Function>(msg)) return type{std::move(*p), msg.caller};
         return {};
     }

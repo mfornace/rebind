@@ -8,8 +8,9 @@ struct ImplicitConversions {
     using types = Pack<>;
 };
 
-template <class T, class U>
+template <class U, class T>
 bool implicit_match(Variable &out, Type<U>, T &&t, Qualifier const q) {
+    DUMP("implicit_match", typeid(U).name(), typeid(Type<T &&>).name(), q);
     if constexpr(std::is_convertible_v<T &&, U>)
         if (q == Qualifier::V) out = {Type<U>(), static_cast<T &&>(t)};
     if constexpr(std::is_convertible_v<T &&, U &>)
@@ -22,42 +23,65 @@ bool implicit_match(Variable &out, Type<U>, T &&t, Qualifier const q) {
     return out.has_value();
 }
 
-/// Ask for variable of type "idx", qualifier "q" from current variable "t"
+template <class U, class T>
+bool recurse_implicit(Variable &out, Type<U>, T &&t, std::type_index idx, Qualifier q);
+
 template <class T>
 bool implicit_response(Variable &out, T &&t, std::type_index idx, Qualifier q) {
     DUMP("implicit_response", typeid(Type<T &&>).name(), idx.name(), typeid(typename ImplicitConversions<std::decay_t<T>>::types).name(), q);
-    return ImplicitConversions<std::decay_t<T>>::types::no_qualifier::apply([&](auto ...us) {
-        return ((std::type_index(us) == idx && implicit_match(out, us, static_cast<T &&>(t), q)) || ...)
-            || (implicit_response(out, static_cast<copy_qualifier<T &&, decltype(*us)>>(t), idx, q) || ...);
+    return ImplicitConversions<std::decay_t<T>>::types::apply([&](auto ...ts) {
+        static_assert((!decltype(is_same(+Type<T>(), +ts))::value && ...), "Implicit conversion creates a cycle");
+        return ((std::type_index(ts) == idx && implicit_match(out, ts, static_cast<T &&>(t), q)) || ...)
+            || (recurse_implicit(out, ts, static_cast<T &&>(t), idx, q) || ...);
     });
+}
+
+template <class U, class T>
+bool recurse_implicit(Variable &out, Type<U>, T &&t, std::type_index idx, Qualifier q) {
+    if constexpr(std::is_convertible_v<T &&, U &&>)
+        return implicit_response(out, static_cast<U &&>(t), idx, q);
+    else if constexpr(std::is_convertible_v<T &&, U &>)
+        return implicit_response(out, static_cast<U &>(t), idx, q);
+    else if constexpr(std::is_convertible_v<T &&, U const &>)
+        return implicit_response(out, static_cast<U const &>(t), idx, q);
+    else if constexpr(std::is_convertible_v<T &&, U>)
+        return implicit_response(out, static_cast<U>(t), idx, q);
+    return false;
 }
 
 /******************************************************************************/
 
 template <class T, class=void>
 struct ValueResponse {
-    void operator()(Variable &out, T const &t, std::type_index idx) const {
+    bool operator()(Variable &out, T const &t, std::type_index idx) const {
         DUMP("default simplifyvalue ", typeid(T).name());
-        implicit_response(out, t, idx, Qualifier::V);
+        return implicit_response(out, t, idx, Qualifier::V);
     }
 };
 
 template <class T>
 struct ValueResponse<T, std::void_t<decltype(response(std::declval<T const &>(), std::declval<std::type_index &&>()))>> {
-    void operator()(Variable &out, T const &t, std::type_index idx) const {
+    bool operator()(Variable &out, T const &t, std::type_index idx) const {
         DUMP("adl simplifyvalue", typeid(T).name());
         out = response(t, std::move(idx));
-        if (!out) implicit_response(out, t, idx, Qualifier::V);
-        DUMP("adl simplifyvalue", typeid(T).name(), " 2");
+        return out || implicit_response(out, t, idx, Qualifier::V);
     }
 };
 
 template <class T, class=void>
 struct ReferenceResponse {
     using custom = std::false_type;
-    void operator()(Variable &out, T const &t, std::type_index idx, Qualifier q) const {
-        DUMP("no conversion for reference ", typeid(T).name(), q, idx.name());
-        implicit_response(out, t, idx, q);
+    bool operator()(Variable &out, T const &t, std::type_index idx, Qualifier q) const {
+        DUMP("no conversion for const reference ", typeid(T).name(), q, idx.name());
+        return implicit_response(out, t, idx, q);
+    }
+    bool operator()(Variable &out, T &&t, std::type_index idx, Qualifier q) const {
+        DUMP("no conversion for rvalue reference ", typeid(T).name(), q, idx.name());
+        return implicit_response(out, std::move(t), idx, q);
+    }
+    bool operator()(Variable &out, T &t, std::type_index idx, Qualifier q) const {
+        DUMP("no conversion for lvalue reference ", typeid(T).name(), q, idx.name());
+        return implicit_response(out, t, idx, q);
     }
 };
 
@@ -65,10 +89,10 @@ template <class T>
 struct ReferenceResponse<T, std::void_t<decltype(response(std::declval<T const &>(), std::declval<std::type_index &&>(), cvalue()))>> {
     using custom = std::true_type;
     template <class Q>
-    void operator()(Variable &out, qualified<T, Q> t, std::type_index idx, Q q) const {
+    bool operator()(Variable &out, qualified<T, Q> t, std::type_index idx, Q q) const {
         DUMP("convert reference via ADL ", typeid(T).name());
         out = response(static_cast<decltype(t) &&>(t), std::move(idx), q);
-        if (!out) implicit_response(out, t, idx, q);
+        return out || implicit_response(out, t, idx, q);
     }
 };
 
@@ -86,7 +110,7 @@ struct Request {
     static_assert(std::is_same_v<no_qualifier<T>, T>);
 
     std::optional<T> operator()(Variable const &r, Dispatch &msg) const {
-        return msg.error("mismatched class type", r.type(), typeid(T));
+        return msg.error("mismatched class type", typeid(T));
     }
 };
 
@@ -108,7 +132,7 @@ struct Request<T const &, C> {
         if (auto p = v.request<T &>(msg)) return p;
         DUMP("trying temporary const & storage ", typeid(T).name());
         if (auto p = v.request<T>(msg)) return msg.store(std::move(*p));
-        return msg.error("could not bind to const lvalue reference", v.type(), typeid(T)), nullptr;
+        return msg.error("could not bind to const lvalue reference", typeid(T)), nullptr;
     }
 };
 

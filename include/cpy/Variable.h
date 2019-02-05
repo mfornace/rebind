@@ -147,25 +147,25 @@ public:
     template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
     std::remove_reference_t<T> *request(Dispatch &msg, Type<T> t={}) const {
         DUMP(typeid(Type<T>).name(), qualifier(), has_value(), idx->name());
-        if (!has_value()) return nullptr;
         if (*idx == typeid(no_qualifier<T>)) return target<T>();
         auto v = request_variable(msg, typeid(T), qualifier_of<T>);
-        if (auto p = v.template target<T>()) return p;
-        else return Request<T>()(*this, msg);
+        if (auto p = v.template target<T>()) {msg.source.reset(); return p;}
+        if (auto p = Request<T>()(*this, msg)) {msg.source.reset(); return p;}
+        return nullptr;
     }
 
     template <class T, std::enable_if_t<!std::is_reference_v<T>, int> = 0>
     std::optional<T> request(Dispatch &msg, Type<T> t={}) const {
         static_assert(std::is_same_v<T, no_qualifier<T>>);
         if constexpr(std::is_same_v<T, Variable>) return *this;
-        if (!has_value()) return {};
         if (auto p = target<T const &>()) {
             DUMP(qual, p, &buff, reinterpret_cast<void * const &>(buff), stack, typeid(p).name(), typeid(Type<T>).name());
             return *p;
         }
         auto v = request_variable(msg, typeid(T));
-        if (auto p = v.target<T const &>()) return *p;
-        else return Request<T>()(*this, msg);
+        if (auto p = std::move(v).target<T &&>()) {msg.source.reset(); return std::move(*p);};
+        if (auto p = Request<T>()(*this, msg)) {msg.source.reset(); return std::move(p);}
+        return {};
     }
 
     /**************************************************************************/
@@ -192,6 +192,12 @@ public:
         return cast(msg, t);
     }
 
+    template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
+    std::remove_reference_t<T> *target(Type<T> t={}) && {
+        DUMP(name(), typeid(Type<T>).name(), qual, stack);
+        return target_pointer(t, (qual == Qualifier::V) ? Qualifier::R : qual);
+    }
+
     // return pointer to target if it is trivially convertible to requested type
     template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
     std::remove_reference_t<T> *target(Type<T> t={}) const & {
@@ -209,38 +215,44 @@ public:
 
 /******************************************************************************/
 
+void set_source(Dispatch &, std::type_info const &, Variable &&v);
+
 /// Set out to a new variable with given qualifier dest and type idx from type T
 template <class T>
-void qualified_response(Variable &out, Qualifier dest, T &&t, std::type_index idx) {
-    using S = Response<no_qualifier<T>>;
+bool qualified_response(Variable &out, Qualifier dest, T &&t, std::type_index idx) {
+    using R = Response<no_qualifier<T>>;
     if (dest == Qualifier::V)
-        if constexpr(std::is_invocable_v<S, Variable &, T const &, std::type_index &&>)
-            S()(out, static_cast<T &&>(t), std::move(idx));
+        if constexpr(std::is_invocable_v<R, Variable &, T const &, std::type_index &&>)
+            return R()(out, static_cast<T &&>(t), std::move(idx)); // should be able to set the source
 
     if (dest == Qualifier::R)
-        if constexpr(std::is_invocable_v<S, Variable &, T &&, std::type_index &&, rvalue &&>)
-            S()(out, static_cast<T &&>(t), std::move(idx), rvalue());
+        if constexpr(std::is_invocable_v<R, Variable &, T &&, std::type_index &&, rvalue &&>)
+            return R()(out, static_cast<T &&>(t), std::move(idx), rvalue());
 
     if (dest == Qualifier::L)
-        if constexpr(std::is_invocable_v<S, Variable &, T &&, std::type_index &&, lvalue &&>)
-            S()(out, static_cast<T &&>(t), std::move(idx), lvalue());
+        if constexpr(std::is_invocable_v<R, Variable &, T &&, std::type_index &&, lvalue &&>)
+            return R()(out, static_cast<T &&>(t), std::move(idx), lvalue());
 
     if (dest == Qualifier::C)
-        if constexpr(std::is_invocable_v<S, Variable &, T &&, std::type_index &&, cvalue &&>)
-            S()(out, static_cast<T &&>(t), std::move(idx), cvalue());
+        if constexpr(std::is_invocable_v<R, Variable &, T &&, std::type_index &&, cvalue &&>)
+            return R()(out, static_cast<T &&>(t), std::move(idx), cvalue());
+    return false;
 }
 
 template <class T>
 struct Action {
     static_assert(std::is_same_v<no_qualifier<T>, T>);
 
-    static void response(Variable &v, void *p, RequestData r) {
+    static void response(Variable &v, void *p, RequestData &&r) {
+        bool ok = false;
         if (r.source == Qualifier::C)
-            qualified_response(v, r.dest, *static_cast<T const *>(p), std::move(r.type));
-        else if (r.source == Qualifier::L)
-            qualified_response(v, r.dest, *static_cast<T *>(p), std::move(r.type));
-        else if (r.source == Qualifier::R)
-            qualified_response(v, r.dest, static_cast<T &&>(*static_cast<T *>(p)), std::move(r.type));
+            ok = qualified_response(v, r.dest, *static_cast<T const *>(p), std::move(r.type));
+        if (r.source == Qualifier::L)
+            ok = qualified_response(v, r.dest, *static_cast<T *>(p), std::move(r.type));
+        if (r.source == Qualifier::R)
+            ok = qualified_response(v, r.dest, static_cast<T &&>(*static_cast<T *>(p)), std::move(r.type));
+        DUMP("tried response", r.source, ok);
+        if (!ok) set_source(*r.msg, typeid(T), std::move(v));
     }
 
     static void apply(ActionType a, void *p, VariableData *v) {

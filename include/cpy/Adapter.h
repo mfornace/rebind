@@ -1,6 +1,7 @@
 #pragma once
 #include "Signature.h"
 #include "Types.h"
+#include <functional>
 
 namespace cpy {
 

@@ -50,7 +50,7 @@ struct Document {
             throw std::runtime_error("already rendered object with key " + p.first->first);
     }
 
-    /// Export function and its signature
+    /// Export function and its signature. N may be given as the number of mandatory arguments
     template <int N=-1, class F>
     void function(std::string name, F functor) {
         render(typename Signature<F>::no_qualifier());
