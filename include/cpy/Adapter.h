@@ -96,7 +96,7 @@ struct Adapter {
     Variable call(Sequence &args, Caller &&c, Dispatch &msg, std::index_sequence<Is...>) const {
         Variable out;
         // check the number of arguments given and call with the under-specified arguments
-        ((args.size() == N - Is - 1 ? call_one(ArgTypes::template slice<0, N - Is - 1>(), out, std::move(c), msg, args) : void()), ...);
+        ((args.size() == ArgTypes::size - Is - 1 ? call_one(ArgTypes::template slice<0, ArgTypes::size - Is - 1>(), out, std::move(c), msg, args) : void()), ...);
         return out;
     }
 
