@@ -360,7 +360,7 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
             }
         }
         // Raise an exception with a list of the messages
-        return type_error("C++: no overloads worked %S", +errors); // HERE
+        return PyErr_SetObject(PyExc_TypeError, +errors), nullptr;
     });
 }
 

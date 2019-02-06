@@ -210,7 +210,11 @@ def render_function(fun, old, globalns={}, localns={}):
             bound.apply_defaults()
             out = _orig(*(render_callback(a, t) if isinstance(t, tuple) else a for a, t in zip(bound.args, types)))
             if _return is empty:
-                return out or None
+                return out # no cast
+            if _return is None or _return is type(None):
+                return # return None regardless of output
+            if out is None:
+                out = globalns['Variable']() # unlikely, but replace None with empty Variable to try a cast
             return out.cast(ev(typing._type_check(_return, 'expected type')))
 
     return functools.update_wrapper(wrap, old)
