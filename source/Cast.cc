@@ -97,6 +97,7 @@ Object dict_cast(Variable &&ref, Object const &o, Object const &root) {
 Object variable_cast(Variable &&v, Object const &t) {
     PyObject *x;
     if (t) x = +t;
+    else if (!v.has_value()) return {Py_None, true};
     else if (auto it = python_types.find(v.type()); it != python_types.end()) x = +it->second;
     else x = type_object<Variable>();
 
