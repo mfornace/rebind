@@ -142,6 +142,7 @@ struct Request<T, std::enable_if_t<std::is_integral_v<T>>> {
     std::optional<T> operator()(Variable const &v, Dispatch &msg) const {
         DUMP("trying convert to arithmetic", v.name(), typeid(T).name());
         if (!std::is_same_v<Integer, T>) if (auto p = v.request<Integer>()) return static_cast<T>(*p);
+        DUMP("failed to convert to arithmetic", v.name(), typeid(T).name());
         return msg.error("not convertible to integer", typeid(T));
     }
 };

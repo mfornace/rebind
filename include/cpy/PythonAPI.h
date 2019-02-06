@@ -287,7 +287,7 @@ struct PythonFunction {
 
 std::string_view get_type_name(std::type_index idx) noexcept;
 
-std::string wrong_type_message(WrongType const &e);
+std::string wrong_type_message(WrongType const &e, std::string_view={});
 
 template <class F>
 PyObject *raw_object(F &&f) noexcept {
@@ -303,7 +303,7 @@ PyObject *raw_object(F &&f) noexcept {
         unsigned int n0 = e.expected, n = e.received;
         PyErr_Format(PyExc_TypeError, "C++: wrong number of arguments (expected %u, got %u)", n0, n);
     } catch (WrongType const &e) {
-        try {PyErr_SetString(PyExc_TypeError, wrong_type_message(e).c_str());}
+        try {PyErr_SetString(PyExc_TypeError, wrong_type_message(e, "C++: ").c_str());}
         catch(...) {PyErr_SetString(PyExc_TypeError, e.what());}
     } catch (std::exception const &e) {
         if (!PyErr_Occurred())

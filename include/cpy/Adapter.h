@@ -84,7 +84,7 @@ template <std::size_t N, class F, class SFINAE=void>
 struct Adapter {
     F function;
     using UsesCaller = decltype(has_head<Caller>(SimpleSignature<F>()));
-    using ArgTypes = decltype(skip_head<1 + int(UsesCaller::value)>(SimpleSignature<F>()));
+    using AllTypes = decltype(skip_head<1 + int(UsesCaller::value)>(SimpleSignature<F>()));
 
     template <class P>
     void call_one(P, Variable &out, Caller &&c, Dispatch &msg, Sequence &args) const {
@@ -96,8 +96,9 @@ struct Adapter {
     template <std::size_t ...Is>
     Variable call(Sequence &args, Caller &&c, Dispatch &msg, std::index_sequence<Is...>) const {
         Variable out;
+        constexpr std::size_t const M = AllTypes::size - 1; // number of total arguments minus 1
         // check the number of arguments given and call with the under-specified arguments
-        ((args.size() == N - Is - 1 ? call_one(ArgTypes::template slice<0, N - Is - 1>(), out, std::move(c), msg, args) : void()), ...);
+        ((args.size() == M - Is ? call_one(AllTypes::template slice<0, M - Is>(), out, std::move(c), msg, args) : void()), ...);
         return out;
     }
 
@@ -105,14 +106,14 @@ struct Adapter {
         auto frame = c();
         Caller handle(frame);
         Dispatch msg(handle);
-        if (args.size() == ArgTypes::size) // handle fully specified arguments
-            return ArgTypes::indexed([&](auto ...ts) {
+        if (args.size() == AllTypes::size) // handle fully specified arguments
+            return AllTypes::indexed([&](auto ...ts) {
                 return caller_invoke(UsesCaller(), function, std::move(handle), cast_index(args, msg, simplify_argument(ts))...);
             });
-        else if (args.size() < ArgTypes::size - N)
-            throw WrongNumber(ArgTypes::size - N, args.size());
-        else if (args.size() > ArgTypes::size)
-            throw WrongNumber(ArgTypes::size, args.size()); // try under-specified arguments
+        else if (args.size() < AllTypes::size - N)
+            throw WrongNumber(AllTypes::size - N, args.size());
+        else if (args.size() > AllTypes::size)
+            throw WrongNumber(AllTypes::size, args.size()); // try under-specified arguments
         return call(args, std::move(handle), msg, std::make_index_sequence<N>());
     }
 };

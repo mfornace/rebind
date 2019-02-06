@@ -98,7 +98,7 @@ bool Response<Object>::operator()(Variable &v, Object o, std::type_index t, Qual
     return v.has_value();
 }
 
-bool Response<Object>::operator()(Variable &v, Object o, std::type_index t) const {
+bool object_response(Variable &v, Object o, std::type_index t) {
     if (Debug) {
         Object repr{PyObject_Repr(TypeObject{(+o)->ob_type}), false};
         DUMP("trying to convert object to ", t.name(), " ", from_unicode(+repr));
@@ -204,6 +204,17 @@ bool Response<Object>::operator()(Variable &v, Object o, std::type_index t) cons
     return false;
 }
 
+bool Response<Object>::operator()(Variable &v, Object o, std::type_index t) const {
+    if (!o) return false;
+    Object type = {reinterpret_cast<PyObject *>((+o)->ob_type), true};
+    bool ok = object_response(v, std::move(o), t);
+    if (!ok) { // put diagnostic for the source type
+        auto o = Object::from(PyObject_Repr(+type));
+        v = {Type<std::string>(), from_unicode(o)};
+    }
+    return ok;
+}
+
 /******************************************************************************/
 
 std::string_view get_type_name(std::type_index idx) noexcept {
@@ -212,11 +223,11 @@ std::string_view get_type_name(std::type_index idx) noexcept {
     else return it->second;
 }
 
-std::string wrong_type_message(WrongType const &e) {
+std::string wrong_type_message(WrongType const &e, std::string_view prefix) {
     std::ostringstream os;
-    os << "C++: " << e.what() << " (#" << e.index << ", ";
-    if (e.source.type != typeid(void))
-        os << get_type_name(e.source.type) << " \u2192 " << get_type_name(e.dest.type) << ", ";
+    os << prefix << e.what() << " (#" << e.index << ", ";
+    if (!e.source.empty())
+        os << e.source << " \u2192 " << get_type_name(e.dest) << ", ";
     if (!e.indices.empty()) {
         auto it = e.indices.begin();
         os << "scopes=[" << *it;

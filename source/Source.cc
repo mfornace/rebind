@@ -92,6 +92,7 @@ Variable Variable::request_variable(Dispatch &msg, std::type_index const t, Qual
     } else {
         auto src = (qual == Qualifier::V) ? Qualifier::C : qual;
         DUMP(src);
+
         ::new(static_cast<void *>(&v.buff)) RequestData{t, &msg, src, q};
         act(ActionType::response, pointer(), &v);
         DUMP(v.has_value(), v.name(), q, v.qualifier());
@@ -116,8 +117,15 @@ Variable Variable::request_variable(Dispatch &msg, std::type_index const t, Qual
 /******************************************************************************/
 
 void set_source(Dispatch &msg, std::type_info const &t, Variable &&v) {
-    if (v.has_value()) {} //msg.source = std::move(v);
-    else msg.source = std::type_index(t);
+    if (auto p = std::move(v).target<std::string &&>()) {
+        msg.source = std::move(*p);
+    } else if (auto p = v.target<std::string_view const &>()) {
+        msg.source = *p;
+    } else if (auto p = v.target<std::type_index const &>()) {
+        msg.source = p->name();
+    } else {
+        msg.source = t.name();
+    }
 }
 
 /******************************************************************************/

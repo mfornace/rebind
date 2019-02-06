@@ -37,25 +37,14 @@ struct WrongNumber : DispatchError {
 
 /******************************************************************************/
 
-struct Record {
-    std::type_index type = typeid(void);
-    Record() = default;
-    Record(std::type_info const &info) : type(info) {}
-    Record(std::type_index idx) : type(idx) {}
-    template <class T>
-    Record(Type<T>) : type(typeid(T)) {}
-    void reset() {type = typeid(void);}
-};
-
-/******************************************************************************/
-
 struct WrongType : DispatchError {
     std::vector<unsigned int> indices;
-    Record source, dest;
+    std::string source;
+    std::type_index dest;
     int index, expected, received;
 
     WrongType(std::string const &n, std::vector<unsigned int> &&v,
-              Record &&s, Record &&d, int i, int e=0, int r=0) noexcept
+              std::string &&s, std::type_index &&d, int i, int e=0, int r=0) noexcept
         : DispatchError(n), indices(std::move(v)), source(std::move(s)),
           dest(std::move(d)), index(i), expected(e), received(r) {}
 };
@@ -67,9 +56,9 @@ struct Dispatch {
     Caller caller;
     std::deque<std::any> storage; // deque is used so references don't go bad when doing emplace_back()
     std::vector<unsigned int> indices;
-    Record source, dest;
+    std::string source;
+    std::type_index dest = typeid(void);
     int index = -1, expected = -1, received = -1;
-
 
     std::nullopt_t error() noexcept {return std::nullopt;}
 
@@ -78,12 +67,12 @@ struct Dispatch {
         return std::nullopt;
     }
 
-    std::nullopt_t error(Record d) noexcept {
+    std::nullopt_t error(std::type_index d) noexcept {
         dest = std::move(d);
         return std::nullopt;
     }
 
-    std::nullopt_t error(std::string msg, Record d, int e=-1, int r=-1) noexcept {
+    std::nullopt_t error(std::string msg, std::type_index d, int e=-1, int r=-1) noexcept {
         scope = std::move(msg);
         dest = std::move(d);
         expected = e;

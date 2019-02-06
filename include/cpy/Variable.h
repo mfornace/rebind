@@ -149,8 +149,8 @@ public:
         DUMP(typeid(Type<T>).name(), qualifier(), has_value(), idx->name());
         if (*idx == typeid(no_qualifier<T>)) return target<T>();
         auto v = request_variable(msg, typeid(T), qualifier_of<T>);
-        if (auto p = v.template target<T>()) {msg.source.reset(); return p;}
-        if (auto p = Request<T>()(*this, msg)) {msg.source.reset(); return p;}
+        if (auto p = v.template target<T>()) {msg.source.clear(); return p;}
+        if (auto p = Request<T>()(*this, msg)) {msg.source.clear(); return p;}
         return nullptr;
     }
 
@@ -163,8 +163,8 @@ public:
             return *p;
         }
         auto v = request_variable(msg, typeid(T));
-        if (auto p = std::move(v).target<T &&>()) {msg.source.reset(); return std::move(*p);};
-        if (auto p = Request<T>()(*this, msg)) {msg.source.reset(); return std::move(p);}
+        if (auto p = std::move(v).target<T &&>()) {msg.source.clear(); return std::move(*p);};
+        if (auto p = Request<T>()(*this, msg)) {msg.source.clear(); return std::move(p);}
         return {};
     }
 
@@ -245,14 +245,14 @@ struct Action {
 
     static void response(Variable &v, void *p, RequestData &&r) {
         bool ok = false;
+        Dispatch &msg = *r.msg; // r is aliasing v, so save a copy of the reference
         if (r.source == Qualifier::C)
             ok = qualified_response(v, r.dest, *static_cast<T const *>(p), std::move(r.type));
         if (r.source == Qualifier::L)
             ok = qualified_response(v, r.dest, *static_cast<T *>(p), std::move(r.type));
         if (r.source == Qualifier::R)
             ok = qualified_response(v, r.dest, static_cast<T &&>(*static_cast<T *>(p)), std::move(r.type));
-        DUMP("tried response", r.source, ok);
-        if (!ok) set_source(*r.msg, typeid(T), std::move(v));
+        if (!ok) set_source(msg, typeid(T), std::move(v));
     }
 
     static void apply(ActionType a, void *p, VariableData *v) {
