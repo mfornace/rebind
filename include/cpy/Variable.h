@@ -163,8 +163,8 @@ public:
             return *p;
         }
         auto v = request_variable(msg, typeid(T));
-        if (auto p = std::move(v).target<T &&>()) {msg.source.clear(); return std::move(*p);};
-        if (auto p = Request<T>()(*this, msg)) {msg.source.clear(); return std::move(p);}
+        if (auto p = std::move(v).target<T &&>()) {msg.source.clear(); return std::move(*p);}
+        if (auto p = Request<T>()(*this, msg)) {msg.source.clear(); return p;}
         return {};
     }
 

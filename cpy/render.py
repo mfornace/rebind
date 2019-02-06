@@ -60,7 +60,7 @@ def render_module(pkg: str, doc: dict):
 def render_init(init):
     if init is None:
         def __init__(self):
-            raise TypeError('No __init__ is possible')
+            raise TypeError('No __init__ is possible since no C++ constructors were declared')
     else:
         def __init__(self, *args, _new=init, return_type=None, signature=None):
             self.assign(_new(*args, return_type=return_type, signature=signature))
