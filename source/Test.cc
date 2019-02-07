@@ -19,10 +19,10 @@ Variable response(std::type_index t, Blah b) {
 }
 
 template <class T>
-Blah request(Type<Blah>, T &&, Dispatch &msg) {
+std::optional<Blah> request(Type<Blah>, T &&, Dispatch &msg) {
     if constexpr(std::is_same_v<no_qualifier<T>, std::string>)
         return Blah("haha");
-    msg.error("bad blah", typeid(Blah), typeid(T));
+    return msg.error("bad blah", typeid(Blah));
 }
 
 //remove iostream
@@ -42,7 +42,7 @@ struct Goo {
         else x += xx;
     }
     friend std::ostream &operator<<(std::ostream &os, Goo const &g) {
-        return os << "Goo(" << g.x << ", " << &g.x << ")");
+        return os << "Goo(" << g.x << ", " << &g.x << ")";
     }
 };
 

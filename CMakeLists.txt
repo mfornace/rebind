@@ -70,6 +70,7 @@ endfunction(cpy_module)
 
 ################################################################################
 
-add_library(erased SHARED EXCLUDE_FROM_ALL source/Erased.cc)
-target_link_libraries(erased PRIVATE libcpy)
-cpy_module(cpp erased)
+add_library(libcpytest SHARED EXCLUDE_FROM_ALL source/Test.cc)
+set_target_properties(libcpytest PROPERTIES OUTPUT_NAME "cpytest")
+target_link_libraries(libcpytest PRIVATE libcpy)
+cpy_module(cpytest libcpytest)
