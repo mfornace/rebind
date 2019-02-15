@@ -1,4 +1,4 @@
-import inspect, importlib, functools, logging, typing, atexit
+import inspect, importlib, functools, logging, typing, atexit, collections
 from . import common
 
 log = logging.getLogger(__name__)
@@ -165,6 +165,17 @@ def render_callback(_orig, _types):
         return _orig(*(a.cast(t) for a, t in zip(args, _types)))
     return callback
 
+if hasattr(typing, 'CallableMeta'):
+    def process_argument(t, ev):
+        if isinstance(t, typing.CallableMeta):
+            return tuple(map(ev, t.__args__[:-1]))
+        return ev(t)
+else:
+    def process_argument(t, ev):
+        if getattr(t, '__origin__', None) in (collections.abc.Callable, typing.Callable):
+            return tuple(map(ev, t.__args__[:-1]))
+        return ev(t)
+
 ################################################################################
 
 def render_function(fun, old, globalns={}, localns={}):
@@ -189,8 +200,7 @@ def render_function(fun, old, globalns={}, localns={}):
     if has_fun:
         sig = common.discard_parameter(sig, '_fun_')
 
-    types = [p.annotation for p in sig.parameters.values()]
-    types = [tuple(map(ev, p.__args__[:-1])) if isinstance(p, typing.CallableMeta) else ev(p) for p in types]
+    types = [process_argument(p.annotation, ev) for p in sig.parameters.values()]
     empty = inspect.Parameter.empty
 
     if '_old' in sig.parameters:
