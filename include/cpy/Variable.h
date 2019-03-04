@@ -252,7 +252,7 @@ struct Action {
             ok = qualified_response(v, r.dest, *static_cast<T *>(p), std::move(r.type));
         if (r.source == Qualifier::R)
             ok = qualified_response(v, r.dest, static_cast<T &&>(*static_cast<T *>(p)), std::move(r.type));
-        if (!ok) set_source(msg, typeid(T), std::move(v));
+        if (!ok) {set_source(msg, typeid(T), std::move(v)); v.reset();}
     }
 
     static void apply(ActionType a, void *p, VariableData *v) {
