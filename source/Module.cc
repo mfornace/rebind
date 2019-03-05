@@ -360,7 +360,7 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
             }
         }
         // Raise an exception with a list of the messages
-        return PyErr_SetObject(PyExc_TypeError, +errors), nullptr;
+        return PyErr_SetObject(TypeErrorObject, +errors), nullptr;
     });
 }
 
@@ -460,18 +460,22 @@ Object initialize(Document const &doc) {
             type_conversions.insert_or_assign(std::move(t), std::move(o));
             DUMP("inserted type conversion ");
         })))
-        && attach(m, "_finalize", as_object(Function::of([] {
+        && attach(m, "clear_global_objects", as_object(Function::of([] {
             type_conversions.clear();
+            python_types.clear();
         })))
         && attach(m, "set_debug", as_object(Function::of([](bool b) {return std::exchange(Debug, b);})))
         && attach(m, "debug", as_object(Function::of([] {return Debug;})))
+        && attach(m, "set_type_error", as_object(Function::of([](Object o) {
+            // Add a ward in global storage to ensure the lifetime of this raw object
+            TypeErrorObject = +(python_types[typeid(DispatchError)] = std::move(o));
+        })))
         && attach(m, "set_type", as_object(Function::of([](std::type_index idx, Object o) {
             python_types.emplace(std::move(idx), std::move(o));
         })))
-        && attach(m, "set_type_names", as_object(Function::of(
-            [](Zip<std::type_index, std::string_view> v) {
-                for (auto const &p : v) type_names.insert_or_assign(p.first, p.second);
-            })));
+        && attach(m, "set_type_names", as_object(Function::of([](Zip<std::type_index, std::string_view> v) {
+            for (auto const &p : v) type_names.insert_or_assign(p.first, p.second);
+        })));
     return ok ? m : Object();
 }
 

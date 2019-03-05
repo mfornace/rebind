@@ -2,6 +2,8 @@
 
 namespace cpy {
 
+PyObject *TypeErrorObject = PyExc_TypeError;
+
 std::map<Object, Object> type_conversions{};
 
 std::map<std::type_index, Object> python_types{};

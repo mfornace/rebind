@@ -20,6 +20,8 @@
 
 namespace cpy {
 
+extern PyObject *TypeErrorObject;
+
 extern std::unordered_map<std::type_index, std::string> type_names;
 
 enum class Scalar {Bool, Char, SignedChar, UnsignedChar, Unsigned, Signed, Float, Pointer};
@@ -55,7 +57,7 @@ struct PythonError : ClientError {
 PythonError python_error(std::nullptr_t=nullptr) noexcept;
 
 template <class ...Ts>
-std::nullptr_t type_error(char const *s, Ts ...ts) {PyErr_Format(PyExc_TypeError, s, ts...); return nullptr;}
+std::nullptr_t type_error(char const *s, Ts ...ts) {PyErr_Format(TypeErrorObject, s, ts...); return nullptr;}
 
 /******************************************************************************/
 
@@ -301,10 +303,10 @@ PyObject *raw_object(F &&f) noexcept {
         PyErr_SetString(PyExc_MemoryError, "C++: out of memory (std::bad_alloc)");
     } catch (WrongNumber const &e) {
         unsigned int n0 = e.expected, n = e.received;
-        PyErr_Format(PyExc_TypeError, "C++: wrong number of arguments (expected %u, got %u)", n0, n);
+        PyErr_Format(TypeErrorObject, "C++: wrong number of arguments (expected %u, got %u)", n0, n);
     } catch (WrongType const &e) {
-        try {PyErr_SetString(PyExc_TypeError, wrong_type_message(e, "C++: ").c_str());}
-        catch(...) {PyErr_SetString(PyExc_TypeError, e.what());}
+        try {PyErr_SetString(TypeErrorObject, wrong_type_message(e, "C++: ").c_str());}
+        catch(...) {PyErr_SetString(TypeErrorObject, e.what());}
     } catch (std::exception const &e) {
         if (!PyErr_Occurred())
             PyErr_Format(PyExc_RuntimeError, "C++: %s", e.what());

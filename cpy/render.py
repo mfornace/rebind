@@ -1,39 +1,43 @@
 import inspect, importlib, functools, logging, typing, atexit, collections
-from . import common
+from . import common, ConversionError
 
 log = logging.getLogger(__name__)
 # logging.basicConfig(level=logging.INFO)
 
 ################################################################################
 
-def _render_module(pkg, doc):
+def _render_module(pkg, doc, set_type_names):
     log.info('rendering document into module %s', repr(pkg))
-    out = doc.copy()
+    out, config = doc.copy(), doc.copy()
+    config.pop('contents')
+    config['set_type_error'](ConversionError)
+
     modules, translate = set(), {}
 
+    # render classes and methods
     out['types'] = {k: v for k, v in doc['contents'] if isinstance(v, tuple)}
     for k, (meth, data) in out['types'].items():
         mod, old, cls = render_type(pkg, (doc['Variable'],), k, dict(meth), lookup=doc)
-
         if old is not None:
             translate[old] = cls
         modules.add(mod)
         cls.metadata = {k: v or None for k, v in data}
         for k, v in data:
-            doc['set_type'](k, cls)
+            config['set_type'](k, cls)
 
-    names = tuple((o[0], k) for k, v in out['types'].items() for o in v[1])
-    # out['set_type_names'](names)
+    # put type names if desired
+    if set_type_names:
+        names = tuple((o[0], k) for k, v in out['types'].items() for o in v[1])
+        config['set_type_names'](names)
 
+    # render global objects (including free functions)
     out['objects'] = {k: render_object(pkg, k, v, out)
         for k, v in doc['contents'] if not isinstance(v, tuple)}
 
     out['scalars'] = common.find_scalars(doc['scalars'])
 
+    # Monkey-patch modules based on redefined types (takes care of simple cases at least)
     mod = importlib.import_module(pkg)
-    for k, v in out.items():
-        setattr(mod, k, v)
-
     for mod in modules:
         for k in dir(mod):
             try:
@@ -42,18 +46,18 @@ def _render_module(pkg, doc):
                 pass
 
     log.info('finished rendering document into module %s', repr(pkg))
-    return out
+    return out, config
 
 ################################################################################
 
-def render_module(pkg: str, doc: dict):
+def render_module(pkg: str, doc: dict, set_type_names=False):
     try:
-        return _render_module(pkg, doc)
+        return _render_module(pkg, doc, set_type_names)
     except BaseException:
-        doc['_finalize']()
+        doc['clear_global_objects']()
         raise
     finally:
-        atexit.register(common.finalize, doc['_finalize'], log)
+        atexit.register(common.finalize, doc['clear_global_objects'], log)
 
 ################################################################################
 
@@ -198,7 +202,6 @@ def render_function(fun, old, globalns={}, localns={}):
 
     if '_old' in sig.parameters:
         raise ValueError('Function {} was already wrapped'.format(old))
-
     if has_fun:
         def wrap(*args, _orig=fun, _bind=sig.bind, _old=old, gil=None, signature=None, **kwargs):
             bound = _bind(*args, **kwargs)
@@ -207,6 +210,7 @@ def render_function(fun, old, globalns={}, localns={}):
             return _old(*args, _fun_=_orig, **bound.kwargs)
     else:
         ret = sig.return_annotation
+        assert 'Variable' in globalns
 
         def wrap(*args, _orig=fun, _bind=sig.bind, _return=ret, gil=None, signature=None, **kwargs):
             bound = _bind(*args, **kwargs)
