@@ -9,7 +9,7 @@ namespace cpy {
 struct Dispatch;
 struct VariableData;
 
-using Storage = std::aligned_storage_t<3 * sizeof(void*), std::alignment_of_v<void *>>;
+using Storage = std::aligned_storage_t<4 * sizeof(void*), std::alignment_of_v<void *>>;
 
 template <class T, class=void>
 struct UseStack : std::integral_constant<bool, (sizeof(T) <= sizeof(Storage))

@@ -82,18 +82,17 @@ int array_data_buffer(PyObject *self, Py_buffer *view, int flags) {
 PyBufferProcs buffer_procs{array_data_buffer, nullptr};
 
 template <>
-PyTypeObject Holder<ArrayBuffer>::type = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "cpy.ArrayBuffer",
-    //tp_traverse
-    //tp_clear
-    .tp_as_buffer = &buffer_procs,
-    .tp_basicsize = sizeof(Holder<ArrayBuffer>),
-    .tp_dealloc = tp_delete<ArrayBuffer>,
-    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
-    .tp_doc = "C++ ArrayBuffer object",
-    .tp_new = tp_new<ArrayBuffer>
-};
+PyTypeObject Holder<ArrayBuffer>::type = []{
+    PyTypeObject o{PyVarObject_HEAD_INIT(NULL, 0)};
+    o.tp_name = "cpy.ArrayBuffer";
+    o.tp_basicsize = sizeof(Holder<ArrayBuffer>);
+    o.tp_dealloc = tp_delete<ArrayBuffer>;
+    o.tp_as_buffer = &buffer_procs;
+    o.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
+    o.tp_doc = "C++ ArrayBuffer object";
+    o.tp_new = tp_new<ArrayBuffer>;
+    return o;
+}();
 
 /******************************************************************************/
 
@@ -137,19 +136,20 @@ PyObject *type_index_compare(PyObject *self, PyObject *other, int op) {
 }
 
 template <>
-PyTypeObject Holder<std::type_index>::type = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "cpy.TypeIndex",
-    .tp_hash = type_index_hash,
-    .tp_str = type_index_str,
-    .tp_repr = type_index_repr,
-    .tp_richcompare = type_index_compare,
-    .tp_basicsize = sizeof(Holder<std::type_index>),
-    .tp_dealloc = tp_delete<std::type_index>,
-    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
-    .tp_doc = "C++ type_index object",
-    .tp_new = type_index_new,
-};
+PyTypeObject Holder<std::type_index>::type = []{
+    PyTypeObject o{PyVarObject_HEAD_INIT(NULL, 0)};
+    o.tp_name = "cpy.TypeIndex";
+    o.tp_basicsize = sizeof(Holder<std::type_index>);
+    o.tp_dealloc = tp_delete<std::type_index>;
+    o.tp_repr = type_index_repr;
+    o.tp_hash = type_index_hash;
+    o.tp_str = type_index_str;
+    o.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
+    o.tp_richcompare = type_index_compare;
+    o.tp_doc = "C++ type_index object";
+    o.tp_new = type_index_new;
+    return o;
+}();
 
 /******************************************************************************/
 
@@ -249,17 +249,18 @@ PyMethodDef VarMethods[] = {
 };
 
 template <>
-PyTypeObject Holder<Var>::type = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "cpy.Variable",
-    .tp_as_number = &VarNumberMethods,
-    .tp_basicsize = sizeof(Holder<Var>),
-    .tp_dealloc = tp_delete<Var>,
-    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
-    .tp_doc = "C++ class object",
-    .tp_new = tp_new<Var>, // no init (just use default constructor)
-    .tp_methods = VarMethods
-};
+PyTypeObject Holder<Var>::type = []{
+    PyTypeObject o{PyVarObject_HEAD_INIT(NULL, 0)};
+    o.tp_name = "cpy.Variable";
+    o.tp_as_number = &VarNumberMethods;
+    o.tp_basicsize = sizeof(Holder<Var>);
+    o.tp_dealloc = tp_delete<Var>;
+    o.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
+    o.tp_doc = "C++ class object";
+    o.tp_methods = VarMethods;
+    o.tp_new = tp_new<Var>; // no init (just use default constructor)
+    return o;
+}();
 
 /******************************************************************************/
 
@@ -399,18 +400,19 @@ int function_init(PyObject *self, PyObject *args, PyObject *kws) noexcept {
 }
 
 template <>
-PyTypeObject Holder<Function>::type = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "cpy.Function",
-    .tp_basicsize = sizeof(Holder<Function>),
-    .tp_dealloc = tp_delete<Function>,
-    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
-    .tp_doc = "C++ function object",
-    .tp_new = tp_new<Function>,
-    .tp_call = function_call,  // overload
-    .tp_methods = FunctionTypeMethods,
-    .tp_init = function_init
-};
+PyTypeObject Holder<Function>::type = []{
+    PyTypeObject o{PyVarObject_HEAD_INIT(NULL, 0)};
+    o.tp_name = "cpy.Function";
+    o.tp_basicsize = sizeof(Holder<Function>);
+    o.tp_dealloc = tp_delete<Function>;
+    o.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
+    o.tp_doc = "C++ function object";
+    o.tp_new = tp_new<Function>;
+    o.tp_call = function_call;  // overload
+    o.tp_methods = FunctionTypeMethods;
+    o.tp_init = function_init;
+    return o;
+}();
 
 /******************************************************************************/
 

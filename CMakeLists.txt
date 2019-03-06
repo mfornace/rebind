@@ -58,7 +58,7 @@ function(cpy_module module_name)
     set_target_properties(${module_name} PROPERTIES PREFIX "")
 
     if(${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
-        set_target_properties(${module_name} PROPERTIES LINK_FLAGS "-undefined,dynamic_lookup")
+        set_target_properties(${module_name} PROPERTIES LINK_FLAGS "-Wl,-flat_namespace,-undefined,dynamic_lookup")
     else()
         set_target_properties(${module_name} PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
     endif()

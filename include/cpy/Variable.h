@@ -226,16 +226,16 @@ bool qualified_response(Variable &out, Qualifier dest, T &&t, std::type_index id
             return R()(out, static_cast<T &&>(t), std::move(idx)); // should be able to set the source
 
     if (dest == Qualifier::R)
-        if constexpr(std::is_invocable_v<R, Variable &, T &&, std::type_index &&, rvalue &&>)
-            return R()(out, static_cast<T &&>(t), std::move(idx), rvalue());
+        if constexpr(std::is_invocable_v<R, Variable &, T &&, std::type_index &&, r_qualifier &&>)
+            return R()(out, static_cast<T &&>(t), std::move(idx), r_qualifier());
 
     if (dest == Qualifier::L)
-        if constexpr(std::is_invocable_v<R, Variable &, T &&, std::type_index &&, lvalue &&>)
-            return R()(out, static_cast<T &&>(t), std::move(idx), lvalue());
+        if constexpr(std::is_invocable_v<R, Variable &, T &&, std::type_index &&, l_qualifier &&>)
+            return R()(out, static_cast<T &&>(t), std::move(idx), l_qualifier());
 
     if (dest == Qualifier::C)
-        if constexpr(std::is_invocable_v<R, Variable &, T &&, std::type_index &&, cvalue &&>)
-            return R()(out, static_cast<T &&>(t), std::move(idx), cvalue());
+        if constexpr(std::is_invocable_v<R, Variable &, T &&, std::type_index &&, c_qualifier &&>)
+            return R()(out, static_cast<T &&>(t), std::move(idx), c_qualifier());
     return false;
 }
 
@@ -267,29 +267,19 @@ struct Action {
 
         } else if (a == ActionType::move) { // Move-Construct the object (known to be on stack)
             DUMP(v->stack, UseStack<T>::value);
-            ::new(static_cast<void *>(&v->buff)) T{std::move(*static_cast<T *>(p))};
+            if constexpr(UseStack<T>::value) // this is always known, but eliminates compile warnings
+                ::new(static_cast<void *>(&v->buff)) T{std::move(*static_cast<T *>(p))};
 
         } else if (a == ActionType::response) { // Respond to a given type_index
-            response(reinterpret_cast<Variable &>(*v), p, reinterpret_cast<RequestData &&>(std::move(v->buff)));
+            response(reinterpret_cast<Variable &>(*v), p, std::move(reinterpret_cast<RequestData &>(v->buff)));
 
         } else if (a == ActionType::assign) { // Assign from another variable
             DUMP("assign", v->idx->name(), typeid(T).name(), v->qual);
             if constexpr(std::is_move_assignable_v<T>) {
                 if (auto r = reinterpret_cast<Variable &&>(*v).request<T>()) {
-
                     DUMP("got the assignable", v->idx->name(), typeid(T).name(), v->qual, typeid(T).name());
-
-                    if constexpr(std::is_same_v<T, std::vector< std::pair<std::vector<std::string>, double> >>) {
-                        DUMP(r->size());
-                    }
-
                     *static_cast<T *>(p) = std::move(*r);
                     reinterpret_cast<Variable &>(*v).reset(); // signifies that assignment took place
-
-                    if constexpr(std::is_same_v<T, std::vector< std::pair<std::vector<std::string>, double> >>) {
-                        DUMP(static_cast<T *>(p)->size());
-                        DUMP(r->size());
-                    }
                 }
             }
         }

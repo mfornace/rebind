@@ -112,14 +112,16 @@ inline std::ostream & operator<<(std::ostream &os, Qualifier q) {
     return os << QualifierNames[static_cast<unsigned char>(q)];
 }
 
-struct cvalue {constexpr operator Qualifier() const {return Qualifier::C;}};
-struct lvalue {constexpr operator Qualifier() const {return Qualifier::L;}};
-struct rvalue {constexpr operator Qualifier() const {return Qualifier::R;}};
+struct v_qualifier {constexpr operator Qualifier() const {return Qualifier::V;}};
+struct c_qualifier {constexpr operator Qualifier() const {return Qualifier::C;}};
+struct l_qualifier {constexpr operator Qualifier() const {return Qualifier::L;}};
+struct r_qualifier {constexpr operator Qualifier() const {return Qualifier::R;}};
 
 template <class T, class Ref> struct Qualified;
-template <class T> struct Qualified<T, cvalue> {using type = T const &;};
-template <class T> struct Qualified<T, lvalue> {using type = T &;};
-template <class T> struct Qualified<T, rvalue> {using type = T &&;};
+template <class T> struct Qualified<T, v_qualifier> {using type = T;};
+template <class T> struct Qualified<T, c_qualifier> {using type = T const &;};
+template <class T> struct Qualified<T, l_qualifier> {using type = T &;};
+template <class T> struct Qualified<T, r_qualifier> {using type = T &&;};
 
 template <class Ref, class T> using qualified = typename Qualified<Ref, T>::type;
 
