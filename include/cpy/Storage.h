@@ -24,9 +24,9 @@ enum class ActionType : std::uint_fast8_t {destroy, copy, move, response, assign
 using ActionFunction = void(*)(ActionType, void *, VariableData *);
 
 struct RequestData {
-    std::type_index type;
+    TypeIndex type;
     Dispatch *msg;
-    Qualifier source, dest;
+    Qualifier source;
 };
 
 static_assert(UseStack<RequestData>::value);
@@ -41,39 +41,37 @@ static_assert(std::is_trivially_destructible_v<RequestData>);
 
 /******************************************************************************/
 
-static_assert(sizeof(std::type_info const *) == sizeof(std::type_index));
-static_assert(alignof(std::type_info const *) == alignof(std::type_index));
+// static_assert(sizeof(std::type_info const *) == sizeof(TypeIndex));
+// static_assert(alignof(std::type_info const *) == alignof(TypeIndex));
 
 struct VariableData {
     Storage buff; //< Buffer holding either pointer to the object, or the object itself
-    std::type_info const * idx; //< typeid of the held object, or NULL
     ActionFunction act; //< Action<T>::apply of the held object, or NULL
-    Qualifier qual; //< Qualifier of the held object (::V if empty)
+    TypeIndex idx; //< type and qualifier of the held object, or NULL
     bool stack; //< Whether the held type (non-reference) can fit in the buffer
 
-    constexpr VariableData() noexcept : buff(), idx(nullptr), act(nullptr), qual(Qualifier::V), stack(false) {}
+    constexpr VariableData() noexcept : buff(), act(nullptr), stack(false) {}
 
-    VariableData(std::type_info const *i, ActionFunction a, Qualifier q, bool s) noexcept : buff(), idx(i), act(a), qual(q), stack(s) {}
+    VariableData(TypeIndex i, ActionFunction a, bool s) noexcept : buff(), idx(i), act(a), stack(s) {}
 
     void reset_data() noexcept {
         if (!act) return;
         buff = Storage();
-        idx = nullptr;
+        idx = {};
         act = nullptr;
         stack = false;
-        qual = Qualifier::V;
     }
 
     /// Return a pointer to the held object if it exists
     void * pointer() const noexcept {
         if (!act) return nullptr;
-        else if (qual == Qualifier::V && stack) return &const_cast<Storage &>(buff);
+        else if (idx.qualifier() == Value && stack) return &const_cast<Storage &>(buff);
         else return reinterpret_cast<void * const &>(buff);
     }
 
     /// Return a pointer to the held object if it exists and is being managed
     void * handle() const noexcept {
-        if (!act || qual != Qualifier::V) return nullptr;
+        if (!act || idx.qualifier() != Value) return nullptr;
         else if (stack) return &const_cast<Storage &>(buff);
         else return reinterpret_cast<void * const &>(buff);
     }
@@ -81,10 +79,10 @@ struct VariableData {
     template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
     std::remove_reference_t<T> *target_pointer(Type<T> t, Qualifier q) const noexcept {
         // Qualifier is assumed not to be V
-        return (idx && *idx == typeid(no_qualifier<T>)) && (
+        return (idx.matches<T>()) && (
             (std::is_const_v<std::remove_reference_t<T>>)
-            || (std::is_rvalue_reference_v<T> && q == Qualifier::R)
-            || (std::is_lvalue_reference_v<T> && (q == Qualifier::L))
+            || (std::is_rvalue_reference_v<T> && q == Rvalue)
+            || (std::is_lvalue_reference_v<T> && (q == Lvalue))
         ) ? static_cast<std::remove_reference_t<T> *>(pointer()) : nullptr;
     }
 };

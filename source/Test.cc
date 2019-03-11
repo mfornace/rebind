@@ -20,7 +20,7 @@ Variable response(std::type_index t, Blah b) {
 
 template <class T>
 std::optional<Blah> request(Type<Blah>, T &&, Dispatch &msg) {
-    if constexpr(std::is_same_v<no_qualifier<T>, std::string>)
+    if constexpr(std::is_same_v<unqualified<T>, std::string>)
         return Blah("haha");
     return msg.error("bad blah", typeid(Blah));
 }
@@ -46,8 +46,8 @@ struct Goo {
     }
 };
 
-template <class Q>
-auto response(Q, qualified<Goo, Q> b, std::type_index t) {
+template <Qualifier Q>
+auto response(TypeIndex t, qualified<Goo, Q> b) {
     DUMP("casting Blah to double const &");
     return (t == typeid(double)) ? &b.x : nullptr;
 }

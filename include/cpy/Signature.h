@@ -4,36 +4,9 @@
  */
 
 #pragma once
-#include <utility>
-#include <typeindex>
+#include "Type.h"
 
 namespace cpy {
-
-template <class T>
-using no_qualifier = std::remove_cv_t<std::remove_reference_t<T>>;
-
-/******************************************************************************************/
-
-template <class T>
-struct Type  {
-    using type = T;
-    T operator*() const; // undefined
-    constexpr Type<no_qualifier<T>> operator+() const {return {};}
-    operator std::type_index() const {return typeid(T);}
-};
-
-template <class T, class U>
-constexpr std::is_same<T, U> is_same(Type<T>, Type<U>) {return {};}
-
-template <class T>
-static constexpr Type<T> ctype = {};
-
-template <class T>
-struct IndexedType {
-    std::size_t index;
-    T operator*() const; // undefined
-    constexpr Type<no_qualifier<T>> operator+() const {return {};}
-};
 
 /******************************************************************************************/
 
@@ -94,7 +67,7 @@ template <class ...Ts> struct Pack {
     template <class F>
     static void for_each(F &&f) {(f(Type<Ts>()), ...);}
 
-    using no_qualifier = Pack<std::remove_cv_t<std::remove_reference_t<Ts>>...>;
+    using unqualified = Pack<std::remove_cv_t<std::remove_reference_t<Ts>>...>;
 };
 
 template <class ...Ts, class ...Us>

@@ -18,9 +18,9 @@ inline Object as_object(std::string_view s) {return {PyUnicode_FromStringAndSize
 inline Object as_object(BinaryView s) {return {PyByteArray_FromStringAndSize(reinterpret_cast<char const *>(s.data()), s.size()), false};}
 inline Object as_object(Binary const &s) {return {PyByteArray_FromStringAndSize(reinterpret_cast<char const *>(s.data()), s.size()), false};}
 
-inline Object as_object(std::type_index t) {
-    auto o = Object::from(PyObject_CallObject(type_object<std::type_index>(), nullptr));
-    cast_object<std::type_index>(o) = std::move(t);
+inline Object as_object(TypeIndex t) {
+    auto o = Object::from(PyObject_CallObject(type_object<TypeIndex>(), nullptr));
+    cast_object<TypeIndex>(o) = std::move(t);
     return o;
 }
 
@@ -42,7 +42,7 @@ inline Object as_deduced_object(Variable &&ref) {
     if (auto v = ref.request<std::string_view>()) return as_object(std::move(*v));
     if (auto v = ref.request<std::string>())      return as_object(std::move(*v));
     if (auto v = ref.request<Function>())         return as_object(std::move(*v));
-    if (auto v = ref.request<std::type_index>())  return as_object(std::move(*v));
+    if (auto v = ref.request<TypeIndex>())  return as_object(std::move(*v));
     if (auto v = ref.request<Binary>())           return as_object(std::move(*v));
     if (auto v = ref.request<BinaryView>())       return as_object(std::move(*v));
     if (auto v = ref.request<Sequence>())

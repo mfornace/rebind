@@ -1,6 +1,6 @@
 #pragma once
 #include "Signature.h"
-#include "Types.h"
+#include "BasicTypes.h"
 #include <functional>
 
 namespace cpy {
@@ -150,12 +150,12 @@ struct Adapter<0, R C::*, std::enable_if_t<std::is_member_object_pointer_v<R C::
         auto frame = c();
         Caller handle(frame);
         Dispatch msg(handle);
-        if (s.qualifier() == Qualifier::L) {
+        if (s.qualifier() == Lvalue) {
             C &self = std::move(s).cast<C &>(msg);
             frame->enter();
             return {Type<R &>(), std::invoke(function, self)};
         }
-        if (s.qualifier() == Qualifier::C) {
+        if (s.qualifier() == Const) {
             C const &self = std::move(s).cast<C const &>(msg);
             frame->enter();
             return {Type<R const &>(), std::invoke(function, self)};

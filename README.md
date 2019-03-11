@@ -27,10 +27,8 @@ struct Request {
 ```c++
 template <class T, class SFINAE=void>
 struct Response {
-    /* Mandatory */ void operator()(Variable &out, T const &t, std::type_index idx);
-    /* Optional  */ void operator()(Variable &out, T &&t, std::type_index idx);
-    /* Optional  */ void operator()(Variable &out, T const &t, std::type_index idx, Qualifier q);
-    /* Optional  */ void operator()(Variable &out, T &&t, std::type_index idx, Qualifier q);
+    /* Mandatory */ void operator()(Variable &out, TypeIndex idx, T const &t);
+    /* Optional  */ void operator()(Variable &out, TypeIndex idx, T &&t);
 };
 ```
 
@@ -65,7 +63,7 @@ Construct from non-reference type
 template <class T, class ...Ts, std::enable_if_t<(std::is_same_v<std::decay_t<T>, T>), int> = 0>
 Variable(Type<T>, Ts &&...ts);
 
-template <class T, std::enable_if_t<!std::is_base_of_v<VariableData, no_qualifier<T>>, int> = 0>
+template <class T, std::enable_if_t<!std::is_base_of_v<VariableData, unqualified<T>>, int> = 0>
 Variable(T &&t);
 ```
 
@@ -111,7 +109,7 @@ Variable reference() &&;
 
 Request any type T by non-custom conversions
 ```c++
-Variable request_variable(Dispatch &msg, std::type_index const, Qualifier q=Qualifier::V) const;
+Variable request_variable(Dispatch &msg, std::type_index const, Qualifier q=Value) const;
 ```
 
 Request reference T by custom conversions

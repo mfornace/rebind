@@ -34,19 +34,19 @@ PythonError python_error(std::nullptr_t) noexcept {
 /******************************************************************************/
 
 /// type_index from PyBuffer format string (excludes constness)
-std::type_index Buffer::format(std::string_view s) {
+std::type_info const & Buffer::format(std::string_view s) {
     auto it = std::find_if(Buffer::formats.begin(), Buffer::formats.end(),
         [&](auto const &p) {return p.first == s;});
-    return it == Buffer::formats.end() ? typeid(void) : it->second;
+    return it == Buffer::formats.end() ? typeid(void) : it->second.info();
 }
 
-std::string_view Buffer::format(std::type_index t) {
+std::string_view Buffer::format(std::type_info const &t) {
     auto it = std::find_if(Buffer::formats.begin(), Buffer::formats.end(),
         [&](auto const &p) {return p.second == t;});
     return it == Buffer::formats.end() ? std::string_view() : it->first;
 }
 
-std::size_t Buffer::itemsize(std::type_index t) {
+std::size_t Buffer::itemsize(std::type_info const &t) {
     auto it = std::find_if(scalars.begin(), scalars.end(),
         [&](auto const &p) {return std::get<1>(p) == t;});
     return it == scalars.end() ? 0u : std::get<2>(*it) / CHAR_BIT;
@@ -81,24 +81,7 @@ bool to_arithmetic(Object const &o, Variable &v) {
     return false;
 }
 
-bool Response<Object>::operator()(Variable &v, Object o, std::type_index t, Qualifier q) const {
-    DUMP("trying to get reference from Object ", bool(o));
-    if (auto p = cast_if<Variable>(o)) {
-        Dispatch msg;
-        DUMP("requested qualified variable", q, t.name(), p->type().name(), p->qualifier());
-        v = p->reference().request_variable(msg, t, q);
-        DUMP(p->type().name(), t.name(), v.name());
-        // Dispatch msg;
-        // if (p->type() == t) {
-        //     DUMP("worked");
-        //     v = {Type<decltype(*p)>(), *p};
-        // }
-        // return v.has_value();
-    }
-    return v.has_value();
-}
-
-bool object_response(Variable &v, Object o, std::type_index t) {
+bool object_response(Variable &v, TypeIndex t, Object o) {
     if (Debug) {
         Object repr{PyObject_Repr(TypeObject{(+o)->ob_type}), false};
         DUMP("trying to convert object to ", t.name(), " ", from_unicode(+repr));
@@ -112,19 +95,16 @@ bool object_response(Variable &v, Object o, std::type_index t) {
         return v.has_value();
     }
 
-    if (t == typeid(std::type_index)) {
-        if (auto p = cast_if<std::type_index>(o)) return v = *p, true;
+    if (t.matches<TypeIndex>()) {
+        if (auto p = cast_if<TypeIndex>(o)) return v = *p, true;
         else return false;
     }
 
-    if (t == typeid(std::nullptr_t)) {
+    if (t.equals<std::nullptr_t>()) {
         if (+o == Py_None) return v = nullptr, true;
     }
 
-    if (t == typeid(Object))
-        return v = std::move(o), true;
-
-    if (t == typeid(Function)) {
+    if (t.matches<Function>()) {
         DUMP("requested function");
         if (+o == Py_None) v = Function();
         else if (auto p = cast_if<Function>(o)) v = *p;
@@ -136,7 +116,7 @@ bool object_response(Variable &v, Object o, std::type_index t) {
         return true;
     }
 
-    if (t == typeid(Sequence)) {
+    if (t.equals<Sequence>()) {
         if (PyTuple_Check(o) || PyList_Check(o)) {
             DUMP("making a tuple");
             Sequence vals;
@@ -146,31 +126,31 @@ bool object_response(Variable &v, Object o, std::type_index t) {
         } else return false;
     }
 
-    if (t == typeid(Real))
+    if (t.equals<Real>())
         return to_arithmetic<Real>(o, v);
 
-    if (t == typeid(Integer))
+    if (t.equals<Integer>())
         return to_arithmetic<Integer>(o, v);
 
-    if (t == typeid(bool)) {
+    if (t.equals<bool>()) {
         if ((+o)->ob_type == Py_None->ob_type) { // fix, doesnt work with Py_None...
             return v = false, true;
         } else return to_arithmetic<bool>(o, v);
     }
 
-    if (t == typeid(std::string_view)) {
+    if (t.equals<std::string_view>()) {
         if (PyUnicode_Check(+o)) return v = from_unicode(+o), true;
         if (PyBytes_Check(+o)) return v = from_bytes(+o), true;
         return false;
     }
 
-    if (t == typeid(std::string)) {
+    if (t.equals<std::string>()) {
         if (PyUnicode_Check(+o)) return v = std::string(from_unicode(+o)), true;
         if (PyBytes_Check(+o)) return v = std::string(from_bytes(+o)), true;
         return false;
     }
 
-    if (t == typeid(ArrayData)) {
+    if (t.equals<ArrayData>()) {
         if (PyObject_CheckBuffer(+o)) {
             Buffer buff(o, PyBUF_FULL_RO); // Read in the shape but ignore strides, suboffsets
             DUMP("cast buffer", buff.ok);
@@ -195,32 +175,24 @@ bool object_response(Variable &v, Object o, std::type_index t) {
         } else return false;
     }
 
-    if (t == typeid(std::complex<double>)) {
+    if (t.equals<std::complex<double>>()) {
         if (PyComplex_Check(+o)) return v = std::complex<double>{PyComplex_RealAsDouble(+o), PyComplex_ImagAsDouble(+o)}, true;
         return false;
     }
 
-    DUMP("requested ", v.name(), t.name());
+    DUMP("requested ", v.type(), t);
     return false;
-}
-
-bool Response<Object>::operator()(Variable &v, Object o, std::type_index t) const {
-    if (!o) return false;
-    Object type = {reinterpret_cast<PyObject *>((+o)->ob_type), true};
-    bool ok = object_response(v, std::move(o), t);
-    if (!ok) { // put diagnostic for the source type
-        auto o = Object::from(PyObject_Repr(+type));
-        v = {Type<std::string>(), from_unicode(o)};
-    }
-    return ok;
 }
 
 /******************************************************************************/
 
-std::string_view get_type_name(std::type_index idx) noexcept {
+std::string get_type_name(TypeIndex idx) noexcept {
+    std::string out;
     auto it = type_names.find(idx);
-    if (it == type_names.end() || it->second.empty()) return idx.name();
-    else return it->second;
+    if (it == type_names.end() || it->second.empty()) out = idx.name();
+    else out = it->second;
+    out += QualifierSuffixes[static_cast<unsigned char>(idx.qualifier())];
+    return out;
 }
 
 std::string wrong_type_message(WrongType const &e, std::string_view prefix) {

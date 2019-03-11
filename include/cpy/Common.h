@@ -104,32 +104,4 @@ public:
 
 /******************************************************************************/
 
-enum class Qualifier : unsigned char {V, C, L, R};
-
-static std::string_view QualifierNames[4] = {"value", "const", "lvalue", "rvalue"};
-
-inline std::ostream & operator<<(std::ostream &os, Qualifier q) {
-    return os << QualifierNames[static_cast<unsigned char>(q)];
-}
-
-struct v_qualifier {constexpr operator Qualifier() const {return Qualifier::V;}};
-struct c_qualifier {constexpr operator Qualifier() const {return Qualifier::C;}};
-struct l_qualifier {constexpr operator Qualifier() const {return Qualifier::L;}};
-struct r_qualifier {constexpr operator Qualifier() const {return Qualifier::R;}};
-
-template <class T, class Ref> struct Qualified;
-template <class T> struct Qualified<T, v_qualifier> {using type = T;};
-template <class T> struct Qualified<T, c_qualifier> {using type = T const &;};
-template <class T> struct Qualified<T, l_qualifier> {using type = T &;};
-template <class T> struct Qualified<T, r_qualifier> {using type = T &&;};
-
-template <class Ref, class T> using qualified = typename Qualified<Ref, T>::type;
-
-template <class T>
-static constexpr Qualifier qualifier_of = (!std::is_reference_v<T>) ? Qualifier::V
-    : (std::is_rvalue_reference_v<T> ? Qualifier::R :
-        (std::is_const_v<std::remove_reference_t<T>> ? Qualifier::C : Qualifier::L));
-
-/******************************************************************************/
-
 }

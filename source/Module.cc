@@ -67,11 +67,11 @@ int array_data_buffer(PyObject *self, Py_buffer *view, int flags) {
     view->buf = p.data;
     if (p.base) {Py_INCREF(p.base); view->obj = +p.base;}
     else view->obj = nullptr;
-    view->itemsize = Buffer::itemsize(p.type);
+    view->itemsize = Buffer::itemsize(p.type.info());
     if (p.shape.empty()) view->len = 0;
     else view->len = std::accumulate(p.shape.begin(), p.shape.end(), view->itemsize, std::multiplies<>());
     view->readonly = !p.mutate;
-    view->format = const_cast<char *>(Buffer::format(p.type).data());
+    view->format = const_cast<char *>(Buffer::format(p.type.info()).data());
     view->ndim = p.shape.size();
     view->shape = p.shape.data();
     view->strides = p.strides.data();
@@ -98,30 +98,30 @@ PyTypeObject Holder<ArrayBuffer>::type = []{
 
 PyObject *type_index_new(PyTypeObject *subtype, PyObject *, PyObject *) noexcept {
     PyObject* o = subtype->tp_alloc(subtype, 0); // 0 unused
-    if (o) new (&cast_object<std::type_index>(o)) std::type_index(typeid(void)); // noexcept
+    if (o) new (&cast_object<TypeIndex>(o)) TypeIndex(typeid(void)); // noexcept
     return o;
 }
 
 long type_index_hash(PyObject *o) noexcept {
-    return static_cast<long>(cast_object<std::type_index>(o).hash_code());
+    return static_cast<long>(cast_object<TypeIndex>(o).hash_code());
 }
 
 PyObject *type_index_repr(PyObject *o) noexcept {
-    std::type_index const *p = cast_if<std::type_index>(o);
+    TypeIndex const *p = cast_if<TypeIndex>(o);
     if (p) return PyUnicode_FromFormat("TypeIndex('%s')", get_type_name(*p).data());
     return type_error("Expected instance of cpy.TypeIndex");
 }
 
 PyObject *type_index_str(PyObject *o) noexcept {
-    std::type_index const *p = cast_if<std::type_index>(o);
+    TypeIndex const *p = cast_if<TypeIndex>(o);
     if (p) return PyUnicode_FromString(get_type_name(*p).data());
     return type_error("Expected instance of cpy.TypeIndex");
 }
 
 PyObject *type_index_compare(PyObject *self, PyObject *other, int op) {
     return raw_object([=]() -> Object {
-        auto const &s = cast_object<std::type_index>(self);
-        auto const &o = cast_object<std::type_index>(other);
+        auto const &s = cast_object<TypeIndex>(self);
+        auto const &o = cast_object<TypeIndex>(other);
         bool out;
         switch(op) {
             case(Py_LT): out = s < o;
@@ -136,11 +136,11 @@ PyObject *type_index_compare(PyObject *self, PyObject *other, int op) {
 }
 
 template <>
-PyTypeObject Holder<std::type_index>::type = []{
+PyTypeObject Holder<TypeIndex>::type = []{
     PyTypeObject o{PyVarObject_HEAD_INIT(NULL, 0)};
     o.tp_name = "cpy.TypeIndex";
-    o.tp_basicsize = sizeof(Holder<std::type_index>);
-    o.tp_dealloc = tp_delete<std::type_index>;
+    o.tp_basicsize = sizeof(Holder<TypeIndex>);
+    o.tp_dealloc = tp_delete<TypeIndex>;
     o.tp_repr = type_index_repr;
     o.tp_hash = type_index_hash;
     o.tp_str = type_index_str;
@@ -184,8 +184,8 @@ PyObject * var_cast(PyObject *self, PyObject *args) noexcept {
 
 PyObject * var_type(PyObject *self, PyObject *) noexcept {
     return raw_object([=] {
-        auto o = Object::from(PyObject_CallObject(type_object<std::type_index>(), nullptr));
-        cast_object<std::type_index>(o) = cast_object<Variable>(self).type();
+        auto o = Object::from(PyObject_CallObject(type_object<TypeIndex>(), nullptr));
+        cast_object<TypeIndex>(o) = cast_object<Variable>(self).type();
         return o;
     });
 }
@@ -269,7 +269,7 @@ Object call_overload(ErasedFunction const &fun, Object const &args, bool gil) {
         return {PyObject_CallObject(+py->function, +args), false};
     auto pack = args_from_python(args);
     DUMP("constructed python args ", pack.size());
-    for (auto const &p : pack) DUMP(p.type().name());
+    for (auto const &p : pack) DUMP(p.type());
     Variable out;
     {
         auto lk = std::make_shared<PythonFrame>(!gil);
@@ -277,7 +277,7 @@ Object call_overload(ErasedFunction const &fun, Object const &args, bool gil) {
         DUMP("calling the args: size=", pack.size());
         out = fun(ct, std::move(pack));
     }
-    DUMP("got the output ", out.type().name(), int(out.qualifier()));
+    DUMP("got the output ", out.type());
     if (auto p = out.target<Object const &>()) return *p;
     // if (auto p = out.target<PyObject * &>()) return {*p, true};
     // Convert the C++ Variable to a cpy.Variable
@@ -290,7 +290,7 @@ PyObject * not_none(PyObject *o) {return o == Py_None ? nullptr : o;}
 
 PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept {
     bool gil = true;
-    std::optional<std::type_index> t0, t1;
+    std::optional<TypeIndex> t0, t1;
     PyObject *sig=nullptr;
     if (kws && PyDict_Check(kws)) {
         PyObject *g = PyDict_GetItemString(kws, "gil");
@@ -301,8 +301,8 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
         // std::cout << PyObject_Length(kws) << bool(g) << bool(sig) << bool(f) << bool(r) << std::endl;
         // if (PyObject_Length(kws) != unsigned(bool(g)) + (sig || r || f))
             // return type_error("C++: unexpected extra keywords");
-        if (r) t0 = cast_object<std::type_index>(r);
-        if (f) t1 = cast_object<std::type_index>(f);
+        if (r) t0 = cast_object<TypeIndex>(r);
+        if (f) t1 = cast_object<TypeIndex>(f);
     }
     DUMP("gil = ", gil, " ", Py_REFCNT(self), Py_REFCNT(args));
     DUMP("number of signatures ", cast_object<Function>(self).overloads.size());
@@ -338,7 +338,7 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
                             return type_error("C++: too many types given in signature");
                         for (Py_ssize_t i = 0; i != len; ++i) {
                             PyObject *x = PyTuple_GET_ITEM(sig, i);
-                            if (x != Py_None && cast_object<std::type_index>(x) != o.first[i]) continue;
+                            if (x != Py_None && cast_object<TypeIndex>(x) != o.first[i]) continue;
                         }
                     } else return type_error("C++: expected 'signature' to be a tuple");
                 } else if (t0) { // check that the return type matches if specified
@@ -438,18 +438,18 @@ Object initialize(Document const &doc) {
 
     bool ok = attach_type(m, "Variable", type_object<Variable>())
         && attach_type(m, "Function", type_object<Function>())
-        && attach_type(m, "TypeIndex", type_object<std::type_index>())
+        && attach_type(m, "TypeIndex", type_object<TypeIndex>())
             // Tuple[Tuple[int, TypeIndex, int], ...]
         && attach(m, "scalars", map_as_tuple(scalars, [](auto const &x) {
             return args_as_tuple(as_object(static_cast<Integer>(std::get<0>(x))),
-                                 as_object(std::get<1>(x)),
+                                 as_object(static_cast<TypeIndex>(std::get<1>(x))),
                                  as_object(static_cast<Integer>(std::get<2>(x))));
         }))
             // Tuple[Tuple[TypeIndex, Tuple[Tuple[str, function], ...]], ...]
         && attach(m, "contents", map_as_tuple(doc.contents, [](auto const &x) {
             Object o;
             if (auto p = x.second.template target<Function const &>()) o = as_object(*p);
-            else if (auto p = x.second.template target<std::type_index const &>()) o = as_object(*p);
+            else if (auto p = x.second.template target<TypeIndex const &>()) o = as_object(*p);
             else if (auto p = x.second.template target<TypeData const &>()) o = args_as_tuple(
                 map_as_tuple(p->methods, [](auto const &x) {return args_as_tuple(as_object(x.first), as_object(x.second));}),
                 map_as_tuple(p->data, [](auto const &x) {return args_as_tuple(as_object(x.first), variable_cast(Variable(x.second)));})
@@ -472,10 +472,12 @@ Object initialize(Document const &doc) {
             // Add a ward in global storage to ensure the lifetime of this raw object
             TypeErrorObject = +(python_types[typeid(DispatchError)] = std::move(o));
         })))
-        && attach(m, "set_type", as_object(Function::of([](std::type_index idx, Object o) {
+        && attach(m, "set_type", as_object(Function::of([](TypeIndex idx, Object o) {
+            DUMP("set_type in");
             python_types.emplace(std::move(idx), std::move(o));
+            DUMP("set_type out");
         })))
-        && attach(m, "set_type_names", as_object(Function::of([](Zip<std::type_index, std::string_view> v) {
+        && attach(m, "set_type_names", as_object(Function::of([](Zip<TypeIndex, std::string_view> v) {
             for (auto const &p : v) type_names.insert_or_assign(p.first, p.second);
         })));
     return ok ? m : Object();

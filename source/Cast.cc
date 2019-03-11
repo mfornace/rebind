@@ -149,7 +149,7 @@ Object bytes_cast(Variable &&ref) {
 }
 
 Object type_index_cast(Variable &&ref) {
-    if (auto p = ref.request<std::type_index>()) return as_object(std::move(*p));
+    if (auto p = ref.request<TypeIndex>()) return as_object(std::move(*p));
     else return {};
 }
 
@@ -196,7 +196,7 @@ Object union_cast(Variable &&v, Object const &t, Object const &root) {
 
 Object python_cast(Variable &&v, Object const &t, Object const &root) {
     if (!PyType_Check(+t)) {
-        if (auto p = cast_if<std::type_index>(t)) {
+        if (auto p = cast_if<TypeIndex>(t)) {
             Dispatch msg;
             if (auto var = std::move(v).request_variable(msg, *p))
                 return variable_cast(std::move(var));
@@ -217,7 +217,7 @@ Object python_cast(Variable &&v, Object const &t, Object const &root) {
     else if (is_subclass(type, &PyFloat_Type))                  out = float_cast(std::move(v));
     else if (is_subclass(type, &PyUnicode_Type))                out = str_cast(std::move(v));
     else if (is_subclass(type, &PyBytes_Type))                  out = bytes_cast(std::move(v));
-    else if (is_subclass(type, type_object<std::type_index>())) out = type_index_cast(std::move(v));
+    else if (is_subclass(type, type_object<TypeIndex>())) out = type_index_cast(std::move(v));
     else if (is_subclass(type, &PyList_Type))                   out = list_cast(std::move(v), t, root);
     else if (is_subclass(type, &PyTuple_Type))                  out = tuple_cast(std::move(v), t, root);
     else if (is_subclass(type, &PyDict_Type))                   out = dict_cast(std::move(v), t, root);

@@ -21,16 +21,16 @@ struct Renderer {
 
 struct TypeData {
     std::map<std::string, Function> methods;
-    std::map<std::type_index, Variable> data;
+    std::map<TypeIndex, Variable> data;
 };
 
 struct Document {
     std::map<std::string, Variable> contents;
-    std::map<std::type_index, std::pair<std::string const, Variable> *> types;
+    std::map<TypeIndex, std::pair<std::string const, Variable> *> types;
 
-    TypeData & type(std::type_index t, std::string s, Variable data={});
+    TypeData & type(TypeIndex t, std::string s, Variable data={});
 
-    Function & find_method(std::type_index t, std::string name);
+    Function & find_method(TypeIndex t, std::string name);
 
     Function & find_function(std::string s);
 
@@ -41,7 +41,7 @@ struct Document {
     }
 
     template <class ...Ts>
-    void render(Pack<Ts...>) {(render(Type<no_qualifier<Ts>>()), ...);}
+    void render(Pack<Ts...>) {(render(Type<unqualified<Ts>>()), ...);}
 
     template <class T>
     void object(std::string s, T value) {
@@ -53,14 +53,14 @@ struct Document {
     /// Export function and its signature. N may be given as the number of mandatory arguments
     template <int N=-1, class F>
     void function(std::string name, F functor) {
-        render(typename Signature<F>::no_qualifier());
+        render(typename Signature<F>::unqualified());
         find_function(std::move(name)).emplace<N>(std::move(functor));
     }
 
     /// Always a function - no vagueness here
     template <int N=-1, class F, class ...Ts>
-    void method(std::type_index t, std::string name, F f) {
-        Signature<F>::no_qualifier::for_each([&](auto r) {if (t != +r) render(+r);});
+    void method(TypeIndex t, std::string name, F f) {
+        Signature<F>::unqualified::for_each([&](auto r) {if (t != +r) render(+r);});
         find_method(t, std::move(name)).emplace<N>(std::move(f));
     }
 };
@@ -84,4 +84,4 @@ struct Renderer<T, std::void_t<decltype(render(std::declval<Document &>(), Type<
 
 }
 
-#include "Standard.h"
+#include "StandardTypes.h"

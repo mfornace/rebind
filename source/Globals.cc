@@ -6,9 +6,9 @@ PyObject *TypeErrorObject = PyExc_TypeError;
 
 std::map<Object, Object> type_conversions{};
 
-std::map<std::type_index, Object> python_types{};
+std::unordered_map<TypeIndex, Object> python_types{};
 
-std::unordered_map<std::type_index, std::string> type_names = {
+std::unordered_map<TypeIndex, std::string> type_names = {
     {typeid(void),             "void"},
     {typeid(void *),           "pointer"},
     {typeid(PyObject),         "PyObject"},
@@ -17,7 +17,7 @@ std::unordered_map<std::type_index, std::string> type_names = {
     {typeid(Real),             "float64"},
     {typeid(std::string_view), "str"},
     {typeid(std::string),      "str"},
-    {typeid(std::type_index),  "TypeIndex"},
+    {typeid(TypeIndex),  "TypeIndex"},
     {typeid(Binary),           "Binary"},
     {typeid(BinaryView),       "BinaryView"},
     {typeid(BinaryData),       "BinaryData"},
@@ -44,7 +44,7 @@ std::unordered_map<std::type_index, std::string> type_names = {
 };
 
 
-Zip<std::string_view, std::type_index> Buffer::formats = {
+Zip<std::string_view, TypeIndex> Buffer::formats = {
     {"d", typeid(double)},
     {"f", typeid(float)},
     {"c", typeid(char)},
@@ -68,7 +68,7 @@ Zip<std::string_view, std::type_index> Buffer::formats = {
 
 #define CPY_TMP(C, T) {Scalar::C, typeid(T), sizeof(T) * CHAR_BIT}
 
-Zip<Scalar, std::type_index, unsigned> scalars = {
+Zip<Scalar, TypeIndex, unsigned> scalars = {
     CPY_TMP(Bool,         bool),
     CPY_TMP(Char,         char),
     CPY_TMP(SignedChar,   signed char),

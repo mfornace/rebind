@@ -1,6 +1,6 @@
 #pragma once
 #include "Document.h"
-#include "Types.h"
+#include "BasicTypes.h"
 #include <tuple>
 #include <utility>
 #include <array>
@@ -12,13 +12,16 @@ namespace cpy {
 
 /******************************************************************************/
 
-template <class T>
-struct Response<std::optional<T>> {
-    bool operator()(Variable &out, std::optional<T> const &v, std::type_index t) const {
-        return v ? Response<T>()(out, v, std::move(t)), true : false;
+template <class T, Qualifier Q>
+struct Response<std::optional<T>, Q> {
+    bool operator()(Variable &out, TypeIndex t, std::optional<T> &v) const {
+        return v ? get_response<Q>(out, std::move(t), *v) : false;
     }
-    bool operator()(Variable &out, std::optional<T> const &p, std::type_index t, Qualifier q) const {
-        return p ? Response<std::remove_cv_t<T>>()(out, *p, std::move(t), q), true : false;
+    bool operator()(Variable &out, TypeIndex t, std::optional<T> &&v) const {
+        return v ? get_response<Q>(out, std::move(t), std::move(*v)) : false;
+    }
+    bool operator()(Variable &out, TypeIndex t, std::optional<T> const &v) const {
+        return v ? get_response<Q>(out, std::move(t), *v) : false;
     }
 };
 
@@ -35,19 +38,11 @@ struct Request<std::optional<T>> {
 
 /******************************************************************************/
 
-template <class T>
-struct Response<std::shared_ptr<T>> {
-    bool operator()(Variable &out, std::shared_ptr<T> const &p, std::type_index t) const {
-        DUMP("shared_ptr value", t.name(), bool(p));
-        if (!p) return false;
-        if (t == typeid(std::remove_cv_t<T>)) return out = *p, true;
-        else return Response<std::remove_cv_t<T>>()(out, *p, std::move(t));
-    }
-    bool operator()(Variable &out, std::shared_ptr<T> const &p, std::type_index t, Qualifier q) const {
-        DUMP("shared_ptr reference", t.name(), typeid(std::remove_cv_t<T>).name(), (t == typeid(std::remove_cv_t<T>)), bool(p), q, out.qualifier());
-        if (!p) return false;
-        if (t == typeid(std::remove_cv_t<T>)) return out = {Type<T &>(), *p}, true;
-        else return Response<std::remove_cv_t<T>>()(out, *p, std::move(t), q);
+template <class T, Qualifier Q>
+struct Response<std::shared_ptr<T>, Q> {
+    bool operator()(Variable &out, TypeIndex t, std::shared_ptr<T> const &p) const {
+        DUMP("shared_ptr", t, type_index<T>(), bool(p), Q);
+        return p && get_response<Q>(out, std::move(t), *p);
     }
 };
 
@@ -64,17 +59,15 @@ struct Request<std::shared_ptr<T>> {
 
 /******************************************************************************/
 
-template <class ...Ts>
-struct Response<std::variant<Ts...>> {
-    bool operator()(Variable &out, std::variant<Ts...> v, std::type_index t) const {
-        DUMP(out.name(), typeid(v).name(), t.name());
-        DUMP(v.index());
-        return std::visit([&](auto const &x) {
-            DUMP(typeid(x).name());
-            return Response<no_qualifier<decltype(x)>>()(out, x, t);
-        }, v);
+template <Qualifier Q, class ...Ts>
+struct Response<std::variant<Ts...>, Q> {
+    template <class V>
+    bool operator()(Variable &out, TypeIndex t, V &&v) const {
+        return std::visit([&](auto &&x) {return get_response<Q>(out, t, static_cast<decltype(x) &&>(x));}, static_cast<V &&>(v));
     }
 };
+
+static_assert(std::is_same_v<response_method<std::variant<int>>, Specialized>);
 
 template <class ...Ts>
 struct Request<std::variant<Ts...>> {
@@ -97,10 +90,9 @@ template <class V>
 struct MapResponse {
     using T = std::pair<typename V::key_type, typename V::mapped_type>;
 
-    bool operator()(Variable &out, V const &v, std::type_index t) const {
-        Vector<T> o(std::begin(v), std::end(v));
-        if (t == typeid(Vector<T>)) return out = std::move(o), true;
-        if (t == typeid(Sequence)) return out = Sequence(std::make_move_iterator(std::begin(o)), std::make_move_iterator(std::end(o))), true;
+    bool operator()(Variable &out, TypeIndex t, ValueContainer<V> &&v) const {
+        if (t.equals<Vector<T>>()) return out = Vector<T>(std::move(v)), true;
+        if (t.equals<Sequence>()) return out = Sequence(std::move(v)), true;
         return false;
     }
 };

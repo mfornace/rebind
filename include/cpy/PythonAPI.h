@@ -22,10 +22,10 @@ namespace cpy {
 
 extern PyObject *TypeErrorObject;
 
-extern std::unordered_map<std::type_index, std::string> type_names;
+extern std::unordered_map<TypeIndex, std::string> type_names;
 
 enum class Scalar {Bool, Char, SignedChar, UnsignedChar, Unsigned, Signed, Float, Pointer};
-extern Zip<Scalar, std::type_index, unsigned> scalars;
+extern Zip<Scalar, TypeIndex, unsigned> scalars;
 
 /******************************************************************************/
 
@@ -87,7 +87,7 @@ struct Object {
 };
 
 extern std::map<Object, Object> type_conversions;
-extern std::map<std::type_index, Object> python_types;
+extern std::unordered_map<TypeIndex, Object> python_types;
 
 struct Var : Variable {
     using Variable::Variable;
@@ -100,15 +100,15 @@ struct Holder<Variable> : Holder<Var> {};
 /******************************************************************************/
 
 struct Buffer {
-    static Zip<std::string_view, std::type_index> formats;
+    static Zip<std::string_view, TypeIndex> formats;
     Py_buffer view;
     bool ok;
 
     Buffer(PyObject *o, int flags) {ok = PyObject_GetBuffer(o, &view, flags) == 0;}
 
-    static std::type_index format(std::string_view s);
-    static std::string_view format(std::type_index t);
-    static std::size_t itemsize(std::type_index t);
+    static std::type_info const & format(std::string_view s);
+    static std::string_view format(std::type_info const &t);
+    static std::size_t itemsize(std::type_info const &t);
     // static Binary binary(Py_buffer *view, std::size_t len);
     // static Variable binary_view(Py_buffer *view, std::size_t len);
 
@@ -119,7 +119,7 @@ struct ArrayBuffer {
     std::vector<Py_ssize_t> shape, strides;
     Object base;
     void *data;
-    std::type_index type = typeid(void);
+    TypeIndex type = typeid(void);
     bool mutate;
 
     ArrayBuffer() noexcept = default;
@@ -127,7 +127,7 @@ struct ArrayBuffer {
         : shape(a.shape.begin(), a.shape.end()),
         strides(a.strides.begin(), a.strides.end()),
         base(b), data(a.data), type(a.type), mutate(a.mutate) {
-        for (auto &s : strides) s *= Buffer::itemsize(type);
+        for (auto &s : strides) s *= Buffer::itemsize(type.info());
     }
 };
 
@@ -150,11 +150,44 @@ T & cast_object(PyObject *o) {
 
 Variable variable_from_object(Object o);
 Sequence args_from_python(Object const &pypack);
+bool object_response(Variable &v, TypeIndex t, Object o);
+std::string_view from_unicode(PyObject *o);
+
+template <Qualifier Q>
+struct Response<Object, Q> {
+    bool operator()(Variable &v, TypeIndex t, Object o) const {
+        DUMP("trying to get reference from qualified Object", Q, t);
+        if (auto p = cast_if<Variable>(o)) {
+            Dispatch msg;
+            DUMP("requested qualified variable", t, p->type());
+            v = p->reference().request_variable(msg, t);
+            DUMP(p->type().name(), t.name(), v.name());
+            // Dispatch msg;
+            // if (p->type() == t) {
+            //     DUMP("worked");
+            //     v = {Type<decltype(*p)>(), *p};
+            // }
+            // return v.has_value();
+        }
+        return v.has_value();
+    }
+};
 
 template <>
-struct Response<Object> {
-    bool operator()(Variable &, Object, std::type_index) const;
-    bool operator()(Variable &, Object, std::type_index, Qualifier) const;
+struct Response<Object, Value> {
+    bool operator()(Variable &v, TypeIndex t, Object o) const {
+        DUMP("trying to get reference from unqualified Object", t);
+        if (!o) return false;
+        Object type = {reinterpret_cast<PyObject *>((+o)->ob_type), true};
+        bool ok = object_response(v, t, std::move(o));
+        DUMP("got response from object", ok);
+        if (!ok) { // put diagnostic for the source type
+            auto o = Object::from(PyObject_Repr(+type));
+            DUMP("setting object error description", from_unicode(o));
+            v = {Type<std::string>(), from_unicode(o)};
+        }
+        return ok;
+    }
 };
 
 /******************************************************************************/
@@ -197,10 +230,10 @@ inline Object args_to_python(Sequence &&s, Object const &sig={}) {
     for (auto &v : s) {
         if (i < len) {
             PyObject *t = PyTuple_GET_ITEM(+sig, i);
-            std::cout << "not done" << std::endl;
+            throw python_error(type_error("conversion to python signature not implemented yet"));
         } else {
             // special case: if given an rvalue reference, make it into a value
-            Variable &&var = v.qualifier() == Qualifier::R ? v.copy() : std::move(v);
+            Variable &&var = v.qualifier() == Rvalue ? v.copy() : std::move(v);
             if (!set_tuple_item(out, i, variable_cast(std::move(var)))) return {};
         }
         ++i;
@@ -287,7 +320,7 @@ struct PythonFunction {
 
 /******************************************************************************/
 
-std::string_view get_type_name(std::type_index idx) noexcept;
+std::string get_type_name(TypeIndex idx) noexcept;
 
 std::string wrong_type_message(WrongType const &e, std::string_view={});
 

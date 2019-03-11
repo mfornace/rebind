@@ -23,7 +23,7 @@ using Dictionary = Vector<std::pair<std::string_view, Variable>>;
 
 struct ArrayData {
     Vector<Integer> shape, strides;
-    std::type_index type;
+    TypeIndex type;
     void *data;
     bool mutate;
 
@@ -35,7 +35,7 @@ struct ArrayData {
     }
 
     template <class V=Vector<Integer>, class U=Vector<Integer>>
-    ArrayData(void *p, std::type_index t, bool mut, V const &v, U const &u)
+    ArrayData(void *p, TypeIndex t, bool mut, V const &v, U const &u)
         : shape(std::begin(v), std::end(v)), strides(std::begin(u), std::end(u)), type(t), data(p), mutate(mut) {}
 
     template <class T, class V=Vector<Integer>, class U=Vector<Integer>>
@@ -48,12 +48,13 @@ struct ArrayData {
 
 template <>
 struct Response<char const *> {
-    bool operator()(Variable &out, char const *s, std::type_index const &t) const {
-        if (t == typeid(std::string_view)) {
+    bool operator()(Variable &out, TypeIndex const &t, char const *s) const {
+        if (t.equals<std::string_view>()) {
             out = s ? std::string_view(s) : std::string_view();
             return true;
-        } else if (t == typeid(std::string)) {
-            out = s ? std::string(s) : std::string();
+        } else if (t.equals<std::string>()) {
+            if (s) out.emplace(Type<std::string>(), s);
+            else out.emplace(Type<std::string>());
             return true;
         } else return false;
     }
@@ -78,15 +79,15 @@ public:
 
 template <>
 struct Response<BinaryData> {
-    bool operator()(Variable &out, BinaryData const &v, std::type_index t) const {
-        if (t == typeid(BinaryView)) return out = BinaryView(v.begin(), v.size()), true;
+    bool operator()(Variable &out, TypeIndex const &t, BinaryData const &v) const {
+        if (t.equals<BinaryView>()) return out.emplace(Type<BinaryView>(), v.begin(), v.size()), true;
         return false;
     }
 };
 
 template <>
 struct Response<BinaryView> {
-    bool operator()(Variable &out, BinaryView const &v, std::type_index) const {
+    bool operator()(Variable &out, TypeIndex const &, BinaryView const &v) const {
         return false;
     }
 };
@@ -109,8 +110,8 @@ struct Request<BinaryData> {
 /******************************************************************************/
 
 template <class T>
-struct Response<T, std::enable_if_t<(std::is_integral_v<T>)>> {
-    bool operator()(Variable &out, T t, std::type_index i) const {
+struct Response<T, Value, std::enable_if_t<(std::is_integral_v<T>)>> {
+    bool operator()(Variable &out, TypeIndex const &i, T t) const {
         DUMP("response from integer", typeid(T).name(), i.name());
         if (i == typeid(Integer)) return out = static_cast<Integer>(t), true;
         if (i == typeid(Real)) return out = static_cast<Real>(t), true;
@@ -120,8 +121,8 @@ struct Response<T, std::enable_if_t<(std::is_integral_v<T>)>> {
 };
 
 template <class T>
-struct Response<T, std::enable_if_t<(std::is_floating_point_v<T>)>> {
-    bool operator()(Variable &out, T t, std::type_index i) const {
+struct Response<T, Value, std::enable_if_t<(std::is_floating_point_v<T>)>> {
+    bool operator()(Variable &out, TypeIndex const &i, T t) const {
         if (i == typeid(Real)) return out = static_cast<Real>(t), true;
         if (i == typeid(Integer)) return out = static_cast<Integer>(t), true;
         return false;
@@ -184,18 +185,36 @@ struct CompiledSequenceResponse {
     }
 
     template <std::size_t ...Is>
+    static Sequence sequence(V &&v, std::index_sequence<Is...>) {
+        Sequence o;
+        o.reserve(sizeof...(Is));
+        (o.emplace_back(std::get<Is>(std::move(v))), ...);
+        return o;
+    }
+
+    template <std::size_t ...Is>
     static Array array(V const &v, std::index_sequence<Is...>) {return {std::get<Is>(v)...};}
 
-    bool operator()(Variable &out, V const &v, std::type_index t) const {
+    template <std::size_t ...Is>
+    static Array array(V &&v, std::index_sequence<Is...>) {return {std::get<Is>(std::move(v))...};}
+
+    bool operator()(Variable &out, TypeIndex const &t, V const &v) const {
         auto idx = std::make_index_sequence<std::tuple_size_v<V>>();
         if (t == typeid(Sequence)) return out = sequence(v, idx), true;
         if (t == typeid(Array)) return out = array(v, idx), true;
         return false;
     }
+
+    bool operator()(Variable &out, TypeIndex const &t, V &&v) const {
+        auto idx = std::make_index_sequence<std::tuple_size_v<V>>();
+        if (t == typeid(Sequence)) return out = sequence(std::move(v), idx), true;
+        if (t == typeid(Array)) return out = array(std::move(v), idx), true;
+        return false;
+    }
 };
 
 template <class T>
-struct Response<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : CompiledSequenceResponse<T> {};
+struct Response<T, Value, std::enable_if_t<std::tuple_size<T>::value >= 0>> : CompiledSequenceResponse<T> {};
 
 /******************************************************************************/
 template <class V>
@@ -265,43 +284,70 @@ template <class T, class=void>
 struct HasData : std::false_type {};
 
 template <class T>
-struct HasData<T, std::enable_if_t<(!std::is_same_v<decltype(std::declval<T>().data()), void>)>> : std::true_type {};
+struct HasData<T, std::enable_if_t<(!std::is_pointer_v<decltype(std::data(std::declval<T>()))>)>> : std::true_type {};
+
+/******************************************************************************/
+
+template <class V>
+class RuntimeReference {
+    V *ptr;
+    Qualifier qual;
+
+public:
+    Qualifier qualifier() const {return qual;}
+
+    RuntimeReference(V &v) : ptr(std::addressof(v)), qual(Lvalue) {}
+    RuntimeReference(V &&v) : ptr(std::addressof(v)), qual(Rvalue) {}
+    RuntimeReference(V const &v) : ptr(const_cast<V *>(std::addressof(v))), qual(Const) {}
+
+    template <Qualifier Q>
+    std::remove_reference_t<qualified<V, Q>> *target() {return qual == Q ? ptr : nullptr;}
+};
+
+/******************************************************************************/
+
+/// wraps e.g. vector const &, vector &, and vector && into one convenient package for subsequent conversions
+/// assuming that the container lifetime is the same as the contents lifetime
+template <class V>
+struct ValueContainer : RuntimeReference<V> {
+    using RuntimeReference<V>::RuntimeReference;
+
+    template <class O, std::enable_if_t<std::is_constructible_v<O, decltype(std::begin(std::declval<V const &>())), decltype(std::end(std::declval<V const &>()))>, int> = 0>
+    explicit operator O() && {
+        if (auto p = this->template target<Rvalue>())
+            return {std::make_move_iterator(std::begin(std::move(*p))), std::make_move_iterator(std::end(std::move(*p)))};
+        else return {std::begin(*p), std::end(*p)};
+    }
+};
 
 /******************************************************************************/
 
 template <class V>
 struct VectorResponse {
-    using T = no_qualifier<typename V::value_type>;
+    using T = unqualified<typename V::value_type>;
 
-    bool operator()(Variable &out, V const &v, std::type_index t) const {
-        if (t == typeid(Sequence)) return out = from_iters<Sequence>(v), true;
-        if (t == typeid(Vector<T>)) return out = from_iters<Vector<T>>(v), true;
-        if (t == typeid(ArrayData)) {
-            if constexpr(HasData<V const &>::value) // e.g. guard against std::vector<bool>
-                return out = ArrayData(v.data(), {Integer(v.size())}, {Integer(1)}), true;
-        }
-        return false;
-    }
-
-    bool operator()(Variable &out, V &&v, std::type_index t) const {
-        if (t == typeid(Sequence)) return out = from_iters<Sequence>(std::move(v)), true;
-        if (t == typeid(Vector<T>)) return out = from_iters<Vector<T>>(std::move(v)), true;
-        if (t == typeid(ArrayData)) {
-            if constexpr(HasData<V &&>::value) // e.g. guard against std::vector<bool>
-                return out = ArrayData(v.data(), {Integer(v.size())}, {Integer(1)}), true;
+    bool operator()(Variable &out, TypeIndex const &t, ValueContainer<V> &&v) const {
+        if (t.equals<Sequence>()) return out.emplace(Type<Sequence>(), std::move(v)), true;
+        if (t.equals<Vector<T>>()) return out.emplace(Type<Vector<T>>(), std::move(v)), true;
+        if (v.qualifier() != Rvalue && t.equals<ArrayData>()) {
+            // e.g. guard against std::vector<bool>
+            if constexpr(HasData<V const &>::value) if (auto p = v.template target<Const>())
+                return out.emplace(Type<ArrayData>(), std::data(*p), {Integer(std::size(*p))}, {Integer(1)}), true;
+            if constexpr(HasData<V &>::value) if (auto p = v.template target<Lvalue>())
+                return out.emplace(Type<ArrayData>(), std::data(*p), {Integer(std::size(*p))}, {Integer(1)}), true;
         }
         return false;
     }
 };
 
 template <class T, class A>
-struct Response<std::vector<T, A>, std::enable_if_t<!std::is_same_v<T, Variable>>> : VectorResponse<std::vector<T, A>> {};
+struct Response<std::vector<T, A>, Value, std::enable_if_t<!std::is_same_v<T, Variable>>> : VectorResponse<std::vector<T, A>> {};
 
 /******************************************************************************/
 
 template <class V>
 struct VectorRequest {
-    using T = no_qualifier<typename V::value_type>;
+    using T = unqualified<typename V::value_type>;
 
     template <class P>
     static std::optional<V> get(P &pack, Dispatch &msg) {

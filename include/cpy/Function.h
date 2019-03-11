@@ -10,13 +10,13 @@ namespace cpy {
 using ErasedFunction = std::function<Variable(Caller, Sequence)>;
 
 template <class R, class ...Ts>
-static std::type_index const signature_types[] = {typeid(R), typeid(Ts)...};
+static TypeIndex const signature_types[] = {typeid(R), typeid(Ts)...};
 
 /******************************************************************************/
 
 struct ErasedSignature {
-    std::type_index const *b = nullptr;
-    std::type_index const *e = nullptr;
+    TypeIndex const *b = nullptr;
+    TypeIndex const *e = nullptr;
 public:
     ErasedSignature() = default;
 
@@ -26,7 +26,7 @@ public:
     explicit operator bool() const {return b;}
     auto begin() const {return b;}
     auto end() const {return e;}
-    std::type_index operator[](std::size_t i) const {return b[i];}
+    TypeIndex operator[](std::size_t i) const {return b[i];}
     std::size_t size() const {return e - b;}
 };
 
