@@ -38,10 +38,21 @@ def _render_module(pkg, doc, set_type_names):
 
     # Monkey-patch modules based on redefined types (takes care of simple cases at least)
     mod = importlib.import_module(pkg)
+
+    for mod in tuple(modules):
+        parts = mod.__name__.split('.')
+        for i in range(1, len(parts)):
+            try:
+                modules.add(importlib.import_module('.'.join(parts[:i])))
+            except ImportError:
+                pass
+
     for mod in modules:
+        log.info('rendering monkey-patching module {}'.format(mod))
         for k in dir(mod):
             try:
                 setattr(mod, k, translate[getattr(mod, k)])
+                log.info('monkey-patching module {} attribute {}'.format(mod, k))
             except (TypeError, KeyError):
                 pass
 

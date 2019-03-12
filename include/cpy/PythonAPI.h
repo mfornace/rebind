@@ -88,7 +88,7 @@ struct Object {
 
 extern std::map<Object, Object> output_conversions;
 extern std::map<Object, Object> input_conversions;
-extern std::unordered_map<TypeIndex, Object> python_types;
+extern std::unordered_map<std::type_index, Object> python_types;
 
 struct Var : Variable {
     using Variable::Variable;

@@ -7,7 +7,7 @@ PyObject *TypeErrorObject = PyExc_TypeError;
 std::map<Object, Object> output_conversions{};
 std::map<Object, Object> input_conversions{};
 
-std::unordered_map<TypeIndex, Object> python_types{};
+std::unordered_map<std::type_index, Object> python_types{};
 
 std::unordered_map<TypeIndex, std::string> type_names = {
     {typeid(void),             "void"},
@@ -18,7 +18,7 @@ std::unordered_map<TypeIndex, std::string> type_names = {
     {typeid(Real),             "float64"},
     {typeid(std::string_view), "str"},
     {typeid(std::string),      "str"},
-    {typeid(TypeIndex),  "TypeIndex"},
+    {typeid(TypeIndex),        "TypeIndex"},
     {typeid(Binary),           "Binary"},
     {typeid(BinaryView),       "BinaryView"},
     {typeid(BinaryData),       "BinaryData"},

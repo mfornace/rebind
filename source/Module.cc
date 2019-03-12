@@ -477,7 +477,7 @@ Object initialize(Document const &doc) {
         })))
         && attach(m, "set_type", as_object(Function::of([](TypeIndex idx, Object o) {
             DUMP("set_type in");
-            python_types.emplace(std::move(idx), std::move(o));
+            python_types.emplace(idx.info(), std::move(o));
             DUMP("set_type out");
         })))
         && attach(m, "set_type_names", as_object(Function::of([](Zip<TypeIndex, std::string_view> v) {
