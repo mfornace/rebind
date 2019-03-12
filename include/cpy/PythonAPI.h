@@ -86,7 +86,8 @@ struct Object {
     ~Object() {Py_XDECREF(ptr);}
 };
 
-extern std::map<Object, Object> type_conversions;
+extern std::map<Object, Object> output_conversions;
+extern std::map<Object, Object> input_conversions;
 extern std::unordered_map<TypeIndex, Object> python_types;
 
 struct Var : Variable {
@@ -178,7 +179,15 @@ struct Response<Object, Value> {
     bool operator()(Variable &v, TypeIndex t, Object o) const {
         DUMP("trying to get reference from unqualified Object", t);
         if (!o) return false;
-        Object type = {reinterpret_cast<PyObject *>((+o)->ob_type), true};
+
+        Object type;
+        for (std::size_t i = 0; i != 256; ++i) {
+            type = {reinterpret_cast<PyObject *>((+o)->ob_type), true};
+            if (auto p = input_conversions.find(type); p != input_conversions.end()) {
+                o = Object::from(PyObject_CallFunctionObjArgs(+p->second, +o, nullptr));
+            } else break;
+        }
+
         bool ok = object_response(v, t, std::move(o));
         DUMP("got response from object", ok);
         if (!ok) { // put diagnostic for the source type

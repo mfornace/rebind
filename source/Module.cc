@@ -288,7 +288,7 @@ PyObject * not_none(PyObject *o) {return o == Py_None ? nullptr : o;}
 
 /******************************************************************************/
 
-PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept {
+PyObject * function_call(PyObject *self, PyObject *pyargs, PyObject *kws) noexcept {
     bool gil = true;
     std::optional<TypeIndex> t0, t1;
     PyObject *sig=nullptr;
@@ -304,26 +304,27 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
         if (r) t0 = cast_object<TypeIndex>(r);
         if (f) t1 = cast_object<TypeIndex>(f);
     }
-    DUMP("gil = ", gil, " ", Py_REFCNT(self), Py_REFCNT(args));
+    DUMP("gil = ", gil, " ", Py_REFCNT(self), Py_REFCNT(pyargs));
     DUMP("number of signatures ", cast_object<Function>(self).overloads.size());
 
     return raw_object([=]() -> Object {
+        Object args(pyargs, true);
         auto const &overloads = cast_object<Function>(self).overloads;
 
         if (overloads.size() == 1) // only 1 overload
-            return call_overload(overloads[0].second, {args, true}, gil);
+            return call_overload(overloads[0].second, args, gil);
 
         if (sig && PyLong_Check(sig)) { // signature given as an integer index
             auto i = PyLong_AsLongLong(sig);
             if (i < 0) i += overloads.size();
             if (i <= overloads.size() || i < 0)
-                return call_overload(overloads[i].second, {args, true}, gil);
+                return call_overload(overloads[i].second, args, gil);
             PyErr_SetString(PyExc_IndexError, "signature index out of bounds");
             return Object();
         }
 
-        auto const n = PyTuple_GET_SIZE(args);
-        Variable *first = n ? cast_if<Variable>(PyTuple_GET_ITEM(args, 0)) : nullptr;
+        auto const n = PyTuple_GET_SIZE(+args);
+        Variable *first = n ? cast_if<Variable>(PyTuple_GET_ITEM(+args, 0)) : nullptr;
         auto errors = Object::from(PyList_New(0));
 
         //  Check for equivalence on the first argument first -- provides short-circuiting for methods
@@ -348,7 +349,7 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
                 }
 
                 try {
-                    return call_overload(o.second, {args, true}, gil);
+                    return call_overload(o.second, args, gil);
                 } catch (WrongType const &e) {
                     if (PyList_Append(+errors, +as_object(wrong_type_message(e)))) return {};
                 } catch (WrongNumber const &e) {
@@ -457,13 +458,15 @@ Object initialize(Document const &doc) {
             else o = variable_cast(Variable(x.second));
             return args_as_tuple(as_object(x.first), std::move(o));
         }))
-        && attach(m, "set_conversion", as_object(Function::of([](Object t, Object o) {
-            DUMP("insert type conversion ", (t == o), (+t == Py_None));
-            type_conversions.insert_or_assign(std::move(t), std::move(o));
-            DUMP("inserted type conversion ");
+        && attach(m, "set_output_conversion", as_object(Function::of([](Object t, Object o) {
+            output_conversions.insert_or_assign(std::move(t), std::move(o));
+        })))
+        && attach(m, "set_input_conversion", as_object(Function::of([](Object t, Object o) {
+            input_conversions.insert_or_assign(std::move(t), std::move(o));
         })))
         && attach(m, "clear_global_objects", as_object(Function::of([] {
-            type_conversions.clear();
+            input_conversions.clear();
+            output_conversions.clear();
             python_types.clear();
         })))
         && attach(m, "set_debug", as_object(Function::of([](bool b) {return std::exchange(Debug, b);})))

@@ -170,7 +170,7 @@ Object memoryview_cast(Variable &&ref, Object const &root) {
 // Convert C++ Variable to a requested Python type
 // First explicit types are checked:
 // None, object, bool, int, float, str, bytes, TypeIndex, list, tuple, dict, Variable, Function, memoryview
-// Then, the type_conversions map is queried for Python function callable with the Variable
+// Then, the output_conversions map is queried for Python function callable with the Variable
 
 bool is_union(Object const &o) {
     static PyTypeObject *union_type{nullptr};
@@ -226,8 +226,8 @@ Object python_cast(Variable &&v, Object const &t, Object const &root) {
     else if (is_subclass(type, &PyFunction_Type))               out = function_cast(std::move(v));
     else if (is_subclass(type, &PyMemoryView_Type))             out = memoryview_cast(std::move(v), root);
     else {
-        DUMP("custom convert ", type_conversions.size());
-        if (auto p = type_conversions.find(t); p != type_conversions.end()) {
+        DUMP("custom convert ", output_conversions.size());
+        if (auto p = output_conversions.find(t); p != output_conversions.end()) {
             DUMP(" conversion ");
             Object o = variable_cast(std::move(v));
             DUMP(" did something ", bool(o));
