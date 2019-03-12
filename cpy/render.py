@@ -78,7 +78,7 @@ def render_init(init):
             raise TypeError('No __init__ is possible since no C++ constructors were declared')
     else:
         def __init__(self, *args, _new=init, return_type=None, signature=None):
-            self.assign(_new(*args, return_type=return_type, signature=signature))
+            self.move_from(_new(*args, return_type=return_type, signature=signature))
     return __init__
 
 ################################################################################
@@ -94,7 +94,7 @@ def render_member(key, value, old, globalns={}, localns={}):
             return out.cast(ret)
 
     def fset(self, other, _old=value):
-        _old(self).assign(other)
+        _old(self).copy_from(other)
 
     return property(fget=fget, fset=fset, doc='C++ member of type {}'.format(old))
 

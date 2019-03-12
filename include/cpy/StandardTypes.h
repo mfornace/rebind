@@ -90,10 +90,12 @@ template <class V>
 struct MapResponse {
     using T = std::pair<typename V::key_type, typename V::mapped_type>;
 
-    bool operator()(Variable &out, TypeIndex t, ValueContainer<V> &&v) const {
-        if (t.equals<Vector<T>>()) return out = Vector<T>(std::move(v)), true;
-        if (t.equals<Sequence>()) return out = Sequence(std::move(v)), true;
-        return false;
+    bool operator()(Variable &o, TypeIndex t, V &&v) const {
+        return range_response<T>(o, t, std::make_move_iterator(std::begin(v)), std::make_move_iterator(std::end(v)));
+    }
+
+    bool operator()(Variable &o, TypeIndex t, V const &v) const {
+        return range_response<T>(o, t, std::begin(v), std::end(v));
     }
 };
 

@@ -13,7 +13,7 @@ Document & document() noexcept {
 /******************************************************************************/
 
 void lvalue_fails(Variable const &v, Dispatch &msg, TypeIndex t) {
-    char const *s = "could not bind to lvalue reference";
+    char const *s = "could not convert to lvalue reference";
     if (v.type() == t) {
         if (v.qualifier() == Rvalue) s = "could not convert rvalue to lvalue reference";
         if (v.qualifier() == Const) s = "could not convert const value to lvalue reference";
@@ -24,7 +24,7 @@ void lvalue_fails(Variable const &v, Dispatch &msg, TypeIndex t) {
 /******************************************************************************/
 
 void rvalue_fails(Variable const &v, Dispatch &msg, TypeIndex t) {
-    char const *s = "could not bind to rvalue reference";
+    char const *s = "could not convert to rvalue reference";
     if (v.type() == t) {
         if (v.qualifier() == Lvalue) s = "could not convert lvalue to rvalue reference";
         if (v.qualifier() == Const) s = "could not convert const value to rvalue reference";
@@ -34,22 +34,23 @@ void rvalue_fails(Variable const &v, Dispatch &msg, TypeIndex t) {
 /******************************************************************************/
 
 void Variable::assign(Variable v) {
-    // DUMP("assigning!", qual, v.qual, name(), v.name());
+    // if *this is a value, make a copy or move the right hand side in
     if (qualifier() == Value) {
         if (v.qualifier() == Value) {
             *this = std::move(v);
         } else {
             DUMP("assign1");
-            // for now, just make a fresh value copy of the variable
             if (auto p = handle())
                 act(ActionType::destroy, pointer(), nullptr);
+            // Copy data but set the qualifier to Value
             static_cast<VariableData &>(*this) = v;
             idx.set_qualifier(Value);
-            DUMP(name(), qualifier(), name(), stack, v.stack);
-            DUMP(&v, v.pointer());
+            // DUMP(name(), qualifier(), name(), stack, v.stack);
+            // DUMP(&v, v.pointer());
             // e.g. value = lvalue which means
+            // Move variable if it held RValue
             act((v.qualifier() == Rvalue) ? ActionType::move : ActionType::copy, v.pointer(), this);
-            DUMP(stack, v.stack);
+            // DUMP(stack, v.stack);
         }
     } else if (qualifier() == Const) {
         DUMP("assign bad");
@@ -163,3 +164,28 @@ Function & Document::find_function(std::string s) {
 /******************************************************************************/
 
 }
+
+#if __has_include(<cxxabi.h>)
+#   include <cxxabi.h>
+    namespace cpy::runtime {
+        using namespace __cxxabiv1;
+        char const *unknown_exception_description() noexcept {
+            return abi::__cxa_current_exception_type()->name();
+        }
+
+        std::string demangle(char const *s) {
+            int status = 0;
+            char * buff = __cxa_demangle(s, nullptr, nullptr, &status);
+            if (!buff) return s;
+            std::string out = buff;
+            std::free(buff);
+            return out;
+        }
+    }
+#else
+    namespace cpy::runtime {
+        char const *unknown_exception_description() noexcept {return "C++: unknown exception";}
+
+        std::string demangle(char const *s) {return s;}
+    }
+#endif

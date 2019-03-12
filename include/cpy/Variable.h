@@ -162,8 +162,9 @@ public:
     Variable request_variable(Dispatch &msg, TypeIndex const &t) & {return request_var(msg, t, add(qualifier(), Lvalue));}
     Variable request_variable(Dispatch &msg, TypeIndex const &t) && {return request_var(msg, t, add(qualifier(), Rvalue));}
 
-    /**************************************************************************/
+    bool move_if_lvalue() {return idx.qualifier() == Lvalue ? idx.set_qualifier(Rvalue), true : false;}
 
+    /**************************************************************************/
 
     // request reference T by custom conversions
     template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>

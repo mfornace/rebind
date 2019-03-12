@@ -50,11 +50,25 @@ void tp_delete(PyObject *o) noexcept {
 // move_from is called 1) during init, V.move_from(V), to transfer the object (here just use Var move constructor)
 //                     2) during assignment, R.move_from(L), to transfer the object (here cast V to new object of same type, swap)
 //                     2) during assignment, R.move_from(V), to transfer the object (here cast V to new object of same type, swap)
-PyObject * var_assign(PyObject *self, PyObject *args) noexcept {
+PyObject * var_copy_assign(PyObject *self, PyObject *args) noexcept {
+    if (PyObject *value = one_argument(args)) {
+        return raw_object([=] {
+            DUMP("- copying variable");
+            cast_object<Var>(self).assign(variable_from_object({value, true}));
+            return Object(self, true);
+        });
+    } else return nullptr;
+}
+
+PyObject * var_move_assign(PyObject *self, PyObject *args) noexcept {
     if (PyObject *value = one_argument(args)) {
         return raw_object([=] {
             DUMP("- moving variable");
-            cast_object<Var>(self).assign(variable_from_object({value, true}));
+            auto &s = cast_object<Var>(self);
+            Variable v = variable_from_object({value, true});
+            v.move_if_lvalue();
+            s.assign(std::move(v));
+            // if (auto p = cast_if<Variable>(value)) p->reset();
             return Object(self, true);
         });
     } else return nullptr;
@@ -235,8 +249,8 @@ PyNumberMethods VarNumberMethods = {
 };
 
 PyMethodDef VarMethods[] = {
-    {"assign",        static_cast<PyCFunction>(var_assign),        METH_VARARGS, "assign from other using C++ move constructor"},
-    {"copy_from",     static_cast<PyCFunction>(copy_from<Var>),    METH_VARARGS, "assign from other using C++ copy constructor"},
+    {"copy_from",     static_cast<PyCFunction>(var_copy_assign),   METH_VARARGS, "assign from other using C++ copy assignment"},
+    {"move_from",     static_cast<PyCFunction>(var_copy_assign),   METH_VARARGS, "assign from other using C++ move assignment"},
     {"address",       static_cast<PyCFunction>(var_address),       METH_NOARGS,  "get C++ pointer address"},
     {"_ward",         static_cast<PyCFunction>(var_ward),          METH_NOARGS,  "get ward object"},
     {"_set_ward",     static_cast<PyCFunction>(var_set_ward),      METH_VARARGS, "set ward object and return self"},
@@ -289,25 +303,26 @@ PyObject * not_none(PyObject *o) {return o == Py_None ? nullptr : o;}
 /******************************************************************************/
 
 PyObject * function_call(PyObject *self, PyObject *pyargs, PyObject *kws) noexcept {
-    bool gil = true;
-    std::optional<TypeIndex> t0, t1;
-    PyObject *sig=nullptr;
-    if (kws && PyDict_Check(kws)) {
-        PyObject *g = PyDict_GetItemString(kws, "gil");
-        if (g) gil = PyObject_IsTrue(g);
-        sig = not_none(PyDict_GetItemString(kws, "signature")); // either int or Tuple[TypeIndex] or None
-        auto r = not_none(PyDict_GetItemString(kws, "return_type")); // either TypeIndex or None
-        auto f = not_none(PyDict_GetItemString(kws, "first_type")); // either TypeIndex or None
-        // std::cout << PyObject_Length(kws) << bool(g) << bool(sig) << bool(f) << bool(r) << std::endl;
-        // if (PyObject_Length(kws) != unsigned(bool(g)) + (sig || r || f))
-            // return type_error("C++: unexpected extra keywords");
-        if (r) t0 = cast_object<TypeIndex>(r);
-        if (f) t1 = cast_object<TypeIndex>(f);
-    }
-    DUMP("gil = ", gil, " ", Py_REFCNT(self), Py_REFCNT(pyargs));
-    DUMP("number of signatures ", cast_object<Function>(self).overloads.size());
-
     return raw_object([=]() -> Object {
+        bool gil = true;
+        std::optional<TypeIndex> t0, t1;
+        PyObject *sig=nullptr;
+        if (kws && PyDict_Check(kws)) {
+            PyObject *g = PyDict_GetItemString(kws, "gil");
+            if (g) gil = PyObject_IsTrue(g);
+            sig = not_none(PyDict_GetItemString(kws, "signature")); // either int or Tuple[TypeIndex] or None
+            auto r = not_none(PyDict_GetItemString(kws, "return_type")); // either TypeIndex or None
+            auto f = not_none(PyDict_GetItemString(kws, "first_type")); // either TypeIndex or None
+            // std::cout << PyObject_Length(kws) << bool(g) << bool(sig) << bool(f) << bool(r) << std::endl;
+            // if (PyObject_Length(kws) != unsigned(bool(g)) + (sig || r || f))
+                // return type_error("C++: unexpected extra keywords");
+            if (r) t0 = cast_object<TypeIndex>(r);
+            if (f) t1 = cast_object<TypeIndex>(f);
+        }
+        DUMP("specified types", bool(t0), bool(t1));
+        DUMP("gil = ", gil, " ", Py_REFCNT(self), Py_REFCNT(pyargs));
+        DUMP("number of signatures ", cast_object<Function>(self).overloads.size());
+
         Object args(pyargs, true);
         auto const &overloads = cast_object<Function>(self).overloads;
 
@@ -330,7 +345,7 @@ PyObject * function_call(PyObject *self, PyObject *pyargs, PyObject *kws) noexce
         //  Check for equivalence on the first argument first -- provides short-circuiting for methods
         for (auto const exact : {true, false}) {
             for (auto const &o : overloads) {
-                bool const match = (o.first.size() < 2) || (first && first->type() == o.first[1]);
+                bool const match = (o.first.size() < 2) || (first && first->type().matches(o.first[1]));
                 if (match != exact) continue;
                 if (sig) { // check the explicit signature that was passed in
                     if (PyTuple_Check(sig)) {

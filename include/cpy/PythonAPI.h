@@ -333,6 +333,12 @@ std::string get_type_name(TypeIndex idx) noexcept;
 
 std::string wrong_type_message(WrongType const &e, std::string_view={});
 
+namespace runtime {
+    char const * unknown_exception_description() noexcept;
+}
+
+/******************************************************************************/
+
 template <class F>
 PyObject *raw_object(F &&f) noexcept {
     try {
@@ -354,7 +360,7 @@ PyObject *raw_object(F &&f) noexcept {
             PyErr_Format(PyExc_RuntimeError, "C++: %s", e.what());
     } catch (...) {
         if (!PyErr_Occurred())
-            PyErr_SetString(PyExc_RuntimeError, "C++: unknown exception");
+            PyErr_SetString(PyExc_RuntimeError, runtime::unknown_exception_description());
     }
     return nullptr;
 }

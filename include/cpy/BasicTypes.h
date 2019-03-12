@@ -284,59 +284,42 @@ template <class T, class=void>
 struct HasData : std::false_type {};
 
 template <class T>
-struct HasData<T, std::enable_if_t<(!std::is_pointer_v<decltype(std::data(std::declval<T>()))>)>> : std::true_type {};
+struct HasData<T, std::enable_if_t<(std::is_pointer_v<decltype(std::data(std::declval<T>()))>)>> : std::true_type {};
 
 /******************************************************************************/
 
-template <class V>
-class RuntimeReference {
-    V *ptr;
-    Qualifier qual;
-
-public:
-    Qualifier qualifier() const {return qual;}
-
-    RuntimeReference(V &v) : ptr(std::addressof(v)), qual(Lvalue) {}
-    RuntimeReference(V &&v) : ptr(std::addressof(v)), qual(Rvalue) {}
-    RuntimeReference(V const &v) : ptr(const_cast<V *>(std::addressof(v))), qual(Const) {}
-
-    template <Qualifier Q>
-    std::remove_reference_t<qualified<V, Q>> *target() {return qual == Q ? ptr : nullptr;}
-};
-
-/******************************************************************************/
-
-/// wraps e.g. vector const &, vector &, and vector && into one convenient package for subsequent conversions
-/// assuming that the container lifetime is the same as the contents lifetime
-template <class V>
-struct ValueContainer : RuntimeReference<V> {
-    using RuntimeReference<V>::RuntimeReference;
-
-    template <class O, std::enable_if_t<std::is_constructible_v<O, decltype(std::begin(std::declval<V const &>())), decltype(std::end(std::declval<V const &>()))>, int> = 0>
-    explicit operator O() && {
-        if (auto p = this->template target<Rvalue>())
-            return {std::make_move_iterator(std::begin(std::move(*p))), std::make_move_iterator(std::end(std::move(*p)))};
-        else return {std::begin(*p), std::end(*p)};
+template <class T, class Iter1, class Iter2>
+bool range_response(Variable &o, TypeIndex const &t, Iter1 b, Iter2 e) {
+    if (t.equals<Sequence>()) {
+        auto p = o.emplace(Type<Sequence>());
+        p->reserve(std::distance(b, e));
+        for (; b != e; ++b) p->emplace_back(Type<T>(), *b);
+        return true;
     }
-};
-
-/******************************************************************************/
+    if (t.equals<Vector<T>>()) return o.emplace(Type<Vector<T>>(), b, e), true;
+    return false;
+}
 
 template <class V>
 struct VectorResponse {
-    using T = unqualified<typename V::value_type>;
+    using T = std::decay_t<typename V::value_type>;
 
-    bool operator()(Variable &out, TypeIndex const &t, ValueContainer<V> &&v) const {
-        if (t.equals<Sequence>()) return out.emplace(Type<Sequence>(), std::move(v)), true;
-        if (t.equals<Vector<T>>()) return out.emplace(Type<Vector<T>>(), std::move(v)), true;
-        if (v.qualifier() != Rvalue && t.equals<ArrayData>()) {
-            // e.g. guard against std::vector<bool>
-            if constexpr(HasData<V const &>::value) if (auto p = v.template target<Const>())
-                return out.emplace(Type<ArrayData>(), std::data(*p), {Integer(std::size(*p))}, {Integer(1)}), true;
-            if constexpr(HasData<V &>::value) if (auto p = v.template target<Lvalue>())
-                return out.emplace(Type<ArrayData>(), std::data(*p), {Integer(std::size(*p))}, {Integer(1)}), true;
-        }
+    bool operator()(Variable &o, TypeIndex const &t, V const &v) const {
+        if (range_response<T>(o, t, std::begin(v), std::end(v))) return true;
+        if constexpr(HasData<V const &>::value)
+            return o = ArrayData(std::data(v), {Integer(std::size(v))}, {Integer(1)}), true;
         return false;
+    }
+
+    bool operator()(Variable &o, TypeIndex const &t, V &v) const {
+        if (range_response<T>(o, t, std::cbegin(v), std::cend(v))) return true;
+        if constexpr(HasData<V &>::value)
+            return o = ArrayData(std::data(v), {Integer(std::size(v))}, {Integer(1)}), true;
+        return false;
+    }
+
+    bool operator()(Variable &o, TypeIndex const &t, V &&v) const {
+        return range_response<T>(o, t, std::make_move_iterator(std::begin(v)), std::make_move_iterator(std::end(v)));
     }
 };
 
@@ -347,7 +330,7 @@ struct Response<std::vector<T, A>, Value, std::enable_if_t<!std::is_same_v<T, Va
 
 template <class V>
 struct VectorRequest {
-    using T = unqualified<typename V::value_type>;
+    using T = std::decay_t<typename V::value_type>;
 
     template <class P>
     static std::optional<V> get(P &pack, Dispatch &msg) {
