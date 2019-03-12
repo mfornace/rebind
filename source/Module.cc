@@ -354,13 +354,12 @@ PyObject * function_call(PyObject *self, PyObject *pyargs, PyObject *kws) noexce
                             return type_error("C++: too many types given in signature");
                         for (Py_ssize_t i = 0; i != len; ++i) {
                             PyObject *x = PyTuple_GET_ITEM(sig, i);
-                            if (x != Py_None && cast_object<TypeIndex>(x) != o.first[i]) continue;
+                            if (x != Py_None && !cast_object<TypeIndex>(x).matches(o.first[i])) continue;
                         }
                     } else return type_error("C++: expected 'signature' to be a tuple");
-                } else if (t0) { // check that the return type matches if specified
-                    if (o.first.size() > 0 && o.first[0] != t0) continue;
-                } else if (t1) { // check that the first argument type matches if specified
-                    if (o.first.size() > 1 && o.first[1] != t1) continue;
+                } else {
+                    if (t0 && o.first.size() > 0 && !o.first[0].matches(*t0)) continue; // check that the return type matches if specified
+                    if (t1 && o.first.size() > 1 && !o.first[1].matches(*t1)) continue; // check that the first argument type matches if specified
                 }
 
                 try {
