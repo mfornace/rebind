@@ -21,27 +21,86 @@ using Dictionary = Vector<std::pair<std::string_view, Variable>>;
 
 /******************************************************************************/
 
+template <class B, class E>
+bool array_major(B begin, E end) {
+    for (std::ptrdiff_t expected = 1; begin != end; ++begin) {
+        if (begin->first < 2) continue;
+        if (begin->second != expected) return false;
+        expected = begin->first * begin->second;
+    }
+    return true;
+}
+
+struct ArrayLayout {
+    using value_type = std::pair<std::size_t, std::ptrdiff_t>;
+    Vector<value_type> contents;
+
+    ArrayLayout() = default;
+
+    template <class T, class U>
+    ArrayLayout(T const &shape, U const &stride) {
+        if (std::size(shape) != std::size(stride)) throw std::invalid_argument("ArrayLayout() strides do not match shape");
+        contents.reserve(std::size(shape));
+        auto st = std::begin(stride);
+        for (auto const &sh : shape) contents.emplace_back(sh, *st++);
+    }
+
+    // 1 dimensional contiguous array
+    ArrayLayout(std::size_t n) : contents{value_type(n, 1)} {}
+
+    friend std::ostream & operator<<(std::ostream &os, ArrayLayout const &l) {
+        os << "ArrayLayout(" << l.depth() << "):" << std::endl;
+        for (auto const &p : l.contents) os << p.first << ": " << p.second << " "; os << std::endl;
+        return os;
+    }
+
+    std::ptrdiff_t stride(std::size_t i) const {return contents[i].second;}
+    std::size_t shape(std::size_t i) const {return contents[i].first;}
+    std::size_t operator[](std::size_t i) const {return contents[i].first;}
+
+    bool column_major() const {return array_major(contents.begin(), contents.end());}
+    bool row_major() const {return array_major(contents.rbegin(), contents.rend());}
+
+    std::size_t depth() const {return contents.size();}
+
+    std::size_t n_elem() const {
+        std::size_t out = contents.empty() ? 0u : 1u;
+        for (auto const &p : contents) out *= p.first;
+        return out;
+    }
+};
+
+/******************************************************************************/
+
 struct ArrayData {
-    Vector<Integer> shape, strides;
-    TypeIndex type;
-    void *data;
+    void *pointer;
+    std::type_info const *type;
     bool mutate;
+
+    ArrayData(void *p, std::type_info const *t, bool mut) : type(t), pointer(p), mutate(mut) {}
+
+    template <class T>
+    ArrayData(T *t) : ArrayData(const_cast<std::remove_cv_t<T> *>(static_cast<T const *>(t)),
+                                &typeid(std::remove_cv_t<T>), std::is_const_v<T>) {}
 
     template <class T>
     T * target() const {
         if (!mutate && !std::is_const<T>::value) return nullptr;
-        if (type != typeid(std::remove_cv_t<T>)) return nullptr;
-        return static_cast<T *>(data);
+        if (type != &typeid(std::remove_cv_t<T>)) return nullptr;
+        return static_cast<T *>(pointer);
     }
 
-    template <class V=Vector<Integer>, class U=Vector<Integer>>
-    ArrayData(void *p, TypeIndex t, bool mut, V const &v, U const &u)
-        : shape(std::begin(v), std::end(v)), strides(std::begin(u), std::end(u)), type(t), data(p), mutate(mut) {}
+    friend std::ostream & operator<<(std::ostream &os, ArrayData const &d) {
+        if (!d.type) return os << "ArrayData(<empty>)";
+        return os << "ArrayData(" << TypeIndex(*d.type, d.mutate ? Const : Lvalue) << ")";
+    }
+};
 
-    template <class T, class V=Vector<Integer>, class U=Vector<Integer>>
-    ArrayData(T *t, V const &v, U const &u)
-        : ArrayData(const_cast<std::remove_cv_t<T> *>(static_cast<T const *>(t)),
-                    typeid(std::remove_cv_t<T>), std::is_const_v<T>, v, u) {}
+/******************************************************************************/
+
+struct ArrayView {
+    ArrayData data;
+    ArrayLayout layout;
 };
 
 /******************************************************************************/
@@ -141,9 +200,9 @@ struct Request<T, std::enable_if_t<std::is_floating_point_v<T>>> {
 template <class T>
 struct Request<T, std::enable_if_t<std::is_integral_v<T>>> {
     std::optional<T> operator()(Variable const &v, Dispatch &msg) const {
-        DUMP("trying convert to arithmetic", v.name(), typeid(T).name());
+        DUMP("trying convert to arithmetic", v.type(), typeid(T).name());
         if (!std::is_same_v<Integer, T>) if (auto p = v.request<Integer>()) return static_cast<T>(*p);
-        DUMP("failed to convert to arithmetic", v.name(), typeid(T).name());
+        DUMP("failed to convert to arithmetic", v.type(), typeid(T).name());
         return msg.error("not convertible to integer", typeid(T));
     }
 };
@@ -307,14 +366,14 @@ struct VectorResponse {
     bool operator()(Variable &o, TypeIndex const &t, V const &v) const {
         if (range_response<T>(o, t, std::begin(v), std::end(v))) return true;
         if constexpr(HasData<V const &>::value)
-            return o = ArrayData(std::data(v), {Integer(std::size(v))}, {Integer(1)}), true;
+            return o.emplace(Type<ArrayView>(), std::data(v), std::size(v)), true;
         return false;
     }
 
     bool operator()(Variable &o, TypeIndex const &t, V &v) const {
         if (range_response<T>(o, t, std::cbegin(v), std::cend(v))) return true;
         if constexpr(HasData<V &>::value)
-            return o = ArrayData(std::data(v), {Integer(std::size(v))}, {Integer(1)}), true;
+            return o.emplace(Type<ArrayView>(), std::data(v), std::size(v)), true;
         return false;
     }
 

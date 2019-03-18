@@ -81,14 +81,13 @@ int array_data_buffer(PyObject *self, Py_buffer *view, int flags) {
     view->buf = p.data;
     if (p.base) {Py_INCREF(p.base); view->obj = +p.base;}
     else view->obj = nullptr;
-    view->itemsize = Buffer::itemsize(p.type.info());
-    if (p.shape.empty()) view->len = 0;
-    else view->len = std::accumulate(p.shape.begin(), p.shape.end(), view->itemsize, std::multiplies<>());
+    view->itemsize = Buffer::itemsize(*p.type);
+    view->len = p.n_elem;
     view->readonly = !p.mutate;
-    view->format = const_cast<char *>(Buffer::format(p.type.info()).data());
-    view->ndim = p.shape.size();
-    view->shape = p.shape.data();
-    view->strides = p.strides.data();
+    view->format = const_cast<char *>(Buffer::format(*p.type).data());
+    view->ndim = p.shape_stride.size() / 2;
+    view->shape = p.shape_stride.data();
+    view->strides = p.shape_stride.data() + view->ndim;
     view->suboffsets = nullptr;
     return 0;
 }

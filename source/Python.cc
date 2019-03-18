@@ -37,12 +37,12 @@ PythonError python_error(std::nullptr_t) noexcept {
 std::type_info const & Buffer::format(std::string_view s) {
     auto it = std::find_if(Buffer::formats.begin(), Buffer::formats.end(),
         [&](auto const &p) {return p.first == s;});
-    return it == Buffer::formats.end() ? typeid(void) : it->second.info();
+    return it == Buffer::formats.end() ? typeid(void) : *it->second;
 }
 
 std::string_view Buffer::format(std::type_info const &t) {
     auto it = std::find_if(Buffer::formats.begin(), Buffer::formats.end(),
-        [&](auto const &p) {return p.second == t;});
+        [&](auto const &p) {return p.second == &t;});
     return it == Buffer::formats.end() ? std::string_view() : it->first;
 }
 
@@ -73,11 +73,11 @@ std::string_view from_bytes(PyObject *o) {
 
 template <class T>
 bool to_arithmetic(Object const &o, Variable &v) {
-    DUMP("cast arithmetic", v.name(), v.qualifier());
+    DUMP("cast arithmetic", v.type());
     if (PyFloat_Check(o)) return v = static_cast<T>(PyFloat_AsDouble(+o)), true;
     if (PyLong_Check(o)) return v = static_cast<T>(PyLong_AsLongLong(+o)), true;
     if (PyBool_Check(o)) return v = static_cast<T>(+o == Py_True), true;
-    DUMP("cast arithmetic", v.name(), v.qualifier());
+    DUMP("cast arithmetic", v.type());
     return false;
 }
 
@@ -106,23 +106,19 @@ bool object_response(Variable &v, TypeIndex t, Object o) {
 
     if (t.matches<Function>()) {
         DUMP("requested function");
-        if (+o == Py_None) v = Function();
+        if (+o == Py_None) v.emplace(Type<Function>());
         else if (auto p = cast_if<Function>(o)) v = *p;
-        else {
-            Function f;
-            f.emplace(PythonFunction({+o, true}, {Py_None, true}), {});
-            v = std::move(f);
-        }
+        else v.emplace(Type<Function>())->emplace(PythonFunction({+o, true}, {Py_None, true}), {});
         return true;
     }
 
     if (t.equals<Sequence>()) {
         if (PyTuple_Check(o) || PyList_Check(o)) {
-            DUMP("making a tuple");
-            Sequence vals;
-            vals.reserve(PyObject_Length(o));
-            map_iterable(o, [&](Object o) {vals.emplace_back(std::move(o));});
-            return v = std::move(vals), true;
+            DUMP("making a Sequence");
+            Sequence *s = v.emplace(Type<Sequence>());
+            s->reserve(PyObject_Length(o));
+            map_iterable(o, [&](Object o) {s->emplace_back(std::move(o));});
+            return true;
         } else return false;
     }
 
@@ -139,18 +135,18 @@ bool object_response(Variable &v, TypeIndex t, Object o) {
     }
 
     if (t.equals<std::string_view>()) {
-        if (PyUnicode_Check(+o)) return v = from_unicode(+o), true;
-        if (PyBytes_Check(+o)) return v = from_bytes(+o), true;
+        if (PyUnicode_Check(+o)) return v.emplace(Type<std::string_view>(), from_unicode(+o)), true;
+        if (PyBytes_Check(+o)) return v.emplace(Type<std::string_view>(), from_bytes(+o)), true;
         return false;
     }
 
     if (t.equals<std::string>()) {
-        if (PyUnicode_Check(+o)) return v = std::string(from_unicode(+o)), true;
-        if (PyBytes_Check(+o)) return v = std::string(from_bytes(+o)), true;
+        if (PyUnicode_Check(+o)) return v.emplace(Type<std::string>(), from_unicode(+o)), true;
+        if (PyBytes_Check(+o)) return v.emplace(Type<std::string>(), from_bytes(+o)), true;
         return false;
     }
 
-    if (t.equals<ArrayData>()) {
+    if (t.equals<ArrayView>()) {
         if (PyObject_CheckBuffer(+o)) {
             Buffer buff(o, PyBUF_FULL_RO); // Read in the shape but ignore strides, suboffsets
             DUMP("cast buffer", buff.ok);
@@ -159,24 +155,22 @@ bool object_response(Variable &v, TypeIndex t, Object o) {
                 DUMP(Buffer::format(buff.view.format ? buff.view.format : "").name());
                 DUMP("ndim", buff.view.ndim);
                 DUMP((nullptr == buff.view.buf), bool(buff.view.readonly));
-                auto a = ArrayData(buff.view.buf, Buffer::format(buff.view.format ? buff.view.format : ""),
-                    !buff.view.readonly, Vector<Integer>(buff.view.shape, buff.view.shape + buff.view.ndim),
-                    Vector<Integer>(buff.view.strides, buff.view.strides + buff.view.ndim));
+                for (auto i = 0; i != buff.view.ndim; ++i) DUMP(i, buff.view.shape[i], buff.view.strides[i]);
                 DUMP("itemsize", buff.view.itemsize);
-                for (auto i : a.strides) DUMP(i);
-                for (auto &x : a.strides) x /= buff.view.itemsize;
-                for (auto i : a.strides) DUMP(i);
-                for (auto i : a.shape) DUMP(i);
-                DUMP(*static_cast<float *>(buff.view.buf), " ", *static_cast<float *>(a.data));
-                DUMP(*static_cast<std::uint16_t *>(buff.view.buf), " ", *static_cast<std::uint16_t *>(a.data));
-                DUMP("made data! ", a.strides.size());
-                return v = std::move(a), true;
+                ArrayLayout lay;
+                lay.contents.reserve(buff.view.ndim);
+                for (std::size_t i = 0; i != buff.view.ndim; ++i)
+                    lay.contents.emplace_back(buff.view.shape[i], buff.view.strides[i] / buff.view.itemsize);
+                DUMP("layout", lay);
+                DUMP("depth", lay.depth());
+                ArrayData data{buff.view.buf, buff.view.format ? &Buffer::format(buff.view.format) : &typeid(void), !buff.view.readonly};
+                return v.emplace(Type<ArrayView>(), std::move(data), std::move(lay)), true;
             } else throw python_error(type_error("C++: could not get buffer"));
         } else return false;
     }
 
     if (t.equals<std::complex<double>>()) {
-        if (PyComplex_Check(+o)) return v = std::complex<double>{PyComplex_RealAsDouble(+o), PyComplex_ImagAsDouble(+o)}, true;
+        if (PyComplex_Check(+o)) return v.emplace(Type<std::complex<double>>(), PyComplex_RealAsDouble(+o), PyComplex_ImagAsDouble(+o)), true;
         return false;
     }
 

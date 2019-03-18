@@ -101,7 +101,7 @@ struct Holder<Variable> : Holder<Var> {};
 /******************************************************************************/
 
 struct Buffer {
-    static Zip<std::string_view, TypeIndex> formats;
+    static Zip<std::string_view, std::type_info const *> formats;
     Py_buffer view;
     bool ok;
 
@@ -117,18 +117,21 @@ struct Buffer {
 };
 
 struct ArrayBuffer {
-    std::vector<Py_ssize_t> shape, strides;
+    std::vector<Py_ssize_t> shape_stride;
+    std::size_t n_elem;
     Object base;
     void *data;
-    TypeIndex type = typeid(void);
+    std::type_info const * type;
     bool mutate;
 
     ArrayBuffer() noexcept = default;
-    ArrayBuffer(ArrayData const &a, Object const &b)
-        : shape(a.shape.begin(), a.shape.end()),
-        strides(a.strides.begin(), a.strides.end()),
-        base(b), data(a.data), type(a.type), mutate(a.mutate) {
-        for (auto &s : strides) s *= Buffer::itemsize(type.info());
+    ArrayBuffer(ArrayView const &a, Object const &b) : n_elem(a.layout.n_elem()),
+        base(b), data(a.data.pointer), type(a.data.type), mutate(a.data.mutate) {
+        for (std::size_t i = 0; i != a.layout.depth(); ++i)
+            shape_stride.emplace_back(a.layout.shape(i));
+        auto const item = Buffer::itemsize(*type);
+        for (std::size_t i = 0; i != a.layout.depth(); ++i)
+            shape_stride.emplace_back(a.layout.stride(i) * item);
     }
 };
 
@@ -162,13 +165,7 @@ struct Response<Object, Q> {
             Dispatch msg;
             DUMP("requested qualified variable", t, p->type());
             v = p->reference().request_variable(msg, t);
-            DUMP(p->type().name(), t.name(), v.name());
-            // Dispatch msg;
-            // if (p->type() == t) {
-            //     DUMP("worked");
-            //     v = {Type<decltype(*p)>(), *p};
-            // }
-            // return v.has_value();
+            DUMP(p->type(), t, v.type());
         }
         return v.has_value();
     }
