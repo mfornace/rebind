@@ -83,7 +83,8 @@ bool to_arithmetic(Object const &o, Variable &v) {
 
 bool object_response(Variable &v, TypeIndex t, Object o) {
     if (Debug) {
-        Object repr{PyObject_Repr(TypeObject{(+o)->ob_type}), false};
+        auto repr = Object::from(PyObject_Repr(TypeObject{(+o)->ob_type}));
+        DUMP("input object reference count", reference_count(o));
         DUMP("trying to convert object to ", t.name(), " ", from_unicode(+repr));
         DUMP(bool(cast_if<Variable>(o)));
     }
@@ -148,10 +149,10 @@ bool object_response(Variable &v, TypeIndex t, Object o) {
 
     if (t.equals<ArrayView>()) {
         if (PyObject_CheckBuffer(+o)) {
-            Buffer buff(o, PyBUF_FULL_RO); // Read in the shape but ignore strides, suboffsets
-            DUMP("cast buffer", buff.ok);
-            if (buff.ok) {
-                DUMP("making data");
+            // Read in the shape but ignore strides, suboffsets
+            DUMP("cast buffer", reference_count(o));
+            if (auto buff = Buffer(o, PyBUF_FULL_RO)) {
+                DUMP("making data", reference_count(o));
                 DUMP(Buffer::format(buff.view.format ? buff.view.format : "").name());
                 DUMP("ndim", buff.view.ndim);
                 DUMP((nullptr == buff.view.buf), bool(buff.view.readonly));
@@ -161,7 +162,7 @@ bool object_response(Variable &v, TypeIndex t, Object o) {
                 lay.contents.reserve(buff.view.ndim);
                 for (std::size_t i = 0; i != buff.view.ndim; ++i)
                     lay.contents.emplace_back(buff.view.shape[i], buff.view.strides[i] / buff.view.itemsize);
-                DUMP("layout", lay);
+                DUMP("layout", lay, reference_count(o));
                 DUMP("depth", lay.depth());
                 ArrayData data{buff.view.buf, buff.view.format ? &Buffer::format(buff.view.format) : &typeid(void), !buff.view.readonly};
                 return v.emplace(Type<ArrayView>(), std::move(data), std::move(lay)), true;

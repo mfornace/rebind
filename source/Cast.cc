@@ -36,7 +36,7 @@ Object list_cast(Variable &&ref, Object const &o, Object const &root) {
             DUMP("list index ", i);
             Object item = python_cast(std::move(v[i]), vt, root);
             if (!item) return {};
-            Py_INCREF(+item);
+            incref(+item);
             PyList_SET_ITEM(+list, i, +item);
         }
         return list;

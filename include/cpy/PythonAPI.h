@@ -27,6 +27,13 @@ extern std::unordered_map<TypeIndex, std::string> type_names;
 enum class Scalar {Bool, Char, SignedChar, UnsignedChar, Unsigned, Signed, Float, Pointer};
 extern Zip<Scalar, TypeIndex, unsigned> scalars;
 
+inline std::size_t reference_count(PyObject *o) {return o ? Py_REFCNT(o) : 0u;}
+
+inline void incref(PyObject *o) noexcept {Py_INCREF(o);}
+inline void decref(PyObject *o) noexcept {Py_DECREF(o);}
+inline void xincref(PyObject *o) noexcept {Py_XINCREF(o);}
+inline void xdecref(PyObject *o) noexcept {Py_XDECREF(o);}
+
 /******************************************************************************/
 
 struct TypeObject {
@@ -66,10 +73,13 @@ struct Object {
     Object() = default;
     Object(std::nullptr_t) {}
     static Object from(PyObject *o) {return o ? Object(o, false) : throw python_error();}
-    Object(PyObject *o, bool incref) : ptr(o) {if (incref) Py_INCREF(ptr);}
-    Object(Object const &o) : ptr(o.ptr) {Py_XINCREF(ptr);}
+    Object(PyObject *o, bool increment) : ptr(o) {if (increment) xincref(ptr);}
+
+    Object(Object const &o) noexcept : ptr(o.ptr) {xincref(ptr);}
+    Object & operator=(Object const &o) noexcept {ptr = o.ptr; xincref(ptr); return *this;}
+
     Object(Object &&o) noexcept : ptr(std::exchange(o.ptr, nullptr)) {}
-    Object & operator=(Object o) noexcept {ptr = std::exchange(o.ptr, nullptr); return *this;}
+    Object & operator=(Object &&o) noexcept {ptr = std::exchange(o.ptr, nullptr); return *this;}
 
     explicit operator bool() const {return ptr;}
     operator PyObject *() const {return ptr;}
@@ -83,7 +93,7 @@ struct Object {
     bool operator>=(Object const &o) const {return ptr >= o.ptr;}
     friend void swap(Object &o, Object &p) {std::swap(o.ptr, p.ptr);}
 
-    ~Object() {Py_XDECREF(ptr);}
+    ~Object() {xdecref(ptr);}
 };
 
 extern std::map<Object, Object> output_conversions;
@@ -100,12 +110,26 @@ struct Holder<Variable> : Holder<Var> {};
 
 /******************************************************************************/
 
-struct Buffer {
+class Buffer {
     static Zip<std::string_view, std::type_info const *> formats;
-    Py_buffer view;
-    bool ok;
+    bool valid;
 
-    Buffer(PyObject *o, int flags) {ok = PyObject_GetBuffer(o, &view, flags) == 0;}
+public:
+    Py_buffer view;
+
+    Buffer(Buffer const &) = delete;
+    Buffer(Buffer &&b) noexcept : view(b.view), valid(std::exchange(b.valid, false)) {}
+
+    Buffer & operator=(Buffer const &) = delete;
+    Buffer & operator=(Buffer &&b) noexcept {view = b.view; valid = std::exchange(b.valid, false); return *this;}
+
+    explicit operator bool() const {return valid;}
+
+    Buffer(PyObject *o, int flags) {
+        DUMP("before buffer", reference_count(o));
+        valid = PyObject_GetBuffer(o, &view, flags) == 0;
+        if (valid) DUMP("after buffer", reference_count(o), view.obj == o);
+    }
 
     static std::type_info const & format(std::string_view s);
     static std::string_view format(std::type_info const &t);
@@ -113,7 +137,14 @@ struct Buffer {
     // static Binary binary(Py_buffer *view, std::size_t len);
     // static Variable binary_view(Py_buffer *view, std::size_t len);
 
-    ~Buffer() {PyBuffer_Release(&view);}
+    ~Buffer() {
+        if (valid) {
+            PyObject *o = view.obj;
+            DUMP("before release", reference_count(view.obj));
+            PyBuffer_Release(&view);
+            DUMP("after release", reference_count(o));
+        }
+    }
 };
 
 struct ArrayBuffer {
@@ -176,15 +207,14 @@ struct Response<Object, Value> {
     bool operator()(Variable &v, TypeIndex t, Object o) const {
         DUMP("trying to get reference from unqualified Object", t);
         if (!o) return false;
-
-        Object type;
-        for (std::size_t i = 0; i != 256; ++i) {
-            type = {reinterpret_cast<PyObject *>((+o)->ob_type), true};
-            if (auto p = input_conversions.find(type); p != input_conversions.end()) {
-                o = Object::from(PyObject_CallFunctionObjArgs(+p->second, +o, nullptr));
-            } else break;
+        DUMP("ref1", reference_count(o));
+        Object type = Object(reinterpret_cast<PyObject *>((+o)->ob_type), true);
+        if (auto p = input_conversions.find(type); p != input_conversions.end()) {
+            Object guard(+o, false); // PyObject_CallFunctionObjArgs increments reference
+            o = Object::from(PyObject_CallFunctionObjArgs(+p->second, +o, nullptr));
+            type = Object(reinterpret_cast<PyObject *>((+o)->ob_type), true);
         }
-
+        DUMP("ref2", reference_count(o));
         bool ok = object_response(v, t, std::move(o));
         DUMP("got response from object", ok);
         if (!ok) { // put diagnostic for the source type
@@ -200,7 +230,7 @@ struct Response<Object, Value> {
 
 inline bool set_tuple_item(Object const &t, Py_ssize_t i, Object const &x) {
     if (!x) return false;
-    Py_INCREF(+x);
+    incref(+x);
     PyTuple_SET_ITEM(+t, i, +x);
     return true;
 }
@@ -340,7 +370,7 @@ template <class F>
 PyObject *raw_object(F &&f) noexcept {
     try {
         Object o = static_cast<F &&>(f)();
-        Py_XINCREF(+o);
+        xincref(+o);
         return +o;
     } catch (PythonError const &) {
         return nullptr;

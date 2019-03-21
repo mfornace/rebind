@@ -6,11 +6,30 @@ log = logging.getLogger(__name__)
 
 ################################################################################
 
+class Config:
+    def __init__(self, methods):
+        self._set_debug = methods['set_debug']
+        self._get_debug = methods['debug']
+        self.set_type_error = methods['set_type_error']
+        self.set_type_names = methods['set_type_names']
+        self.set_type = methods['set_type']
+        self.set_output_conversion = methods['set_output_conversion']
+        self.set_input_conversion = methods['set_input_conversion']
+
+    @property
+    def debug(self):
+        return self._get_debug().cast(bool)
+
+    @debug.setter
+    def debug(self, value):
+        self._set_debug(bool(value))
+
+################################################################################
+
 def _render_module(pkg, doc, set_type_names):
     log.info('rendering document into module %s', repr(pkg))
-    out, config = doc.copy(), doc.copy()
-    config.pop('contents')
-    config['set_type_error'](ConversionError)
+    config, out = Config(doc), doc.copy()
+    config.set_type_error(ConversionError)
 
     modules, translate = set(), {}
 
@@ -23,12 +42,12 @@ def _render_module(pkg, doc, set_type_names):
         modules.add(mod)
         cls.metadata = {k: v or None for k, v in data}
         for k, v in data:
-            config['set_type'](k, cls)
+            config.set_type(k, cls)
 
     # put type names if desired
     if set_type_names:
         names = tuple((o[0], k) for k, v in out['types'].items() for o in v[1])
-        config['set_type_names'](names)
+        config.set_type_names(names)
 
     # render global objects (including free functions)
     out['objects'] = {k: render_object(pkg, k, v, out)
@@ -217,7 +236,7 @@ def render_function(fun, old, globalns={}, localns={}):
         def wrap(*args, _orig=fun, _bind=sig.bind, _old=old, gil=None, signature=None, **kwargs):
             bound = _bind(*args, **kwargs)
             bound.apply_defaults()
-            args = (a if t is empty or a is None else render_callback(a, t) for a, t in zip(bound.args, types))
+            args = (a if t is empty or a is None else render_callback(a, t) for a, t in zip(bound.arguments.values(), types))
             return _old(*args, _fun_=_orig, **bound.kwargs)
     else:
         ret = sig.return_annotation
@@ -226,7 +245,7 @@ def render_function(fun, old, globalns={}, localns={}):
         def wrap(*args, _orig=fun, _bind=sig.bind, _return=ret, gil=None, signature=None, **kwargs):
             bound = _bind(*args, **kwargs)
             bound.apply_defaults()
-            out = _orig(*(render_callback(a, t) if isinstance(t, tuple) else a for a, t in zip(bound.args, types)))
+            out = _orig(*(render_callback(a, t) if isinstance(t, tuple) else a for a, t in zip(bound.arguments.values(), types)))
             if _return is empty:
                 return out # no cast
             if _return is None or _return is type(None):

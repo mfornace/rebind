@@ -3,6 +3,7 @@
  * @file Python.cc
  */
 #include <cpy/PythonCast.h>
+#include <cpy/PythonAPI.h>
 #include <cpy/Document.h>
 #include <any>
 #include <iostream>
@@ -79,7 +80,7 @@ PyObject * var_move_assign(PyObject *self, PyObject *args) noexcept {
 int array_data_buffer(PyObject *self, Py_buffer *view, int flags) {
     auto &p = cast_object<ArrayBuffer>(self);
     view->buf = p.data;
-    if (p.base) {Py_INCREF(p.base); view->obj = +p.base;}
+    if (p.base) {incref(p.base); view->obj = +p.base;}
     else view->obj = nullptr;
     view->itemsize = Buffer::itemsize(*p.type);
     view->len = p.n_elem;
@@ -432,7 +433,7 @@ PyTypeObject Holder<Function>::type = []{
 
 bool attach_type(Object const &m, char const *name, PyTypeObject *t) noexcept {
     if (PyType_Ready(t) < 0) return false;
-    Py_INCREF(t);
+    incref(reinterpret_cast<PyObject *>(t));
     return PyDict_SetItemString(+m, name, reinterpret_cast<PyObject *>(t)) >= 0;
 }
 
@@ -448,7 +449,7 @@ Object initialize(Document const &doc) {
         if (p.second) type_names.emplace(p.first, p.first.name());//p.second->first);
 
     if (PyType_Ready(type_object<ArrayBuffer>()) < 0) return {};
-    Py_INCREF(type_object<ArrayBuffer>());
+    incref(type_object<ArrayBuffer>());
 
     bool ok = attach_type(m, "Variable", type_object<Variable>())
         && attach_type(m, "Function", type_object<Function>())
@@ -518,7 +519,7 @@ extern "C" {
             if (!mod) return {};
             cpy::Object dict = initialize(cpy::document());
             if (!dict) return {};
-            Py_INCREF(+dict);
+            cpy::incref(+dict);
             if (PyModule_AddObject(+mod, "document", +dict) < 0) return {};
             return mod;
         });
