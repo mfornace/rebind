@@ -38,6 +38,9 @@ template <class ...Ts> struct Pack {
     template <std::size_t N>
     static constexpr auto at() {return at_sequence<N>(indices());}
 
+    template <class N>
+    static constexpr auto at(N) {return at_sequence<N::value>(indices());}
+
     template <class T, std::size_t ...Is>
     static constexpr auto position_impl(std::index_sequence<Is...>) {
         return decltype((std::conditional_t<std::is_same_v<T, Ts>,
@@ -72,6 +75,12 @@ template <class ...Ts> struct Pack {
 
 template <class ...Ts, class ...Us>
 Pack<Ts..., Us...> concat(Pack<Ts...>, Pack<Us...>) {return {};}
+
+template <template <class ...> class T, class ...Ts>
+Pack<Ts...> template_as_pack_impl(T<Ts...> const &);
+
+template <class T>
+using template_as_pack = decltype(template_as_pack_impl(std::declval<T>()));
 
 /******************************************************************************************/
 
