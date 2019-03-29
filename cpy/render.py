@@ -107,20 +107,30 @@ def copy(self):
 
 ################################################################################
 
+def find_class(mod, name):
+    try:
+        old = getattr(mod, name)
+    except AttributeError:
+        old = None
+
+    annotations = {}
+    props = {'__module__': mod.__name__}
+
+    if old is not None:
+        for c in reversed(old.mro()[:-1]): # skip base class 'object'
+            props.update(c.__dict__)
+            annotations.update(getattr(c, '__annotations__', {}))
+    props['__annotations__'] = annotations
+    return old, props
+
+################################################################################
+
 def render_type(pkg: str, bases: tuple, name: str, methods, lookup={}):
     '''Define a new type in pkg'''
     mod, name = common.split_module(pkg, name)
-    localns, globalns = mod.__dict__, lookup
-    try:
-        old_cls = getattr(mod, name)
-        props = {}
-    except AttributeError:
-        old_cls = None
-        props = {'__module__': mod.__name__}
+    old_cls, props = find_class(mod, name)
 
-    if old_cls is not None:
-        for cls in old_cls.mro()[:-1]: # skip base class 'object'
-            props.update(cls.__dict__)
+    localns, globalns = mod.__dict__, lookup
 
     new = props.pop('__new__', None)
     if callable(new):
@@ -130,7 +140,7 @@ def render_type(pkg: str, bases: tuple, name: str, methods, lookup={}):
     for k, v in methods.items():
         k = common.translations.get(k, k)
         if k.startswith('.'):
-            old = props.get('__annotations__', {}).get(k[1:])
+            old = props['__annotations__'].get(k[1:])
             log.info("deriving member '%s.%s%s' from %s", mod.__name__, name, k, repr(old))
             props[k[1:]] = render_member(k[1:], v, old, globalns=globalns, localns=localns)
         else:
