@@ -84,6 +84,7 @@ struct Dispatch {
         return {std::move(scope), std::move(indices), std::move(source), std::move(dest), index, expected, received};
     }
 
+    /// Store a value which will last the lifetime of a conversion request. Return its address
     template <class T>
     auto store(T &&t) {
         return std::addressof(storage.emplace_back().emplace<unqualified<T>>(static_cast<T &&>(t)));

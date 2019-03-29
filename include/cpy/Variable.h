@@ -49,9 +49,7 @@ public:
     Qualifier qualifier() const {return idx.qualifier();}
     void const * data() const {return pointer();}
 
-    char const * name() const {return idx ? idx.name() : typeid(void).name();}
     TypeIndex type() const {return idx;}
-    // std::type_info const & info() const {return idx.info();}
     ActionFunction action() const {return act;}
     bool is_stack_type() const {return stack;}
 
@@ -111,9 +109,12 @@ public:
         if (auto p = v.handle()) act(ActionType::copy, p, this);
     }
 
+    template <class T, std::enable_if_t<!std::is_base_of_v<VariableData, unqualified<T>>, int> = 0>
+    Variable & operator=(T &&t) {emplace(Type<std::decay_t<T>>(), static_cast<T &&>(t)); return *this;}
+
     /// Only call variable move constructor if its lifetime is being managed inside the buffer
     Variable & operator=(Variable &&v) noexcept {
-        DUMP("move assign", qualifier(), name(), v.qualifier(), v.name());
+        DUMP("move assign", type(), v.type());
         if (auto p = handle()) act(ActionType::destroy, p, nullptr);
         static_cast<VariableData &>(*this) = v;
         if (auto p = v.handle()) {
@@ -124,7 +125,7 @@ public:
     }
 
     Variable & operator=(Variable const &v) {
-        DUMP("copy assign", qualifier(), name(), v.qualifier(), v.name());
+        DUMP("copy assign", type(), v.type());
         if (auto p = handle()) act(ActionType::destroy, p, nullptr);
         static_cast<VariableData &>(*this) = v;
         if (auto p = v.handle()) v.act(ActionType::copy, p, this);
@@ -182,7 +183,7 @@ public:
         static_assert(std::is_same_v<T, unqualified<T>>);
         if constexpr(std::is_same_v<T, Variable>) return *this;
         if (auto p = target<T const &>()) {
-            DUMP(idx.qualifier(), p, &buff, reinterpret_cast<void * const &>(buff), stack, typeid(p).name(), typeid(Type<T>).name());
+            DUMP(type(), p, &buff, reinterpret_cast<void * const &>(buff), stack, typeid(p).name(), typeid(Type<T>).name());
             return *p;
         }
         auto v = request_variable(msg, typeid(T));

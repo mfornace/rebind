@@ -22,7 +22,7 @@ std::unordered_map<TypeIndex, std::string> type_names = {
     {typeid(Binary),           "Binary"},
     {typeid(BinaryView),       "BinaryView"},
     {typeid(BinaryData),       "BinaryData"},
-    {typeid(ArrayData),        "ArrayData"},
+    {typeid(ArrayView),        "ArrayView"},
     {typeid(Function),         "Function"},
     {typeid(Variable),         "Variable"},
     {typeid(Sequence),         "Sequence"},
@@ -45,26 +45,26 @@ std::unordered_map<TypeIndex, std::string> type_names = {
 };
 
 
-Zip<std::string_view, TypeIndex> Buffer::formats = {
-    {"d", typeid(double)},
-    {"f", typeid(float)},
-    {"c", typeid(char)},
-    {"b", typeid(signed char)},
-    {"B", typeid(unsigned char)},
-    {"?", typeid(bool)},
-    {"h", typeid(short)},
-    {"H", typeid(unsigned short)},
-    {"i", typeid(int)},
-    {"I", typeid(unsigned int)},
-    {"l", typeid(long)},
-    {"L", typeid(unsigned long)},
-    {"q", typeid(long long)},
-    {"Q", typeid(unsigned long long)},
-    {"n", typeid(ssize_t)},
-    {"s", typeid(char[])},
-    {"p", typeid(char[])},
-    {"N", typeid(size_t)},
-    {"P", typeid(void *)}
+Zip<std::string_view, std::type_info const *> Buffer::formats = {
+    {"d", &typeid(double)},
+    {"f", &typeid(float)},
+    {"c", &typeid(char)},
+    {"b", &typeid(signed char)},
+    {"B", &typeid(unsigned char)},
+    {"?", &typeid(bool)},
+    {"h", &typeid(short)},
+    {"H", &typeid(unsigned short)},
+    {"i", &typeid(int)},
+    {"I", &typeid(unsigned int)},
+    {"l", &typeid(long)},
+    {"L", &typeid(unsigned long)},
+    {"q", &typeid(long long)},
+    {"Q", &typeid(unsigned long long)},
+    {"n", &typeid(ssize_t)},
+    {"s", &typeid(char[])},
+    {"p", &typeid(char[])},
+    {"N", &typeid(size_t)},
+    {"P", &typeid(void *)}
 };
 
 #define CPY_TMP(C, T) {Scalar::C, typeid(T), sizeof(T) * CHAR_BIT}

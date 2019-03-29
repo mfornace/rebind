@@ -56,7 +56,7 @@ void Variable::assign(Variable v) {
         DUMP("assign bad");
         throw std::invalid_argument("Cannot assign to const Variable");
     } else { // qual == Lvalue or Rvalue
-        DUMP("assigning reference", name(), &buff, pointer(), v.name());
+        DUMP("assigning reference", type(), &buff, pointer(), v.type());
         // qual, type, etc are unchanged
         act(ActionType::assign, pointer(), &v);
         if (v.has_value())
@@ -97,12 +97,8 @@ Variable Variable::request_var(Dispatch &msg, TypeIndex const &t, Qualifier q) c
             DUMP("response returned no value");
             msg.error("Did not respond with anything");
         } else if (v.type() != t)  {
-            DUMP("response gave wrong type", v.name(), t.name());
+            DUMP("response gave wrong type", v.type(), t);
             msg.error("Did not respond with correct type");
-            v.reset();
-        } else if (v.qualifier() != t.qualifier()) {
-            DUMP("response gave wrong qualifier", t.qualifier(), v.qualifier());
-            msg.error("Did not respond with correct qualifier");
             v.reset();
         }
     }
@@ -133,9 +129,7 @@ TypeData & Document::type(TypeIndex t, std::string s, Variable data) {
         types[t] = &(*it);
         return *p;
     }
-    DUMP(typeid(Type<decltype(it->second)>).name());
-    DUMP(t.name(), " ", s, " ", data.name());
-    DUMP(it->second.name(), it->second.qualifier());
+    DUMP(type_index<decltype(it->second)>(), " ", t, " ", s, " ", data.type(), " ", it->second.type());
     s.insert(0, "tried to declare both a non-type and a type for the same key ");
     throw std::runtime_error(std::move(s));
 }
@@ -145,13 +139,13 @@ Function & Document::find_method(TypeIndex t, std::string name) {
         if (auto p = it->second->second.target<TypeData &>())
             return p->methods.emplace(std::move(name), Function()).first->second;
         name.insert(0, "tried to declare a method ");
-        name.insert(name.size(), "for a non-type key ");
+        name += "for a non-type key ";
         name += it->second->first;
         throw std::runtime_error(std::move(name));
     }
     name.insert(0, "tried to declare a method ");
-    name.insert(name.size(), "for the undeclared type ");
-    name.insert(name.size(), t.name());
+    name += "for the undeclared type ";
+    name += t.name();
     throw std::runtime_error(std::move(name));
 }
 
@@ -169,9 +163,6 @@ Function & Document::find_function(std::string s) {
 #   include <cxxabi.h>
     namespace cpy::runtime {
         using namespace __cxxabiv1;
-        char const *unknown_exception_description() noexcept {
-            return abi::__cxa_current_exception_type()->name();
-        }
 
         std::string demangle(char const *s) {
             int status = 0;
@@ -181,11 +172,15 @@ Function & Document::find_function(std::string s) {
             std::free(buff);
             return out;
         }
+
+        char const *unknown_exception_description() noexcept {
+            return abi::__cxa_current_exception_type()->name();
+        }
     }
 #else
     namespace cpy::runtime {
-        char const *unknown_exception_description() noexcept {return "C++: unknown exception";}
-
         std::string demangle(char const *s) {return s;}
+
+        char const *unknown_exception_description() noexcept {return "C++: unknown exception";}
     }
 #endif

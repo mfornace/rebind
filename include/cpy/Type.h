@@ -73,19 +73,27 @@ public:
     std::type_info const & info() const noexcept {return p.first ? *p.first : typeid(void);}
     char const * name() const noexcept {return info().name();}
     constexpr Qualifier qualifier() const noexcept {return p.second;}
+
+    /// For now, hash code does not incorporate the qualifier
     std::size_t hash_code() const noexcept {return info().hash_code();}
 
     constexpr void set_qualifier(Qualifier q) noexcept {p.second = q;}
+
+    /// Return if the index is not empty
     constexpr explicit operator bool() const noexcept {return p.first;}
 
+    /// Test if this type equals another one, but ignoring all qualifiers
     template <class T>
     bool matches(Type<T> t={}) const noexcept {return p.first && typeid(T) == *p.first;}
 
+    /// Test if this type equals another one, but ignoring all qualifiers
     bool matches(TypeIndex const &t) const noexcept {return p.first == t.p.first;}
 
+    /// Test if this type equals a type specified as a compile time argument
     template <class T>
     bool equals(Type<T> t={}) const noexcept {return p.first && typeid(T) == *p.first && qualifier_of<T> == p.second;}
 
+    /// Add a qualifier obeying the usual C++ semantics
     constexpr TypeIndex add(Qualifier q) const noexcept {return {p.first, p.second == Value ? q : p.second};}
 
     /**************************************************************************************/
@@ -96,6 +104,8 @@ public:
     constexpr bool operator>(TypeIndex const &t) const {return p > t.p;}
     constexpr bool operator<=(TypeIndex const &t) const {return p <= t.p;}
     constexpr bool operator>=(TypeIndex const &t) const {return p >= t.p;}
+
+    /// Return a copy without any qualifiers
     constexpr TypeIndex operator+() const {return {p.first, Value};}
 };
 

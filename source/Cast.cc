@@ -36,7 +36,7 @@ Object list_cast(Variable &&ref, Object const &o, Object const &root) {
             DUMP("list index ", i);
             Object item = python_cast(std::move(v[i]), vt, root);
             if (!item) return {};
-            Py_INCREF(+item);
+            incref(+item);
             PyList_SET_ITEM(+list, i, +item);
         }
         return list;
@@ -104,9 +104,9 @@ Object variable_cast(Variable &&v, Object const &t) {
     auto o = Object::from((x == type_object<Variable>()) ?
         PyObject_CallObject(x, nullptr) : PyObject_CallMethod(x, "__new__", "O", x));
 
-    DUMP("making variable ", static_cast<int>(v.qualifier()), " ", v.name());
+    DUMP("making variable ", v.type());
     cast_object<Variable>(o) = std::move(v);
-    DUMP("made variable ", static_cast<int>(cast_object<Variable>(o).qualifier()));
+    DUMP("made variable ", v.type());
     return o;
 }
 
@@ -131,8 +131,8 @@ Object float_cast(Variable &&ref) {
 }
 
 Object str_cast(Variable &&ref) {
-    DUMP("converting ", ref.name(), " to str");
-    DUMP(static_cast<int>(ref.qualifier()), bool(ref.action()), ref.name());
+    DUMP("converting ", ref.type(), " to str");
+    DUMP(ref.type(), bool(ref.action()));
     if (auto p = ref.request<std::string_view>()) return as_object(std::move(*p));
     if (auto p = ref.request<std::string>()) return as_object(std::move(*p));
     if (auto p = ref.request<std::wstring_view>())
@@ -159,7 +159,7 @@ Object function_cast(Variable &&ref) {
 }
 
 Object memoryview_cast(Variable &&ref, Object const &root) {
-    if (auto p = ref.request<ArrayData>()) {
+    if (auto p = ref.request<ArrayView>()) {
         auto x = type_object<ArrayBuffer>();
         auto obj = Object::from(PyObject_CallObject(x, nullptr));
         cast_object<ArrayBuffer>(obj) = {std::move(*p), root};
@@ -200,7 +200,7 @@ Object python_cast(Variable &&v, Object const &t, Object const &root) {
             Dispatch msg;
             if (auto var = std::move(v).request_variable(msg, *p))
                 return variable_cast(std::move(var));
-            return type_error("could not convert object of type %s to type %s", v.name(), p->name());
+            return type_error("could not convert object of type %s to type %s", v.type().name(), p->name());
         } else if (is_union(t)) {
             return union_cast(std::move(v), t, root);
         } else {
