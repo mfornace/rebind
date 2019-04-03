@@ -39,7 +39,7 @@ bool implicit_response(Variable &out, TypeIndex const &idx, TargetQualifier q, T
     DUMP("implicit_response", typeid(Type<T &&>).name(), idx.name(), typeid(typename ImplicitConversions<std::decay_t<T>>::types).name(), q);
     return ImplicitConversions<std::decay_t<T>>::types::apply([&](auto ...ts) {
         static_assert((!decltype(is_same(+Type<T>(), +ts))::value && ...), "Implicit conversion creates a cycle");
-        return ((TypeIndex(ts) == idx && implicit_match(out, ts, q, static_cast<T &&>(t))) || ...)
+        return ((idx.matches(ts) && implicit_match(out, ts, q, static_cast<T &&>(t))) || ...)
             || (recurse_implicit(out, ts, idx, q, static_cast<T &&>(t)) || ...);
     });
 }
