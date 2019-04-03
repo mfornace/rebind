@@ -38,7 +38,7 @@ struct Request<std::optional<T>> {
 
 /******************************************************************************/
 
-template <class T, Qualifier Q>
+template <class T, TargetQualifier Q>
 struct Response<std::shared_ptr<T>, Q> {
     bool operator()(Variable &out, TypeIndex t, std::shared_ptr<T> const &p) const {
         DUMP("shared_ptr", t, type_index<T>(), bool(p), Q);
@@ -59,7 +59,7 @@ struct Request<std::shared_ptr<T>> {
 
 /******************************************************************************/
 
-template <Qualifier Q, class ...Ts>
+template <TargetQualifier Q, class ...Ts>
 struct Response<std::variant<Ts...>, Q> {
     template <class V>
     bool operator()(Variable &out, TypeIndex t, V &&v) const {
