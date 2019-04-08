@@ -157,7 +157,7 @@ struct ArrayBuffer {
 
     ArrayBuffer() noexcept = default;
     ArrayBuffer(ArrayView const &a, Object const &b) : n_elem(a.layout.n_elem()),
-        base(b), data(a.data.pointer), type(a.data.type), mutate(a.data.mutate) {
+        base(b), data(const_cast<void *>(a.data.pointer())), type(&a.data.type()), mutate(a.data.mutate()) {
         for (std::size_t i = 0; i != a.layout.depth(); ++i)
             shape_stride.emplace_back(a.layout.shape(i));
         auto const item = Buffer::itemsize(*type);
