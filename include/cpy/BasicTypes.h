@@ -32,6 +32,7 @@ bool array_major(B begin, E end) {
 }
 
 struct ArrayLayout {
+    /// Stores a list of shape, stride pairs
     using value_type = std::pair<std::size_t, std::ptrdiff_t>;
     Vector<value_type> contents;
 
@@ -54,15 +55,22 @@ struct ArrayLayout {
         return os;
     }
 
+    /// Return stride of given dimension
     std::ptrdiff_t stride(std::size_t i) const {return contents[i].second;}
+
+    /// Return shape[i] for a given dimension i
     std::size_t shape(std::size_t i) const {return contents[i].first;}
+
+    /// Synonym of shape(): Return shape[i] for a given dimension i
     std::size_t operator[](std::size_t i) const {return contents[i].first;}
 
     bool column_major() const {return array_major(contents.begin(), contents.end());}
     bool row_major() const {return array_major(contents.rbegin(), contents.rend());}
 
+    /// Number of dimensions
     std::size_t depth() const {return contents.size();}
 
+    /// Total number of elements
     std::size_t n_elem() const {
         std::size_t out = contents.empty() ? 0u : 1u;
         for (auto const &p : contents) out *= p.first;
@@ -72,12 +80,17 @@ struct ArrayLayout {
 
 /******************************************************************************/
 
-struct ArrayData {
-    void *pointer;
-    std::type_info const *type;
-    bool mutate;
+class ArrayData {
+    void *ptr;
+    std::type_info const *t;
+    bool mut;
 
-    ArrayData(void *p, std::type_info const *t, bool mut) : type(t), pointer(p), mutate(mut) {}
+public:
+    void const *pointer() const {return ptr;}
+    bool mutate() const {return mut;}
+    std::type_info const &type() const {return t ? *t : typeid(void);}
+
+    ArrayData(void *p, std::type_info const *t, bool mut) : t(t), ptr(p), mut(mut) {}
 
     template <class T>
     ArrayData(T *t) : ArrayData(const_cast<std::remove_cv_t<T> *>(static_cast<T const *>(t)),
@@ -85,14 +98,14 @@ struct ArrayData {
 
     template <class T>
     T * target() const {
-        if (!mutate && !std::is_const<T>::value) return nullptr;
-        if (type != &typeid(std::remove_cv_t<T>)) return nullptr;
-        return static_cast<T *>(pointer);
+        if (!mut && !std::is_const<T>::value) return nullptr;
+        if (type() != typeid(std::remove_cv_t<T>)) return nullptr;
+        return static_cast<T *>(ptr);
     }
 
     friend std::ostream & operator<<(std::ostream &os, ArrayData const &d) {
-        if (!d.type) return os << "ArrayData(<empty>)";
-        return os << "ArrayData(" << TypeIndex(*d.type, d.mutate ? Const : Lvalue) << ")";
+        if (!d.t) return os << "ArrayData(<empty>)";
+        return os << "ArrayData(" << TypeIndex(*d.t, d.mut ? Const : Lvalue) << ")";
     }
 };
 
