@@ -10,11 +10,11 @@ struct Document;
 
 struct NoRender {void operator()(Document &) const {}};
 
+void render_default(Document &, std::type_info const &);
+
 template <class T, class=void>
 struct Renderer {
-    void operator()(Document &) const {
-        if (Debug) std::cout << "no render " << typeid(T).name() << std::endl;
-    }
+    void operator()(Document &doc) const {render_default(doc, typeid(T));}
 };
 
 /******************************************************************************/

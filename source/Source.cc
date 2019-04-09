@@ -10,6 +10,11 @@ Document & document() noexcept {
     static Document static_document;
     return static_document;
 }
+
+void render_default(Document &, std::type_info const &t) {
+    if (Debug) std::cout << "Not rendering type " << t.name() << std::endl;
+}
+
 /******************************************************************************/
 
 void lvalue_fails(Variable const &v, Dispatch &msg, TypeIndex t) {

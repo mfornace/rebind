@@ -242,19 +242,27 @@ def render_function(fun, old, globalns={}, localns={}):
 
     if '_old' in sig.parameters:
         raise ValueError('Function {} was already wrapped'.format(old))
+
     if has_fun:
         def wrap(*args, _orig=fun, _bind=sig.bind, _old=old, gil=None, signature=None, **kwargs):
             bound = _bind(*args, **kwargs)
             bound.apply_defaults()
-            args = (a if t is empty or a is None else render_callback(a, t) for a, t in zip(bound.arguments.values(), types))
-            return _old(*args, _fun_=_orig, **bound.kwargs)
+            # Convert args and kwargs separately
+            args = (a if t is empty or a is None else render_callback(a, t) for a, t in zip(bound.args, types))
+            kwargs = {k: (v if t is empty or v is None else render_callback(v, t)) for (k, v), t in zip(bound.kwargs.items(), types[len(bound.args):])}
+            return _old(*args, _fun_=_orig, **kwargs)
     else:
         ret = sig.return_annotation
         assert 'Variable' in globalns
 
+        for k, p in sig.parameters.items():
+            if p.kind == p.VAR_KEYWORD or p.kind == p.VAR_POSITIONAL:
+                raise TypeError('Parameter {} cannot be variadic (e.g. like *args or **kwargs)'.format(k))
+
         def wrap(*args, _orig=fun, _bind=sig.bind, _return=ret, gil=None, signature=None, **kwargs):
             bound = _bind(*args, **kwargs)
             bound.apply_defaults()
+            # Convert any keyword arguments into positional arguments
             out = _orig(*(render_callback(a, t) if isinstance(t, tuple) else a for a, t in zip(bound.arguments.values(), types)))
             if _return is empty:
                 return out # no cast
