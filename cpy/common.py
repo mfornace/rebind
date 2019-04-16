@@ -14,14 +14,20 @@ class Scalar(enum.IntEnum):
 
 ################################################################################
 
+scalar_types = {
+    'float32': (Scalar.Float, 32),
+    'float64': (Scalar.Float, 64),
+    'uint16':  (Scalar.Unsigned, 16),
+    'uint32':  (Scalar.Unsigned, 32),
+    'uint64':  (Scalar.Unsigned, 64),
+    'int16':   (Scalar.Signed, 16),
+    'int32':   (Scalar.Signed, 32),
+    'int64':   (Scalar.Signed, 64)
+}
+
 def find_scalars(info):
     find = lambda x, n: next(t for c, t, s in info if c == x and s == n)
-    return {'float32': find(Scalar.Float, 32),
-            'float64': find(Scalar.Float, 64),
-            'uint32':  find(Scalar.Unsigned, 32),
-            'uint64':  find(Scalar.Unsigned, 64),
-            'int32':   find(Scalar.Signed, 32),
-            'int64':   find(Scalar.Signed, 64)}
+    return {k: find(x, n) for k, (x, n) in scalar_types.items()}
 
 ################################################################################
 

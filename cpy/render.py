@@ -209,8 +209,11 @@ def render_callback(_orig, _types):
         return _orig(*(a.cast(t) for a, t in zip(args, _types)))
     return callback
 
-if not hasattr(typing, 'CallableMeta'):
-    raise ImportError('Python 3.7 has a bug where typing.CallableMeta is missing')
+def is_callable(t):
+    t = getattr(t, '__origin__', None)
+    return t is typing.Callable or t is collections.abc.Callable
+# if not hasattr(typing, 'CallableMeta'):
+#     raise ImportError('Python 3.7 has a bug where typing.CallableMeta is missing')
 
 ################################################################################
 
@@ -236,7 +239,7 @@ def render_function(fun, old, globalns={}, localns={}):
     if has_fun:
         sig = common.discard_parameter(sig, '_fun_')
 
-    process = lambda t: tuple(map(ev, t.__args__[:-1])) if isinstance(t, typing.CallableMeta) else ev(t)
+    process = lambda t: tuple(map(ev, t.__args__[:-1])) if is_callable(t) else ev(t)
     types = [process(p.annotation) for p in sig.parameters.values()]
     empty = inspect.Parameter.empty
 
