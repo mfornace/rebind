@@ -220,7 +220,7 @@ def render_function(fun, old, globalns={}, localns={}):
         sig = common.discard_parameter(sig, '_fun_')
 
     process = lambda t: tuple(map(ev, t.__args__[:-1])) if is_callable(t) else ev(t)
-    types = [process(p.annotation) for p in sig.parameters.values()]
+    types = lambda: [process(p.annotation) for p in sig.parameters.values()]
     empty = inspect.Parameter.empty
 
     if '_old' in sig.parameters:
@@ -231,8 +231,8 @@ def render_function(fun, old, globalns={}, localns={}):
             bound = _bind(*args, **kwargs)
             bound.apply_defaults()
             # Convert args and kwargs separately
-            args = (a if t is empty or a is None else render_callback(a, t) for a, t in zip(bound.args, types))
-            kwargs = {k: (v if t is empty or v is None else render_callback(v, t)) for (k, v), t in zip(bound.kwargs.items(), types[len(bound.args):])}
+            args = (a if t is empty or a is None else render_callback(a, t) for a, t in zip(bound.args, types()))
+            kwargs = {k: (v if t is empty or v is None else render_callback(v, t)) for (k, v), t in zip(bound.kwargs.items(), types()[len(bound.args):])}
             return _old(*args, _fun_=_orig, **kwargs)
     else:
         ret = sig.return_annotation
@@ -246,7 +246,7 @@ def render_function(fun, old, globalns={}, localns={}):
             bound = _bind(*args, **kwargs)
             bound.apply_defaults()
             # Convert any keyword arguments into positional arguments
-            out = _orig(*(render_callback(a, t) if isinstance(t, tuple) else a for a, t in zip(bound.arguments.values(), types)))
+            out = _orig(*(render_callback(a, t) if isinstance(t, tuple) else a for a, t in zip(bound.arguments.values(), types())))
             if _return is empty:
                 return out # no cast
             if _return is None or _return is type(None):
