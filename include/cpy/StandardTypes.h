@@ -50,7 +50,7 @@ template <class T>
 struct Request<std::shared_ptr<T>> {
     std::optional<std::shared_ptr<T>> operator()(Variable const &v, Dispatch &msg) const {
         std::optional<std::shared_ptr<T>> out;
-        if (!v) out.emplace();
+        if (!v || v.request<std::nullptr_t>()) out.emplace();
         else if (auto p = v.request<std::remove_cv_t<T>>(msg))
             out.emplace(std::make_shared<T>(std::move(*p)));
         return out;

@@ -118,6 +118,19 @@ struct ArrayView {
 
 /******************************************************************************/
 
+
+template <class T>
+struct Request<T *> {
+    std::optional<T *> operator()(Variable const &v, Dispatch &msg) const {
+        std::optional<T *> out;
+        if (!v || v.request<std::nullptr_t>()) out.emplace(nullptr);
+        else if (auto p = v.request<T &>(msg)) out.emplace(std::addressof(*p));
+        return out;
+    }
+};
+
+/******************************************************************************/
+
 template <>
 struct Response<char const *> {
     bool operator()(Variable &out, TypeIndex const &t, char const *s) const {
@@ -131,6 +144,19 @@ struct Response<char const *> {
         } else return false;
     }
 };
+
+template <>
+struct Request<char const *> {
+    std::optional<char const *> operator()(Variable const &v, Dispatch &msg) const {
+        std::optional<char const *> out;
+        if (!v || v.request<std::nullptr_t>()) out.emplace(nullptr);
+        else if (auto p = v.request<std::string_view>(msg)) out.emplace(p->data());
+        else if (auto p = v.request<char const &>(msg)) out.emplace(std::addressof(*p));
+        return out;
+    }
+};
+
+/******************************************************************************/
 
 using Binary = std::basic_string<unsigned char>;
 
