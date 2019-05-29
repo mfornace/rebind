@@ -244,6 +244,21 @@ PyObject * var_set_ward(PyObject *self, PyObject *args) noexcept {
     });
 }
 
+PyObject * var_from(PyObject *cls, PyObject *obj) noexcept {
+    return raw_object([=]() -> Object {
+        if (PyObject_TypeCheck(obj, reinterpret_cast<PyTypeObject *>(cls))) {
+            // if already correct type
+            return {obj, true};
+        }
+        if (auto p = cast_if<Variable>(obj)) {
+            // if a Variable try .cast
+            return python_cast(static_cast<Variable const &>(*p).reference(), Object(cls, true), Object(obj, true));
+        }
+        // Try cls.__init__(obj)
+        return Object::from(PyObject_CallFunctionObjArgs(cls, obj, nullptr));
+    });
+}
+
 PyNumberMethods VarNumberMethods = {
     .nb_bool = static_cast<inquiry>(var_bool),
 };
@@ -259,6 +274,7 @@ PyMethodDef VarMethods[] = {
     {"type",          static_cast<PyCFunction>(var_type),          METH_NOARGS,  "return TypeIndex of the held C++ object"},
     {"has_value",     static_cast<PyCFunction>(var_has_value),     METH_VARARGS, "return if a C++ object is being held"},
     {"cast",          static_cast<PyCFunction>(var_cast),          METH_VARARGS, "cast to a given Python type"},
+    {"from_object",   static_cast<PyCFunction>(var_from),          METH_CLASS | METH_O, "cast an object to a given Python type"},
     {nullptr, nullptr, 0, nullptr}
 };
 
