@@ -173,11 +173,17 @@ bool is_structured_type(PyObject *type, PyObject *origin) {
         // in this case, origin may or may not be a PyTypeObject *
         return origin == +Object(PyObject_GetAttrString(type, "__origin__"), false);
     } else {
-        // in this case, origin is always a PyTypeObject *
-        // first: case like typing.Union: type(typing.Union[int, float] == typing.Union)
-        // second: case like typing.Tuple: issubclass(typing.Tuple[int, float], tuple)
-        return (+type)->ob_type == reinterpret_cast<PyTypeObject *>(origin)
-            || is_subclass(reinterpret_cast<PyTypeObject *>(type), reinterpret_cast<PyTypeObject *>(origin));
+        // case like typing.Union: type(typing.Union[int, float] == typing.Union)
+        return (+type)->ob_type == reinterpret_cast<PyTypeObject *>(origin);
+    }
+}
+
+bool is_structured_type(PyObject *type, PyTypeObject *origin) {
+    if constexpr(PythonVersion >= Version(3, 7, 0)) {
+        return reinterpret_cast<PyObject *>(origin) == +Object(PyObject_GetAttrString(type, "__origin__"), false);
+    } else {
+        // case like typing.Tuple: issubclass(typing.Tuple[int, float], tuple)
+        return is_subclass(reinterpret_cast<PyTypeObject *>(type), reinterpret_cast<PyTypeObject *>(origin));
     }
 }
 
@@ -222,9 +228,9 @@ Object try_python_cast(Variable &&v, Object const &t, Object const &root) {
             return type_error("could not convert object of type %s to type %s", v.type().name(), p->name());
         }
         else if (is_structured_type(t, UnionType))                                   return union_cast(std::move(v), t, root);
-        else if (is_structured_type(t, reinterpret_cast<PyObject *>(&PyList_Type)))  return list_cast(std::move(v), t, root);       // List[T] for some T (compound type)
-        else if (is_structured_type(t, reinterpret_cast<PyObject *>(&PyTuple_Type))) return tuple_cast(std::move(v), t, root);      // Tuple[Ts...] for some Ts... (compound type)
-        else if (is_structured_type(t, reinterpret_cast<PyObject *>(&PyDict_Type)))  return dict_cast(std::move(v), t, root);       // Dict[K, V] for some K, V (compound type)
+        else if (is_structured_type(t, &PyList_Type))  return list_cast(std::move(v), t, root);       // List[T] for some T (compound type)
+        else if (is_structured_type(t, &PyTuple_Type)) return tuple_cast(std::move(v), t, root);      // Tuple[Ts...] for some Ts... (compound type)
+        else if (is_structured_type(t, &PyDict_Type))  return dict_cast(std::move(v), t, root);       // Dict[K, V] for some K, V (compound type)
     }
 
     DUMP("custom convert ", output_conversions.size());
