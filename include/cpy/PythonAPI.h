@@ -20,7 +20,11 @@
 
 namespace cpy {
 
-extern PyObject *TypeErrorObject;
+using Version = std::tuple<unsigned, unsigned, unsigned>;
+static constexpr Version PythonVersion{PY_MAJOR_VERSION, PY_MINOR_VERSION, PY_MICRO_VERSION};
+
+void initialize_global_objects();
+void clear_global_objects();
 
 extern std::unordered_map<TypeIndex, std::string> type_names;
 
@@ -33,6 +37,8 @@ inline void incref(PyObject *o) noexcept {Py_INCREF(o);}
 inline void decref(PyObject *o) noexcept {Py_DECREF(o);}
 inline void xincref(PyObject *o) noexcept {Py_XINCREF(o);}
 inline void xdecref(PyObject *o) noexcept {Py_XDECREF(o);}
+
+void print(PyObject *o);
 
 /******************************************************************************/
 
@@ -62,9 +68,6 @@ struct PythonError : ClientError {
 };
 
 PythonError python_error(std::nullptr_t=nullptr) noexcept;
-
-template <class ...Ts>
-std::nullptr_t type_error(char const *s, Ts ...ts) {PyErr_Format(TypeErrorObject, s, ts...); return nullptr;}
 
 /******************************************************************************/
 
@@ -96,9 +99,13 @@ struct Object {
     ~Object() {xdecref(ptr);}
 };
 
+extern Object TypeError, UnionType;
 extern std::map<Object, Object> output_conversions;
 extern std::map<Object, Object> input_conversions;
 extern std::unordered_map<std::type_index, Object> python_types;
+
+template <class ...Ts>
+std::nullptr_t type_error(char const *s, Ts ...ts) {PyErr_Format(TypeError, s, ts...); return nullptr;}
 
 struct Var : Variable {
     using Variable::Variable;
@@ -378,10 +385,10 @@ PyObject *raw_object(F &&f) noexcept {
         PyErr_SetString(PyExc_MemoryError, "C++: out of memory (std::bad_alloc)");
     } catch (WrongNumber const &e) {
         unsigned int n0 = e.expected, n = e.received;
-        PyErr_Format(TypeErrorObject, "C++: wrong number of arguments (expected %u, got %u)", n0, n);
+        PyErr_Format(TypeError, "C++: wrong number of arguments (expected %u, got %u)", n0, n);
     } catch (WrongType const &e) {
-        try {PyErr_SetString(TypeErrorObject, wrong_type_message(e, "C++: ").c_str());}
-        catch(...) {PyErr_SetString(TypeErrorObject, e.what());}
+        try {PyErr_SetString(TypeError, wrong_type_message(e, "C++: ").c_str());}
+        catch(...) {PyErr_SetString(TypeError, e.what());}
     } catch (std::exception const &e) {
         if (!PyErr_Occurred())
             PyErr_Format(PyExc_RuntimeError, "C++: %s", e.what());

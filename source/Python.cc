@@ -11,24 +11,32 @@ namespace cpy {
 
 /******************************************************************************/
 
+std::pair<Object, char const *> str(PyObject *o) {
+    std::pair<Object, char const *> out({PyObject_Str(o), false}, nullptr);
+    if (out.first) {
+#       if PY_MAJOR_VERSION > 2
+            out.second = PyUnicode_AsUTF8(out.first); // PyErr_Clear
+#       else
+            out.second = PyString_AsString(out.first);
+#       endif
+    }
+    return out;
+}
+
+void print(PyObject *o) {
+    auto p = str(o);
+    if (p.second) std::cout << p.second << std::endl;
+}
+
 // Assuming a Python exception has been raised, fetch its string and put it in
 // a C++ exception type. Does not clear the Python error status.
 PythonError python_error(std::nullptr_t) noexcept {
     PyObject *type, *value, *traceback;
     PyErr_Fetch(&type, &value, &traceback);
     if (!type) return PythonError("Expected Python exception to be set");
-    PyObject *str = PyObject_Str(value);
-    char const *c = nullptr;
-    if (str) {
-#       if PY_MAJOR_VERSION > 2
-            c = PyUnicode_AsUTF8(str); // PyErr_Clear
-#       else
-            c = PyString_AsString(str);
-#       endif
-        Py_DECREF(str);
-    }
+    auto p = str(value);
     PyErr_Restore(type, value, traceback);
-    return PythonError(c ? c : "Python error with failed str()");
+    return PythonError(p.second ? p.second : "Python error with failed str()");
 }
 
 /******************************************************************************/

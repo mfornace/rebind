@@ -392,7 +392,7 @@ PyObject * function_call(PyObject *self, PyObject *pyargs, PyObject *kws) noexce
             }
         }
         // Raise an exception with a list of the messages
-        return PyErr_SetObject(TypeErrorObject, +errors), nullptr;
+        return PyErr_SetObject(TypeError, +errors), nullptr;
     });
 }
 
@@ -460,6 +460,8 @@ bool attach(Object const &m, char const *name, Object o) noexcept {
 /******************************************************************************/
 
 Object initialize(Document const &doc) {
+    initialize_global_objects();
+
     auto m = Object::from(PyDict_New());
     for (auto const &p : doc.types)
         if (p.second) type_names.emplace(p.first, p.first.name());//p.second->first);
@@ -494,17 +496,10 @@ Object initialize(Document const &doc) {
         && attach(m, "set_input_conversion", as_object(Function::of([](Object t, Object o) {
             input_conversions.insert_or_assign(std::move(t), std::move(o));
         })))
-        && attach(m, "clear_global_objects", as_object(Function::of([] {
-            input_conversions.clear();
-            output_conversions.clear();
-            python_types.clear();
-        })))
+        && attach(m, "clear_global_objects", as_object(Function::of(&clear_global_objects)))
         && attach(m, "set_debug", as_object(Function::of([](bool b) {return std::exchange(Debug, b);})))
         && attach(m, "debug", as_object(Function::of([] {return Debug;})))
-        && attach(m, "set_type_error", as_object(Function::of([](Object o) {
-            // Add a ward in global storage to ensure the lifetime of this raw object
-            TypeErrorObject = +(python_types[typeid(DispatchError)] = std::move(o));
-        })))
+        && attach(m, "set_type_error", as_object(Function::of([](Object o) {TypeError = std::move(o);})))
         && attach(m, "set_type", as_object(Function::of([](TypeIndex idx, Object o) {
             DUMP("set_type in");
             python_types.emplace(idx.info(), std::move(o));

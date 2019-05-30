@@ -2,12 +2,29 @@
 
 namespace cpy {
 
-PyObject *TypeErrorObject = PyExc_TypeError;
+Object UnionType, TypeError;
 
 std::map<Object, Object> output_conversions{};
 std::map<Object, Object> input_conversions{};
 
 std::unordered_map<std::type_index, Object> python_types{};
+
+
+void initialize_global_objects() {
+    TypeError = {PyExc_TypeError, true};
+
+    auto t = Object::from(PyImport_ImportModule("typing"));
+    UnionType = Object::from(PyObject_GetAttrString(t, "Union"));
+    // (+u)->ob_type
+}
+
+void clear_global_objects() {
+    input_conversions.clear();
+    output_conversions.clear();
+    python_types.clear();
+    UnionType = nullptr;
+    TypeError = nullptr;
+}
 
 std::unordered_map<TypeIndex, std::string> type_names = {
     {typeid(void),             "void"},

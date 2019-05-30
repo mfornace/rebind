@@ -167,19 +167,18 @@ Object memoryview_cast(Variable &&ref, Object const &root) {
     } else return {};
 }
 
-// Convert C++ Variable to a requested Python type
-// First explicit types are checked:
-// None, object, bool, int, float, str, bytes, TypeIndex, list, tuple, dict, Variable, Function, memoryview
-// Then, the output_conversions map is queried for Python function callable with the Variable
-
-bool is_union(Object const &o) {
-    static PyTypeObject *union_type{nullptr};
-    if (!union_type) {
-        auto o = Object::from(PyImport_ImportModule("typing"));
-        auto u = Object::from(PyObject_GetAttrString(o, "Union"));
-        union_type = (+u)->ob_type;
+// condition: PyType_CheckExact(type) is false
+bool is_structured_type(PyObject *type, PyObject *origin) {
+    if constexpr(PythonVersion >= Version(3, 7, 0)) {
+        // in this case, origin may or may not be a PyTypeObject *
+        return origin == +Object(PyObject_GetAttrString(type, "__origin__"), false);
+    } else {
+        // in this case, origin is always a PyTypeObject *
+        // first: case like typing.Union: type(typing.Union[int, float] == typing.Union)
+        // second: case like typing.Tuple: issubclass(typing.Tuple[int, float], tuple)
+        return (+type)->ob_type == reinterpret_cast<PyTypeObject *>(origin)
+            || is_subclass(reinterpret_cast<PyTypeObject *>(type), reinterpret_cast<PyTypeObject *>(origin));
     }
-    return (+o)->ob_type == union_type;
 }
 
 Object union_cast(Variable &&v, Object const &t, Object const &root) {
@@ -194,50 +193,56 @@ Object union_cast(Variable &&v, Object const &t, Object const &root) {
     return type_error("cannot convert value to %R from type %S", +t, +type_index_cast(v.type()));
 }
 
-Object python_cast(Variable &&v, Object const &t, Object const &root) {
-    if (!PyType_Check(+t)) {
-        if (auto p = cast_if<TypeIndex>(t)) {
+
+// Convert C++ Variable to a requested Python type
+// First explicit types are checked:
+// None, object, bool, int, float, str, bytes, TypeIndex, list, tuple, dict, Variable, Function, memoryview
+// Then, the output_conversions map is queried for Python function callable with the Variable
+Object try_python_cast(Variable &&v, Object const &t, Object const &root) {
+    if (PyType_CheckExact(+t)) {
+        auto type = reinterpret_cast<PyTypeObject *>(+t);
+        DUMP("is Variable ", is_subclass(type, type_object<Variable>()));
+        if (+type == Py_None->ob_type || +t == Py_None)        return {Py_None, true};                        // NoneType
+        else if (type == &PyBaseObject_Type)                   return as_deduced_object(std::move(v));        // object
+        else if (is_subclass(type, &PyBool_Type))              return bool_cast(std::move(v));                // bool
+        else if (is_subclass(type, &PyLong_Type))              return int_cast(std::move(v));                 // int
+        else if (is_subclass(type, &PyFloat_Type))             return float_cast(std::move(v));               // float
+        else if (is_subclass(type, &PyUnicode_Type))           return str_cast(std::move(v));                 // str
+        else if (is_subclass(type, &PyBytes_Type))             return bytes_cast(std::move(v));               // bytes
+        else if (is_subclass(type, type_object<TypeIndex>()))  return type_index_cast(std::move(v));          // type(TypeIndex)
+        else if (is_subclass(type, type_object<Variable>()))   return variable_cast(std::move(v), t);         // Variable
+        else if (is_subclass(type, type_object<Function>()))   return function_cast(std::move(v));            // Function
+        else if (is_subclass(type, &PyFunction_Type))          return function_cast(std::move(v));            // Function
+        else if (is_subclass(type, &PyMemoryView_Type))        return memoryview_cast(std::move(v), root);    // memory_view
+    } else {
+        if (auto p = cast_if<TypeIndex>(t)) { // TypeIndex
             Dispatch msg;
             if (auto var = std::move(v).request_variable(msg, *p))
                 return variable_cast(std::move(var));
             return type_error("could not convert object of type %s to type %s", v.type().name(), p->name());
-        } else if (is_union(t)) {
-            return union_cast(std::move(v), t, root);
-        } else {
-            return type_error("expected type object but got %R", (+t)->ob_type);
         }
+        else if (is_structured_type(t, UnionType))                                   return union_cast(std::move(v), t, root);
+        else if (is_structured_type(t, reinterpret_cast<PyObject *>(&PyList_Type)))  return list_cast(std::move(v), t, root);       // List[T] for some T (compound type)
+        else if (is_structured_type(t, reinterpret_cast<PyObject *>(&PyTuple_Type))) return tuple_cast(std::move(v), t, root);      // Tuple[Ts...] for some Ts... (compound type)
+        else if (is_structured_type(t, reinterpret_cast<PyObject *>(&PyDict_Type)))  return dict_cast(std::move(v), t, root);       // Dict[K, V] for some K, V (compound type)
     }
-    auto type = reinterpret_cast<PyTypeObject *>(+t);
-    Object out;
-    DUMP("is Variable ", is_subclass(type, type_object<Variable>()));
-    if (+type == Py_None->ob_type || +t == Py_None) return {Py_None, true};
-    else if (type == &PyBaseObject_Type)                        out = as_deduced_object(std::move(v));
-    else if (is_subclass(type, &PyBool_Type))                   out = bool_cast(std::move(v));
-    else if (is_subclass(type, &PyLong_Type))                   out = int_cast(std::move(v));
-    else if (is_subclass(type, &PyFloat_Type))                  out = float_cast(std::move(v));
-    else if (is_subclass(type, &PyUnicode_Type))                out = str_cast(std::move(v));
-    else if (is_subclass(type, &PyBytes_Type))                  out = bytes_cast(std::move(v));
-    else if (is_subclass(type, type_object<TypeIndex>())) out = type_index_cast(std::move(v));
-    else if (is_subclass(type, &PyList_Type))                   out = list_cast(std::move(v), t, root);
-    else if (is_subclass(type, &PyTuple_Type))                  out = tuple_cast(std::move(v), t, root);
-    else if (is_subclass(type, &PyDict_Type))                   out = dict_cast(std::move(v), t, root);
-    else if (is_subclass(type, type_object<Variable>()))        out = variable_cast(std::move(v), t);
-    else if (is_subclass(type, type_object<Function>()))        out = function_cast(std::move(v));
-    else if (is_subclass(type, &PyFunction_Type))               out = function_cast(std::move(v));
-    else if (is_subclass(type, &PyMemoryView_Type))             out = memoryview_cast(std::move(v), root);
-    else {
-        DUMP("custom convert ", output_conversions.size());
-        if (auto p = output_conversions.find(t); p != output_conversions.end()) {
-            DUMP(" conversion ");
-            Object o = variable_cast(std::move(v));
-            DUMP(" did something ", bool(o));
-            if (!o) return type_error("could not cast Variable to Python object");
-            DUMP("calling function");
-            auto &obj = static_cast<Var &>(cast_object<Variable>(o)).ward;
-            if (!obj) obj = root;
-            return Object::from(PyObject_CallFunctionObjArgs(+p->second, +o, nullptr));
-        }
+
+    DUMP("custom convert ", output_conversions.size());
+    if (auto p = output_conversions.find(t); p != output_conversions.end()) {
+        DUMP(" conversion ");
+        Object o = variable_cast(std::move(v));
+        if (!o) return type_error("could not cast Variable to Python object");
+        DUMP("calling function");
+        auto &obj = static_cast<Var &>(cast_object<Variable>(o)).ward;
+        if (!obj) obj = root;
+        return Object::from(PyObject_CallFunctionObjArgs(+p->second, +o, nullptr));
     }
+
+    return nullptr;
+}
+
+Object python_cast(Variable &&v, Object const &t, Object const &root) {
+    Object out = try_python_cast(std::move(v), t, root);
     if (!out) return type_error("cannot convert value to type %R from type %S", +t, +type_index_cast(v.type()));
     return out;
 }
