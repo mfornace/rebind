@@ -100,6 +100,7 @@ def render_member(key, value, old, globalns={}, localns={}):
 ################################################################################
 
 def copy(self):
+    '''Make a copy of self using the C++ copy constructor'''
     other = self.__new__(type(self))
     other.copy_from(self)
     return other
@@ -107,6 +108,7 @@ def copy(self):
 ################################################################################
 
 def find_class(mod, name):
+    '''Find an already declared class and return its deduced properties'''
     try:
         old = getattr(mod, name)
     except AttributeError:
@@ -182,14 +184,16 @@ def render_object(pkg, key, value, lookup={}):
 
 ################################################################################
 
-def render_callback(_orig, _types):
-    if not callable(_orig):
-        return _orig
+def make_callback(origin, types):
+    '''Make a callback that calls the wrapped one with arguments casted to the given types'''
+    if not callable(origin):
+        return origin
     def callback(*args):
-        return _orig(*(a.cast(t) for a, t in zip(args, _types)))
+        return origin(*(a.cast(t) for a, t in zip(args, types)))
     return callback
 
-def is_callable(t):
+def is_callable_type(t):
+    '''Detect whether a parameter to a C++ function is a callback'''
     t = getattr(t, '__origin__', None)
     return t is typing.Callable or t is collections.abc.Callable
 # if not hasattr(typing, 'CallableMeta'):
@@ -211,15 +215,15 @@ def render_function(fun, old, globalns={}, localns={}):
 
     if isinstance(old, property):
         return property(render_function(fun, old.fget))
-    ev = lambda t: common.eval_type(t, globalns, localns)
 
+    ev = lambda t: common.eval_type(t, globalns, localns)
     sig = inspect.signature(old)
 
     has_fun = '_fun_' in sig.parameters
     if has_fun:
         sig = common.discard_parameter(sig, '_fun_')
 
-    process = lambda t: tuple(map(ev, t.__args__[:-1])) if is_callable(t) else ev(t)
+    process = lambda t: tuple(map(ev, t.__args__[:-1])) if is_callable_type(t) else ev(t)
     types = lambda: [process(p.annotation) for p in sig.parameters.values()]
     empty = inspect.Parameter.empty
 
@@ -231,8 +235,8 @@ def render_function(fun, old, globalns={}, localns={}):
             bound = _bind(*args, **kwargs)
             bound.apply_defaults()
             # Convert args and kwargs separately
-            args = (a if t is empty or a is None else render_callback(a, t) for a, t in zip(bound.args, types()))
-            kwargs = {k: (v if t is empty or v is None else render_callback(v, t)) for (k, v), t in zip(bound.kwargs.items(), types()[len(bound.args):])}
+            args = (a if t is empty or a is None else make_callback(a, t) for a, t in zip(bound.args, types()))
+            kwargs = {k: (v if t is empty or v is None else make_callback(v, t)) for (k, v), t in zip(bound.kwargs.items(), types()[len(bound.args):])}
             return _old(*args, _fun_=_orig, **kwargs)
     else:
         ret = sig.return_annotation
@@ -246,7 +250,7 @@ def render_function(fun, old, globalns={}, localns={}):
             bound = _bind(*args, **kwargs)
             bound.apply_defaults()
             # Convert any keyword arguments into positional arguments
-            out = _orig(*(render_callback(a, t) if isinstance(t, tuple) else a for a, t in zip(bound.arguments.values(), types())))
+            out = _orig(*(make_callback(a, t) if isinstance(t, tuple) else a for a, t in zip(bound.arguments.values(), types())))
             if _return is empty:
                 return out # no cast
             if _return is None or _return is type(None):
