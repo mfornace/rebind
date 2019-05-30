@@ -135,7 +135,7 @@ struct Request<T const &, SFINAE> {
         if (auto p = v.request<T &>(msg)) return p;
         DUMP("trying temporary const & storage ", typeid(T).name());
         if (auto p = v.request<T>(msg)) return msg.store(std::move(*p));
-        return msg.error("could not bind to const l_qualifier reference", typeid(T)), nullptr;
+        return msg.error("could not bind to const lvalue reference", typeid(T)), nullptr;
     }
 };
 
