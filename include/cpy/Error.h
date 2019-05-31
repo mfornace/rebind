@@ -15,6 +15,7 @@ namespace cpy {
 
 /******************************************************************************/
 
+/// Exception for something the API user caused
 struct ClientError : std::exception {
     std::string_view message;
     explicit ClientError(std::string_view const &s) noexcept : message(s) {}
@@ -29,6 +30,7 @@ struct DispatchError : std::invalid_argument {
 
 /******************************************************************************/
 
+/// Exception for wrong number of arguments
 struct WrongNumber : DispatchError {
     unsigned int expected, received;
     WrongNumber(unsigned int n0, unsigned int n)
@@ -37,6 +39,7 @@ struct WrongNumber : DispatchError {
 
 /******************************************************************************/
 
+/// Exception for wrong type of an argument
 struct WrongType : DispatchError {
     std::vector<unsigned int> indices;
     std::string source;
@@ -62,16 +65,19 @@ struct Dispatch {
 
     std::nullopt_t error() noexcept {return std::nullopt;}
 
+    /// Set error information and return std::nullopt for convenience
     std::nullopt_t error(std::string msg) noexcept {
         scope = std::move(msg);
         return std::nullopt;
     }
 
+    /// Set error information and return std::nullopt for convenience
     std::nullopt_t error(TypeIndex d) noexcept {
         dest = std::move(d);
         return std::nullopt;
     }
 
+    /// Set error information and return std::nullopt for convenience
     std::nullopt_t error(std::string msg, TypeIndex d, int e=-1, int r=-1) noexcept {
         scope = std::move(msg);
         dest = std::move(d);
@@ -80,13 +86,14 @@ struct Dispatch {
         return std::nullopt;
     }
 
+    /// Create exception from the current scopes and messages
     WrongType exception() && noexcept {
         return {std::move(scope), std::move(indices), std::move(source), std::move(dest), index, expected, received};
     }
 
     /// Store a value which will last the lifetime of a conversion request. Return its address
     template <class T>
-    auto store(T &&t) {
+    unqualified<T> * store(T &&t) {
         return std::addressof(storage.emplace_back().emplace<unqualified<T>>(static_cast<T &&>(t)));
     }
 
