@@ -22,8 +22,8 @@ template <class From, class To> using copy_qualifier = typename copy_qualifier_t
 template <class ...Ts>
 void dump(char const *s, int n, Ts const &...ts) {
     if (!Debug) return;
-    std::cout << s << ":" << n << " ";
-    int x[] = {(std::cout << ts << " ", 0)...};
+    std::cout << '[' << s << ':' << n << "] ";
+    int x[] = {(std::cout << ts, 0)...};
     std::cout << std::endl;
 }
 

@@ -20,7 +20,7 @@ def _render_module(pkg, doc, set_type_names):
         if old is not None:
             translate[old] = cls
         modules.add(mod)
-        cls.metadata = {k: v or None for k, v in data}
+        cls._metadata_ = {k: v or None for k, v in data}
         for k, v in data:
             config.set_type(k, cls)
 

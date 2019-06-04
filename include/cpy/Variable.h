@@ -114,7 +114,7 @@ public:
 
     /// Only call variable move constructor if its lifetime is being managed inside the buffer
     Variable & operator=(Variable &&v) noexcept {
-        DUMP("move assign", type(), v.type());
+        // DUMP("move assign ", type(), v.type());
         if (auto p = handle()) act(ActionType::destroy, p, nullptr);
         static_cast<VariableData &>(*this) = v;
         if (auto p = v.handle()) {
@@ -125,7 +125,7 @@ public:
     }
 
     Variable & operator=(Variable const &v) {
-        DUMP("copy assign", type(), v.type());
+        // DUMP("copy assign ", type(), v.type());
         if (auto p = handle()) act(ActionType::destroy, p, nullptr);
         static_cast<VariableData &>(*this) = v;
         if (auto p = v.handle()) v.act(ActionType::copy, p, this);
@@ -139,7 +139,7 @@ public:
     /**************************************************************************/
 
     void reset() {
-        DUMP("reset", type());
+        // DUMP("reset", type());
 
         if (auto p = handle()) act(ActionType::destroy, p, nullptr);
         reset_data();
@@ -170,7 +170,7 @@ public:
     // request reference T by custom conversions
     template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
     std::remove_reference_t<T> *request(Dispatch &msg, Type<T> t={}) const {
-        DUMP(typeid(Type<T>).name(), qualifier(), has_value(), idx.name());
+        DUMP("Variable.request() ", typeid(Type<T>).name(), qualifier(), " from variable ", idx);
         if (idx.matches<T>()) return target<T>();
         auto v = request_variable(msg, type_index<T>());
         if (auto p = v.template target<T>()) {msg.source.clear(); return p;}
@@ -183,7 +183,7 @@ public:
         static_assert(std::is_same_v<T, unqualified<T>>);
         if constexpr(std::is_same_v<T, Variable>) return *this;
         if (auto p = target<T const &>()) {
-            DUMP(type(), p, &buff, reinterpret_cast<void * const &>(buff), stack, typeid(p).name(), typeid(Type<T>).name());
+            // DUMP(type(), p, &buff, reinterpret_cast<void * const &>(buff), stack, typeid(p).name(), typeid(Type<T>).name());
             return *p;
         }
         auto v = request_variable(msg, typeid(T));
@@ -243,18 +243,18 @@ void set_source(Dispatch &, std::type_info const &, Variable &&v);
 
 template <TargetQualifier Q, class T>
 bool get_response(Variable &out, TypeIndex const &target_type, T &&t) {
-    DUMP("get_response", type_index<T &&>(), target_type);
+    DUMP("get_response: trying to get ", target_type, " from ", type_index<T &&>());
     if (target_type.matches<T>()) {
-        DUMP("get_response exact match");
+        DUMP("get_response: requested type matches held type");
         if constexpr(std::is_convertible_v<T &&, qualified<unqualified<T>, Q>>)
             return out = {Type<qualified<unqualified<T>, Q>>(), static_cast<T &&>(t)}, true;
     } else {
         using R = Response<unqualified<T>, Q>;
-        DUMP("get_response specialization", type_index<R>());
+        DUMP("get_response: calling Response specialization ", type_index<R>());
         // if constexpr(std::is_invocable_v<R, Variable &, TypeIndex &&, T &&>) {
             // DUMP("get_response Response works", type_index<R>());
         bool ok = R()(out, target_type, static_cast<T &&>(t));
-        DUMP("get_response result", out.type());
+        DUMP("get_response: got result of type ", out.type());
         return ok;
         // }
     }
@@ -264,7 +264,7 @@ bool get_response(Variable &out, TypeIndex const &target_type, T &&t) {
 /// Set out to a new variable with given qualifier dest and type idx from type T
 template <class T>
 bool get_response(Variable &out, TypeIndex const &target_type, T &&t) {
-    DUMP("get_response", target_type, type_index<T &&>());
+    DUMP("get_response: ", target_type, type_index<T &&>());
     // Switch on the runtime value of the qualifier to hit compile-time overloads
     switch (target_type.qualifier()) {
         case (Value): return get_response<Value>(out, target_type, static_cast<T &&>(t));

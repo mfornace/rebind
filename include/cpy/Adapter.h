@@ -12,7 +12,7 @@ namespace cpy {
 template <class F, class ...Ts>
 Variable variable_invoke(F const &f, Ts &&... ts) {
     using O = std::remove_cv_t<std::invoke_result_t<F, Ts...>>;
-    DUMP("    -- invoking function with output type ", typeid(Type<O>).name());
+    DUMP("invoking function with output type ", typeid(Type<O>).name());
     Variable out;
     if constexpr(std::is_same_v<void, O>) {
         std::invoke(f, static_cast<Ts &&>(ts)...);
@@ -21,20 +21,18 @@ Variable variable_invoke(F const &f, Ts &&... ts) {
     } else {
         out = {Type<O>(), std::invoke(f, static_cast<Ts &&>(ts)...)};
     }
-    DUMP("    -- invoked function successfully")
+    DUMP("invoked function successfully")
     return out;
 }
 
 template <class F, class ...Ts>
 Variable caller_invoke(std::true_type, F const &f, Caller &&c, Ts &&...ts) {
-    DUMP("    - invoking with context");
     c.enter();
     return variable_invoke(f, std::move(c), static_cast<Ts &&>(ts)...);
 }
 
 template <class F, class ...Ts>
 Variable caller_invoke(std::false_type, F const &f, Caller &&c, Ts &&...ts) {
-    DUMP("    - invoking context guard");
     c.enter();
     return variable_invoke(f, static_cast<Ts &&>(ts)...);
 }
@@ -127,6 +125,7 @@ struct Adapter<0, F, SFINAE> {
     using Sig = decltype(skip_head<1 + int(Ctx::value)>(SimpleSignature<F>()));
 
     Variable operator()(Caller c, Sequence args) const {
+        DUMP("Adapter<", type_index<F>(), ">::()");
         if (args.size() != Sig::size)
             throw WrongNumber(Sig::size, args.size());
         return Sig::indexed([&](auto ...ts) {
@@ -148,21 +147,31 @@ struct Adapter<0, R C::*, std::enable_if_t<std::is_member_object_pointer_v<R C::
         if (args.size() != 1) throw WrongNumber(1, args.size());
         auto &s = args[0];
         auto frame = c();
+        DUMP("Adapter<", type_index<R>(), ", ", type_index<C>(), ">::()");
         Caller handle(frame);
         Dispatch msg(handle);
-        if (s.qualifier() == Lvalue) {
-            C &self = std::move(s).cast<C &>(msg);
-            frame->enter();
-            return {Type<R &>(), std::invoke(function, self)};
+
+        if (!s.type().matches<C>() || s.qualifier() == Lvalue) {
+            DUMP("Adapter<", type_index<R>(), ", ", type_index<C>(), ">::() try &");
+            if (auto p = s.request(msg, Type<C &>())) {
+                frame->enter();
+                return {Type<R &>(), std::invoke(function, *p)};
+            }
         }
-        if (s.qualifier() == Const) {
-            C const &self = std::move(s).cast<C const &>(msg);
+
+        DUMP("Adapter<", type_index<R>(), ", ", type_index<C>(), ">::() try const &");
+        if (auto p = s.request(msg, Type<C const &>())) {
             frame->enter();
-            return {Type<R const &>(), std::invoke(function, self)};
+            return {Type<R const &>(), std::invoke(function, *p)};
         }
-        C self = std::move(s).cast<C>(msg);
-        frame->enter();
-        return {Type<std::remove_cv_t<R>>(), std::invoke(function, std::move(self))};
+
+        if (auto p = s.request(msg, Type<C>())) {
+            DUMP("Adapter<", type_index<R>(), ", ", type_index<C>(), ">::() try &&");
+            frame->enter();
+            return {Type<std::remove_cv_t<R>>(), std::invoke(function, std::move(*p))};
+        }
+
+        throw std::move(msg).exception();
     }
 };
 
