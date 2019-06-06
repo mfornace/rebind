@@ -205,7 +205,9 @@ Object union_cast(Variable &&v, Object const &t, Object const &root) {
 // None, object, bool, int, float, str, bytes, TypeIndex, list, tuple, dict, Variable, Function, memoryview
 // Then, the output_conversions map is queried for Python function callable with the Variable
 Object try_python_cast(Variable &&v, Object const &t, Object const &root) {
-    if (PyType_CheckExact(+t)) {
+    if (auto it = type_translations.find(t); it != type_translations.end()) {
+        return try_python_cast(std::move(v), it->second, root);
+    } else if (PyType_CheckExact(+t)) {
         auto type = reinterpret_cast<PyTypeObject *>(+t);
         DUMP("is Variable ", is_subclass(type, type_object<Variable>()));
         if (+type == Py_None->ob_type || +t == Py_None)        return {Py_None, true};                        // NoneType
@@ -227,7 +229,7 @@ Object try_python_cast(Variable &&v, Object const &t, Object const &root) {
                 return variable_cast(std::move(var));
             return type_error("could not convert object of type %s to type %s", v.type().name(), p->name());
         }
-        else if (is_structured_type(t, UnionType))                                   return union_cast(std::move(v), t, root);
+        else if (is_structured_type(t, UnionType))     return union_cast(std::move(v), t, root);
         else if (is_structured_type(t, &PyList_Type))  return list_cast(std::move(v), t, root);       // List[T] for some T (compound type)
         else if (is_structured_type(t, &PyTuple_Type)) return tuple_cast(std::move(v), t, root);      // Tuple[Ts...] for some Ts... (compound type)
         else if (is_structured_type(t, &PyDict_Type))  return dict_cast(std::move(v), t, root);       // Dict[K, V] for some K, V (compound type)

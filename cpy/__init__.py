@@ -15,6 +15,7 @@ class Config:
         self.set_type = methods['set_type']
         self.set_output_conversion = methods['set_output_conversion']
         self.set_input_conversion = methods['set_input_conversion']
+        self.set_translation = methods['set_translation']
 
     @property
     def debug(self):

@@ -496,6 +496,9 @@ Object initialize(Document const &doc) {
         && attach(m, "set_input_conversion", as_object(Function::of([](Object t, Object o) {
             input_conversions.insert_or_assign(std::move(t), std::move(o));
         })))
+        && attach(m, "set_translation", as_object(Function::of([](Object t, Object o) {
+            type_translations.insert_or_assign(std::move(t), std::move(o));
+        })))
         && attach(m, "clear_global_objects", as_object(Function::of(&clear_global_objects)))
         && attach(m, "set_debug", as_object(Function::of([](bool b) {return std::exchange(Debug, b);})))
         && attach(m, "debug", as_object(Function::of([] {return Debug;})))

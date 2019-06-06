@@ -4,8 +4,7 @@ namespace cpy {
 
 Object UnionType, TypeError;
 
-std::map<Object, Object> output_conversions{};
-std::map<Object, Object> input_conversions{};
+std::unordered_map<Object, Object> type_translations{}, output_conversions{}, input_conversions{};
 
 std::unordered_map<std::type_index, Object> python_types{};
 
@@ -21,6 +20,7 @@ void initialize_global_objects() {
 void clear_global_objects() {
     input_conversions.clear();
     output_conversions.clear();
+    type_translations.clear();
     python_types.clear();
     UnionType = nullptr;
     TypeError = nullptr;

@@ -4,6 +4,7 @@
  */
 #include <cpy/PythonAPI.h>
 #include <cpy/Document.h>
+#include <complex>
 #include <any>
 #include <iostream>
 
@@ -117,6 +118,8 @@ bool object_response(Variable &v, TypeIndex t, Object o) {
         DUMP("requested function");
         if (+o == Py_None) v.emplace(Type<Function>());
         else if (auto p = cast_if<Function>(o)) v = *p;
+        // general python function has no signature associated with it right now.
+        // we could get them out via function.__annotations__ and process them into a tuple
         else v.emplace(Type<Function>())->emplace(PythonFunction({+o, true}, {Py_None, true}), {});
         return true;
     }

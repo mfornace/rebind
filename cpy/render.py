@@ -16,7 +16,7 @@ def _render_module(pkg, doc, set_type_names):
     # render classes and methods
     out['types'] = {k: v for k, v in doc['contents'] if isinstance(v, tuple)}
     for k, (meth, data) in out['types'].items():
-        mod, old, cls = render_type(pkg, (doc['Variable'],), k, dict(meth), lookup=doc)
+        mod, old, cls = render_type(pkg, (doc['Variable'],), k, dict(meth))
         if old is not None:
             translate[old] = cls
         modules.add(mod)
@@ -30,8 +30,7 @@ def _render_module(pkg, doc, set_type_names):
         config.set_type_names(names)
 
     # render global objects (including free functions)
-    out['objects'] = {k: render_object(pkg, k, v, out)
-        for k, v in doc['contents'] if not isinstance(v, tuple)}
+    out['objects'] = {k: render_object(pkg, k, v) for k, v in doc['contents'] if not isinstance(v, tuple)}
 
     out['scalars'] = common.find_scalars(doc['scalars'])
 
@@ -54,6 +53,10 @@ def _render_module(pkg, doc, set_type_names):
                 log.info('monkey-patching module {} attribute {}'.format(mod, k))
             except (TypeError, KeyError):
                 pass
+
+    for k, v in translate.items():
+        if isinstance(k, type):
+            config.set_translation(k, v)
 
     log.info('finished rendering document into module %s', repr(pkg))
     return out, config
@@ -82,15 +85,14 @@ def render_init(init):
 
 ################################################################################
 
-def render_member(key, value, old, globalns={}, localns={}):
+def render_member(key, value, old):
     if old is None:
         def fget(self, _old=value):
             return _old(self)._set_ward(self)
     else:
         def fget(self, _old=value, _return=old):
             out = _old(self)._set_ward(self)
-            ret = common.eval_type(typing._type_check(_return, 'expected type'), globalns, localns)
-            return out.cast(ret)
+            return out.cast(_return)
 
     def fset(self, other, _old=value):
         _old(self).copy_from(other)
@@ -126,12 +128,10 @@ def find_class(mod, name):
 
 ################################################################################
 
-def render_type(pkg: str, bases: tuple, name: str, methods, lookup={}):
+def render_type(pkg: str, bases: tuple, name: str, methods):
     '''Define a new type in pkg'''
     mod, name = common.split_module(pkg, name)
     old_cls, props = find_class(mod, name)
-
-    localns, globalns = mod.__dict__, lookup
 
     new = props.pop('__new__', None)
     if callable(new):
@@ -143,11 +143,11 @@ def render_type(pkg: str, bases: tuple, name: str, methods, lookup={}):
         if k.startswith('.'):
             old = props['__annotations__'].get(k[1:])
             log.info("deriving member '%s.%s%s' from %s", mod.__name__, name, k, repr(old))
-            props[k[1:]] = render_member(k[1:], v, old, globalns=globalns, localns=localns)
+            props[k[1:]] = render_member(k[1:], v, old)
         else:
             old = props.get(k, common.default_methods.get(k))
             log.info("deriving method '%s.%s.%s' from %s", mod.__name__, name, k, repr(old))
-            props[k] = render_function(v, old, globalns=globalns, localns=localns)
+            props[k] = render_function(v, old)
 
     props.setdefault('copy', copy)
 
@@ -158,12 +158,11 @@ def render_type(pkg: str, bases: tuple, name: str, methods, lookup={}):
 
 ################################################################################
 
-def render_object(pkg, key, value, lookup={}):
+def render_object(pkg, key, value):
     '''put in the module level functions and objects'''
     mod, key = common.split_module(pkg, key)
     log.info("rendering object '%s.%s'", mod.__name__, key)
     localns = mod.__dict__
-    globalns = lookup
 
     old = getattr(mod, key, None)
     if old is None:
@@ -171,13 +170,13 @@ def render_object(pkg, key, value, lookup={}):
     elif callable(value):
         log.info("deriving function '%s.%s' from %s", mod.__name__, key, repr(old))
         assert callable(old), 'expected annotation to be a function'
-        value = render_function(value, old, localns=localns, globalns=globalns)
+        value = render_function(value, old)
     else:
         log.info("deriving object '%s.%s' from %s", mod.__name__, key, repr(old))
         if not isinstance(old, type):
             print(value.type())
             raise TypeError('expected placeholder {} to be a type'.format(old))
-        value = value.cast(common.eval_type(old, localns=localns, globalns=globalns))
+        value = value.cast(old)
 
     setattr(mod, key, value)
     return value
@@ -201,7 +200,7 @@ def is_callable_type(t):
 
 ################################################################################
 
-def render_function(fun, old, globalns={}, localns={}):
+def render_function(fun, old):
     '''
     Replace a declared function's contents with the one from the document
     - Otherwise if the declared function takes 'function', call the declared function
@@ -216,15 +215,13 @@ def render_function(fun, old, globalns={}, localns={}):
     if isinstance(old, property):
         return property(render_function(fun, old.fget))
 
-    ev = lambda t: common.eval_type(t, globalns, localns)
     sig = inspect.signature(old)
 
     has_fun = '_fun_' in sig.parameters
     if has_fun:
         sig = common.discard_parameter(sig, '_fun_')
 
-    process = lambda t: tuple(map(ev, t.__args__[:-1])) if is_callable_type(t) else ev(t)
-    types = lambda: [process(p.annotation) for p in sig.parameters.values()]
+    types = tuple(p.annotation for p in sig.parameters.values())
     empty = inspect.Parameter.empty
 
     if '_old' in sig.parameters:
@@ -235,12 +232,11 @@ def render_function(fun, old, globalns={}, localns={}):
             bound = _bind(*args, **kwargs)
             bound.apply_defaults()
             # Convert args and kwargs separately
-            args = (a if t is empty or a is None else make_callback(a, t) for a, t in zip(bound.args, types()))
-            kwargs = {k: (v if t is empty or v is None else make_callback(v, t)) for (k, v), t in zip(bound.kwargs.items(), types()[len(bound.args):])}
+            args = (a if t is empty or a is None else make_callback(a, t) for a, t in zip(bound.args, types))
+            kwargs = {k: (v if t is empty or v is None else make_callback(v, t)) for (k, v), t in zip(bound.kwargs.items(), types[len(bound.args):])}
             return _old(*args, _fun_=_orig, **kwargs)
     else:
         ret = sig.return_annotation
-        assert 'Variable' in globalns
 
         for k, p in sig.parameters.items():
             if p.kind == p.VAR_KEYWORD or p.kind == p.VAR_POSITIONAL:
@@ -250,13 +246,13 @@ def render_function(fun, old, globalns={}, localns={}):
             bound = _bind(*args, **kwargs)
             bound.apply_defaults()
             # Convert any keyword arguments into positional arguments
-            out = _orig(*(make_callback(a, t) if isinstance(t, tuple) else a for a, t in zip(bound.arguments.values(), types())))
+            out = _orig(*(make_callback(a, t) if isinstance(t, tuple) else a for a, t in zip(bound.arguments.values(), types)))
             if _return is empty:
                 return out # no cast
             if _return is None or _return is type(None):
                 return # return None regardless of output
             if out is None:
-                out = globalns['Variable']() # unlikely, but replace None with empty Variable to try a cast
-            return out.cast(ev(typing._type_check(_return, 'expected type')))
+                raise TypeError('Expected {} but return None'.format(_return))
+            return out.cast(_return)
 
     return functools.update_wrapper(wrap, old)
