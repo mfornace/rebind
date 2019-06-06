@@ -101,28 +101,6 @@ def discard_parameter(sig, key):
 
 ################################################################################
 
-# if sys.version_info < (3, 7, 0):
-#     def eval_type(type, globalns={}, localns={}):
-#         try:
-#             out = type._eval_type(globalns, localns) # Python <= 3.6
-#         except AttributeError:
-#             out = type
-#         if isinstance(out, typing._ForwardRef):
-#             raise TypeError('Cannot resolve type {}'.format(out))
-#         return out
-
-# if sys.version_info >= (3, 7, 0):
-#     def eval_type(type, globalns={}, localns={}):
-#         try:
-#             out = type._eval_type(globalns, localns) # Python <= 3.6
-#         except AttributeError:
-#             out = type
-#         if isinstance(out, typing.ForwardRef):
-#             raise TypeError('Cannot resolve type {}'.format(out))
-#         return out
-
-################################################################################
-
 def update_module(dest, source, pattern):
     if isinstance(source, str):
         source = importlib.import_module(source)
