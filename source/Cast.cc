@@ -167,11 +167,17 @@ Object memoryview_cast(Variable &&ref, Object const &root) {
     } else return {};
 }
 
+Object getattr(PyObject *obj, char const *name) {
+    if (PyObject_HasAttrString(obj, name))
+        return {PyObject_GetAttrString(obj, name), false};
+    return {};
+}
+
 // condition: PyType_CheckExact(type) is false
 bool is_structured_type(PyObject *type, PyObject *origin) {
     if constexpr(PythonVersion >= Version(3, 7, 0)) {
         // in this case, origin may or may not be a PyTypeObject *
-        return origin == +Object(PyObject_GetAttrString(type, "__origin__"), false);
+        return origin == +getattr(type, "__origin__");
     } else {
         // case like typing.Union: type(typing.Union[int, float] == typing.Union)
         return (+type)->ob_type == reinterpret_cast<PyTypeObject *>(origin);
@@ -180,7 +186,7 @@ bool is_structured_type(PyObject *type, PyObject *origin) {
 
 bool is_structured_type(PyObject *type, PyTypeObject *origin) {
     if constexpr(PythonVersion >= Version(3, 7, 0)) {
-        return reinterpret_cast<PyObject *>(origin) == +Object(PyObject_GetAttrString(type, "__origin__"), false);
+        return reinterpret_cast<PyObject *>(origin) == +getattr(type, "__origin__");
     } else {
         // case like typing.Tuple: issubclass(typing.Tuple[int, float], tuple)
         return is_subclass(reinterpret_cast<PyTypeObject *>(type), reinterpret_cast<PyTypeObject *>(origin));
@@ -206,6 +212,7 @@ Object union_cast(Variable &&v, Object const &t, Object const &root) {
 // Then, the output_conversions map is queried for Python function callable with the Variable
 Object try_python_cast(Variable &&v, Object const &t, Object const &root) {
     if (auto it = type_translations.find(t); it != type_translations.end()) {
+        DUMP("type_translation found");
         return try_python_cast(std::move(v), it->second, root);
     } else if (PyType_CheckExact(+t)) {
         auto type = reinterpret_cast<PyTypeObject *>(+t);

@@ -30,7 +30,8 @@ def _render_module(pkg, doc, set_type_names):
         config.set_type_names(names)
 
     # render global objects (including free functions)
-    out['objects'] = {k: render_object(pkg, k, v) for k, v in doc['contents'] if not isinstance(v, tuple)}
+    obj = lambda old, new: translate.__setitem__(old, new) or new
+    out['objects'] = {k: obj(*render_object(pkg, k, v)) for k, v in doc['contents'] if not isinstance(v, tuple)}
 
     out['scalars'] = common.find_scalars(doc['scalars'])
 
@@ -55,7 +56,7 @@ def _render_module(pkg, doc, set_type_names):
                 pass
 
     for k, v in translate.items():
-        if isinstance(k, type):
+        if isinstance(k, type) and isinstance(v, type):
             config.set_translation(k, v)
 
     log.info('finished rendering document into module %s', repr(pkg))
@@ -179,7 +180,7 @@ def render_object(pkg, key, value):
         value = value.cast(old)
 
     setattr(mod, key, value)
-    return value
+    return old, value
 
 ################################################################################
 
@@ -227,6 +228,7 @@ def render_function(fun, old):
     if '_old' in sig.parameters:
         raise ValueError('Function {} was already wrapped'.format(old))
 
+    # Eventually all of the computation in wrap() could be moved into C++
     if has_fun:
         def wrap(*args, _orig=fun, _bind=sig.bind, _old=old, gil=None, signature=None, **kwargs):
             bound = _bind(*args, **kwargs)
@@ -252,7 +254,7 @@ def render_function(fun, old):
             if _return is None or _return is type(None):
                 return # return None regardless of output
             if out is None:
-                raise TypeError('Expected {} but return None'.format(_return))
+                raise TypeError('Expected {} but was returned object None'.format(_return))
             return out.cast(_return)
 
     return functools.update_wrapper(wrap, old)
