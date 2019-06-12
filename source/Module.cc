@@ -294,6 +294,38 @@ PyTypeObject Holder<Var>::type = []{
 
 /******************************************************************************/
 
+// PyFunction_GetDefaults
+// PyObject* PyFunction_New(PyObject *code, PyObject *globals)
+// PyFunction_GetAnnotations
+// PyCodeObject
+
+// typedef struct {
+//     PyObject_HEAD
+//     PyObject *func_code;        /* A code object, the __code__ attribute */
+//     PyObject *func_globals;     /* A dictionary (other mappings won't do) */
+//     PyObject *func_defaults;    /* NULL or a tuple */
+//     PyObject *func_kwdefaults;  /* NULL or a dict */
+//     PyObject *func_closure;     /* NULL or a tuple of cell objects */
+//     PyObject *func_doc;         /* The __doc__ attribute, can be anything */
+//     PyObject *func_name;        /* The __name__ attribute, a string object */
+//     PyObject *func_dict;        /* The __dict__ attribute, a dict or NULL */
+//     PyObject *func_weakreflist; /* List of weak references */
+//     PyObject *func_module;      /* The __module__ attribute, can be anything */
+//     PyObject *func_annotations; /* Annotations, a dict or NULL */
+//     PyObject *func_qualname;    /* The qualified name */
+//     vectorcallfunc vectorcall;
+
+//     /* Invariant:
+//      *     func_closure contains the bindings for func_code->co_freevars, so
+//      *     PyTuple_Size(func_closure) == PyCode_GetNumFree(func_code)
+//      *     (func_closure may be NULL if PyCode_GetNumFree(func_code) == 0).
+//      */
+// } PyFunctionObject;
+
+// PyFunction_Check
+// PyFunction_Type
+// PyFunctionObject
+
 Object call_overload(ErasedFunction const &fun, Object const &args, bool gil) {
     if (auto py = fun.target<PythonFunction>())
         return {PyObject_CallObject(+py->function, +args), false};
@@ -318,6 +350,13 @@ PyObject * not_none(PyObject *o) {return o == Py_None ? nullptr : o;}
 
 /******************************************************************************/
 
+/* Function call has effectively the following signature
+ * *args: the arguments to be passed to C++
+ * gil (bool): whether to keep the gil on (default: True)
+ * signature (int, Tuple[TypeIndex], or None): manual selection of overload to call
+ * return_type (TypeIndex or None): manual selection of overload by return type
+ * first_type (TypeIndex or None): manual selection overload by first type (useful for methods)
+ */
 PyObject * function_call(PyObject *self, PyObject *pyargs, PyObject *kws) noexcept {
     return raw_object([=]() -> Object {
         bool gil = true;

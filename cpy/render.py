@@ -6,6 +6,17 @@ log = logging.getLogger(__name__)
 
 ################################################################################
 
+def render_module(pkg: str, doc: dict, set_type_names=False):
+    try:
+        return _render_module(pkg, doc, set_type_names)
+    except BaseException:
+        doc['clear_global_objects']()
+        raise
+    finally:
+        atexit.register(common.finalize, doc['clear_global_objects'], log)
+
+################################################################################
+
 def _render_module(pkg, doc, set_type_names):
     log.info('rendering document into module %s', repr(pkg))
     config, out = Config(doc), doc.copy()
@@ -64,17 +75,6 @@ def _render_module(pkg, doc, set_type_names):
 
 ################################################################################
 
-def render_module(pkg: str, doc: dict, set_type_names=False):
-    try:
-        return _render_module(pkg, doc, set_type_names)
-    except BaseException:
-        doc['clear_global_objects']()
-        raise
-    finally:
-        atexit.register(common.finalize, doc['clear_global_objects'], log)
-
-################################################################################
-
 def render_init(init):
     if init is None:
         def __init__(self):
@@ -112,11 +112,7 @@ def copy(self):
 
 def find_class(mod, name):
     '''Find an already declared class and return its deduced properties'''
-    try:
-        old = getattr(mod, name)
-    except AttributeError:
-        old = None
-
+    old = getattr(mod, name, None)
     annotations = {}
     props = {'__module__': mod.__name__}
 
@@ -222,20 +218,24 @@ def render_function(fun, old):
     if has_fun:
         sig = common.discard_parameter(sig, '_fun_')
 
-    types = tuple(p.annotation for p in sig.parameters.values())
+    types = tuple(p.annotation.__args__ if is_callable_type(p.annotation) else None for p in sig.parameters.values())
     empty = inspect.Parameter.empty
 
     if '_old' in sig.parameters:
         raise ValueError('Function {} was already wrapped'.format(old))
 
     # Eventually all of the computation in wrap() could be moved into C++
+    # (1) binding of args and kwargs with default arguments
+    # (2) for each arg that is annotated with Callback, make a callback out of it
+    # (3) either cast the return type or invoke the fun that is given
+    # (4) ...
     if has_fun:
         def wrap(*args, _orig=fun, _bind=sig.bind, _old=old, gil=None, signature=None, **kwargs):
             bound = _bind(*args, **kwargs)
             bound.apply_defaults()
             # Convert args and kwargs separately
-            args = (a if t is empty or a is None else make_callback(a, t) for a, t in zip(bound.args, types))
-            kwargs = {k: (v if t is empty or v is None else make_callback(v, t)) for (k, v), t in zip(bound.kwargs.items(), types[len(bound.args):])}
+            args = (a if t is None or a is None else make_callback(a, t) for a, t in zip(bound.args, types))
+            kwargs = {k: (v if t is None or v is None else make_callback(v, t)) for (k, v), t in zip(bound.kwargs.items(), types[len(bound.args):])}
             return _old(*args, _fun_=_orig, **kwargs)
     else:
         ret = sig.return_annotation
@@ -248,7 +248,7 @@ def render_function(fun, old):
             bound = _bind(*args, **kwargs)
             bound.apply_defaults()
             # Convert any keyword arguments into positional arguments
-            out = _orig(*(make_callback(a, t) if isinstance(t, tuple) else a for a, t in zip(bound.arguments.values(), types)))
+            out = _orig(*(make_callback(a, t) if t is not None else a for a, t in zip(bound.arguments.values(), types)))
             if _return is empty:
                 return out # no cast
             if _return is None or _return is type(None):
