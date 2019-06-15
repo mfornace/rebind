@@ -205,56 +205,22 @@ def render_function(fun, old):
     - Otherwise, call the document function
     '''
     if old is None:
-        def bound(*args, _orig=fun):
-            return _orig(*args)
-        return functools.update_wrapper(bound, common.opaque_signature)
+        return functools.update_wrapper(fun._opaque(), common.opaque_signature)
 
     if isinstance(old, property):
         return property(render_function(fun, old.fget))
 
     sig = inspect.signature(old)
 
-    has_fun = '_fun_' in sig.parameters
-    if has_fun:
-        sig = common.discard_parameter(sig, '_fun_')
-
-    types = tuple(p.annotation.__args__ if is_callable_type(p.annotation) else None for p in sig.parameters.values())
-    empty = inspect.Parameter.empty
-
-    if '_old' in sig.parameters:
-        raise ValueError('Function {} was already wrapped'.format(old))
-
-    # Eventually all of the computation in wrap() could be moved into C++
-    # (1) binding of args and kwargs with default arguments
-    # (2) for each arg that is annotated with Callback, make a callback out of it
-    # (3) either cast the return type or invoke the fun that is given
-    # (4) ...
-    if has_fun:
-        def wrap(*args, _orig=fun, _bind=sig.bind, _old=old, gil=None, signature=None, **kwargs):
-            bound = _bind(*args, **kwargs)
-            bound.apply_defaults()
-            # Convert args and kwargs separately
-            args = (a if t is None or a is None else make_callback(a, t) for a, t in zip(bound.args, types))
-            kwargs = {k: (v if t is None or v is None else make_callback(v, t)) for (k, v), t in zip(bound.kwargs.items(), types[len(bound.args):])}
-            return _old(*args, _fun_=_orig, **kwargs)
+    if '_fun_' in sig.parameters:
+        wrap = fun._delegating(old)
     else:
-        ret = sig.return_annotation
-
+        types = tuple(p.annotation.__args__ if is_callable_type(p.annotation) else None for p in sig.parameters.values())
+        empty = inspect.Parameter.empty
         for k, p in sig.parameters.items():
             if p.kind == p.VAR_KEYWORD or p.kind == p.VAR_POSITIONAL:
                 raise TypeError('Parameter {} cannot be variadic (e.g. like *args or **kwargs)'.format(k))
 
-        def wrap(*args, _orig=fun, _bind=sig.bind, _return=ret, gil=None, signature=None, **kwargs):
-            bound = _bind(*args, **kwargs)
-            bound.apply_defaults()
-            # Convert any keyword arguments into positional arguments
-            out = _orig(*(make_callback(a, t) if t is not None else a for a, t in zip(bound.arguments.values(), types)))
-            if _return is empty:
-                return out # no cast
-            if _return is None or _return is type(None):
-                return # return None regardless of output
-            if out is None:
-                raise TypeError('Expected {} but was returned object None'.format(_return))
-            return out.cast(_return)
+        wrap = fun._annotated(params, nkeyword, sig.return_annotation)
 
     return functools.update_wrapper(wrap, old)
