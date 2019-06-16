@@ -21,6 +21,13 @@
 
 namespace cpy {
 
+template <class F>
+constexpr PyMethodDef method(char const *name, F fun, int type, char const *doc) noexcept {
+    if constexpr (std::is_convertible_v<F, PyCFunction>)
+        return {name, static_cast<PyCFunction>(fun), type, doc};
+    else return {name, reinterpret_cast<PyCFunction>(fun), type, doc};
+}
+
 // Parse argument tuple for 1 argument. Set error and return NULL if parsing fails.
 PyObject *one_argument(PyObject *args, PyTypeObject *type=nullptr) noexcept {
     Py_ssize_t n = PyTuple_Size(args);
@@ -266,17 +273,17 @@ PyNumberMethods VarNumberMethods = {
 };
 
 PyMethodDef VarMethods[] = {
-    {"copy_from",     static_cast<PyCFunction>(var_copy_assign),   METH_VARARGS, "assign from other using C++ copy assignment"},
-    {"move_from",     static_cast<PyCFunction>(var_copy_assign),   METH_VARARGS, "assign from other using C++ move assignment"},
-    {"address",       static_cast<PyCFunction>(var_address),       METH_NOARGS,  "get C++ pointer address"},
-    {"_ward",         static_cast<PyCFunction>(var_ward),          METH_NOARGS,  "get ward object"},
-    {"_set_ward",     static_cast<PyCFunction>(var_set_ward),      METH_VARARGS, "set ward object and return self"},
-    {"qualifier",     static_cast<PyCFunction>(var_qualifier),     METH_NOARGS,  "return qualifier of self"},
-    {"is_stack_type", static_cast<PyCFunction>(var_is_stack_type), METH_NOARGS, "return if object is held in stack storage"},
-    {"type",          static_cast<PyCFunction>(var_type),          METH_NOARGS,  "return TypeIndex of the held C++ object"},
-    {"has_value",     static_cast<PyCFunction>(var_has_value),     METH_VARARGS, "return if a C++ object is being held"},
-    {"cast",          static_cast<PyCFunction>(var_cast),          METH_VARARGS, "cast to a given Python type"},
-    {"from_object",   static_cast<PyCFunction>(var_from),          METH_CLASS | METH_O, "cast an object to a given Python type"},
+    method("copy_from",     var_copy_assign,   METH_VARARGS, "assign from other using C++ copy assignment"),
+    method("move_from",     var_copy_assign,   METH_VARARGS, "assign from other using C++ move assignment"),
+    method("address",       var_address,       METH_NOARGS,  "get C++ pointer address"),
+    method("_ward",         var_ward,          METH_NOARGS,  "get ward object"),
+    method("_set_ward",     var_set_ward,      METH_VARARGS, "set ward object and return self"),
+    method("qualifier",     var_qualifier,     METH_NOARGS,  "return qualifier of self"),
+    method("is_stack_type", var_is_stack_type, METH_NOARGS, "return if object is held in stack storage"),
+    method("type",          var_type,          METH_NOARGS,  "return TypeIndex of the held C++ object"),
+    method("has_value",     var_has_value,     METH_VARARGS, "return if a C++ object is being held"),
+    method("cast",          var_cast,          METH_VARARGS, "cast to a given Python type"),
+    method("from_object",   var_from,          METH_CLASS | METH_O, "cast an object to a given Python type"),
     {nullptr, nullptr, 0, nullptr}
 };
 
@@ -361,6 +368,7 @@ PyObject * not_none(PyObject *o) {return o == Py_None ? nullptr : o;}
  */
 PyObject * function_call(PyObject *self, PyObject *pyargs, PyObject *kws) noexcept {
     return raw_object([=]() -> Object {
+        DUMP("function_call");
         bool gil = true;
         std::optional<TypeIndex> t0, t1;
         PyObject *sig=nullptr;
@@ -478,7 +486,7 @@ PyObject *function_annotated(PyObject *self, PyObject *args) noexcept {
     return raw_object([=] {
         AnnotatedData a;
         a.function = cast_object<Function>(self);
-        PyMethodDef ml = {"annotated_function", reinterpret_cast<PyCFunction>(&function_annotated_impl), METH_KEYWORDS, "annotated function wrapper"};
+        auto ml = method("annotated_function", function_annotated_impl, METH_VARARGS | METH_KEYWORDS, "annotated function wrapper");
         return Object::from(PyCFunction_New(&ml, variable_cast(std::move(a))));
     });
 }
@@ -495,7 +503,7 @@ PyObject *function_delegating_impl(PyObject *self_old, PyObject *args, PyObject 
 // return a function that takes *args, **kwargs and calls old with new
 PyObject *function_delegating(PyObject *self, PyObject *old) noexcept {
     return raw_object([=] {
-        PyMethodDef ml = {"delegating_function", reinterpret_cast<PyCFunction>(&function_delegating_impl), METH_KEYWORDS, "delegating function wrapper"};
+        auto ml = method("delegating_function", function_delegating_impl, METH_VARARGS | METH_KEYWORDS, "delegating function wrapper");
         return Object::from(PyCFunction_New(&ml, Object::from(PyTuple_Pack(2, self, old))));
     });
 }
@@ -504,7 +512,8 @@ PyObject *function_delegating(PyObject *self, PyObject *old) noexcept {
 
 PyObject *function_opaque(PyObject *self, PyObject *) noexcept {
     return raw_object([=] {
-        PyMethodDef ml = {"call_function", reinterpret_cast<PyCFunction>(&function_call), METH_KEYWORDS, "opaque function wrapper"};
+        DUMP("function_opaque");
+        auto ml = method("call_function", function_call, METH_VARARGS | METH_KEYWORDS, "opaque function wrapper");
         return Object::from(PyCFunction_New(&ml, self));
     });
 }
@@ -522,11 +531,11 @@ PyObject * function_signatures(PyObject *self, PyObject *) noexcept {
 
 PyMethodDef FunctionTypeMethods[] = {
     // {"move_from", static_cast<PyCFunction>(move_from<Function>),   METH_VARARGS, "move it"},
-    {"copy_from",   static_cast<PyCFunction>(copy_from<Function>), METH_VARARGS, "copy it"},
-    {"signatures",  static_cast<PyCFunction>(function_signatures), METH_NOARGS, "get signatures"},
-    {"_delegating", static_cast<PyCFunction>(function_delegating), METH_O,       "wrap a delegating function"},
-    {"_annotated",  static_cast<PyCFunction>(function_annotated),  METH_VARARGS, "wrap an annotated function"},
-    {"_opaque",     static_cast<PyCFunction>(function_opaque),     METH_NOARGS,  "return self as a closure (Python function)"},
+    method("copy_from",   copy_from<Function>, METH_VARARGS, "copy it"),
+    method("signatures",  function_signatures, METH_NOARGS, "get signatures"),
+    method("_delegating", function_delegating, METH_O,       "wrap a delegating function"),
+    method("_annotated",  function_annotated,  METH_VARARGS, "wrap an annotated function"),
+    method("_opaque",     function_opaque,     METH_NOARGS,  "return self as a closure (Python function)"),
     {nullptr, nullptr, 0, nullptr}
 };
 

@@ -224,3 +224,4 @@ def render_function(fun, old):
         wrap = fun._annotated(params, nkeyword, sig.return_annotation)
 
     return functools.update_wrapper(wrap, old)
+
