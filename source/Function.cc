@@ -25,7 +25,7 @@ PyObject * not_none(PyObject *o) {return o == Py_None ? nullptr : o;}
 
 /******************************************************************************/
 
-Object function_call2(Function const &fun, Sequence args, PyObject *sig, TypeIndex const &t0, TypeIndex const &t1, bool gil) {
+Object function_call_impl(Function const &fun, Sequence args, PyObject *sig, TypeIndex const &t0, TypeIndex const &t1, bool gil) {
     auto const &overloads = fun.overloads;
 
     if (overloads.size() == 1) // only 1 overload
@@ -40,14 +40,12 @@ Object function_call2(Function const &fun, Sequence args, PyObject *sig, TypeInd
         return Object();
     }
 
-    // auto const n = args.size();//PyTuple_GET_SIZE(+args);
-    Variable *first = args.empty() ? nullptr : nullptr;//cast_if<Variable>(args[0]);
     auto errors = Object::from(PyList_New(0));
 
     //  Check for equivalence on the first argument first -- provides short-circuiting for methods
     for (auto const exact : {true, false}) {
         for (auto const &o : overloads) {
-            bool const match = (o.first.size() < 2) || (first && first->type().matches(o.first[1]));
+            bool const match = (o.first.size() < 2) || (!args.empty() && args[0].type().matches(o.first[1]));
             if (match != exact) continue;
             if (sig) { // check the explicit signature that was passed in
                 if (PyTuple_Check(sig)) {
@@ -118,7 +116,7 @@ PyObject * function_call(PyObject *self, PyObject *pyargs, PyObject *kws) noexce
         DUMP("gil = ", gil, " ", Py_REFCNT(self), Py_REFCNT(pyargs));
         DUMP("number of signatures ", cast_object<Function>(self).overloads.size());
         auto args = args_from_python({pyargs, true});
-        return function_call2(cast_object<Function>(self), std::move(args), sig, t0, t1, gil);
+        return function_call_impl(cast_object<Function>(self), std::move(args), sig, t0, t1, gil);
     });
 }
 
