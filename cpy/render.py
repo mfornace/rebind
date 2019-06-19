@@ -258,3 +258,4 @@ def render_function(fun, old):
             return out.cast(_return)
 
     return functools.update_wrapper(wrap, old)
+

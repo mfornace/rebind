@@ -24,6 +24,67 @@
 
 namespace cpy {
 
+template <class F>
+constexpr PyMethodDef method(char const *name, F fun, int type, char const *doc) noexcept {
+    if constexpr (std::is_convertible_v<F, PyCFunction>)
+        return {name, static_cast<PyCFunction>(fun), type, doc};
+    else return {name, reinterpret_cast<PyCFunction>(fun), type, doc};
+}
+
+// Parse argument tuple for 1 argument. Set error and return NULL if parsing fails.
+PyObject *one_argument(PyObject *args, PyTypeObject *type=nullptr) noexcept {
+    Py_ssize_t n = PyTuple_Size(args);
+    if (n != 1) {
+        DUMP(n);
+        return type_error("Expected single argument but got %zd", n);
+    }
+    PyObject *value = PyTuple_GET_ITEM(args, 0);
+    if (type && !PyObject_TypeCheck(value, type))
+        return type_error("C++: invalid argument type %R", value->ob_type);
+    return value;
+}
+
+template <class T>
+PyObject *tp_new(PyTypeObject *subtype, PyObject *, PyObject *) noexcept {
+    static_assert(noexcept(T{}), "Default constructor should be noexcept");
+    PyObject *o = subtype->tp_alloc(subtype, 0); // 0 unused
+    if (o) new (&cast_object<T>(o)) T; // Default construct the C++ type
+    return o;
+}
+
+template <class T>
+void tp_delete(PyObject *o) noexcept {
+    reinterpret_cast<Holder<T> *>(o)->~Holder<T>();
+    Py_TYPE(o)->tp_free(o);
+}
+
+// move_from is called 1) during init, V.move_from(V), to transfer the object (here just use Var move constructor)
+//                     2) during assignment, R.move_from(L), to transfer the object (here cast V to new object of same type, swap)
+//                     2) during assignment, R.move_from(V), to transfer the object (here cast V to new object of same type, swap)
+PyObject * var_copy_assign(PyObject *self, PyObject *args) noexcept {
+    if (PyObject *value = one_argument(args)) {
+        return raw_object([=] {
+            DUMP("- copying variable");
+            cast_object<Var>(self).assign(variable_from_object({value, true}));
+            return Object(self, true);
+        });
+    } else return nullptr;
+}
+
+PyObject * var_move_assign(PyObject *self, PyObject *args) noexcept {
+    if (PyObject *value = one_argument(args)) {
+        return raw_object([=] {
+            DUMP("- moving variable");
+            auto &s = cast_object<Var>(self);
+            Variable v = variable_from_object({value, true});
+            v.move_if_lvalue();
+            s.assign(std::move(v));
+            // if (auto p = cast_if<Variable>(value)) p->reset();
+            return Object(self, true);
+        });
+    } else return nullptr;
+}
+
 /******************************************************************************/
 
 int array_data_buffer(PyObject *self, Py_buffer *view, int flags) {
