@@ -1,4 +1,4 @@
-#include <cpy/PythonCast.h>
+#include <cpy-python/Cast.h>
 #include <numeric>
 
 namespace cpy {
@@ -68,7 +68,7 @@ Object dict_cast(Variable &&ref, Object const &o, Object const &root) {
         Object key{PyTuple_GET_ITEM(+args, 0), true};
         Object val{PyTuple_GET_ITEM(+args, 1), true};
 
-        if (+key == TypeObject{&PyUnicode_Type}) {
+        if (+key == SubClass<PyTypeObject>{&PyUnicode_Type}) {
             if (auto v = ref.request<Dictionary>()) {
                 auto out = Object::from(PyDict_New());
                 for (auto &x : *v) {

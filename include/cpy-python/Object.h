@@ -4,53 +4,15 @@
  */
 
 #pragma once
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wregister"
-#include <Python.h>
-#pragma GCC diagnostic pop
-
-#include <functional>
+#include "CAPI.h"
 
 namespace cpy {
-
-using Version = std::tuple<unsigned, unsigned, unsigned>;
-static constexpr Version PythonVersion{PY_MAJOR_VERSION, PY_MINOR_VERSION, PY_MICRO_VERSION};
 
 void initialize_global_objects();
 void clear_global_objects();
 
 enum class Scalar {Bool, Char, SignedChar, UnsignedChar, Unsigned, Signed, Float, Pointer};
 extern Zip<Scalar, TypeIndex, unsigned> scalars;
-
-inline std::size_t reference_count(PyObject *o) {return o ? Py_REFCNT(o) : 0u;}
-
-inline void incref(PyObject *o) noexcept {Py_INCREF(o);}
-inline void decref(PyObject *o) noexcept {Py_DECREF(o);}
-inline void xincref(PyObject *o) noexcept {Py_XINCREF(o);}
-inline void xdecref(PyObject *o) noexcept {Py_XDECREF(o);}
-
-void print(PyObject *o);
-
-/******************************************************************************/
-
-struct TypeObject {
-    PyTypeObject *ptr;
-    operator PyObject *() const {return reinterpret_cast<PyObject *>(ptr);}
-    operator PyTypeObject *() const {return ptr;}
-};
-
-template <class T>
-struct Holder {
-    static PyTypeObject type;
-    PyObject_HEAD // 16 bytes for the ref count and the type object
-    T value; // I think stack is OK because this object is only casted to anyway.
-};
-
-template <class T>
-PyTypeObject Holder<T>::type;
-
-template <class T>
-TypeObject type_object(Type<T> t={}) {return {&Holder<T>::type};}
 
 /******************************************************************************/
 

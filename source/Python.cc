@@ -2,7 +2,7 @@
  * @brief Python-related C++ source code for cpy
  * @file Python.cc
  */
-#include <cpy/PythonAPI.h>
+#include <cpy-python/API.h>
 #include <cpy/Document.h>
 #include <complex>
 #include <any>
@@ -61,6 +61,8 @@ std::size_t Buffer::itemsize(std::type_info const &t) {
     return it == scalars.end() ? 0u : std::get<2>(*it) / CHAR_BIT;
 }
 
+/******************************************************************************/
+
 std::string_view from_unicode(PyObject *o) {
     Py_ssize_t size;
 #if PY_MAJOR_VERSION > 2
@@ -80,6 +82,8 @@ std::string_view from_bytes(PyObject *o) {
     return std::string_view(c, size);
 }
 
+/******************************************************************************/
+
 template <class T>
 bool to_arithmetic(Object const &o, Variable &v) {
     DUMP("cast arithmetic", v.type());
@@ -90,9 +94,11 @@ bool to_arithmetic(Object const &o, Variable &v) {
     return false;
 }
 
+/******************************************************************************/
+
 bool object_response(Variable &v, TypeIndex t, Object o) {
     if (Debug) {
-        auto repr = Object::from(PyObject_Repr(TypeObject{(+o)->ob_type}));
+        auto repr = Object::from(PyObject_Repr(SubClass<PyTypeObject>{(+o)->ob_type}));
         DUMP("input object reference count", reference_count(o));
         DUMP("trying to convert object to ", t.name(), " ", from_unicode(+repr));
         DUMP(bool(cast_if<Variable>(o)));
@@ -201,6 +207,8 @@ std::string get_type_name(TypeIndex idx) noexcept {
     return out;
 }
 
+/******************************************************************************/
+
 std::string wrong_type_message(WrongType const &e, std::string_view prefix) {
     std::ostringstream os;
     os << prefix << e.what() << " (#" << e.index << ", ";
@@ -233,6 +241,8 @@ Variable variable_from_object(Object o) {
     }
     else return std::move(o);
 }
+
+/******************************************************************************/
 
 // Store the objects in args in pack
 Sequence args_from_python(Object const &args) {

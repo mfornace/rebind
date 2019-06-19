@@ -1,4 +1,4 @@
-#include <cpy/PythonAPI.h>
+#include <cpy-python/API.h>
 
 namespace cpy {
 

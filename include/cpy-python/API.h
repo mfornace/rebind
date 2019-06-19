@@ -4,9 +4,9 @@
  */
 
 #pragma once
-#include "Document.h"
 #include "Object.h"
 
+#include <cpy/Document.h>
 #include <mutex>
 #include <unordered_map>
 
@@ -32,45 +32,6 @@ struct Holder<Variable> : Holder<Var> {};
 
 /******************************************************************************/
 
-class Buffer {
-    static Zip<std::string_view, std::type_info const *> formats;
-    bool valid;
-
-public:
-    Py_buffer view;
-
-    Buffer(Buffer const &) = delete;
-    Buffer(Buffer &&b) noexcept : view(b.view), valid(std::exchange(b.valid, false)) {}
-
-    Buffer & operator=(Buffer const &) = delete;
-    Buffer & operator=(Buffer &&b) noexcept {view = b.view; valid = std::exchange(b.valid, false); return *this;}
-
-    explicit operator bool() const {return valid;}
-
-    Buffer(PyObject *o, int flags) {
-        DUMP("before buffer", reference_count(o));
-        valid = PyObject_GetBuffer(o, &view, flags) == 0;
-        if (valid) DUMP("after buffer", reference_count(o), view.obj == o);
-    }
-
-    static std::type_info const & format(std::string_view s);
-    static std::string_view format(std::type_info const &t);
-    static std::size_t itemsize(std::type_info const &t);
-    // static Binary binary(Py_buffer *view, std::size_t len);
-    // static Variable binary_view(Py_buffer *view, std::size_t len);
-
-    ~Buffer() {
-        if (valid) {
-            PyObject *o = view.obj;
-            DUMP("before release", reference_count(view.obj));
-            PyBuffer_Release(&view);
-            DUMP("after release", reference_count(o));
-        }
-    }
-};
-
-/******************************************************************************/
-
 struct ArrayBuffer {
     std::vector<Py_ssize_t> shape_stride;
     std::size_t n_elem;
@@ -89,21 +50,6 @@ struct ArrayBuffer {
             shape_stride.emplace_back(a.layout.stride(i) * item);
     }
 };
-
-/******************************************************************************/
-
-template <class T>
-T * cast_if(PyObject *o) {
-    if (!PyObject_TypeCheck(o, type_object<T>())) return nullptr;
-    return std::addressof(reinterpret_cast<Holder<T> *>(o)->value);
-}
-
-template <class T>
-T & cast_object(PyObject *o) {
-    if (!PyObject_TypeCheck(o, type_object<T>()))
-        throw std::invalid_argument("Expected instance of cpy.TypeIndex");
-    return reinterpret_cast<Holder<T> *>(o)->value;
-}
 
 /******************************************************************************/
 
@@ -314,6 +260,16 @@ PyObject *raw_object(F &&f) noexcept {
             PyErr_SetString(PyExc_RuntimeError, runtime::unknown_exception_description());
     }
     return nullptr;
+}
+
+/******************************************************************************/
+
+template <class T>
+PyObject * copy_from(PyObject *self, PyObject *other) noexcept {
+    return raw_object([=] {
+        cast_object<T>(self) = cast_object<T>(other); // not notexcept
+        return Object(Py_None, true);
+    });
 }
 
 /******************************************************************************/
