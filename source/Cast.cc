@@ -27,6 +27,7 @@ Object type_args(Object const &o, Py_ssize_t n) {
 }
 
 Object list_cast(Variable &&ref, Object const &o, Object const &root) {
+    DUMP("Cast to list ", ref.type());
     if (auto args = type_args(o, 1)) {
         DUMP("is list ", PyList_Check(o));
         auto v = ref.cast<Sequence>();
@@ -44,6 +45,7 @@ Object list_cast(Variable &&ref, Object const &o, Object const &root) {
 }
 
 Object tuple_cast(Variable &&ref, Object const &o, Object const &root) {
+    DUMP("Cast to tuple ", ref.type());
     if (auto args = type_args(o)) {
         Py_ssize_t const len = PyTuple_GET_SIZE(+args);
         auto v = ref.cast<Sequence>();
@@ -64,6 +66,7 @@ Object tuple_cast(Variable &&ref, Object const &o, Object const &root) {
 }
 
 Object dict_cast(Variable &&ref, Object const &o, Object const &root) {
+    DUMP("Cast to dict ", ref.type());
     if (auto args = type_args(o, 2)) {
         Object key{PyTuple_GET_ITEM(+args, 0), true};
         Object val{PyTuple_GET_ITEM(+args, 1), true};
@@ -176,6 +179,7 @@ Object getattr(PyObject *obj, char const *name) {
 // condition: PyType_CheckExact(type) is false
 bool is_structured_type(PyObject *type, PyObject *origin) {
     if constexpr(PythonVersion >= Version(3, 7, 0)) {
+        DUMP("is_structure_type 3.7A");
         // in this case, origin may or may not be a PyTypeObject *
         return origin == +getattr(type, "__origin__");
     } else {
@@ -186,6 +190,7 @@ bool is_structured_type(PyObject *type, PyObject *origin) {
 
 bool is_structured_type(PyObject *type, PyTypeObject *origin) {
     if constexpr(PythonVersion >= Version(3, 7, 0)) {
+        DUMP("is_structure_type 3.7B");
         return reinterpret_cast<PyObject *>(origin) == +getattr(type, "__origin__");
     } else {
         // case like typing.Tuple: issubclass(typing.Tuple[int, float], tuple)
@@ -211,6 +216,7 @@ Object union_cast(Variable &&v, Object const &t, Object const &root) {
 // None, object, bool, int, float, str, bytes, TypeIndex, list, tuple, dict, Variable, Function, memoryview
 // Then, the output_conversions map is queried for Python function callable with the Variable
 Object try_python_cast(Variable &&v, Object const &t, Object const &root) {
+    DUMP("try_python_cast ", v.type());
     if (auto it = type_translations.find(t); it != type_translations.end()) {
         DUMP("type_translation found");
         return try_python_cast(std::move(v), it->second, root);
@@ -230,6 +236,7 @@ Object try_python_cast(Variable &&v, Object const &t, Object const &root) {
         else if (is_subclass(type, &PyFunction_Type))          return function_cast(std::move(v));            // Function
         else if (is_subclass(type, &PyMemoryView_Type))        return memoryview_cast(std::move(v), root);    // memory_view
     } else {
+        DUMP("Not type and not in translations");
         if (auto p = cast_if<TypeIndex>(t)) { // TypeIndex
             Dispatch msg;
             if (auto var = std::move(v).request_variable(msg, *p))
@@ -240,6 +247,7 @@ Object try_python_cast(Variable &&v, Object const &t, Object const &root) {
         else if (is_structured_type(t, &PyList_Type))  return list_cast(std::move(v), t, root);       // List[T] for some T (compound type)
         else if (is_structured_type(t, &PyTuple_Type)) return tuple_cast(std::move(v), t, root);      // Tuple[Ts...] for some Ts... (compound type)
         else if (is_structured_type(t, &PyDict_Type))  return dict_cast(std::move(v), t, root);       // Dict[K, V] for some K, V (compound type)
+        DUMP("Not one of the structure types");
     }
 
     DUMP("custom convert ", output_conversions.size());

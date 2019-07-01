@@ -18,6 +18,7 @@ inline void incref(PyObject *o) noexcept {Py_INCREF(o);}
 inline void decref(PyObject *o) noexcept {Py_DECREF(o);}
 inline void xincref(PyObject *o) noexcept {Py_XINCREF(o);}
 inline void xdecref(PyObject *o) noexcept {Py_XDECREF(o);}
+inline PyObject * not_none(PyObject *o) {return o == Py_None ? nullptr : o;}
 
 /******************************************************************************/
 

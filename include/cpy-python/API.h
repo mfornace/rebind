@@ -54,7 +54,7 @@ struct ArrayBuffer {
 /******************************************************************************/
 
 Variable variable_from_object(Object o);
-Sequence args_from_python(Object const &pypack);
+void args_from_python(Sequence &s, Object const &pypack);
 bool object_response(Variable &v, TypeIndex t, Object o);
 std::string_view from_unicode(PyObject *o);
 
@@ -98,10 +98,10 @@ struct Response<Object, Value> {
 
 /******************************************************************************/
 
-inline bool set_tuple_item(Object const &t, Py_ssize_t i, Object const &x) {
+inline bool set_tuple_item(PyObject *t, Py_ssize_t i, PyObject *x) {
     if (!x) return false;
-    incref(+x);
-    PyTuple_SET_ITEM(+t, i, +x);
+    incref(x);
+    PyTuple_SET_ITEM(t, i, x);
     return true;
 }
 

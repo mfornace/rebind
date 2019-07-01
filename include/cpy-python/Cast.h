@@ -18,17 +18,16 @@ inline Object as_object(std::string_view s) {return {PyUnicode_FromStringAndSize
 inline Object as_object(BinaryView s) {return {PyByteArray_FromStringAndSize(reinterpret_cast<char const *>(s.data()), s.size()), false};}
 inline Object as_object(Binary const &s) {return {PyByteArray_FromStringAndSize(reinterpret_cast<char const *>(s.data()), s.size()), false};}
 
-inline Object as_object(TypeIndex t) {
-    auto o = Object::from(PyObject_CallObject(type_object<TypeIndex>(), nullptr));
-    cast_object<TypeIndex>(o) = std::move(t);
+
+template <class T>
+Object default_object(T t) {
+    auto o = Object::from(PyObject_CallObject(type_object<T>(), nullptr));
+    cast_object<T>(o) = std::move(t);
     return o;
 }
 
-inline Object as_object(Function f) {
-    auto o = Object::from(PyObject_CallObject(type_object<Function>(), nullptr));
-    cast_object<Function>(o) = std::move(f);
-    return o;
-}
+inline Object as_object(TypeIndex t) {return default_object(std::move(t));}
+inline Object as_object(Function t) {return default_object(std::move(t));}
 
 /// Source driven conversion: guess the correct Python type from the source type
 /// I guess this is where automatic class conversions should be done?

@@ -234,9 +234,8 @@ Variable variable_from_object(Object o) {
     if (auto p = cast_if<Function>(o)) return {Type<Function const &>(), *p};
     else if (auto p = cast_if<std::type_index>(o)) return {Type<std::type_index>(), *p};
     else if (auto p = cast_if<Variable>(o)) {
-        DUMP(p, p->data());
-        DUMP(p->qualifier(), p->reference().qualifier());
-        DUMP(p->qualifier(), p->reference().qualifier());
+        DUMP("variable from object ", p, " ", p->data());
+        DUMP("variable qualifier=", p->qualifier(), ", reference qualifier=", p->reference().qualifier());
         return p->reference();
     }
     else return std::move(o);
@@ -245,11 +244,9 @@ Variable variable_from_object(Object o) {
 /******************************************************************************/
 
 // Store the objects in args in pack
-Sequence args_from_python(Object const &args) {
-    Sequence v;
-    v.reserve(PyObject_Length(+args));
+void args_from_python(Sequence &v, Object const &args) {
+    v.reserve(v.size() + PyObject_Length(+args));
     map_iterable(args, [&v](Object o) {v.emplace_back(variable_from_object(std::move(o)));});
-    return v;
 }
 
 /******************************************************************************/

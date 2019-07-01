@@ -21,8 +21,6 @@ Object call_overload(ErasedFunction const &fun, Sequence args, bool gil) {
     return variable_cast(std::move(out));
 }
 
-PyObject * not_none(PyObject *o) {return o == Py_None ? nullptr : o;}
-
 /******************************************************************************/
 
 Object function_call_impl(Function const &fun, Sequence args, PyObject *sig, TypeIndex const &t0, TypeIndex const &t1, bool gil) {
@@ -102,43 +100,23 @@ auto function_call_keywords(PyObject *kws) {
 
 /******************************************************************************/
 
-/* Function call has effectively the following signature
- * *args: the arguments to be passed to C++
- * gil (bool): whether to keep the gil on (default: True)
- * signature (int, Tuple[TypeIndex], or None): manual selection of overload to call
- * return_type (TypeIndex or None): manual selection of overload by return type
- * first_type (TypeIndex or None): manual selection overload by first type (useful for methods)
- */
-PyObject * function_call(PyObject *self, PyObject *pyargs, PyObject *kws) noexcept {
-    return raw_object([=] {
-        auto const [t0, t1, sig, gil] = function_call_keywords(kws);
-        DUMP("specified types", bool(t0), bool(t1));
-        DUMP("gil = ", gil, " ", Py_REFCNT(self), Py_REFCNT(pyargs));
-        DUMP("number of signatures ", cast_object<Function>(self).overloads.size());
-        auto args = args_from_python({pyargs, true});
-        return function_call_impl(cast_object<Function>(self), std::move(args), sig, t0, t1, gil);
-    });
-}
-
-/******************************************************************************/
-
 struct AnnotatedFunction {
     struct Annotation {
         std::string name;
         std::vector<Object> callback;
-        Object value;
+        Object type;
     };
     Function function;
     std::string format;
     std::vector<Annotation> annotations;
-    std::size_t max_positional;
+    std::size_t max_positional=0;
     Object return_type;
 };
 
 struct AnnotatedMethod {
     AnnotatedFunction function;
     Object self;
-};
+};// args, then parse keywords
 
 PyObject *function_annotated_impl(PyObject *data, PyObject *args, PyObject *kws) noexcept {
     return raw_object([=]() -> Object {
@@ -162,49 +140,139 @@ PyObject *function_annotated_impl(PyObject *data, PyObject *args, PyObject *kws)
 
 // take Function, argument names, argument defaults, annotations, # keyword arguments, return_type
 // return function which casts arguments into correct types and order and calls self with the resultant *args
+PyMethodDef function_annotated_ml = {"annotated",
+    reinterpret_cast<PyCFunction>(&function_annotated_impl),
+    METH_VARARGS|METH_KEYWORDS,
+    "annotated(a, b)\nannotated function wrapper"
+};
+
 PyObject *function_annotated(PyObject *self, PyObject *args) noexcept {
     return raw_object([=] {
         AnnotatedFunction a;
         a.function = cast_object<Function>(self);
-        PyMethodDef ml = {"annotated_function", reinterpret_cast<PyCFunction>(&function_annotated_impl), METH_KEYWORDS, "annotated function wrapper"};
-        return Object::from(PyCFunction_New(&ml, variable_cast(std::move(a))));
+        // std::cout << function_annotated_ml.ml_name << function_annotated_ml.ml_doc << std::endl;
+        return Object::from(PyCFunction_New(&function_annotated_ml, variable_cast(std::move(a))));
+        // auto c = _PyType_GetTextSignatureFromInternalDoc(function_annotated_ml.ml_name, function_annotated_ml.ml_doc);
+        // if (c) print(c);
+        // return o;
     });
 }
+
+/******************************************************************************/
+
+struct DelegatingMethod {
+    Object function, wrapping, captured_self;
+
+    static PyObject *call(PyObject *self, PyObject *args, PyObject *kws) noexcept {
+        return raw_object([=] {
+            auto const &s = cast_object<DelegatingMethod>(self);
+            std::size_t const n = PyTuple_GET_SIZE(+args) + 1;
+            auto args2 = Object::from(PyTuple_New(n));
+            if (!set_tuple_item(args2, 0, s.captured_self)) return Object();
+            for (std::size_t i = 1; i != n; ++i) if (!set_tuple_item(args2, i, PyTuple_GET_ITEM(+args, i-1))) return Object();
+            auto kws2 = Object::from(kws ? PyDict_Copy(kws) : PyDict_New());
+            if (PyDict_SetItemString(kws2, "_fun_", +s.function)) return Object();
+            return Object::from(PyObject_Call(s.wrapping, args2, kws2));
+        });
+    };
+};
+
+template <>
+PyTypeObject Holder<DelegatingMethod>::type = []{
+    auto t = type_definition<DelegatingMethod>("cpy.DelegatingMethod", "C++ delegating method");
+    t.tp_call = DelegatingMethod::call;
+    return t;
+}();
 
 /******************************************************************************/
 
 struct DelegatingFunction {
-    Function function;
-    Object wrapping;
+    Object function, wrapping;
+
+    static PyObject *call(PyObject *self, PyObject *args, PyObject *kws) noexcept {
+        return raw_object([=] {
+            auto const &s = cast_object<DelegatingFunction>(self);
+            auto kws2 = Object::from(kws ? PyDict_Copy(kws) : PyDict_New());
+            if (PyDict_SetItemString(kws2, "_fun_", +s.function)) return Object();
+            return Object::from(PyObject_Call(s.wrapping, args, kws2));
+        });
+    };
+
+    static PyObject *get(PyObject *self, PyObject *object, PyObject *type) noexcept {
+        return raw_object([=] {
+            if (!object) return Object(self, true);
+            auto const &s = cast_object<DelegatingFunction>(self);
+            return default_object(DelegatingMethod{s.function, s.wrapping, {object, true}});
+        });
+    };
+
+    // take Function, old function
+    // return a function that takes *args, **kwargs and calls old with new
+    // PyMethodDef DelegatingMethod = {"delegating_function", reinterpret_cast<PyCFunction>(&function_delegating_impl), METH_VARARGS|METH_KEYWORDS, "delegating function wrapper"};
+    static PyObject *make(PyObject *self, PyObject *old) noexcept {
+        return raw_object([=] {return default_object(DelegatingFunction{{self, true}, {old, true}});});
+    }
 };
 
-struct DelegatingMethod {
-    Function function;
-    Object wrapping;
-    Object self;
-};
-
-PyObject *function_delegating_impl(PyObject *self_old, PyObject *args, PyObject *kws) noexcept {
-    // PyDict_Copy(kws)?
-    if (PyDict_SetItemString(kws, "_fun_", PyTuple_GET_ITEM(self_old, 0))) return nullptr;
-    return PyObject_Call(PyTuple_GET_ITEM(self_old, 1), args, kws);
-}
-
-// take Function, old function
-// return a function that takes *args, **kwargs and calls old with new
-PyObject *function_delegating(PyObject *self, PyObject *old) noexcept {
-    return raw_object([=] {
-        PyMethodDef ml = {"delegating_function", reinterpret_cast<PyCFunction>(&function_delegating_impl), METH_KEYWORDS, "delegating function wrapper"};
-        return Object::from(PyCFunction_New(&ml, Object::from(PyTuple_Pack(2, self, old))));
-    });
-}
+template <>
+PyTypeObject Holder<DelegatingFunction>::type = []{
+    auto t = type_definition<DelegatingFunction>("cpy.DelegatingFunction", "C++ delegating function");
+    t.tp_call = DelegatingFunction::call;
+    t.tp_descr_get = DelegatingFunction::get;
+    return t;
+}();
 
 /******************************************************************************/
 
-PyObject *function_opaque(PyObject *self, PyObject *) noexcept {
+struct Method {
+    Function fun;
+    Object self;
+
+    static PyObject *call(PyObject *self, PyObject *pyargs, PyObject *kws) noexcept {
+        return raw_object([=] {
+            auto const &s = cast_object<Method>(self);
+            auto [t0, t1, sig, gil] = function_call_keywords(kws);
+            Sequence args;
+            args.emplace_back(variable_from_object(s.self));
+            args_from_python(args, {pyargs, true});
+            return function_call_impl(s.fun, std::move(args), sig, t0, t1, gil);
+        });
+    }
+
+    static PyObject *make(PyObject *self, PyObject *object, PyObject *type) {
+        return raw_object([=]() -> Object {
+            if (!object) return {self, true};
+            // capture bound object
+            return default_object(Method{cast_object<Function>(self), {object, true}});
+        });
+    }
+};
+
+template <>
+PyTypeObject Holder<Method>::type = []{
+    auto o = type_definition<Method>("cpy.Method", "Bound method");
+    o.tp_call = Method::call;
+    return o;
+}();
+
+/******************************************************************************/
+
+/* Function call has effectively the following signature
+ * *args: the arguments to be passed to C++
+ * gil (bool): whether to keep the gil on (default: True)
+ * signature (int, Tuple[TypeIndex], or None): manual selection of overload to call
+ * return_type (TypeIndex or None): manual selection of overload by return type
+ * first_type (TypeIndex or None): manual selection overload by first type (useful for methods)
+ */
+PyObject * function_call(PyObject *self, PyObject *pyargs, PyObject *kws) noexcept {
     return raw_object([=] {
-        PyMethodDef ml = {"call_function", reinterpret_cast<PyCFunction>(&function_call), METH_KEYWORDS, "opaque function wrapper"};
-        return Object::from(PyCFunction_New(&ml, self));
+        auto const [t0, t1, sig, gil] = function_call_keywords(kws);
+        DUMP("specified types", bool(t0), bool(t1));
+        DUMP("gil = ", gil, " ", Py_REFCNT(self), Py_REFCNT(pyargs));
+        DUMP("number of signatures ", cast_object<Function>(self).overloads.size());
+        Sequence args;
+        args_from_python(args, {pyargs, true});
+        return function_call_impl(cast_object<Function>(self), std::move(args), sig, t0, t1, gil);
     });
 }
 
@@ -218,17 +286,6 @@ PyObject * function_signatures(PyObject *self, PyObject *) noexcept {
         });
     });
 }
-
-/******************************************************************************/
-
-PyMethodDef FunctionTypeMethods[] = {
-    // {"move_from", static_cast<PyCFunction>(move_from<Function>),   METH_VARARGS, "move it"},
-    {"copy_from",   static_cast<PyCFunction>(copy_from<Function>), METH_O,       "copy from another Function"},
-    {"signatures",  static_cast<PyCFunction>(function_signatures), METH_NOARGS,  "get signatures"},
-    {"delegating",  static_cast<PyCFunction>(function_delegating), METH_O,       "delegating(self, other): return an equivalent of partial(other, _fun_=self)"},
-    {"annotated",   static_cast<PyCFunction>(function_annotated),  METH_VARARGS, "annotated(self, annotations): return a function wrapping self which casts inputs and output to the given type annotations"},
-    {nullptr, nullptr, 0, nullptr}
-};
 
 /******************************************************************************/
 
@@ -250,33 +307,21 @@ int function_init(PyObject *self, PyObject *args, PyObject *kws) noexcept {
 
 /******************************************************************************/
 
-struct Method {
-    Function fun;
-    Object self;
-    static PyObject *call(PyObject *self, PyObject *args, PyObject *kws) noexcept {
-        return nullptr;
-    }
+
+PyMethodDef FunctionTypeMethods[] = {
+    // {"move_from", static_cast<PyCFunction>(move_from<Function>),   METH_VARARGS, "move it"},
+    {"copy_from",   static_cast<PyCFunction>(copy_from<Function>), METH_O,       "copy from another Function"},
+    {"signatures",  static_cast<PyCFunction>(function_signatures), METH_NOARGS,  "get signatures"},
+    {"delegating",  static_cast<PyCFunction>(DelegatingFunction::make), METH_O,  "delegating(self, other): return an equivalent of partial(other, _fun_=self)"},
+    {"annotated",   static_cast<PyCFunction>(function_annotated),  METH_VARARGS, "annotated(self, annotations): return a function wrapping self which casts inputs and output to the given type annotations"},
+    {nullptr, nullptr, 0, nullptr}
 };
 
-template <>
-PyTypeObject Holder<Method>::type = []{
-    auto o = type_definition<Method>("cpy.Method", "Bound method");
-    o.tp_call = Method::call;
-    return o;
-}();
-
 /******************************************************************************/
 
-PyObject *function_get(PyObject *self, PyObject *object, PyObject *type) {
-    return raw_object([=]() -> Object {
-        if (object == Py_None) return {self, true};
-        else { // capture bound object
-            return {self, true};
-        }
-    });
+auto blah(int x) {
+    return [=]{return x;};
 }
-
-/******************************************************************************/
 
 template <>
 PyTypeObject Holder<Function>::type = []{
@@ -284,9 +329,26 @@ PyTypeObject Holder<Function>::type = []{
     o.tp_init = function_init;
     o.tp_call = function_call;
     o.tp_methods = FunctionTypeMethods;
-    o.tp_descr_get = function_get;
+    o.tp_descr_get = Method::make;
+    std::cout << (blah(2) == blah(1)) << std::endl;
+    std::cout << (blah(1) == blah(1)) << std::endl;
     return o;
 }();
+
+
+    // offsetof(PyCFunctionObject, vectorcall),    /* tp_vectorcall_offset */
+    // // (reprfunc)meth_repr,                        /* tp_repr */
+    // (hashfunc)meth_hash,                        /* tp_hash */
+    // PyCFunction_Call,                           /* tp_call */
+    // PyObject_GenericGetAttr,                    /* tp_getattro */
+    // Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC | _Py_TPFLAGS_HAVE_VECTORCALL,                /* tp_flags */
+    // (traverseproc)meth_traverse,                /* tp_traverse */
+    // meth_richcompare,                           /* tp_richcompare */
+    // offsetof(PyCFunctionObject, m_weakreflist), /* tp_weaklistoffset */
+    // meth_methods,                               /* tp_methods */
+    // meth_members,                               /* tp_members */
+    // meth_getsets,                               /* tp_getset */
+
 
 /******************************************************************************/
 

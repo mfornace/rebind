@@ -23,6 +23,13 @@ public:
     template <class ...Ts>
     ErasedSignature(Pack<Ts...>) : b(std::begin(signature_types<Ts...>)), e(std::end(signature_types<Ts...>)) {}
 
+    bool operator==(ErasedSignature const &o) const {return std::equal(b, e, o.b, o.e);}
+    bool operator!=(ErasedSignature const &o) const {return !(*this == o);}
+    bool operator<(ErasedSignature const &o) const {return std::lexicographical_compare(b, e, o.b, o.e);}
+    bool operator>(ErasedSignature const &o) const {return o < *this;}
+    bool operator<=(ErasedSignature const &o) const {return !(o < *this);}
+    bool operator>=(ErasedSignature const &o) const {return !(*this < o);}
+
     explicit operator bool() const {return b;}
     auto begin() const {return b;}
     auto end() const {return e;}
@@ -47,6 +54,13 @@ struct Function {
     static Function of(F &&f) {Function p; p.emplace(static_cast<F &&>(f)); return p;}
 
     explicit operator bool() const {return !overloads.empty();}
+
+    // bool operator==(Function const &f) const {return overloads == f.overloads;}
+    // bool operator!=(Function const &f) const {return !(*this == f);}
+    // bool operator<(Function const &f) const {return overloads < f.overloads;}
+    // bool operator>(Function const &f) const {return f < *this;}
+    // bool operator<=(Function const &f) const {return !(f < *this);}
+    // bool operator>=(Function const &f) const {return !(*this < f);}
 
     template <class ...Ts>
     Variable operator()(Caller c, Ts &&...ts) const {
