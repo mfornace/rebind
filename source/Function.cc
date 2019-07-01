@@ -319,10 +319,6 @@ PyMethodDef FunctionTypeMethods[] = {
 
 /******************************************************************************/
 
-auto blah(int x) {
-    return [=]{return x;};
-}
-
 template <>
 PyTypeObject Holder<Function>::type = []{
     auto o = type_definition<Function>("cpy.Function", "C++function object");
@@ -330,8 +326,6 @@ PyTypeObject Holder<Function>::type = []{
     o.tp_call = function_call;
     o.tp_methods = FunctionTypeMethods;
     o.tp_descr_get = Method::make;
-    std::cout << (blah(2) == blah(1)) << std::endl;
-    std::cout << (blah(1) == blah(1)) << std::endl;
     return o;
 }();
 
