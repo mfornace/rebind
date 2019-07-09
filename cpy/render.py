@@ -22,15 +22,14 @@ def _render_module(pkg, doc, set_type_names):
     config, out = Config(doc), doc.copy()
     config.set_type_error(ConversionError)
 
-    modules, translate = set(), {}
+    classes, modules, translate = set(), set(), {}
 
     # render classes and methods
     out['types'] = {k: v for k, v in doc['contents'] if isinstance(v, tuple)}
     for k, (meth, data) in out['types'].items():
-        mod, old, cls = render_type(pkg, (doc['Variable'],), k, dict(meth))
-        if old is not None:
-            translate[old] = cls
+        mod, cls = render_type(translate, pkg, (doc['Variable'],), k, dict(meth))
         modules.add(mod)
+        classes.add(cls)
         cls._metadata_ = {k: v or None for k, v in data}
         for k, v in data:
             config.set_type(k, cls)
@@ -57,7 +56,9 @@ def _render_module(pkg, doc, set_type_names):
             except ImportError:
                 pass
 
-    for mod in modules:
+    translate.pop(None, None)
+
+    for mod in modules.union(classes):
         log.info('rendering monkey-patching module {}'.format(mod))
         for k in dir(mod):
             try:
@@ -125,7 +126,7 @@ def find_class(mod, name):
 
 ################################################################################
 
-def render_type(pkg: str, bases: tuple, name: str, methods):
+def render_type(translate, pkg: str, bases: tuple, name: str, methods):
     '''Define a new type in pkg'''
     mod, name = common.split_module(pkg, name)
     old_cls, props = find_class(mod, name)
@@ -140,18 +141,18 @@ def render_type(pkg: str, bases: tuple, name: str, methods):
         if k.startswith('.'):
             old = props['__annotations__'].get(k[1:])
             log.info("deriving member '%s.%s%s' from %s", mod.__name__, name, k, repr(old))
-            props[k[1:]] = render_member(k[1:], v, old)
+            translate[old] = props[k[1:]] = render_member(k[1:], v, old)
         else:
             old = props.get(k, common.default_methods.get(k))
             log.info("deriving method '%s.%s.%s' from %s", mod.__name__, name, k, repr(old))
-            props[k] = render_function(v, old)
+            translate[old] = props[k] = render_function(v, old)
 
     props.setdefault('copy', copy)
 
-    cls = type(name, bases, props)
+    translate[old_cls] = cls = type(name, bases, props)
     log.info("rendering class '%s.%s'", mod.__name__, name)
     setattr(mod, name, cls)
-    return mod, old_cls, cls
+    return mod, cls
 
 ################################################################################
 
