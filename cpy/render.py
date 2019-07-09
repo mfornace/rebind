@@ -7,13 +7,14 @@ log = logging.getLogger(__name__)
 ################################################################################
 
 def render_module(pkg: str, doc: dict, set_type_names=False):
+    clear = doc['clear_global_objects']
     try:
         return _render_module(pkg, doc, set_type_names)
     except BaseException:
-        doc['clear_global_objects']()
+        clear()
         raise
     finally:
-        atexit.register(common.finalize, doc['clear_global_objects'], log)
+        atexit.register(common.finalize, clear, log)
 
 ################################################################################
 
@@ -59,11 +60,11 @@ def _render_module(pkg, doc, set_type_names):
     translate.pop(None, None)
 
     for mod in modules.union(classes):
-        log.info('rendering monkey-patching module {}'.format(mod))
+        log.info('rendering monkey-patching namespace {}'.format(mod))
         for k in dir(mod):
             try:
                 setattr(mod, k, translate[getattr(mod, k)])
-                log.info('monkey-patching module {} attribute {}'.format(mod, k))
+                log.info('monkey-patching namespace {} attribute {}'.format(mod, k))
             except (TypeError, KeyError):
                 pass
 
