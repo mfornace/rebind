@@ -123,7 +123,7 @@ template <class T>
 struct Request<T *> {
     std::optional<T *> operator()(Variable const &v, Dispatch &msg) const {
         std::optional<T *> out;
-        if (!v || v.request<std::nullptr_t>()) out.emplace(nullptr);
+        if (!v || v.request<std::nullptr_t>(msg)) out.emplace(nullptr);
         else if (auto p = v.request<T &>(msg)) out.emplace(std::addressof(*p));
         return out;
     }
