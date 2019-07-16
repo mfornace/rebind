@@ -7,6 +7,19 @@ class ArrayType:
 
 Array = ArrayType()
 
+class Forward:
+    def __init__(self, placeholder):
+        self._origin_ = placeholder
+
+    def __repr__(self):
+        return 'Forward({!r})'.format(self._origin_)
+
+    def __getattr__(self, key):
+        raise TypeError('Undefined attribute {!r} of forward object {!r}'.format(key, self._origin_))
+
+    def __call__(self, *args, **kws):
+        raise TypeError('Forward object {!r} cannot be called'.format(self._origin_))
+
 # also: None, bool, int, float, str, bytes, object
 
 # alternative syntax?: e.g. (T, U) instead of Tuple[T, U]

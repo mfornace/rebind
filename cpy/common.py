@@ -40,10 +40,19 @@ translations = {
     '-': '__sub__',
     '/': '__div__',
     '*': '__mul__',
+    '==': '__eq__',
+    '!=': '__ne__',
+    '<': '__lt__',
+    '>': '__gt__',
+    '<=': '__le__',
+    '>=': '__ge__',
     'bool': '__bool__',
 }
 
 ################################################################################
+
+def unwrap(old):
+    return getattr(old, '_origin_', old)
 
  # The following functions are just used for their signatures
 

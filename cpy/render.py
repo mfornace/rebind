@@ -114,7 +114,7 @@ def copy(self):
 
 def find_class(mod, name):
     '''Find an already declared class and return its deduced properties'''
-    old = getattr(mod, name, None)
+    old = common.unwrap(getattr(mod, name, None))
     annotations = {}
     props = {'__module__': mod.__name__}
 
@@ -140,11 +140,11 @@ def render_type(translate, pkg: str, bases: tuple, name: str, methods):
     for k, v in methods.items():
         k = common.translations.get(k, k)
         if k.startswith('.'):
-            old = props['__annotations__'].get(k[1:])
+            old = common.unwrap(props['__annotations__'].get(k[1:]))
             log.info("deriving member '%s.%s%s' from %s", mod.__name__, name, k, repr(old))
             translate[old] = props[k[1:]] = render_member(k[1:], v, old)
         else:
-            old = props.get(k, common.default_methods.get(k))
+            old = common.unwrap(props.get(k, common.default_methods.get(k)))
             log.info("deriving method '%s.%s.%s' from %s", mod.__name__, name, k, repr(old))
             translate[old] = props[k] = render_function(v, old)
 
@@ -163,7 +163,7 @@ def render_object(pkg, key, value):
     log.info("rendering object '%s.%s'", mod.__name__, key)
     localns = mod.__dict__
 
-    old = getattr(mod, key, None)
+    old = common.unwrap(getattr(mod, key, None))
     if old is None:
         pass
     elif callable(value):
