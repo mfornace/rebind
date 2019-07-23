@@ -97,10 +97,19 @@ def finalize(func, log):
 
 ################################################################################
 
+def import_namespace(name):
+    try:
+        return importlib.import_module(name)
+    except ImportError:
+        x, y = name.rsplit('.', maxsplit=1)
+        return getattr(import_namespace(x), y)
+
+################################################################################
+
 def split_module(pkg, name):
     '''Return the module containing pkg.name, and the last string in name'''
     x, y = '{}.{}'.format(pkg, name).rsplit('.', maxsplit=1)
-    return importlib.import_module(x), y
+    return import_namespace(x), y
 
 ################################################################################
 
