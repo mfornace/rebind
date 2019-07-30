@@ -4,6 +4,7 @@ project(cpy VERSION 0.0.0 LANGUAGES CXX)
 ################################################################################
 
 set(CPY_PYTHON "python" CACHE STRING "Python executable to use in deducing include directory")
+# set(CPY_PYTHON_OLD CACHE STRING INTERNAL)
 # set(CPY_PYTHON_INCLUDE "" CACHE STRING "Include directory containing Python.h")
 set(CPY_MIN_PYTHON 2.7 CACHE STRING "Minimum python version to look for (if CPY_PYTHON and CPY_PYTHON_INCLUDE not defined)")
 
@@ -11,7 +12,7 @@ set(CPY_MIN_PYTHON 2.7 CACHE STRING "Minimum python version to look for (if CPY_
 
 if (${CPY_PYTHON_INCLUDE})
     message("-- Using pre-specified Python include ${CPY_PYTHON_INCLUDE}")
-elseif (CPY_PYTHON)
+elseif (NOT CPY_PYTHON STREQUAL CPY_PYTHON_OLD)
     execute_process(
         COMMAND ${CPY_PYTHON} -c "import sys, sysconfig; sys.stdout.write(sysconfig.get_paths()['include'])"
         RESULT_VARIABLE python_stat OUTPUT_VARIABLE python_include
@@ -21,6 +22,7 @@ elseif (CPY_PYTHON)
     endif()
     message("-- Using Python include ${python_include} deduced from CPY_PYTHON=${CPY_PYTHON}")
     set (CPY_PYTHON_INCLUDE ${python_include} CACHE STRING "Python include directory for cpy")
+    set (CPY_PYTHON_OLD ${CPY_PYTHON} CACHE INTERNAL "Last value of CPY_PYTHON")
 else()
     find_package(PythonLibs ${CPY_MIN_PYTHON} REQUIRED)
     set (CPY_PYTHON_INCLUDE ${PYTHON_INCLUDE_DIR} CACHE STRING "Python include directory for cpy")
