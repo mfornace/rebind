@@ -247,6 +247,16 @@ struct Request<T, std::enable_if_t<std::is_integral_v<T>>> {
 };
 
 
+template <class T>
+struct Request<T, std::enable_if_t<std::is_enum_v<T>>> {
+    std::optional<T> operator()(Variable const &v, Dispatch &msg) const {
+        DUMP("trying convert to enum", v.type(), typeid(T).name());
+        if (auto p = v.request<std::underlying_type_t<T>>()) return static_cast<T>(*p);
+        return msg.error("not convertible to enum", typeid(T));
+    }
+};
+
+
 template <class T, class Traits, class Alloc>
 struct Request<std::basic_string<T, Traits, Alloc>> {
     std::optional<std::basic_string<T, Traits, Alloc>> operator()(Variable const &v, Dispatch &msg) const {
