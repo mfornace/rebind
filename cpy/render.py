@@ -100,7 +100,8 @@ def render_member(key, value, old):
     def fset(self, other, _old=value):
         _old(self).copy_from(other)
 
-    return property(fget=fget, fset=fset, doc='C++ member of type {}'.format(old))
+    name = getattr(old, '__name__', old)
+    return property(fget=fget, fset=fset, doc='Member of type `{}`'.format(name))
 
 ################################################################################
 
