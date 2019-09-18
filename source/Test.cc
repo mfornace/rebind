@@ -1,9 +1,9 @@
 
-#include <cpy/Document.h>
-#include <cpy/Standard.h>
+#include <rebind/Document.h>
+#include <rebind/Standard.h>
 #include <iostream>
 
-namespace cpy {
+namespace rebind {
 
 /******************************************************************************/
 

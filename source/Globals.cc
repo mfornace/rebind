@@ -1,6 +1,6 @@
-#include <cpy-python/API.h>
+#include <rebind-python/API.h>
 
-namespace cpy {
+namespace rebind {
 
 Object UnionType, TypeError;
 
@@ -84,28 +84,28 @@ Zip<std::string_view, std::type_info const *> Buffer::formats = {
     {"P", &typeid(void *)}
 };
 
-#define CPY_TMP(C, T) {Scalar::C, typeid(T), sizeof(T) * CHAR_BIT}
+#define REBIND_TMP(C, T) {Scalar::C, typeid(T), sizeof(T) * CHAR_BIT}
 
 Zip<Scalar, TypeIndex, unsigned> scalars = {
-    CPY_TMP(Bool,         bool),
-    CPY_TMP(Char,         char),
-    CPY_TMP(SignedChar,   signed char),
-    CPY_TMP(UnsignedChar, unsigned char),
-    CPY_TMP(UnsignedChar, char16_t),
-    CPY_TMP(UnsignedChar, char32_t),
-    CPY_TMP(Unsigned,     std::uint8_t),
-    CPY_TMP(Unsigned,     std::uint16_t),
-    CPY_TMP(Unsigned,     std::uint32_t),
-    CPY_TMP(Unsigned,     std::uint64_t),
-    CPY_TMP(Signed,       std::int8_t),
-    CPY_TMP(Signed,       std::int16_t),
-    CPY_TMP(Signed,       std::int32_t),
-    CPY_TMP(Signed,       std::int64_t),
-    CPY_TMP(Float,        float),
-    CPY_TMP(Float,        double),
-    CPY_TMP(Float,        long double),
-    CPY_TMP(Pointer,      void *),
+    REBIND_TMP(Bool,         bool),
+    REBIND_TMP(Char,         char),
+    REBIND_TMP(SignedChar,   signed char),
+    REBIND_TMP(UnsignedChar, unsigned char),
+    REBIND_TMP(UnsignedChar, char16_t),
+    REBIND_TMP(UnsignedChar, char32_t),
+    REBIND_TMP(Unsigned,     std::uint8_t),
+    REBIND_TMP(Unsigned,     std::uint16_t),
+    REBIND_TMP(Unsigned,     std::uint32_t),
+    REBIND_TMP(Unsigned,     std::uint64_t),
+    REBIND_TMP(Signed,       std::int8_t),
+    REBIND_TMP(Signed,       std::int16_t),
+    REBIND_TMP(Signed,       std::int32_t),
+    REBIND_TMP(Signed,       std::int64_t),
+    REBIND_TMP(Float,        float),
+    REBIND_TMP(Float,        double),
+    REBIND_TMP(Float,        long double),
+    REBIND_TMP(Pointer,      void *),
 };
-#undef CPY_TMP
+#undef REBIND_TMP
 
 }

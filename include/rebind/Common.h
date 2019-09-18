@@ -5,9 +5,9 @@
 #include <string_view>
 #include <memory>
 
-#define DUMP(...) ::cpy::dump(__FILE__, __LINE__, __VA_ARGS__);
+#define DUMP(...) ::rebind::dump(__FILE__, __LINE__, __VA_ARGS__);
 
-namespace cpy {
+namespace rebind {
 
 extern bool Debug;
 

@@ -5,7 +5,7 @@
 #include <iostream>
 #include <sstream>
 
-namespace cpy {
+namespace rebind {
 
 using ErasedFunction = std::function<Variable(Caller, Sequence)>;
 

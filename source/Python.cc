@@ -1,14 +1,14 @@
 /**
- * @brief Python-related C++ source code for cpy
+ * @brief Python-related C++ source code for rebind
  * @file Python.cc
  */
-#include <cpy-python/API.h>
-#include <cpy/Document.h>
+#include <rebind-python/API.h>
+#include <rebind/Document.h>
 #include <complex>
 #include <any>
 #include <iostream>
 
-namespace cpy {
+namespace rebind {
 
 /******************************************************************************/
 

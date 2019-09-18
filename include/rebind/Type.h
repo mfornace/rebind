@@ -4,7 +4,7 @@
 #include <string_view>
 #include <iostream>
 
-namespace cpy {
+namespace rebind {
 
 template <class T>
 using unqualified = std::remove_cv_t<std::remove_reference_t<T>>;
@@ -124,8 +124,8 @@ constexpr TypeIndex type_index(Type<T> t={}) {return t;}
 namespace std {
 
 template <>
-struct hash<cpy::TypeIndex> {
-    size_t operator()(cpy::TypeIndex const &t) const {return t.hash_code();}
+struct hash<rebind::TypeIndex> {
+    size_t operator()(rebind::TypeIndex const &t) const {return t.hash_code();}
 };
 
 }

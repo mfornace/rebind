@@ -1,7 +1,7 @@
 #pragma once
 #include "API.h"
 
-namespace cpy {
+namespace rebind {
 
 /******************************************************************************/
 

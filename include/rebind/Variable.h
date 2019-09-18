@@ -14,7 +14,7 @@
 #include <typeindex>
 #include <optional>
 
-namespace cpy {
+namespace rebind {
 
 using TargetQualifier = Qualifier;
 

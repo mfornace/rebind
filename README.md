@@ -180,18 +180,18 @@ variable.move_from(other_variable) # if variable is V, move_from,
 
 ## Summary
 
-These two sides are kept pretty modular; in particular, your C++ testing code doesn't need to know anything about (or include) any Python headers. In terms of API, `cpy` draws on ideas from `Catch` and `doctest` but tries to be less macro-based.
+These two sides are kept pretty modular; in particular, your C++ testing code doesn't need to know anything about (or include) any Python headers. In terms of API, `rebind` draws on ideas from `Catch` and `doctest` but tries to be less macro-based.
 
-There are a lot of nice features in `cpy` including the abilities to:
+There are a lot of nice features in `rebind` including the abilities to:
 - write test event handlers and CLIs in Python (easier than in C++)
 - run tests in a threadsafe and parallel manner
 - parametrize your tests either in C++, Python, or from the command line
 - call tests from other tests within C++ or Python
 - replace the given Python handlers with your own without any recompilation of your C++ code
 
-The primary hurdles to using `cpy` are that it requires C++17 (most importantly for `std::variant`) and Python 2.7+/3.3+ for the Python reporters. The build can also be bit more tricky, though it's not as complicated as you might expect.
+The primary hurdles to using `rebind` are that it requires C++17 (most importantly for `std::variant`) and Python 2.7+/3.3+ for the Python reporters. The build can also be bit more tricky, though it's not as complicated as you might expect.
 
-`cpy` is quite usable but also at a pretty early stage of development. Please try it out and give some feedback!
+`rebind` is quite usable but also at a pretty early stage of development. Please try it out and give some feedback!
 
 ### Canonical codes
 - `new`: constructor

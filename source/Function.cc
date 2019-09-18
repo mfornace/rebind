@@ -1,4 +1,4 @@
-namespace cpy {
+namespace rebind {
 
 /******************************************************************************/
 
@@ -17,7 +17,7 @@ Object call_overload(ErasedFunction const &fun, Sequence args, bool gil) {
     DUMP("got the output ", out.type());
     if (auto p = out.target<Object const &>()) return *p;
     // if (auto p = out.target<PyObject * &>()) return {*p, true};
-    // Convert the C++ Variable to a cpy.Variable
+    // Convert the C++ Variable to a rebind.Variable
     return variable_cast(std::move(out));
 }
 
@@ -179,7 +179,7 @@ struct DelegatingMethod {
 
 template <>
 PyTypeObject Holder<DelegatingMethod>::type = []{
-    auto t = type_definition<DelegatingMethod>("cpy.DelegatingMethod", "C++ delegating method");
+    auto t = type_definition<DelegatingMethod>("rebind.DelegatingMethod", "C++ delegating method");
     t.tp_call = DelegatingMethod::call;
     return t;
 }();
@@ -216,7 +216,7 @@ struct DelegatingFunction {
 
 template <>
 PyTypeObject Holder<DelegatingFunction>::type = []{
-    auto t = type_definition<DelegatingFunction>("cpy.DelegatingFunction", "C++ delegating function");
+    auto t = type_definition<DelegatingFunction>("rebind.DelegatingFunction", "C++ delegating function");
     t.tp_call = DelegatingFunction::call;
     t.tp_descr_get = DelegatingFunction::get;
     return t;
@@ -250,7 +250,7 @@ struct Method {
 
 template <>
 PyTypeObject Holder<Method>::type = []{
-    auto o = type_definition<Method>("cpy.Method", "Bound method");
+    auto o = type_definition<Method>("rebind.Method", "Bound method");
     o.tp_call = Method::call;
     return o;
 }();
@@ -321,7 +321,7 @@ PyMethodDef FunctionTypeMethods[] = {
 
 template <>
 PyTypeObject Holder<Function>::type = []{
-    auto o = type_definition<Function>("cpy.Function", "C++function object");
+    auto o = type_definition<Function>("rebind.Function", "C++function object");
     o.tp_init = function_init;
     o.tp_call = function_call;
     o.tp_methods = FunctionTypeMethods;

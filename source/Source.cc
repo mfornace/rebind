@@ -1,6 +1,6 @@
-#include <cpy/Document.h>
+#include <rebind/Document.h>
 
-namespace cpy {
+namespace rebind {
 
 bool Debug = false;
 
@@ -166,7 +166,7 @@ Function & Document::find_function(std::string s) {
 
 #if __has_include(<cxxabi.h>)
 #   include <cxxabi.h>
-    namespace cpy::runtime {
+    namespace rebind::runtime {
         using namespace __cxxabiv1;
 
         std::string demangle(char const *s) {
@@ -183,7 +183,7 @@ Function & Document::find_function(std::string s) {
         }
     }
 #else
-    namespace cpy::runtime {
+    namespace rebind::runtime {
         std::string demangle(char const *s) {return s;}
 
         char const *unknown_exception_description() noexcept {return "C++: unknown exception";}

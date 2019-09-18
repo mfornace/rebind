@@ -1,28 +1,28 @@
 /**
- * @brief Python-related C++ source code for cpy
+ * @brief Python-related C++ source code for rebind
  * @file Python.cc
  */
-#include <cpy-python/Cast.h>
-#include <cpy-python/API.h>
-#include <cpy/Document.h>
+#include <rebind-python/Cast.h>
+#include <rebind-python/API.h>
+#include <rebind/Document.h>
 #include <any>
 #include <iostream>
 #include <numeric>
 
-#ifndef CPY_MODULE
-#   define CPY_MODULE libcpy
+#ifndef REBIND_MODULE
+#   define REBIND_MODULE librebind
 #endif
 
-#define CPY_CAT_IMPL(s1, s2) s1##s2
-#define CPY_CAT(s1, s2) CPY_CAT_IMPL(s1, s2)
+#define REBIND_CAT_IMPL(s1, s2) s1##s2
+#define REBIND_CAT(s1, s2) REBIND_CAT_IMPL(s1, s2)
 
-#define CPY_STRING_IMPL(x) #x
-#define CPY_STRING(x) CPY_STRING_IMPL(x)
+#define REBIND_STRING_IMPL(x) #x
+#define REBIND_STRING(x) REBIND_STRING_IMPL(x)
 
 #include "Var.cc"
 #include "Function.cc"
 
-namespace cpy {
+namespace rebind {
 
 // template <class F>
 // constexpr PyMethodDef method(char const *name, F fun, int type, char const *doc) noexcept {
@@ -53,7 +53,7 @@ PyBufferProcs buffer_procs{array_data_buffer, nullptr};
 
 template <>
 PyTypeObject Holder<ArrayBuffer>::type = []{
-    auto o = type_definition<ArrayBuffer>("cpy.ArrayBuffer", "C++ ArrayBuffer object");
+    auto o = type_definition<ArrayBuffer>("rebind.ArrayBuffer", "C++ ArrayBuffer object");
     o.tp_as_buffer = &buffer_procs;
     return o;
 }();
@@ -73,13 +73,13 @@ long type_index_hash(PyObject *o) noexcept {
 PyObject *type_index_repr(PyObject *o) noexcept {
     TypeIndex const *p = cast_if<TypeIndex>(o);
     if (p) return PyUnicode_FromFormat("TypeIndex('%s')", get_type_name(*p).data());
-    return type_error("Expected instance of cpy.TypeIndex");
+    return type_error("Expected instance of rebind.TypeIndex");
 }
 
 PyObject *type_index_str(PyObject *o) noexcept {
     TypeIndex const *p = cast_if<TypeIndex>(o);
     if (p) return PyUnicode_FromString(get_type_name(*p).data());
-    return type_error("Expected instance of cpy.TypeIndex");
+    return type_error("Expected instance of rebind.TypeIndex");
 }
 
 PyObject *type_index_compare(PyObject *self, PyObject *other, int op) {
@@ -90,7 +90,7 @@ PyObject *type_index_compare(PyObject *self, PyObject *other, int op) {
 
 template <>
 PyTypeObject Holder<TypeIndex>::type = []{
-    auto o = type_definition<TypeIndex>("cpy.TypeIndex", "C++ type_index object");
+    auto o = type_definition<TypeIndex>("rebind.TypeIndex", "C++ type_index object");
     o.tp_repr = type_index_repr;
     o.tp_hash = type_index_hash;
     o.tp_str = type_index_str;
@@ -175,27 +175,27 @@ Object initialize(Document const &doc) {
 extern "C" {
 
 #if PY_MAJOR_VERSION > 2
-    static struct PyModuleDef cpy_definition = {
+    static struct PyModuleDef rebind_definition = {
         PyModuleDef_HEAD_INIT,
-        CPY_STRING(CPY_MODULE),
+        REBIND_STRING(REBIND_MODULE),
         "A Python module to run C++ unit tests",
         -1,
     };
 
-    PyObject* CPY_CAT(PyInit_, CPY_MODULE)(void) {
+    PyObject* REBIND_CAT(PyInit_, REBIND_MODULE)(void) {
         Py_Initialize();
-        return cpy::raw_object([&]() -> cpy::Object {
-            cpy::Object mod {PyModule_Create(&cpy_definition), true};
+        return rebind::raw_object([&]() -> rebind::Object {
+            rebind::Object mod {PyModule_Create(&rebind_definition), true};
             if (!mod) return {};
-            cpy::Object dict = initialize(cpy::document());
+            rebind::Object dict = initialize(rebind::document());
             if (!dict) return {};
-            cpy::incref(+dict);
+            rebind::incref(+dict);
             if (PyModule_AddObject(+mod, "document", +dict) < 0) return {};
             return mod;
         });
     }
 #else
-    void CPY_CAT(init, CPY_MODULE)(void) {
+    void REBIND_CAT(init, REBIND_MODULE)(void) {
 
     }
 #endif

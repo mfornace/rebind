@@ -1,12 +1,12 @@
 /**
- * @brief Python-related C++ API for cpy
+ * @brief Python-related C++ API for rebind
  * @file PythonAPI.h
  */
 
 #pragma once
 #include "CAPI.h"
 
-namespace cpy {
+namespace rebind {
 
 void initialize_global_objects();
 void clear_global_objects();
@@ -56,7 +56,7 @@ struct Object {
 
 namespace std {
     template <>
-    struct hash<cpy::Object> {
-        size_t operator()(cpy::Object const &o) const {return std::hash<PyObject *>()(o.ptr);}
+    struct hash<rebind::Object> {
+        size_t operator()(rebind::Object const &o) const {return std::hash<PyObject *>()(o.ptr);}
     };
 }

@@ -1,7 +1,7 @@
 
 
 class ConversionError(TypeError):
-    '''Default error type for all cpy type conversion errors'''
+    '''Default error type for all rebind type conversion errors'''
 
 
 ################################################################################

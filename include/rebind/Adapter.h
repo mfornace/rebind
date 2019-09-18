@@ -3,7 +3,7 @@
 #include "BasicTypes.h"
 #include <functional>
 
-namespace cpy {
+namespace rebind {
 
 
 /******************************************************************************/

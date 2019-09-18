@@ -5,11 +5,11 @@
 #pragma GCC diagnostic pop
 
 #include <functional>
-#include <cpy/Type.h>
-#include <cpy/Common.h>
-#include <cpy/Error.h>
+#include <rebind/Type.h>
+#include <rebind/Common.h>
+#include <rebind/Error.h>
 
-namespace cpy {
+namespace rebind {
 
 /******************************************************************************/
 
@@ -60,7 +60,7 @@ T * cast_if(PyObject *o) {
 template <class T>
 T & cast_object(PyObject *o) {
     if (!PyObject_TypeCheck(o, type_object<T>()))
-        throw std::invalid_argument("Expected instance of cpy.TypeIndex");
+        throw std::invalid_argument("Expected instance of rebind.TypeIndex");
     return reinterpret_cast<Holder<T> *>(o)->value;
 }
 

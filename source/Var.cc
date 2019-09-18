@@ -1,4 +1,4 @@
-namespace cpy {
+namespace rebind {
 
 // move_from is called 1) during init, V.move_from(V), to transfer the object (here just use Var move constructor)
 //                     2) during assignment, R.move_from(L), to transfer the object (here cast V to new object of same type, swap)
@@ -126,7 +126,7 @@ PyMethodDef VarMethods[] = {
 
 template <>
 PyTypeObject Holder<Var>::type = []{
-    auto o = type_definition<Var>("cpy.Variable", "C++ class object");
+    auto o = type_definition<Var>("rebind.Variable", "C++ class object");
     o.tp_as_number = &VarNumberMethods;
     o.tp_methods = VarMethods;
     // no init (just use default constructor)

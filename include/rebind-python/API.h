@@ -1,16 +1,16 @@
 /**
- * @brief Python-related C++ API for cpy
+ * @brief Python-related C++ API for rebind
  * @file PythonAPI.h
  */
 
 #pragma once
 #include "Object.h"
 
-#include <cpy/Document.h>
+#include <rebind/Document.h>
 #include <mutex>
 #include <unordered_map>
 
-namespace cpy {
+namespace rebind {
 
 extern std::unordered_map<TypeIndex, std::string> type_names;
 extern Object TypeError, UnionType;

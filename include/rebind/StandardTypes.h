@@ -8,7 +8,7 @@
 #include <variant>
 #include <map>
 
-namespace cpy {
+namespace rebind {
 
 /******************************************************************************/
 

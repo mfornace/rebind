@@ -1,7 +1,7 @@
 #pragma once
 #include "Variable.h"
 
-namespace cpy {
+namespace rebind {
 
 struct Default {};
 struct Specialized {};

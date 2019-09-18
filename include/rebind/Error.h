@@ -11,7 +11,7 @@
 #include <deque>
 #include <optional>
 
-namespace cpy {
+namespace rebind {
 
 /******************************************************************************/
 
@@ -19,7 +19,7 @@ namespace cpy {
 struct ClientError : std::exception {
     std::string_view message;
     explicit ClientError(std::string_view const &s) noexcept : message(s) {}
-    char const * what() const noexcept override {return message.empty() ? "cpy::ClientError" : message.data();}
+    char const * what() const noexcept override {return message.empty() ? "rebind::ClientError" : message.data();}
 };
 
 /******************************************************************************/

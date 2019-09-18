@@ -3,7 +3,7 @@
 #include "Conversions.h"
 #include <cstdlib>
 
-namespace cpy {
+namespace rebind {
 
 /******************************************************************************/
 

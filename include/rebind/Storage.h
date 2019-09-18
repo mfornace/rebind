@@ -2,7 +2,7 @@
 #include "Common.h"
 #include "Error.h"
 
-namespace cpy {
+namespace rebind {
 
 /******************************************************************************/
 

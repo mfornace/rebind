@@ -2,7 +2,7 @@
 #include "Function.h"
 #include <map>
 
-namespace cpy {
+namespace rebind {
 
 /******************************************************************************/
 

@@ -57,7 +57,7 @@ def unwrap(old):
  # The following functions are just used for their signatures
 
 def opaque_signature(*args):
-    '''Call a function from a cpy.Document'''
+    '''Call a function from a rebind.Document'''
 
 def default_str(self) -> str:
     '''Convert self to a str via C++'''
@@ -91,7 +91,7 @@ def signatures(function):
 ################################################################################
 
 def finalize(func, log):
-    '''Finalize C++ held Python objects from cpy'''
+    '''Finalize C++ held Python objects from rebind'''
     log.info('cleaning up Python C++ resources')
     func()
 

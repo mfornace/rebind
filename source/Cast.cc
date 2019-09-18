@@ -1,7 +1,7 @@
-#include <cpy-python/Cast.h>
+#include <rebind-python/Cast.h>
 #include <numeric>
 
-namespace cpy {
+namespace rebind {
 
 bool is_subclass(PyTypeObject *o, PyTypeObject *t) {
     int x = PyObject_IsSubclass(reinterpret_cast<PyObject *>(o), reinterpret_cast<PyObject *>(t));
@@ -96,7 +96,7 @@ Object dict_cast(Variable &&ref, Object const &o, Object const &root) {
     return {};
 }
 
-// Convert Variable to a class which is a subclass of cpy.Variable
+// Convert Variable to a class which is a subclass of rebind.Variable
 Object variable_cast(Variable &&v, Object const &t) {
     PyObject *x;
     if (t) x = +t;
