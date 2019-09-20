@@ -94,6 +94,7 @@ struct AnnotatedCallback {
     Caller caller;
     Function function;
 
+    AnnotatedCallback() = default;
     AnnotatedCallback(Function f, Caller c) : function(std::move(f)), caller(std::move(c)) {}
 
     R operator()(Ts ...ts) const {
@@ -109,6 +110,7 @@ struct Callback {
     Caller caller;
     Function function;
 
+    Callback() = default;
     Callback(Function f, Caller c) : function(std::move(f)), caller(std::move(c)) {}
 
     template <class ...Ts>
