@@ -86,11 +86,20 @@ std::string_view from_bytes(PyObject *o) {
 
 template <class T>
 bool to_arithmetic(Object const &o, Variable &v) {
-    DUMP("cast arithmetic", v.type());
+    DUMP("cast arithmetic in: ", v.type());
     if (PyFloat_Check(o)) return v = static_cast<T>(PyFloat_AsDouble(+o)), true;
     if (PyLong_Check(o)) return v = static_cast<T>(PyLong_AsLongLong(+o)), true;
     if (PyBool_Check(o)) return v = static_cast<T>(+o == Py_True), true;
-    DUMP("cast arithmetic", v.type());
+    if (PyNumber_Check(+o)) { // This can be hit for e.g. numpy.int64
+        if (std::is_integral_v<T>) {
+            if (auto i = Object::from(PyNumber_Long(+o)))
+                return v = static_cast<T>(PyLong_AsLongLong(+i)), true;
+        } else {
+            if (auto i = Object::from(PyNumber_Float(+o)))
+               return v = static_cast<T>(PyFloat_AsDouble(+i)), true;
+        }
+    }
+    DUMP("cast arithmetic out: ", v.type());
     return false;
 }
 
