@@ -90,17 +90,31 @@ Zip<Scalar, TypeIndex, unsigned> scalars = {
     REBIND_TMP(Bool,         bool),
     REBIND_TMP(Char,         char),
     REBIND_TMP(SignedChar,   signed char),
+
     REBIND_TMP(UnsignedChar, unsigned char),
     REBIND_TMP(UnsignedChar, char16_t),
     REBIND_TMP(UnsignedChar, char32_t),
+
     REBIND_TMP(Unsigned,     std::uint8_t),
     REBIND_TMP(Unsigned,     std::uint16_t),
     REBIND_TMP(Unsigned,     std::uint32_t),
     REBIND_TMP(Unsigned,     std::uint64_t),
+
+    REBIND_TMP(Unsigned,     unsigned short),
+    REBIND_TMP(Unsigned,     unsigned int),
+    REBIND_TMP(Unsigned,     unsigned long),
+    REBIND_TMP(Unsigned,     unsigned long long),
+
     REBIND_TMP(Signed,       std::int8_t),
     REBIND_TMP(Signed,       std::int16_t),
     REBIND_TMP(Signed,       std::int32_t),
     REBIND_TMP(Signed,       std::int64_t),
+
+    REBIND_TMP(Signed,       short),
+    REBIND_TMP(Signed,       int),
+    REBIND_TMP(Signed,       long),
+    REBIND_TMP(Signed,       long long),
+
     REBIND_TMP(Float,        float),
     REBIND_TMP(Float,        double),
     REBIND_TMP(Float,        long double),
