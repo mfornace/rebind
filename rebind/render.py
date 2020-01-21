@@ -143,7 +143,7 @@ def render_type(translate, pkg: str, bases: tuple, name: str, methods):
         if k.startswith('.'):
             old = common.unwrap(props['__annotations__'].get(k[1:]))
             log.info("deriving member '%s.%s%s' from %s", mod.__name__, name, k, repr(old))
-            translate[old] = props[k[1:]] = render_member(k[1:], v, old)
+            translate['%s.%s' % (name, old)] = props[k[1:]] = render_member(k[1:], v, old)
         else:
             old = common.unwrap(props.get(k, common.default_methods.get(k)))
             log.info("deriving method '%s.%s.%s' from %s", mod.__name__, name, k, repr(old))
