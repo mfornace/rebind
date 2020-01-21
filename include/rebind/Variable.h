@@ -182,14 +182,17 @@ public:
     std::optional<T> request(Dispatch &msg, Type<T> t={}) const {
         static_assert(std::is_same_v<T, unqualified<T>>);
         if constexpr(std::is_same_v<T, Variable>) return *this;
-        if (auto p = target<T const &>()) {
-            // DUMP(type(), p, &buff, reinterpret_cast<void * const &>(buff), stack, typeid(p).name(), typeid(Type<T>).name());
-            return *p;
+
+        std::optional<T> out;
+        if (auto p = target<T const &>()) out.emplace(*p);
+        else {
+            auto v = request_variable(msg, typeid(T));
+            if (auto p = std::move(v).target<T &&>()) {msg.source.clear(); out.emplace(std::move(*p));}
+            else if ((out = Request<T>()(*this, msg))) msg.source.clear();
         }
-        auto v = request_variable(msg, typeid(T));
-        if (auto p = std::move(v).target<T &&>()) {msg.source.clear(); return std::move(*p);}
-        if (auto p = Request<T>()(*this, msg)) {msg.source.clear(); return p;}
-        return {};
+        // DUMP(type(), p, &buff, reinterpret_cast<void * const &>(buff), stack, typeid(p).name(), typeid(Type<T>).name());
+
+        return out;
     }
 
     /**************************************************************************/
