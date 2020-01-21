@@ -7,12 +7,14 @@ namespace rebind {
 
 /******************************************************************************/
 
+/// Built-in integer with the largest domain
 #ifdef INTPTR_MAX
     using Integer = std::intptr_t;
 #else
     using Integer = std::ptrdiff_t;
 #endif
 
+/// Built-in floating point with the largest domain -- long double is not used though.
 using Real = double;
 
 using Sequence = Vector<Variable>;
@@ -80,6 +82,9 @@ struct ArrayLayout {
 
 /******************************************************************************/
 
+/*
+Binary data convenience wrapper for an array of POD data
+ */
 class ArrayData {
     void *ptr;
     std::type_info const *t;
@@ -117,7 +122,6 @@ struct ArrayView {
 };
 
 /******************************************************************************/
-
 
 template <class T>
 struct Request<T *> {
@@ -218,6 +222,10 @@ struct Response<T, Value, std::enable_if_t<(std::is_integral_v<T>)>> {
     }
 };
 
+
+/*
+Default Response for floating point allows conversion to Real or Integer
+*/
 template <class T>
 struct Response<T, Value, std::enable_if_t<(std::is_floating_point_v<T>)>> {
     bool operator()(Variable &out, TypeIndex const &i, T t) const {
@@ -227,6 +235,10 @@ struct Response<T, Value, std::enable_if_t<(std::is_floating_point_v<T>)>> {
     }
 };
 
+/*
+Default Request for integer type tries to go through double precision
+long double is not expected to be a useful route (it's assumed there are not multiple floating types larger than Real)
+*/
 template <class T>
 struct Request<T, std::enable_if_t<std::is_floating_point_v<T>>> {
     std::optional<T> operator()(Variable const &v, Dispatch &msg) const {
@@ -236,6 +248,10 @@ struct Request<T, std::enable_if_t<std::is_floating_point_v<T>>> {
     }
 };
 
+
+/*
+Default Request for integer type tries to go through Integer
+*/
 template <class T>
 struct Request<T, std::enable_if_t<std::is_integral_v<T>>> {
     std::optional<T> operator()(Variable const &v, Dispatch &msg) const {
@@ -246,7 +262,9 @@ struct Request<T, std::enable_if_t<std::is_integral_v<T>>> {
     }
 };
 
-
+/*
+Default Request for enum permits conversion from integer types
+*/
 template <class T>
 struct Request<T, std::enable_if_t<std::is_enum_v<T>>> {
     std::optional<T> operator()(Variable const &v, Dispatch &msg) const {
@@ -256,7 +274,23 @@ struct Request<T, std::enable_if_t<std::is_enum_v<T>>> {
     }
 };
 
+/*
+Default Response for enum permits conversion to integer types
+*/
+template <class T>
+struct Response<T, Value, std::enable_if_t<(std::is_enum_v<T>)>> {
+    bool operator()(Variable &out, TypeIndex const &i, T t) const {
+        if (i == typeid(std::underlying_type_t<T>))
+            return out = static_cast<std::underlying_type_t<T>>(t), true;
+        if (i == typeid(Integer))
+            return out = static_cast<Integer>(t), true;
+        return false;
+    }
+};
 
+/*
+Default Request for string tries to convert from std::string_view and std::string
+*/
 template <class T, class Traits, class Alloc>
 struct Request<std::basic_string<T, Traits, Alloc>> {
     std::optional<std::basic_string<T, Traits, Alloc>> operator()(Variable const &v, Dispatch &msg) const {
@@ -280,6 +314,9 @@ struct Request<std::basic_string_view<T, Traits>> {
 
 /******************************************************************************/
 
+/*
+    Response for CompileSequence concept -- a sequence of compile time length
+*/
 template <class V>
 struct CompiledSequenceResponse {
     using Array = std::array<Variable, std::tuple_size_v<V>>;
@@ -325,6 +362,7 @@ template <class T>
 struct Response<T, Value, std::enable_if_t<std::tuple_size<T>::value >= 0>> : CompiledSequenceResponse<T> {};
 
 /******************************************************************************/
+
 template <class V>
 struct CompiledSequenceRequest {
     using Array = std::array<Variable, std::tuple_size_v<V>>;

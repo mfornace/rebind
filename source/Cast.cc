@@ -241,7 +241,8 @@ Object try_python_cast(Variable &&v, Object const &t, Object const &root) {
             Dispatch msg;
             if (auto var = std::move(v).request_variable(msg, *p))
                 return variable_cast(std::move(var));
-            return type_error("could not convert object of type %s to type %s", v.type().name(), p->name());
+            std::string c1 = v.type().name(), c2 = p->name();
+            return type_error("could not convert object of type %s to type %s", c1.data(), c2.data());
         }
         else if (is_structured_type(t, UnionType))     return union_cast(std::move(v), t, root);
         else if (is_structured_type(t, &PyList_Type))  return list_cast(std::move(v), t, root);       // List[T] for some T (compound type)

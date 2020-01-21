@@ -2,6 +2,8 @@
 
 namespace rebind {
 
+std::function<std::string(char const *)> demangle;
+
 bool Debug = false;
 
 /******************************************************************************/

@@ -56,6 +56,8 @@ struct IndexedType {
 
 /******************************************************************************************/
 
+extern std::function<std::string(char const *)> demangle;
+
 class TypeIndex {
     std::pair<std::type_info const *, Qualifier> p;
     constexpr TypeIndex(std::type_info const *t, Qualifier q=Value) noexcept : p(t, q) {}
@@ -71,7 +73,7 @@ public:
     /**************************************************************************************/
 
     std::type_info const & info() const noexcept {return p.first ? *p.first : typeid(void);}
-    char const * name() const noexcept {return info().name();}
+    std::string name() const noexcept {return demangle ? demangle(info().name()) : info().name();}
     constexpr Qualifier qualifier() const noexcept {return p.second;}
 
     /// For now, hash code does not incorporate the qualifier
