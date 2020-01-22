@@ -223,18 +223,18 @@ Object try_python_cast(Variable &&v, Object const &t, Object const &root) {
     } else if (PyType_CheckExact(+t)) {
         auto type = reinterpret_cast<PyTypeObject *>(+t);
         DUMP("is Variable ", is_subclass(type, type_object<Variable>()));
-        if (+type == Py_None->ob_type || +t == Py_None)        return {Py_None, true};                        // NoneType
-        else if (type == &PyBaseObject_Type)                   return as_deduced_object(std::move(v));        // object
-        else if (is_subclass(type, &PyBool_Type))              return bool_cast(std::move(v));                // bool
-        else if (is_subclass(type, &PyLong_Type))              return int_cast(std::move(v));                 // int
-        else if (is_subclass(type, &PyFloat_Type))             return float_cast(std::move(v));               // float
-        else if (is_subclass(type, &PyUnicode_Type))           return str_cast(std::move(v));                 // str
-        else if (is_subclass(type, &PyBytes_Type))             return bytes_cast(std::move(v));               // bytes
-        else if (is_subclass(type, type_object<TypeIndex>()))  return type_index_cast(std::move(v));          // type(TypeIndex)
-        else if (is_subclass(type, type_object<Variable>()))   return variable_cast(std::move(v), t);         // Variable
-        else if (is_subclass(type, type_object<Function>()))   return function_cast(std::move(v));            // Function
-        else if (is_subclass(type, &PyFunction_Type))          return function_cast(std::move(v));            // Function
-        else if (is_subclass(type, &PyMemoryView_Type))        return memoryview_cast(std::move(v), root);    // memory_view
+        if (+type == Py_None->ob_type || +t == Py_None)       return {Py_None, true};                        // NoneType
+        else if (type == &PyBool_Type)                        return bool_cast(std::move(v));                // bool
+        else if (type == &PyLong_Type)                        return int_cast(std::move(v));                 // int
+        else if (type == &PyFloat_Type)                       return float_cast(std::move(v));               // float
+        else if (type == &PyUnicode_Type)                     return str_cast(std::move(v));                 // str
+        else if (type == &PyBytes_Type)                       return bytes_cast(std::move(v));               // bytes
+        else if (type == &PyBaseObject_Type)                  return as_deduced_object(std::move(v));        // object
+        else if (is_subclass(type, type_object<Variable>()))  return variable_cast(std::move(v), t);         // Variable
+        else if (type == type_object<TypeIndex>())            return type_index_cast(std::move(v));          // type(TypeIndex)
+        else if (type == type_object<Function>())             return function_cast(std::move(v));            // Function
+        else if (is_subclass(type, &PyFunction_Type))         return function_cast(std::move(v));            // Function
+        else if (type == &PyMemoryView_Type)                  return memoryview_cast(std::move(v), root);    // memory_view
     } else {
         DUMP("Not type and not in translations");
         if (auto p = cast_if<TypeIndex>(t)) { // TypeIndex
