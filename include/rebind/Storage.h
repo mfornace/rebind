@@ -20,8 +20,19 @@ struct UseStack : std::integral_constant<bool, (sizeof(T) <= sizeof(Storage))
 
 /******************************************************************************/
 
-enum class ActionType : std::uint_fast8_t {destroy, copy, move, response, assign};
+enum class ActionType : std::uint_fast8_t {destroy, copy, move, check, response, assign};
 using ActionFunction = void(*)(ActionType, void *, VariableData *);
+
+struct CheckData {
+    TypeIndex type;
+    Qualifier source;
+    bool success;
+};
+
+static_assert(UseStack<CheckData>::value);
+static_assert(std::is_trivially_destructible_v<CheckData>);
+
+/******************************************************************************/
 
 struct RequestData {
     TypeIndex type;
@@ -38,6 +49,8 @@ static_assert(std::is_trivially_destructible_v<RequestData>);
 // assign: assign existing value at (void *) = existing value in (Variable *)
 // response: convert existing value in (void *) to new value in (Variable *)
 //           using RequestData pre-stored in Variable->storage
+// response: check that existing value in (void *) can be converted to new value
+//           using CheckData pre-stored in Variable->storage
 
 /******************************************************************************/
 

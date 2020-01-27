@@ -1,10 +1,15 @@
+/**
+ * @file Adapter.h
+ * @brief Adapter class and related functions
+ * These are used to make arbitrary functors into something that matches
+ * the "Variable operator()(Caller c, Sequence args) const" signature
+ */
 #pragma once
 #include "Signature.h"
 #include "BasicTypes.h"
 #include <functional>
 
 namespace rebind {
-
 
 /******************************************************************************/
 
@@ -25,20 +30,19 @@ Variable variable_invoke(F const &f, Ts &&... ts) {
     return out;
 }
 
-template <class F, class ...Ts>
-Variable caller_invoke(std::true_type, F const &f, Caller &&c, Ts &&...ts) {
+/// Invoke a function, entering the caller context beforehand
+template <class UseCaller, class F, class ...Ts>
+Variable caller_invoke(UseCaller, F const &f, Caller &&c, Ts &&...ts) {
     c.enter();
-    return variable_invoke(f, std::move(c), static_cast<Ts &&>(ts)...);
-}
-
-template <class F, class ...Ts>
-Variable caller_invoke(std::false_type, F const &f, Caller &&c, Ts &&...ts) {
-    c.enter();
-    return variable_invoke(f, static_cast<Ts &&>(ts)...);
+    if constexpr(UseCaller::value)
+        return variable_invoke(f, std::move(c), static_cast<Ts &&>(ts)...);
+    else
+        return variable_invoke(f, static_cast<Ts &&>(ts)...);
 }
 
 /******************************************************************************/
 
+/// Specialization to avoid compile time issues with reference to void
 inline Type<void> simplify_argument(Type<void>) {return {};}
 
 /// Check type and remove cv qualifiers on arguments that are not lvalues

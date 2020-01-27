@@ -233,8 +233,8 @@ struct Method {
             auto const &s = cast_object<Method>(self);
             auto [t0, t1, sig, gil] = function_call_keywords(kws);
             Sequence args;
-            args.emplace_back(variable_from_object(s.self));
-            args_from_python(args, {pyargs, true});
+            args.emplace_back(variable_reference_from_object(s.self));
+            argument_references_from_python(args, {pyargs, true});
             return function_call_impl(s.fun, std::move(args), sig, t0, t1, gil);
         });
     }
@@ -271,7 +271,7 @@ PyObject * function_call(PyObject *self, PyObject *pyargs, PyObject *kws) noexce
         DUMP("gil = ", gil, " ", Py_REFCNT(self), Py_REFCNT(pyargs));
         DUMP("number of signatures ", cast_object<Function>(self).overloads.size());
         Sequence args;
-        args_from_python(args, {pyargs, true});
+        argument_references_from_python(args, {pyargs, true});
         return function_call_impl(cast_object<Function>(self), std::move(args), sig, t0, t1, gil);
     });
 }

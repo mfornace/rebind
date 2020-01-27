@@ -9,7 +9,7 @@
 namespace rebind {
 
 void initialize_global_objects();
-void clear_global_objects();
+void clear_global_objects() noexcept;
 
 enum class Scalar {Bool, Char, SignedChar, UnsignedChar, Unsigned, Signed, Float, Pointer};
 extern Zip<Scalar, TypeIndex, unsigned> scalars;
@@ -24,11 +24,15 @@ PythonError python_error(std::nullptr_t=nullptr) noexcept;
 
 /******************************************************************************/
 
+/**
+ * @brief A light PyObject * wrapper just implementing a reference decrement
+ * and some convenience methods
+ */
 struct Object {
     PyObject *ptr = nullptr;
+
     Object() = default;
     Object(std::nullptr_t) {}
-    static Object from(PyObject *o) {return o ? Object(o, false) : throw python_error();}
     Object(PyObject *o, bool increment) : ptr(o) {if (increment) xincref(ptr);}
 
     Object(Object const &o) noexcept : ptr(o.ptr) {xincref(ptr);}
@@ -36,6 +40,8 @@ struct Object {
 
     Object(Object &&o) noexcept : ptr(std::exchange(o.ptr, nullptr)) {}
     Object & operator=(Object &&o) noexcept {ptr = std::exchange(o.ptr, nullptr); return *this;}
+
+    static Object from(PyObject *o) {return o ? Object(o, false) : throw python_error();}
 
     explicit operator bool() const {return ptr;}
     operator PyObject *() const {return ptr;}
@@ -54,6 +60,9 @@ struct Object {
 
 }
 
+/******************************************************************************/
+
+// Hash based on the underlying pointer address
 namespace std {
     template <>
     struct hash<rebind::Object> {

@@ -17,7 +17,7 @@ void initialize_global_objects() {
     // (+u)->ob_type
 }
 
-void clear_global_objects() {
+void clear_global_objects() noexcept {
     input_conversions.clear();
     output_conversions.clear();
     type_translations.clear();

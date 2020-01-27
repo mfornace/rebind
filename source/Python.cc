@@ -239,9 +239,9 @@ std::string wrong_type_message(WrongType const &e, std::string_view prefix) {
 
 /******************************************************************************/
 
-Variable variable_from_object(Object o) {
+Variable variable_reference_from_object(Object o) {
     if (auto p = cast_if<Function>(o)) return {Type<Function const &>(), *p};
-    else if (auto p = cast_if<std::type_index>(o)) return {Type<std::type_index>(), *p};
+    else if (auto p = cast_if<TypeIndex>(o)) return {Type<TypeIndex>(), *p};
     else if (auto p = cast_if<Variable>(o)) {
         DUMP("variable from object ", p, " ", p->data());
         DUMP("variable qualifier=", p->qualifier(), ", reference qualifier=", p->reference().qualifier());
@@ -253,9 +253,9 @@ Variable variable_from_object(Object o) {
 /******************************************************************************/
 
 // Store the objects in args in pack
-void args_from_python(Sequence &v, Object const &args) {
+void argument_references_from_python(Sequence &v, Object const &args) {
     v.reserve(v.size() + PyObject_Length(+args));
-    map_iterable(args, [&v](Object o) {v.emplace_back(variable_from_object(std::move(o)));});
+    map_iterable(args, [&v](Object o) {v.emplace_back(variable_reference_from_object(std::move(o)));});
 }
 
 /******************************************************************************/

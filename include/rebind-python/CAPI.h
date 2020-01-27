@@ -1,3 +1,9 @@
+/**
+ * @file CAPI.h
+ * @brief Convenience wrappers for common Python C API functions
+ *
+ */
+
 #pragma once
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wregister"
@@ -147,5 +153,7 @@ PyTypeObject type_definition(char const *name, char const *doc) {
     o.tp_doc = doc;
     return o;
 }
+
+/******************************************************************************/
 
 }

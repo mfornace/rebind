@@ -53,9 +53,12 @@ struct ArrayBuffer {
 
 /******************************************************************************/
 
-Variable variable_from_object(Object o);
-void args_from_python(Sequence &s, Object const &pypack);
+Variable variable_reference_from_object(Object o);
+
+void argument_references_from_python(Sequence &s, Object const &pypack);
+
 bool object_response(Variable &v, TypeIndex t, Object o);
+
 std::string_view from_unicode(PyObject *o);
 
 template <Qualifier Q>
@@ -226,6 +229,7 @@ struct PythonFunction {
 
 /******************************************************************************/
 
+/// A more reader friendly type name, customizable at runtime
 std::string get_type_name(TypeIndex idx) noexcept;
 
 std::string wrong_type_message(WrongType const &e, std::string_view={});

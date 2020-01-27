@@ -1,4 +1,5 @@
 #pragma once
+#include "Arrays.h"
 #include "Variable.h"
 #include "Conversions.h"
 #include <cstdlib>
@@ -23,108 +24,10 @@ using Dictionary = Vector<std::pair<std::string_view, Variable>>;
 
 /******************************************************************************/
 
-template <class B, class E>
-bool array_major(B begin, E end) {
-    for (std::ptrdiff_t expected = 1; begin != end; ++begin) {
-        if (begin->first < 2) continue;
-        if (begin->second != expected) return false;
-        expected = begin->first * begin->second;
-    }
-    return true;
-}
-
-struct ArrayLayout {
-    /// Stores a list of shape, stride pairs
-    using value_type = std::pair<std::size_t, std::ptrdiff_t>;
-    Vector<value_type> contents;
-
-    ArrayLayout() = default;
-
-    template <class T, class U>
-    ArrayLayout(T const &shape, U const &stride) {
-        if (std::size(shape) != std::size(stride)) throw std::invalid_argument("ArrayLayout() strides do not match shape");
-        contents.reserve(std::size(shape));
-        auto st = std::begin(stride);
-        for (auto const &sh : shape) contents.emplace_back(sh, *st++);
-    }
-
-    // 1 dimensional contiguous array
-    ArrayLayout(std::size_t n) : contents{value_type(n, 1)} {}
-
-    friend std::ostream & operator<<(std::ostream &os, ArrayLayout const &l) {
-        os << "ArrayLayout(" << l.depth() << "):" << std::endl;
-        for (auto const &p : l.contents) os << p.first << ": " << p.second << " "; os << std::endl;
-        return os;
-    }
-
-    /// Return stride of given dimension
-    std::ptrdiff_t stride(std::size_t i) const {return contents[i].second;}
-
-    /// Return shape[i] for a given dimension i
-    std::size_t shape(std::size_t i) const {return contents[i].first;}
-
-    /// Synonym of shape(): Return shape[i] for a given dimension i
-    std::size_t operator[](std::size_t i) const {return contents[i].first;}
-
-    bool column_major() const {return array_major(contents.begin(), contents.end());}
-    bool row_major() const {return array_major(contents.rbegin(), contents.rend());}
-
-    /// Number of dimensions
-    std::size_t depth() const {return contents.size();}
-
-    /// Total number of elements
-    std::size_t n_elem() const {
-        std::size_t out = contents.empty() ? 0u : 1u;
-        for (auto const &p : contents) out *= p.first;
-        return out;
-    }
-};
-
-/******************************************************************************/
-
-/*
-Binary data convenience wrapper for an array of POD data
- */
-class ArrayData {
-    void *ptr;
-    std::type_info const *t;
-    bool mut;
-
-public:
-    void const *pointer() const {return ptr;}
-    bool mutate() const {return mut;}
-    std::type_info const &type() const {return t ? *t : typeid(void);}
-
-    ArrayData(void *p, std::type_info const *t, bool mut) : t(t), ptr(p), mut(mut) {}
-
-    template <class T>
-    ArrayData(T *t) : ArrayData(const_cast<std::remove_cv_t<T> *>(static_cast<T const *>(t)),
-                                &typeid(std::remove_cv_t<T>), std::is_const_v<T>) {}
-
-    template <class T>
-    T * target() const {
-        if (!mut && !std::is_const<T>::value) return nullptr;
-        if (type() != typeid(std::remove_cv_t<T>)) return nullptr;
-        return static_cast<T *>(ptr);
-    }
-
-    friend std::ostream & operator<<(std::ostream &os, ArrayData const &d) {
-        if (!d.t) return os << "ArrayData(<empty>)";
-        return os << "ArrayData(" << TypeIndex(*d.t, d.mut ? Const : Lvalue) << ")";
-    }
-};
-
-/******************************************************************************/
-
-struct ArrayView {
-    ArrayData data;
-    ArrayLayout layout;
-};
-
-/******************************************************************************/
-
 template <class T>
 struct Request<T *> {
+    using handled_types = Pack<std::nullptr_t, T &>;
+
     std::optional<T *> operator()(Variable const &v, Dispatch &msg) const {
         std::optional<T *> out;
         if (!v || v.request<std::nullptr_t>(msg)) out.emplace(nullptr);
@@ -151,61 +54,14 @@ struct Response<char const *> {
 
 template <>
 struct Request<char const *> {
+    using handled_types = Pack<std::nullptr_t, std::string_view, char const &>;
+
     std::optional<char const *> operator()(Variable const &v, Dispatch &msg) const {
         std::optional<char const *> out;
         if (!v || v.request<std::nullptr_t>()) out.emplace(nullptr);
         else if (auto p = v.request<std::string_view>(msg)) out.emplace(p->data());
         else if (auto p = v.request<char const &>(msg)) out.emplace(std::addressof(*p));
         return out;
-    }
-};
-
-/******************************************************************************/
-
-using Binary = std::basic_string<unsigned char>;
-
-using BinaryView = std::basic_string_view<unsigned char>;
-
-class BinaryData {
-    unsigned char *m_begin=nullptr;
-    unsigned char *m_end=nullptr;
-public:
-    constexpr BinaryData() = default;
-    constexpr BinaryData(unsigned char *b, std::size_t n) : m_begin(b), m_end(b + n) {}
-    constexpr auto begin() const {return m_begin;}
-    constexpr auto data() const {return m_begin;}
-    constexpr auto end() const {return m_end;}
-    constexpr std::size_t size() const {return m_end - m_begin;}
-    operator BinaryView() const {return {m_begin, size()};}
-};
-
-template <>
-struct Response<BinaryData> {
-    bool operator()(Variable &out, TypeIndex const &t, BinaryData const &v) const {
-        if (t.equals<BinaryView>()) return out.emplace(Type<BinaryView>(), v.begin(), v.size()), true;
-        return false;
-    }
-};
-
-template <>
-struct Response<BinaryView> {
-    bool operator()(Variable &out, TypeIndex const &, BinaryView const &v) const {
-        return false;
-    }
-};
-
-template <>
-struct Request<BinaryView> {
-    std::optional<BinaryView> operator()(Variable const &v, Dispatch &msg) const {
-        if (auto p = v.request<BinaryData>()) return BinaryView(p->data(), p->size());
-        return msg.error("not convertible to binary view", typeid(BinaryView));
-    }
-};
-
-template <>
-struct Request<BinaryData> {
-    std::optional<BinaryData> operator()(Variable const &v, Dispatch &msg) const {
-        return msg.error("not convertible to binary data", typeid(BinaryData));
     }
 };
 
@@ -241,6 +97,8 @@ long double is not expected to be a useful route (it's assumed there are not mul
 */
 template <class T>
 struct Request<T, std::enable_if_t<std::is_floating_point_v<T>>> {
+    using handled_types = Pack<Real>;
+
     std::optional<T> operator()(Variable const &v, Dispatch &msg) const {
         DUMP("convert to floating");
         if (!std::is_same_v<Real, T>) if (auto p = v.request<Real>()) return static_cast<T>(*p);
@@ -254,6 +112,8 @@ Default Request for integer type tries to go through Integer
 */
 template <class T>
 struct Request<T, std::enable_if_t<std::is_integral_v<T>>> {
+    using handled_types = Pack<Integer>;
+
     std::optional<T> operator()(Variable const &v, Dispatch &msg) const {
         DUMP("trying convert to arithmetic", v.type(), typeid(T).name());
         if (!std::is_same_v<Integer, T>) if (auto p = v.request<Integer>()) return static_cast<T>(*p);
@@ -267,6 +127,8 @@ Default Request for enum permits conversion from integer types
 */
 template <class T>
 struct Request<T, std::enable_if_t<std::is_enum_v<T>>> {
+    using handled_types = Pack<std::underlying_type_t<T>>;
+
     std::optional<T> operator()(Variable const &v, Dispatch &msg) const {
         DUMP("trying convert to enum", v.type(), typeid(T).name());
         if (auto p = v.request<std::underlying_type_t<T>>()) return static_cast<T>(*p);
@@ -293,6 +155,8 @@ Default Request for string tries to convert from std::string_view and std::strin
 */
 template <class T, class Traits, class Alloc>
 struct Request<std::basic_string<T, Traits, Alloc>> {
+    using handled_types = Pack<std::basic_string_view<T, Traits>, std::basic_string<T, Traits>>;
+
     std::optional<std::basic_string<T, Traits, Alloc>> operator()(Variable const &v, Dispatch &msg) const {
         DUMP("trying to convert to string");
         if (auto p = v.request<std::basic_string_view<T, Traits>>())
@@ -306,11 +170,21 @@ struct Request<std::basic_string<T, Traits, Alloc>> {
 
 template <class T, class Traits>
 struct Request<std::basic_string_view<T, Traits>> {
+    using handled_types = Pack<>;
+
     std::optional<std::basic_string_view<T, Traits>> operator()(Variable const &v, Dispatch &msg) const {
         return msg.error("not convertible to string view", typeid(T));
     }
 };
 
+
+/******************************************************************************/
+
+template <class T, class=void>
+struct HasData : std::false_type {};
+
+template <class T>
+struct HasData<T, std::enable_if_t<(std::is_pointer_v<decltype(std::data(std::declval<T>()))>)>> : std::true_type {};
 
 /******************************************************************************/
 
@@ -343,10 +217,14 @@ struct CompiledSequenceResponse {
     template <std::size_t ...Is>
     static Array array(V &&v, std::index_sequence<Is...>) {return {std::get<Is>(std::move(v))...};}
 
-    bool operator()(Variable &out, TypeIndex const &t, V const &v) const {
+    template <class V2> // V2 is V const & or V &
+    bool operator()(Variable &out, TypeIndex const &t, V2 &&v) const {
         auto idx = std::make_index_sequence<std::tuple_size_v<V>>();
         if (t == typeid(Sequence)) return out = sequence(v, idx), true;
         if (t == typeid(Array)) return out = array(v, idx), true;
+        // Multi dimensional array not supported yet...
+        if constexpr(HasData<T>::value) if (t == typeid(ArrayView))
+            return o.emplace(Type<ArrayView>(), std::data(v), std::tuple_size_v<V>), true;
         return false;
     }
 
@@ -391,11 +269,25 @@ struct CompiledSequenceRequest {
         }
     }
 
+    bool operator()(Variable const &r) const {
+        if constexpr(!std::is_same_v<V, Array>) {
+            if (auto p = r.can_get<Array>>()) {
+                DUMP("trying array CompiledSequenceRequest2", r.type().name());
+                request(out, std::move(*p), msg);
+            }
+            return out;
+        }
+        if (auto p = r.request<Sequence>()) {
+            DUMP("trying CompiledSequenceRequest2", r.type().name());
+            request(out, std::move(*p), msg);
+        }
+    }
+
     std::optional<V> operator()(Variable r, Dispatch &msg) const {
         std::optional<V> out;
         DUMP("trying CompiledSequenceRequest", r.type().name());
         if constexpr(!std::is_same_v<V, Array>) {
-            if (auto p = r.request<std::array<Variable, std::tuple_size_v<V>>>()) {
+            if (auto p = r.request<Array>>()) {
                 DUMP("trying array CompiledSequenceRequest2", r.type().name());
                 request(out, std::move(*p), msg);
             }
@@ -426,14 +318,6 @@ R from_iters(V const &v) {return R(std::begin(v), std::end(v));}
 
 /******************************************************************************/
 
-template <class T, class=void>
-struct HasData : std::false_type {};
-
-template <class T>
-struct HasData<T, std::enable_if_t<(std::is_pointer_v<decltype(std::data(std::declval<T>()))>)>> : std::true_type {};
-
-/******************************************************************************/
-
 template <class T, class Iter1, class Iter2>
 bool range_response(Variable &o, TypeIndex const &t, Iter1 b, Iter2 e) {
     if (t.equals<Sequence>()) {
@@ -449,6 +333,12 @@ bool range_response(Variable &o, TypeIndex const &t, Iter1 b, Iter2 e) {
 template <class V>
 struct VectorResponse {
     using T = std::decay_t<typename V::value_type>;
+
+    bool operator()(TypeIndex const &t, V const &v) const {
+        if (can_range_response<T>(o, t, std::begin(v), std::end(v))) return true;
+        if constexpr(HasData<V const &>::value) if (t.equals<Array>()) return true;
+        return false;
+    }
 
     bool operator()(Variable &o, TypeIndex const &t, V const &v) const {
         if (range_response<T>(o, t, std::begin(v), std::end(v))) return true;
@@ -493,15 +383,32 @@ struct VectorRequest {
         return out;
     }
 
+    bool operator()(Variable const &v) const {
+        if constexpr(!std::is_same_v<V, Vector<T>>)
+            if (v.can_request<Vector<T>>()) return true;
+
+        if constexpr(!std::is_same_v<V, Sequence>)
+            if (v.can_request<Sequence>()) return true;
+
+        return false;
+    }
+
     std::optional<V> operator()(Variable const &v, Dispatch &msg) const {
-        // if (auto p = v.request<Vector<T>>()) return get(*p, msg);
-        if (!std::is_same_v<V, Sequence>)
+        if constexpr(!std::is_same_v<V, Vector<T>>)
+            if (auto p = v.request<Vector<T>>()) return get(*p, msg);
+
+        if constexpr(!std::is_same_v<V, Sequence>)
             if (auto p = v.request<Sequence>()) return get(*p, msg);
+
         return msg.error("expected sequence", typeid(V));
     }
 };
 
+/******************************************************************************/
+
 template <class T, class A>
 struct Request<std::vector<T, A>> : VectorRequest<std::vector<T, A>> {};
+
+/******************************************************************************/
 
 }
