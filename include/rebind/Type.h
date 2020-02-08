@@ -3,6 +3,7 @@
 #include <typeindex>
 #include <string_view>
 #include <iostream>
+#include <functional>
 
 namespace rebind {
 
