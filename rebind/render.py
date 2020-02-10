@@ -101,7 +101,9 @@ def render_member(key, value, old):
         _old(self).copy_from(other)
 
     name = getattr(old, '__name__', old)
-    return property(fget=fget, fset=fset, doc='Member of type `{}`'.format(name))
+
+    doc = 'C++ member variable' if name is None else 'Member of type `{}`'.format(name)
+    return property(fget=fget, fset=fset, doc=doc)
 
 ################################################################################
 
