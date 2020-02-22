@@ -1,0 +1,12 @@
+[package]
+name = "rebind"
+version = "0.0.1"
+authors = ["Mark Fornace <mfornace@caltech.edu>"]
+
+[lib]
+name = "rebind"
+path = "src/lib.rs"
+
+[[bin]]
+name = "main"
+path = "src/main.rs"

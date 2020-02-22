@@ -80,11 +80,19 @@ rebind_module(rebindtest librebindtest)
 ################################################################################
 
 set(REBIND_PYTHON_FILES
-    rebind/__init__.py
-    rebind/blank.py
-    rebind/common.py
-    rebind/dispatch.py
-    rebind/render.py
-    rebind/types.py
+    python/rebind/__init__.py
+    python/rebind/blank.py
+    python/rebind/common.py
+    python/rebind/dispatch.py
+    python/rebind/render.py
+    python/rebind/types.py
     CACHE INTERNAL "List of Python files in the rebind module"
 )
+
+################################################################################
+
+add_library(rustrebind SHARED 
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/Rust.cc
+)
+
+target_link_libraries(rustrebind PUBLIC librebind)

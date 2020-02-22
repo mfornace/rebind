@@ -6,4 +6,4 @@ build/
 dist/
 *.pyc
 *.so
-
+rust/target
