@@ -79,13 +79,16 @@ rebind_module(rebindtest librebindtest)
 
 ################################################################################
 
+set(REBIND_PYTHON_ROOT python/rebind 
+    CACHE INTERNAL "Directory containing rebind module Python files")
+
 set(REBIND_PYTHON_FILES
-    python/rebind/__init__.py
-    python/rebind/blank.py
-    python/rebind/common.py
-    python/rebind/dispatch.py
-    python/rebind/render.py
-    python/rebind/types.py
+    __init__.py
+    blank.py
+    common.py
+    dispatch.py
+    render.py
+    types.py
     CACHE INTERNAL "List of Python files in the rebind module"
 )
 
