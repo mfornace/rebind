@@ -61,6 +61,8 @@ protected:
 public:
     constexpr Pointer() noexcept = default;
 
+    constexpr Pointer(std::nullptr_t) : Pointer() {}
+
     constexpr Pointer(Table const *t, void *p, Qualifier q) noexcept : table(t), ptr(p), qual(q) {}
 
     bool has_value() const {return ptr;}
