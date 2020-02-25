@@ -72,14 +72,7 @@ endfunction(rebind_module)
 
 ################################################################################
 
-add_library(librebindtest SHARED EXCLUDE_FROM_ALL source/Test.cc)
-set_target_properties(librebindtest PROPERTIES OUTPUT_NAME "rebindtest")
-target_link_libraries(librebindtest PRIVATE librebind)
-rebind_module(rebindtest librebindtest)
-
-################################################################################
-
-set(REBIND_PYTHON_ROOT python/rebind 
+set(REBIND_PYTHON_ROOT python/rebind
     CACHE INTERNAL "Directory containing rebind module Python files")
 
 set(REBIND_PYTHON_FILES
@@ -94,8 +87,8 @@ set(REBIND_PYTHON_FILES
 
 ################################################################################
 
-add_library(rustrebind SHARED 
+add_library(rebind_rust SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/source/Rust.cc
 )
 
-target_link_libraries(rustrebind PUBLIC librebind)
+target_link_libraries(rebind_rust PUBLIC librebind)
