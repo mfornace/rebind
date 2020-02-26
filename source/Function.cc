@@ -233,7 +233,7 @@ struct Method {
             auto const &s = cast_object<Method>(self);
             auto [t0, t1, sig, gil] = function_call_keywords(kws);
             Sequence args;
-            args.emplace_back(variable_from_object(s.self));
+            args.emplace_back(variable_reference_from_object(s.self));
             args_from_python(args, {pyargs, true});
             return function_call_impl(s.fun, std::move(args), sig, t0, t1, gil);
         });

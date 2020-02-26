@@ -6,7 +6,7 @@ namespace rebind {
 PyObject * var_copy_assign(PyObject *self, PyObject *value) noexcept {
     return raw_object([=] {
         DUMP("- copying variable");
-        cast_object<Var>(self).assign(variable_from_object({value, true}));
+        cast_object<Var>(self).assign(variable_reference_from_object({value, true}));
         return Object(self, true);
     });
 }
@@ -15,7 +15,7 @@ PyObject * var_move_assign(PyObject *self, PyObject *value) noexcept {
     return raw_object([=] {
         DUMP("- moving variable");
         auto &s = cast_object<Var>(self);
-        Variable v = variable_from_object({value, true});
+        Variable v = variable_reference_from_object({value, true});
         v.move_if_lvalue();
         s.assign(std::move(v));
         // if (auto p = cast_if<Variable>(value)) p->reset();
