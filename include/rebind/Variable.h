@@ -14,6 +14,8 @@
 #include <typeindex>
 #include <optional>
 
+static_assert(false);
+
 namespace rebind {
 
 using TargetQualifier = Qualifier;

@@ -12,25 +12,22 @@ using unqualified = std::remove_cv_t<std::remove_reference_t<T>>;
 
 /******************************************************************************************/
 
-enum Qualifier : unsigned char {Value, Const, Lvalue, Rvalue};
+enum Qualifier : unsigned char {Const, Lvalue, Rvalue};
 
-static std::string_view QualifierNames[4] = {"value", "const", "lvalue", "rvalue"};
-static std::string_view QualifierSuffixes[4] = {"", " const &", " &", " &&"};
+static std::string_view QualifierNames[3] = {"const", "lvalue", "rvalue"};
+static std::string_view QualifierSuffixes[3] = {" const &", " &", " &&"};
 
 inline std::ostream & operator<<(std::ostream &os, Qualifier q) {
     return os << QualifierNames[static_cast<unsigned char>(q)];
 }
 
-template <class T, Qualifier Q> using qualified =
-    std::conditional_t<Q == Value, T,
-    std::conditional_t<Q == Const, T const &,
-    std::conditional_t<Q == Lvalue, T &, T &&>>>;
+template <class T, Qualifier Q>
+using qualified = std::conditional_t<Q == Const, T const &,
+    std::conditional_t<Q == Lvalue, T &, T &&>>;
 
 template <class T>
-static constexpr Qualifier qualifier_of = (!std::is_reference_v<T>) ? Value
-    : (std::is_rvalue_reference_v<T> ? Rvalue : (std::is_const_v<std::remove_reference_t<T>> ? Const : Lvalue));
-
-inline constexpr Qualifier add(Qualifier a, Qualifier b) {return a == Value ? b : a;}
+static constexpr Qualifier qualifier_of =
+    std::is_rvalue_reference_v<T> ? Rvalue : (std::is_const_v<std::remove_reference_t<T>> ? Const : Lvalue);
 
 /******************************************************************************************/
 
@@ -60,44 +57,39 @@ struct IndexedType {
 extern std::function<std::string(char const *)> demangle;
 
 class TypeIndex {
-    std::pair<std::type_info const *, Qualifier> p;
-    constexpr TypeIndex(std::type_info const *t, Qualifier q=Value) noexcept : p(t, q) {}
+    std::type_info const *p = nullptr;
 
 public:
 
-    constexpr TypeIndex() noexcept : p(nullptr, Value) {};
-    constexpr TypeIndex(std::type_info const &t, Qualifier q=Value) noexcept : p(&t, q) {}
+    constexpr TypeIndex() noexcept = default;
+    constexpr TypeIndex(std::type_info const &t) noexcept : p(&t) {}
 
     template <class T>
-    TypeIndex(Type<T>) noexcept : p(&typeid(T), qualifier_of<T>) {}
+    TypeIndex(Type<T>) noexcept : p(&typeid(T)) {}
 
     /**************************************************************************************/
 
-    std::type_info const & info() const noexcept {return p.first ? *p.first : typeid(void);}
-    std::string name() const noexcept {return demangle ? demangle(info().name()) : info().name();}
-    constexpr Qualifier qualifier() const noexcept {return p.second;}
+    std::type_info const & info() const noexcept {return p ? *p : typeid(void);}
 
-    /// For now, hash code does not incorporate the qualifier
+    std::string name() const {return demangle ? demangle(info().name()) : info().name();}
+
     std::size_t hash_code() const noexcept {return info().hash_code();}
 
-    constexpr void set_qualifier(Qualifier q) noexcept {p.second = q;}
-
     /// Return if the index is not empty
-    constexpr explicit operator bool() const noexcept {return p.first;}
+    constexpr explicit operator bool() const noexcept {return p;}
 
     /// Test if this type equals another one, but ignoring all qualifiers
     template <class T>
-    bool matches(Type<T> t={}) const noexcept {return p.first && typeid(T) == *p.first;}
+    bool matches(Type<T> t={}) const noexcept {return p && typeid(T) == *p;}
 
     /// Test if this type equals another one, but ignoring all qualifiers
-    bool matches(TypeIndex const &t) const noexcept {return p.first == t.p.first;}
+    bool matches(TypeIndex const &t) const noexcept {return p == t.p;}
 
-    /// Test if this type equals a type specified as a compile time argument
+    /// Test if this type equals a type, including qualifiers
     template <class T>
-    bool equals(Type<T> t={}) const noexcept {return p.first && typeid(T) == *p.first && qualifier_of<T> == p.second;}
-
-    /// Add a qualifier obeying the usual C++ semantics
-    constexpr TypeIndex add(Qualifier q) const noexcept {return {p.first, p.second == Value ? q : p.second};}
+    bool equals(Type<T> t={}) const noexcept {
+        return std::is_same_v<T, unqualified<T>> && p && typeid(T) == *p;
+    }
 
     /**************************************************************************************/
 
@@ -107,15 +99,9 @@ public:
     constexpr bool operator>(TypeIndex const &t) const {return p > t.p;}
     constexpr bool operator<=(TypeIndex const &t) const {return p <= t.p;}
     constexpr bool operator>=(TypeIndex const &t) const {return p >= t.p;}
-
-    /// Return a copy without any qualifiers
-    constexpr TypeIndex operator+() const {return {p.first, Value};}
 };
 
-
-inline std::ostream & operator<<(std::ostream &os, TypeIndex t) {
-    return os << t.name() << QualifierSuffixes[static_cast<unsigned char>(t.qualifier())];
-}
+inline std::ostream & operator<<(std::ostream &os, TypeIndex t) {return os << t.name();}
 
 template <class T>
 constexpr TypeIndex type_index(Type<T> t={}) {return t;}

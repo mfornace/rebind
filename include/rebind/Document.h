@@ -21,14 +21,19 @@ struct Renderer {
 
 struct TypeData {
     std::map<std::string, Function> methods;
-    std::map<TypeIndex, Variable> data;
+    std::map<TypeIndex, Value> data;
 };
 
 struct Document {
-    std::map<std::string, Variable> contents;
-    std::map<TypeIndex, std::pair<std::string const, Variable> *> types;
+    // Global variables:
+    std::map<std::string, Value> contents;
 
-    TypeData & type(TypeIndex t, std::string s, Variable data={});
+    // Types:
+    std::map<TypeIndex, std::pair<std::string const, Value> *> types;
+
+    // Functions:
+
+    TypeData & type(TypeIndex t, std::string s, Value data={});
 
     Function & find_method(TypeIndex t, std::string name);
 
@@ -84,4 +89,4 @@ struct Renderer<T, std::void_t<decltype(render(std::declval<Document &>(), Type<
 
 }
 
-#include "StandardTypes.h"
+// #include "StandardTypes.h"

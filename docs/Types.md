@@ -1,4 +1,15 @@
+# `Table`
+A lot like a vtable, set up at initialization
 
+```c++
+std::type_info const *info;
+void (*destroy)(void *) noexcept;
+bool (*relocate)(void *, unsigned short, unsigned short) noexcept;
+void *(*copy)(void *);
+void *(*request_reference)(void *, Qualifier, std::type_index);
+void *(*request_value)(void *, Qualifier, std::type_index);
+std::string name, const_name, lvalue_name, rvalue_name;
+```
 
 # `Pointer`
 
@@ -15,7 +26,7 @@ Methods are provided to wrap vtable functionality including
 
 # `Value`
 
-Wrapper around `Pointer` allowing for value semantics:
+Opaque type with value semantics:
 ```c++
 Value(Value const &);
 Value(Value &&) noexcept;
@@ -26,5 +37,10 @@ An empty value is supported.
 # `Function`
 ```
 Value operator()(PointerVec const &) const;
-Pointer reference(PointerVec const &) const;
+```
+
+# `ReferenceFunction`
+
+```
+Pointer operator()(PointerVec const &) const;
 ```

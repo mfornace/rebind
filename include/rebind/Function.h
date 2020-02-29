@@ -7,7 +7,7 @@
 
 namespace rebind {
 
-using ErasedFunction = std::function<Variable(Caller, Sequence)>;
+using ErasedFunction = std::function<Value(Caller, Arguments)>;
 
 template <class R, class ...Ts>
 static TypeIndex const signature_types[] = {typeid(R), typeid(Ts)...};
@@ -42,7 +42,7 @@ public:
 struct Function {
     Zip<ErasedSignature, ErasedFunction> overloads;
 
-    Variable operator()(Caller c, Sequence v) const {
+    Value operator()(Caller c, Arguments v) const {
         DUMP("    - calling type erased Function ");
         if (overloads.empty()) return {}; //throw std::out_of_range("empty Function");
         return overloads[0].second(std::move(c), std::move(v));
@@ -63,9 +63,9 @@ struct Function {
     // bool operator>=(Function const &f) const {return !(*this < f);}
 
     template <class ...Ts>
-    Variable operator()(Caller c, Ts &&...ts) const {
+    Value operator()(Caller c, Ts &&...ts) const {
         DUMP("    - calling Function ");
-        Sequence v;
+        Arguments v;
         v.reserve(sizeof...(Ts));
         (v.emplace_back(static_cast<Ts &&>(ts)), ...);
         return (*this)(std::move(c), std::move(v));
@@ -115,7 +115,7 @@ struct Callback {
 
     template <class ...Ts>
     R operator()(Ts &&...ts) const {
-        Sequence pack;
+        Arguments pack;
         pack.reserve(sizeof...(Ts));
         (pack.emplace_back(static_cast<Ts &&>(ts)), ...);
         return function(caller, std::move(pack)).cast(Type<R>());
@@ -126,9 +126,9 @@ struct Callback {
 
 /// Cast element i of v to type T
 template <class T>
-decltype(auto) cast_index(Sequence const &v, Dispatch &msg, IndexedType<T> i) {
-    msg.index = i.index;
-    return v[i.index].cast(msg, Type<T>());
+decltype(auto) cast_index(Arguments const &v, Scope &s, IndexedType<T> i) {
+    // s.index = i.index;
+    return v[i.index].cast(s, Type<T>());
 }
 
 /******************************************************************************/
@@ -207,25 +207,25 @@ Streamable<T> streamable(Type<T> t={}) {return {};}
 
 /******************************************************************************/
 
-template <class R>
-struct Request<Callback<R>> {
-    std::optional<Callback<R>> operator()(Variable const &v, Dispatch &msg) const {
-        if (!msg.caller) msg.error("Calling context expired", typeid(Callback<R>));
-        else if (auto p = v.request<Function>(msg)) return Callback<R>{std::move(*p), msg.caller};
-        return {};
-    }
-};
+// template <class R>
+// struct Request<Callback<R>> {
+//     std::optional<Callback<R>> operator()(Variable const &v, Scope &msg) const {
+//         if (!msg.caller) msg.error("Calling context expired", typeid(Callback<R>));
+//         else if (auto p = v.request<Function>(msg)) return Callback<R>{std::move(*p), msg.caller};
+//         return {};
+//     }
+// };
 
 
-template <class R, class ...Ts>
-struct Request<AnnotatedCallback<R, Ts...>> {
-    using type = AnnotatedCallback<R, Ts...>;
-    std::optional<type> operator()(Variable const &v, Dispatch &msg) const {
-        if (!msg.caller) msg.error("Calling context expired", typeid(type));
-        else if (auto p = v.request<Function>(msg)) return type{std::move(*p), msg.caller};
-        return {};
-    }
-};
+// template <class R, class ...Ts>
+// struct Request<AnnotatedCallback<R, Ts...>> {
+//     using type = AnnotatedCallback<R, Ts...>;
+//     std::optional<type> operator()(Variable const &v, Scope &msg) const {
+//         if (!msg.caller) msg.error("Calling context expired", typeid(type));
+//         else if (auto p = v.request<Function>(msg)) return type{std::move(*p), msg.caller};
+//         return {};
+//     }
+// };
 
 /******************************************************************************/
 
