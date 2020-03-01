@@ -35,12 +35,23 @@ Value(Value &&) noexcept;
 An empty value is supported.
 
 # `Function`
-```
-Value operator()(PointerVec const &) const;
+```c++
+Function();
+
+template <class F>
+Function(F &&f);
+
+template <std::size_t N=0, class F>
+static Function from(F &&f);
+
+Function(Function const &);
+Function(Function &&) noexcept;
+
+Value operator()(Arguments const &) const;
 ```
 
-# `ReferenceFunction`
+# `RefFunction`
 
-```
-Pointer operator()(PointerVec const &) const;
+```c++
+Pointer operator()(Arguments const &) const;
 ```

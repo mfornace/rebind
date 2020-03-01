@@ -7,6 +7,8 @@
 #include "Object.h"
 
 #include <rebind/Document.h>
+#include <rebind/Arrays.h>
+
 #include <mutex>
 #include <unordered_map>
 
@@ -22,13 +24,13 @@ extern std::unordered_map<std::type_index, Object> python_types;
 template <class ...Ts>
 std::nullptr_t type_error(char const *s, Ts ...ts) {PyErr_Format(TypeError, s, ts...); return nullptr;}
 
-struct Var : Variable {
-    using Variable::Variable;
+struct Var : Value {
+    using Value::Value;
     Object ward = {};
 };
 
 template <>
-struct Holder<Variable> : Holder<Var> {};
+struct Holder<Value> : Holder<Var> {};
 
 /******************************************************************************/
 
@@ -53,48 +55,48 @@ struct ArrayBuffer {
 
 /******************************************************************************/
 
-Variable variable_from_object(Object o);
-void args_from_python(Sequence &s, Object const &pypack);
-bool object_response(Variable &v, TypeIndex t, Object o);
+Value variable_from_object(Object o);
+void args_from_python(Arguments &s, Object const &pypack);
+bool object_response(Value &v, TypeIndex t, Object o);
 std::string_view from_unicode(PyObject *o);
 
-template <Qualifier Q>
-struct Response<Object, Q> {
-    bool operator()(Variable &v, TypeIndex t, Object o) const {
-        DUMP("trying to get reference from qualified Object", Q, t);
-        if (auto p = cast_if<Variable>(o)) {
-            Dispatch msg;
-            DUMP("requested qualified variable", t, p->type());
-            v = p->reference().request_variable(msg, t);
-            DUMP(p->type(), t, v.type());
+template <>
+struct Response<Object> {
+    Value operator()(TypeIndex t, Object o) const {
+        Value v;
+        DUMP("trying to get Value from Object", t);
+        if (auto p = cast_if<Pointer>(o)) {
+            DUMP("requested qualified variable", t, p->index());
+            v = p->request_value(t);
+            DUMP(p->index(), t, v.index());
         }
-        return v.has_value();
+        return v;
     }
 };
 
-template <>
-struct Response<Object, Value> {
-    bool operator()(Variable &v, TypeIndex t, Object o) const {
-        DUMP("trying to get reference from unqualified Object", t);
-        if (!o) return false;
-        DUMP("ref1", reference_count(o));
-        Object type = Object(reinterpret_cast<PyObject *>((+o)->ob_type), true);
-        if (auto p = input_conversions.find(type); p != input_conversions.end()) {
-            Object guard(+o, false); // PyObject_CallFunctionObjArgs increments reference
-            o = Object::from(PyObject_CallFunctionObjArgs(+p->second, +o, nullptr));
-            type = Object(reinterpret_cast<PyObject *>((+o)->ob_type), true);
-        }
-        DUMP("ref2", reference_count(o));
-        bool ok = object_response(v, t, std::move(o));
-        DUMP("got response from object", ok);
-        if (!ok) { // put diagnostic for the source type
-            auto o = Object::from(PyObject_Repr(+type));
-            DUMP("setting object error description", from_unicode(o));
-            v = {Type<std::string>(), from_unicode(o)};
-        }
-        return ok;
-    }
-};
+// template <>
+// struct Response<Object, Value> {
+//     bool operator()(Value &v, TypeIndex t, Object o) const {
+//         DUMP("trying to get reference from unqualified Object", t);
+//         if (!o) return false;
+//         DUMP("ref1", reference_count(o));
+//         Object type = Object(reinterpret_cast<PyObject *>((+o)->ob_type), true);
+//         if (auto p = input_conversions.find(type); p != input_conversions.end()) {
+//             Object guard(+o, false); // PyObject_CallFunctionObjArgs increments reference
+//             o = Object::from(PyObject_CallFunctionObjArgs(+p->second, +o, nullptr));
+//             type = Object(reinterpret_cast<PyObject *>((+o)->ob_type), true);
+//         }
+//         DUMP("ref2", reference_count(o));
+//         bool ok = object_response(v, t, std::move(o));
+//         DUMP("got response from object", ok);
+//         if (!ok) { // put diagnostic for the source type
+//             auto o = Object::from(PyObject_Repr(+type));
+//             DUMP("setting object error description", from_unicode(o));
+//             v = {Type<std::string>(), from_unicode(o)};
+//         }
+//         return ok;
+//     }
+// };
 
 /******************************************************************************/
 
@@ -124,7 +126,7 @@ Object args_as_tuple(Ts &&...ts) {
     return (go(ts) && ...) ? out : Object();
 }
 
-Object variable_cast(Variable &&v, Object const &t={});
+Object variable_cast(Value &&v, Object const &t={});
 
 inline Object args_to_python(Sequence &&s, Object const &sig={}) {
     if (sig && !PyTuple_Check(+sig))
@@ -139,8 +141,8 @@ inline Object args_to_python(Sequence &&s, Object const &sig={}) {
             throw python_error(type_error("conversion to python signature not implemented yet"));
         } else {
             // special case: if given an rvalue reference, make it into a value
-            Variable &&var = v.qualifier() == Rvalue ? v.copy() : std::move(v);
-            if (!set_tuple_item(out, i, variable_cast(std::move(var)))) return {};
+            // Value &&var = v.qualifier() == Rvalue ? v.copy() : std::move(v);
+            if (!set_tuple_item(out, i, variable_cast(std::move(v)))) return {};
         }
         ++i;
     }
@@ -213,14 +215,14 @@ struct PythonFunction {
     }
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
-    Variable operator()(Caller c, Sequence args) const {
+    Value operator()(Caller c, Sequence args) const {
         DUMP("calling python function");
         auto p = c.target<PythonFrame>();
         if (!p) throw DispatchError("Python context is expired or invalid");
         ActivePython lk(*p);
         Object o = args_to_python(std::move(args), signature);
         if (!o) throw python_error();
-        return Variable(Object::from(PyObject_CallObject(function, o)));
+        return Value(Object::from(PyObject_CallObject(function, o)));
     }
 };
 

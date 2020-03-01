@@ -1,5 +1,6 @@
 
 #include <rebind/Document.h>
+#include <rebind/Arrays.h>
 #include <iostream>
 
 namespace rebind {
@@ -12,16 +13,16 @@ struct Blah {
     void dump() const {DUMP(name);}
 };
 
-Variable response(std::type_index t, Blah b) {
+Value response(std::type_index t, Blah b) {
     if (t == typeid(std::string)) return std::move(b.name);
     return {};
 }
 
 template <class T>
-std::optional<Blah> request(Type<Blah>, T &&, Dispatch &msg) {
+std::optional<Blah> request(Type<Blah>, T &&, Scope &s) {
     if constexpr(std::is_same_v<unqualified<T>, std::string>)
         return Blah("haha");
-    return msg.error("bad blah", typeid(Blah));
+    return s.error("bad blah", typeid(Blah));
 }
 
 //remove iostream

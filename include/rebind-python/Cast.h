@@ -5,7 +5,7 @@ namespace rebind {
 
 /******************************************************************************/
 
-Object python_cast(Variable &&v, Object const &t, Object const &root);
+Object python_cast(Value &&v, Object const &t, Object const &root);
 
 /******************************************************************************/
 
@@ -31,7 +31,7 @@ inline Object as_object(Function t) {return default_object(std::move(t));}
 
 /// Source driven conversion: guess the correct Python type from the source type
 /// I guess this is where automatic class conversions should be done?
-inline Object as_deduced_object(Variable &&ref) {
+inline Object as_deduced_object(Value &&ref) {
     DUMP("asking for object");
     if (!ref) return {Py_None, true};
     if (auto v = ref.request<Object>())           return std::move(*v);

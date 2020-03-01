@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.8)
 project(rebind_example VERSION 0.0.0 LANGUAGES CXX)
-add_subdirectory(../ ${CMAKE_CURRENT_BINARY_DIR}/rebind)
+# add_subdirectory(../ ${CMAKE_CURRENT_BINARY_DIR}/rebind)
 
 ################################################################################
 

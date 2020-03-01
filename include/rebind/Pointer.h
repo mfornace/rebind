@@ -1,9 +1,13 @@
 #pragma once
 #include "Error.h"
 #include "Type.h"
+#include <map>
 
 namespace rebind {
+
 /******************************************************************************************/
+
+class Function;
 
 struct Table {
     TypeIndex index;
@@ -13,6 +17,8 @@ struct Table {
     void *(*request_reference)(void *, Qualifier, TypeIndex);
     void *(*request_value)(void *, Qualifier, TypeIndex);
     std::string name, const_name, lvalue_name, rvalue_name;
+
+    std::map<std::string_view, Function> methods;
 };
 
 /******************************************************************************************/
@@ -41,7 +47,7 @@ bool default_relocate(void *out, void *p, unsigned short size, unsigned short al
 
 template <class T>
 struct TableGenerator {
-    static Table const *address;
+    static Table *address;
 
     static Table table() {
         static_assert(std::is_nothrow_move_constructible_v<T>);
@@ -54,7 +60,7 @@ struct TableGenerator {
 };
 
 template <class T>
-Table const * TableGenerator<T>::address = nullptr;
+Table * TableGenerator<T>::address = nullptr;
 
 /******************************************************************************************/
 
@@ -100,6 +106,7 @@ struct Opaque {
 };
 
 /******************************************************************************************/
+class Value;
 
 class Pointer : protected Opaque {
 protected:
@@ -123,10 +130,16 @@ public:
     Qualifier qualifier() const {return qual;}
 
     template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
-    std::remove_reference_t<T> * request(Scope s={}) const;// {return Opaque::request_reference<T>(qual);}
+    std::remove_reference_t<T> * request(Scope s={}, Type<T> t={}) const;// {return Opaque::request_reference<T>(qual);}
 
     template <class T, std::enable_if_t<!std::is_reference_v<T>, int> = 0>
-    std::optional<T> request(Scope s={}) const;
+    std::optional<T> request(Scope s={}, Type<T> t={}) const;
+
+    template <class T>
+    T cast(Scope s={}, Type<T> t={}) const;
+
+    Value request_value(TypeIndex t, Scope s={}) const;
+    Pointer request_pointer(TypeIndex t, Scope s={}) const;
 
     std::string_view qualified_name() const noexcept {
         if (has_value()) {

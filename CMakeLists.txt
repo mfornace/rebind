@@ -92,3 +92,5 @@ add_library(rebind_rust SHARED
 )
 
 target_link_libraries(rebind_rust PUBLIC librebind)
+
+add_subdirectory(example)

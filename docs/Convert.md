@@ -2,11 +2,11 @@
 ## `Request` for defining how to make your object from an opaque `Pointer`
 
 ```c++
-template <class T, class SFINAE=void> // T may be qualified
+template <class T, class SFINAE=void> // T is qualified
 struct Request {
-    /// Convert variable `r` into type `T`, log failures in Dispatch
+    /// Convert variable `r` into type `T`, log failures in Scope
     /// OUT is either T *, T const *, or std::optional<T>
-    OUT operator()(Pointer const &, Dispatch &) const;
+    std::optional<T> operator()(Pointer const &, Scope &) const;
 
     /// Return if conversion MAY BE possible
     bool operator()(Pointer const &) const;
@@ -30,7 +30,7 @@ struct Response {
 };
 ```
 
-### Reference variant
+<!-- ### Reference variant
 
 ```c++
 template <class T, class SFINAE=void> // T is unqualified
@@ -44,4 +44,4 @@ struct RefResponse {
     // cheap, no need
     // bool operator()(TypeIndex const &idx, T const &t, Qualifier q) const;
 };
-```
+``` -->

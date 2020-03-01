@@ -1,5 +1,6 @@
 #pragma once
 #include "Function.h"
+#include "Pointer.h"
 #include <map>
 
 namespace rebind {
@@ -19,25 +20,38 @@ struct Renderer {
 
 /******************************************************************************/
 
-struct TypeData {
-    std::map<std::string, Function> methods;
-    std::map<TypeIndex, Value> data;
-};
+// struct Overload {
+//     Function;
+//     Vector<Function>;
+// };
+
+using OverloadedFunction = Vector<Function>;
+using OverloadedType = Vector<Table *>;
+using OverloadedMethod = Vector<Function>;
+// struct TypeData {
+//     std::map<std::string, Function> methods;
+//     std::map<TypeIndex, Value> data;
+// };
 
 struct Document {
-    // Global variables:
+    // Global variables, types, and functions
     std::map<std::string, Value> contents;
 
     // Types:
-    std::map<TypeIndex, std::pair<std::string const, Value> *> types;
+    std::map<TypeIndex, Table *> types;
 
-    // Functions:
+    void type(TypeIndex t, std::string_view s, Value &&data, Table *);
 
-    TypeData & type(TypeIndex t, std::string s, Value data={});
+    template <class T>
+    Table & type(Type<T> t, std::string_view s, Value data={}) {
+        auto table = TableGenerator<T>::address;
+        type(t, s, std::move(data), table);
+        return *table;
+    }
 
-    Function & find_method(TypeIndex t, std::string name);
+    // OverloadedFunction & find_method(TypeIndex t, std::string_view name);
 
-    Function & find_function(std::string s);
+    OverloadedFunction & find_function(std::string_view s);
 
     template <class T>
     bool render(Type<T> t={}) {
@@ -59,14 +73,14 @@ struct Document {
     template <int N=-1, class F>
     void function(std::string name, F functor) {
         render(typename Signature<F>::unqualified());
-        find_function(std::move(name)).emplace<N>(std::move(functor));
+        find_function(std::move(name)).emplace_back(Function::from<N>(std::move(functor)));
     }
 
     /// Always a function - no vagueness here
     template <int N=-1, class F, class ...Ts>
     void method(TypeIndex t, std::string name, F f) {
         Signature<F>::unqualified::for_each([&](auto r) {if (t != +r) render(+r);});
-        find_method(t, std::move(name)).emplace<N>(std::move(f));
+        find_method(t, std::move(name)).emplace_back(Function::from<N>(std::move(f)));
     }
 };
 

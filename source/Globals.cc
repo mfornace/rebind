@@ -6,7 +6,7 @@ Object UnionType, TypeError;
 
 std::unordered_map<Object, Object> type_translations{}, output_conversions{}, input_conversions{};
 
-std::unordered_map<std::type_index, Object> python_types{};
+std::unordered_map<TypeIndex, Object> python_types{};
 
 
 void initialize_global_objects() {
@@ -14,7 +14,6 @@ void initialize_global_objects() {
 
     auto t = Object::from(PyImport_ImportModule("typing"));
     UnionType = Object::from(PyObject_GetAttrString(t, "Union"));
-    // (+u)->ob_type
 }
 
 void clear_global_objects() {
@@ -41,7 +40,8 @@ std::unordered_map<TypeIndex, std::string> type_names = {
     {typeid(BinaryData),       "BinaryData"},
     {typeid(ArrayView),        "ArrayView"},
     {typeid(Function),         "Function"},
-    {typeid(Variable),         "Variable"},
+    {typeid(Pointer),          "Pointer"},
+    {typeid(Value),            "Value"},
     {typeid(Sequence),         "Sequence"},
     {typeid(char),             "char"},
     {typeid(unsigned char),    "unsigned_char"},

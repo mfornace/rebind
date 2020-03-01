@@ -89,8 +89,8 @@ public:
     }
 
     friend std::ostream & operator<<(std::ostream &os, ArrayData const &d) {
-        if (!d.t) return os << "ArrayData(<empty>)";
-        return os << "ArrayData(" << TypeIndex(*d.t, d.mut ? Const : Lvalue) << ")";
+        if (!d.t) return os << "ArrayData()";
+        return os << "ArrayData(" << *d.t << QualifierSuffixes[(d.mut ? Const : Lvalue)] << ")";
     }
 };
 
@@ -123,22 +123,22 @@ public:
 
 template <>
 struct Response<BinaryData> {
-    bool operator()(Variable &out, TypeIndex const &t, BinaryData const &v) const {
-        if (t.equals<BinaryView>()) return out.emplace(Type<BinaryView>(), v.begin(), v.size()), true;
-        return false;
+    Value operator()(TypeIndex const &t, BinaryData const &v) const {
+        if (t.equals<BinaryView>()) return Value::from<BinaryView>(v.begin(), v.size());
+        return {};
     }
 };
 
 template <>
 struct Response<BinaryView> {
-    bool operator()(Variable &out, TypeIndex const &, BinaryView const &v) const {
-        return false;
+    Value operator()(TypeIndex const &, BinaryView const &v) const {
+        return {};
     }
 };
 
 template <>
 struct Request<BinaryView> {
-    std::optional<BinaryView> operator()(Variable const &v, Scope &s) const {
+    std::optional<BinaryView> operator()(Pointer const &v, Scope &s) const {
         if (auto p = v.request<BinaryData>()) return BinaryView(p->data(), p->size());
         return s.error("not convertible to binary view", typeid(BinaryView));
     }
@@ -146,7 +146,7 @@ struct Request<BinaryView> {
 
 template <>
 struct Request<BinaryData> {
-    std::optional<BinaryData> operator()(Variable const &v, Scope &s) const {
+    std::optional<BinaryData> operator()(Pointer const &v, Scope &s) const {
         return s.error("not convertible to binary data", typeid(BinaryData));
     }
 };

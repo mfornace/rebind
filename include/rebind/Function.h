@@ -7,7 +7,7 @@
 
 namespace rebind {
 
-using ErasedFunction = std::function<Value(Caller, Arguments)>;
+using ErasedFunction = std::function<Value(Caller, Arguments const &)>;
 
 template <class R, class ...Ts>
 static TypeIndex const signature_types[] = {typeid(R), typeid(Ts)...};
@@ -40,27 +40,31 @@ public:
 /******************************************************************************/
 
 struct Function {
-    Zip<ErasedSignature, ErasedFunction> overloads;
-
-    Value operator()(Caller c, Arguments v) const {
-        DUMP("    - calling type erased Function ");
-        if (overloads.empty()) return {}; //throw std::out_of_range("empty Function");
-        return overloads[0].second(std::move(c), std::move(v));
-    }
+    ErasedFunction impl;
+    ErasedSignature signature;
 
     Function() = default;
 
+    Function(ErasedFunction f, ErasedSignature const &s={}) : impl(std::move(f)), signature(s) {}
+
     template <class F>
-    static Function of(F &&f) {Function p; p.emplace(static_cast<F &&>(f)); return p;}
+    Function(F f) : Function(
+        Adapter<0, decltype(SimplifyFunction<F>()(std::move(f)))>(SimplifyFunction<F>()(std::move(f))),
+        SimpleSignature<decltype(SimplifyFunction<F>()(std::move(f)))>()) {}
 
-    explicit operator bool() const {return !overloads.empty();}
+    template <int N = -1, class F>
+    static Function from(F f) {
+        auto fun = SimplifyFunction<F>()(std::move(f));
+        constexpr std::size_t n = N == -1 ? 0 : SimpleSignature<decltype(fun)>::size - 1 - N;
+        return {Adapter<n, decltype(fun)>{std::move(fun)}, SimpleSignature<decltype(fun)>()};
+    }
 
-    // bool operator==(Function const &f) const {return overloads == f.overloads;}
-    // bool operator!=(Function const &f) const {return !(*this == f);}
-    // bool operator<(Function const &f) const {return overloads < f.overloads;}
-    // bool operator>(Function const &f) const {return f < *this;}
-    // bool operator<=(Function const &f) const {return !(f < *this);}
-    // bool operator>=(Function const &f) const {return !(*this < f);}
+    Value operator()(Caller c, Arguments const &v) const {
+        DUMP("    - calling type erased Function ");
+        return impl(std::move(c), v);
+    }
+
+    explicit operator bool() const {return bool(impl);}
 
     template <class ...Ts>
     Value operator()(Caller c, Ts &&...ts) const {
@@ -69,21 +73,6 @@ struct Function {
         v.reserve(sizeof...(Ts));
         (v.emplace_back(static_cast<Ts &&>(ts)), ...);
         return (*this)(std::move(c), std::move(v));
-    }
-
-    Function & emplace(ErasedFunction f, ErasedSignature const &s) & {
-        overloads.emplace_back(s, std::move(f));
-        return *this;
-    }
-
-    /******************************************************************************/
-
-    template <int N = -1, class F>
-    Function & emplace(F f) & {
-        auto fun = SimplifyFunction<F>()(std::move(f));
-        constexpr std::size_t n = N == -1 ? 0 : SimpleSignature<decltype(fun)>::size - 1 - N;
-        overloads.emplace_back(SimpleSignature<decltype(fun)>(), Adapter<n, decltype(fun)>{std::move(fun)});
-        return *this;
     }
 };
 

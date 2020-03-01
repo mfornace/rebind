@@ -16,7 +16,12 @@ public:
     using Opaque::has_value;
     using Opaque::operator bool;
 
+    /**************************************************************************/
+
     constexpr Value() noexcept = default;
+
+    template <class T>
+    Value(T t) noexcept : Opaque(new T(std::move(t))) {}
 
     Value(Value const &v) : Opaque(v.allocate_copy()) {}
 
@@ -26,8 +31,9 @@ public:
 
     Value &operator=(Value &&v);
 
-    template <class T>
-    Value(T t) noexcept : Opaque(new T(std::move(t))) {}
+    ~Value() {Opaque::try_destroy();}
+
+    /**************************************************************************/
 
     template <class T, class ...Args>
     T &emplace(Type<T>, Args &&...args) {return *new T(static_cast<Args &&>(args)...);}
@@ -48,6 +54,9 @@ public:
     }
 
     template <class T>
+    static Value from(T &&t) {return static_cast<T &&>(t);}
+
+    template <class T>
     std::optional<T> request() const & {
         std::optional<T> out;
         if (has_value()) if (auto p = Opaque::request_value<T>(Const)) {out.emplace(std::move(*p)); delete p;}
@@ -60,8 +69,6 @@ public:
         if (has_value()) if (auto p = Opaque::request_value<T>(Rvalue)) {out.emplace(std::move(*p)); delete p;}
         return out;
     }
-
-    ~Value() {Opaque::try_destroy();}
 };
 
 /******************************************************************************/
