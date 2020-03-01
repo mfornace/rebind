@@ -2,38 +2,32 @@
 
 #include <rebind-rust/Module.h>
 
-// typedef rebind_variable rebind::Variable;
-// using rebind_variable = rebind::Variable;
+int REBINDC(add)() {return 123;}
 
-int rebind_add() {return 123;}
-
-void rebind_destruct(rebind_variable *x) { // noexcept
-    delete reinterpret_cast<rebind::Variable *>(x);
+void REBINDC(destruct)(REBINDC(Value) *x) { // noexcept
+    delete reinterpret_cast<rebind::Value *>(x);
 }
 
-rebind_variable * rebind_variable_new() { // noexcept
-    return reinterpret_cast<rebind_variable *>(new rebind::Variable(std::string()));
+REBINDC(Value) * REBINDC(Value_new)() { // noexcept
+    return reinterpret_cast<REBINDC(Value) *>(new rebind::Value(std::string()));
 }
 
-rebind_variable * rebind_variable_copy(rebind_variable *v) {
+REBINDC(Value) * REBINDC(Value_copy)(REBINDC(Value) *v) {
     try {
-        return reinterpret_cast<rebind_variable *>(new rebind::Variable(
-            *reinterpret_cast<rebind::Variable const *>(v)));
+        return reinterpret_cast<REBINDC(Value) *>(new rebind::Value(
+            *reinterpret_cast<rebind::Value const *>(v)));
     } catch (...) {
         return nullptr;
     }
 }
 
-rebind_type_index rebind_variable_type(rebind_variable *v) {
-    // rebind_type_index[16] rebind_variable_type(rebind_variable *v);
-    auto t = reinterpret_cast<rebind::Variable const *>(v)->type();
-    static_assert(sizeof(t) == sizeof(rebind_type_index));
-    return reinterpret_cast<rebind_type_index const &>(t);
+REBINDC(TypeIndex) REBINDC(Value_type)(REBINDC(Value) *v) {
+    // REBINDC(TypeIndex)[16] REBINDC(variable_type)(REBINDC(value) *v);
+    auto t = reinterpret_cast<rebind::Value const *>(v)->index();
+    static_assert(sizeof(t) == sizeof(REBINDC(TypeIndex)));
+    return reinterpret_cast<REBINDC(TypeIndex) const &>(t);
 }
 
-char const * rebind_type_index_name(rebind_type_index v) {
+char const * REBINDC(TypeIndex_name)(REBINDC(TypeIndex) v) {
     return reinterpret_cast<rebind::TypeIndex const &>(v).info().name();
 }
-// TypeIndex rebind_variable_type(rebind_variable *v) {
-//     return TypeIndex(); 
-// }

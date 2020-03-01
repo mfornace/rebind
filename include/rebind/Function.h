@@ -9,34 +9,6 @@ namespace rebind {
 
 using ErasedFunction = std::function<Value(Caller, Arguments const &)>;
 
-template <class R, class ...Ts>
-static TypeIndex const signature_types[] = {typeid(R), typeid(Ts)...};
-
-/******************************************************************************/
-
-struct ErasedSignature {
-    TypeIndex const *b = nullptr;
-    TypeIndex const *e = nullptr;
-public:
-    ErasedSignature() = default;
-
-    template <class ...Ts>
-    ErasedSignature(Pack<Ts...>) : b(std::begin(signature_types<Ts...>)), e(std::end(signature_types<Ts...>)) {}
-
-    bool operator==(ErasedSignature const &o) const {return std::equal(b, e, o.b, o.e);}
-    bool operator!=(ErasedSignature const &o) const {return !(*this == o);}
-    bool operator<(ErasedSignature const &o) const {return std::lexicographical_compare(b, e, o.b, o.e);}
-    bool operator>(ErasedSignature const &o) const {return o < *this;}
-    bool operator<=(ErasedSignature const &o) const {return !(o < *this);}
-    bool operator>=(ErasedSignature const &o) const {return !(*this < o);}
-
-    explicit operator bool() const {return b;}
-    auto begin() const {return b;}
-    auto end() const {return e;}
-    TypeIndex operator[](std::size_t i) const {return b[i];}
-    std::size_t size() const {return e - b;}
-};
-
 /******************************************************************************/
 
 struct Function {
@@ -49,14 +21,14 @@ struct Function {
 
     template <class F>
     Function(F f) : Function(
-        Adapter<0, decltype(SimplifyFunction<F>()(std::move(f)))>(SimplifyFunction<F>()(std::move(f))),
+        Adapter<0, Value, decltype(SimplifyFunction<F>()(std::move(f)))>(SimplifyFunction<F>()(std::move(f))),
         SimpleSignature<decltype(SimplifyFunction<F>()(std::move(f)))>()) {}
 
     template <int N = -1, class F>
     static Function from(F f) {
         auto fun = SimplifyFunction<F>()(std::move(f));
         constexpr std::size_t n = N == -1 ? 0 : SimpleSignature<decltype(fun)>::size - 1 - N;
-        return {Adapter<n, decltype(fun)>{std::move(fun)}, SimpleSignature<decltype(fun)>()};
+        return {Adapter<n, Value, decltype(fun)>{std::move(fun)}, SimpleSignature<decltype(fun)>()};
     }
 
     Value operator()(Caller c, Arguments const &v) const {
@@ -198,7 +170,7 @@ Streamable<T> streamable(Type<T> t={}) {return {};}
 
 // template <class R>
 // struct Request<Callback<R>> {
-//     std::optional<Callback<R>> operator()(Variable const &v, Scope &msg) const {
+//     std::optional<Callback<R>> operator()(Pointer const &v, Scope &msg) const {
 //         if (!msg.caller) msg.error("Calling context expired", typeid(Callback<R>));
 //         else if (auto p = v.request<Function>(msg)) return Callback<R>{std::move(*p), msg.caller};
 //         return {};

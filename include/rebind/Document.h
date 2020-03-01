@@ -49,7 +49,7 @@ struct Document {
         return *table;
     }
 
-    // OverloadedFunction & find_method(TypeIndex t, std::string_view name);
+    OverloadedFunction & find_method(TypeIndex t, std::string_view name);
 
     OverloadedFunction & find_function(std::string_view s);
 

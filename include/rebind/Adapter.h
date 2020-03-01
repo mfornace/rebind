@@ -12,6 +12,7 @@ namespace rebind {
 template <class Out, class F, class ...Ts>
 Out opaque_invoke(F const &f, Ts &&... ts) {
     using O = std::remove_cv_t<std::invoke_result_t<F, Ts...>>;
+    static_assert(std::is_same_v<Out, Value> || std::is_reference_v<O>);
     DUMP("invoking function with output type ", typeid(Type<O>).name());
     if constexpr(std::is_same_v<void, O>) {
         std::invoke(f, static_cast<Ts &&>(ts)...);
@@ -79,16 +80,16 @@ std::is_convertible<T, C> has_head(Pack<R, T, Ts...>);
 
 
 // N is the number of trailing optional arguments
-template <class Out, class F, std::size_t N, class SFINAE=void>
+template <std::size_t N, class Out, class F, class SFINAE=void>
 struct Adapter {
     F function;
     using UsesCaller = decltype(has_head<Caller>(SimpleSignature<F>()));
     using AllTypes = decltype(skip_head<1 + int(UsesCaller::value)>(SimpleSignature<F>()));
 
     template <class P>
-    void call_one(P, Output &out, Caller &&c, Scope &s, Arguments &args) const {
+    void call_one(P, Out &out, Caller &&c, Scope &s, Arguments &args) const {
         P::indexed([&](auto ...ts) {
-            out = caller_invoke<Output>(UsesCaller(), function, std::move(c), cast_index(args, s, simplify_argument(ts))...);
+            out = caller_invoke<Out>(UsesCaller(), function, std::move(c), cast_index(args, s, simplify_argument(ts))...);
         });
     }
 
@@ -107,7 +108,7 @@ struct Adapter {
         Scope s(handle);
         if (args.size() == AllTypes::size) { // handle fully specified arguments
             return AllTypes::indexed([&](auto ...ts) {
-                return caller_invoke<Output>(UsesCaller(), function,
+                return caller_invoke<Out>(UsesCaller(), function,
                     std::move(handle), cast_index(args, s, simplify_argument(ts))...);
             });
         } else if (args.size() < AllTypes::size - N) {
@@ -123,7 +124,7 @@ struct Adapter {
 /******************************************************************************/
 
 template <class Out, class F, class SFINAE>
-struct Adapter<Out, F, 0, SFINAE> {
+struct Adapter<0, Out, F, SFINAE> {
     F function;
     using Ctx = decltype(has_head<Caller>(SimpleSignature<F>()));
     using Sig = decltype(skip_head<1 + int(Ctx::value)>(SimpleSignature<F>()));
@@ -143,12 +144,13 @@ struct Adapter<Out, F, 0, SFINAE> {
 
 /******************************************************************************/
 
-template <class R, class C>
-struct Adapter<0, R C::*, std::enable_if_t<std::is_member_object_pointer_v<R C::*>>> {
+template <class Out, class R, class C>
+struct Adapter<0, Out, R C::*, std::enable_if_t<std::is_member_object_pointer_v<R C::*>>> {
     R C::* function;
 
-    Pointer operator()(Caller c, Arguments args) const {
+    Out operator()(Caller c, Arguments args) const {
         if (args.size() != 1) throw WrongNumber(1, args.size());
+
         auto &r = args[0];
         auto frame = c();
         DUMP("Adapter<", type_index<R>(), ", ", type_index<C>(), ">::()");
@@ -175,7 +177,7 @@ struct Adapter<0, R C::*, std::enable_if_t<std::is_member_object_pointer_v<R C::
             return {Type<std::remove_cv_t<R>>(), std::invoke(function, std::move(*p))};
         }
 
-        throw std::move(s.set_error("should not be used"));
+        throw std::move(s.set_error("invalid argument"));
     }
 };
 

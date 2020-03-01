@@ -142,7 +142,7 @@ void Document::type(TypeIndex t, std::string_view s, Value &&data, Table *) {
     throw std::runtime_error(s.data());
 }
 
-Function & Document::find_method(TypeIndex t, std::string_view name) {
+OverloadedFunction & Document::find_method(TypeIndex t, std::string_view name) {
     // if (auto it = types.find(t); it != types.end()) {
     //     if (auto p = it->second->second.target<TypeData>())
     //         return p->methods.emplace(std::move(name), Function()).first->second;
@@ -157,7 +157,7 @@ Function & Document::find_method(TypeIndex t, std::string_view name) {
     throw std::runtime_error(name.data());
 }
 
-Function & Document::find_function(std::string_view s) {
+OverloadedFunction & Document::find_function(std::string_view s) {
     // auto it = contents.emplace(std::move(s), Type<Function>()).first;
     // if (auto f = it->second.target<Function>()) return *f;
     throw std::runtime_error("aa");

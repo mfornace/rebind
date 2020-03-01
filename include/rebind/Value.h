@@ -25,13 +25,24 @@ public:
 
     Value(Value const &v) : Opaque(v.allocate_copy()) {}
 
-    Value(Value &&v) noexcept : Opaque(static_cast<Opaque &&>(v)) {v.reset();}
+    Value(Value &&v) noexcept : Opaque(static_cast<Opaque &&>(v)) {
+        v.reset_pointer();
+    }
 
-    Value &operator=(Value const &v);
+    Value &operator=(Value const &v) {
+        Opaque::operator=(v.allocate_copy());
+        return *this;
+    }
 
-    Value &operator=(Value &&v);
+    Value &operator=(Value &&v) {
+        Opaque::operator=(std::move(v));
+        v.reset_pointer();
+        return *this;
+    }
 
     ~Value() {Opaque::try_destroy();}
+
+    void reset() {Opaque::try_destroy(); reset_pointer();}
 
     /**************************************************************************/
 
@@ -39,13 +50,13 @@ public:
     T &emplace(Type<T>, Args &&...args) {return *new T(static_cast<Args &&>(args)...);}
 
     template <class T>
-    T *target() &;
+    T *target() & {return Opaque::target<T>();}
 
     template <class T>
-    T *target() &&;
+    T *target() && {return Opaque::target<T>();}
 
     template <class T>
-    T const *target() const &;
+    T const *target() const & {return Opaque::target<T>();}
 
     template <class T, class ...Args>
     static Value from(Args &&...args) {
@@ -56,19 +67,71 @@ public:
     template <class T>
     static Value from(T &&t) {return static_cast<T &&>(t);}
 
+    /**************************************************************************/
+
+    template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
+    std::remove_reference_t<T> * request(Scope &s, Type<T> t={}) const & {return Opaque::request_reference<T>(Const);}
+
+    template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
+    std::remove_reference_t<T> * request(Scope &s, Type<T> t={}) & {return Opaque::request_reference<T>(Lvalue);}
+
+    template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
+    std::remove_reference_t<T> * request(Scope &s, Type<T> t={}) && {return std::move(*this).request_reference<T>(Rvalue);}
+
+    /**************************************************************************/
+
+    template <class T, std::enable_if_t<!std::is_reference_v<T>, int> = 0>
+    std::optional<T> request(Scope &s, Type<T> t={}) const & {return Pointer(*this, Const).request(s, t);}
+
+    template <class T, std::enable_if_t<!std::is_reference_v<T>, int> = 0>
+    std::optional<T> request(Scope &s, Type<T> t={}) & {return Pointer(*this, Lvalue).request(s, t);}
+
+    template <class T, std::enable_if_t<!std::is_reference_v<T>, int> = 0>
+    std::optional<T> request(Scope &s, Type<T> t={}) && {return Pointer(*this, Rvalue).request(s, t);}
+
+    /**************************************************************************/
+
     template <class T>
-    std::optional<T> request() const & {
-        std::optional<T> out;
-        if (has_value()) if (auto p = Opaque::request_value<T>(Const)) {out.emplace(std::move(*p)); delete p;}
-        return out;
+    auto request(Type<T> t={}) const & {Scope s; return request(s, t);}
+
+    template <class T>
+    auto request(Type<T> t={}) & {Scope s; return request(s, t);}
+
+    template <class T>
+    auto request(Type<T> t={}) && {Scope s; return std::move(*this).request(s, t);}
+
+    /**************************************************************************/
+
+    template <class T>
+    T cast(Scope &s, Type<T> t={}) const & {
+        if (auto p = request(s, t)) return static_cast<T &&>(*p);
+        throw std::move(s.set_error("invalid cast (rebind::Value const &)"));
     }
 
     template <class T>
-    std::optional<T> request() && {
-        std::optional<T> out;
-        if (has_value()) if (auto p = Opaque::request_value<T>(Rvalue)) {out.emplace(std::move(*p)); delete p;}
-        return out;
+    T cast(Scope &s, Type<T> t={}) & {
+        if (auto p = request(s, t)) return static_cast<T &&>(*p);
+        throw std::move(s.set_error("invalid cast (rebind::Value &)"));
     }
+
+    template <class T>
+    T cast(Scope &s, Type<T> t={}) && {
+        if (auto p = request(s, t)) return static_cast<T &&>(*p);
+        throw std::move(s.set_error("invalid cast (rebind::Value &&)"));
+    }
+
+    /**************************************************************************/
+
+    template <class T>
+    T cast(Type<T> t={}) const & {Scope s; return cast(s, t);}
+
+    template <class T>
+    T cast(Type<T> t={}) & {Scope s; return cast(s, t);}
+
+    template <class T>
+    T cast(Type<T> t={}) && {Scope s; return cast(s, t);}
+
+    /**************************************************************************/
 };
 
 /******************************************************************************/

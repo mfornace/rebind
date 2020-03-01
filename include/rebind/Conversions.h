@@ -25,49 +25,20 @@ struct Request {
     constexpr bool operator()(Pointer const &r) const {return false;}
 };
 
-/// The default behavior has no custom conversions
-template <class T, class SFINAE>
-struct Request<T &, SFINAE> {
-    using method = Default;
+/******************************************************************************/
 
-    T * operator()(Pointer const &r, Scope &msg) const {
-        // lvalue_fails(v, msg, typeid(T));
-        return nullptr;
+template <class T, std::enable_if_t<!std::is_reference_v<T>, int>>
+std::optional<T> Pointer::request(Scope &s, Type<T> t) const {
+    std::optional<T> out;
+    if (has_value()) {
+        if (auto p = request_reference<T &&>(qual)) out.emplace(std::move(*p));
+        else if (auto p = request_reference<T const &>(qual)) out.emplace(*p);
+        else {
+            out = Request<T>()(static_cast<Pointer const &>(*this), s);
+        }
     }
-
-    constexpr bool operator()(Pointer const &r) const {return false;}
-};
-
-/// The default behavior tries the T -> T const & and T & -> T const & routes
-template <class T, class SFINAE>
-struct Request<T const &, SFINAE> {
-    using method = Default;
-
-    T const * operator()(Pointer const &r, Scope &msg) const {
-        DUMP("trying & -> const & ", typeid(T).name());
-        if (auto p = r.request<T &>(msg)) return p;
-        // DUMP("trying temporary const & storage ", typeid(T).name());
-        // if (auto p = v.request<T>(msg)) return msg.store(std::move(*p));
-        return msg.error("could not bind to const lvalue reference", typeid(T)), nullptr;
-    }
-
-    constexpr bool operator()(Pointer const &r) const {return false;}
-};
-
-/// The default behavior tries the T -> T && route
-template <class T, class SFINAE>
-struct Request<T &&, SFINAE> {
-    using method = Default;
-
-    T * operator()(Pointer const &r, Scope &msg) const {
-        // DUMP("trying temporary && storage ", typeid(T).name());
-        // if (auto p = v.request<T>(msg)) return msg.store(std::move(*p));
-        // rvalue_fails(v, msg, typeid(T));
-        return nullptr;
-    }
-
-    constexpr bool operator()(Pointer const &r) const {return false;}
-};
+    return out;
+}
 
 /******************************************************************************/
 
@@ -104,22 +75,8 @@ struct Response {
     static_assert(std::is_same_v<unqualified<T>, T>);
 
     Value operator()(TypeIndex const &idx, T const &) const {
+        DUMP("no conversion found from source", type_index<T>(), "to", idx);
         return {};
-        // DUMP("no conversion found from source", TypeIndex(typeid(T), Q), "to", idx);
-        // return implicit_response(out, idx, Q, static_cast<T2 &&>(t));
-    }
-};
-
-/// Default response just tries implicit conversions
-template <class T, class SFINAE>
-struct RefResponse {
-    using method = Default;
-    static_assert(std::is_same_v<unqualified<T>, T>);
-
-    Pointer operator()(TypeIndex const &idx, Qualifier, T const &) const {
-        return {};
-        // DUMP("no conversion found from source", TypeIndex(typeid(T), Q), "to", idx);
-        // return implicit_response(out, idx, Q, static_cast<T2 &&>(t));
     }
 };
 
@@ -141,13 +98,9 @@ struct Response<T, std::void_t<decltype(response(std::declval<TypeIndex>(), std:
     static_assert(std::is_same_v<unqualified<T>, T>);
     using method = ADL;
 
-    // template <class T2>
-    Pointer operator()(TypeIndex const &idx, T const &t) const {
-        return {};
-        // DUMP("ADL Response", typeid(T), idx);
-        // out = response(idx, static_cast<T2 &&>(t));
-        // return out || implicit_response(out, idx, Q, static_cast<T2 &&>(t));
-    }
+    Pointer operator()(TypeIndex const &idx, T &t) const {return response(idx, t);}
+    Pointer operator()(TypeIndex const &idx, T const &t) const {return response(idx, t);}
+    Pointer operator()(TypeIndex const &idx, T &&t) const {return response(idx, std::move(t));}
 };
 
 /******************************************************************************/

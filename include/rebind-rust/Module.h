@@ -1,19 +1,21 @@
 #pragma once
-#include <rebind/Variable.h>
+#include <rebind/Value.h>
+
+#define REBINDC(name) rebind_##name
 
 // static_assert(std::is_pod_v<std::pair<std::type_info const *, rebind::Qualifier>>);
 // static_assert(std::is_trivial_v<rebind::TypeIndex>);
 // static_assert(std::is_pod_v<rebind::TypeIndex>);
 extern "C" {
 
-typedef struct rebind_variable rebind_variable;
-typedef struct rebind_type_index rebind_type_index;
+typedef struct REBINDC(Value) REBINDC(Value);
+typedef struct REBINDC(TypeIndex) REBINDC(TypeIndex);
 
-void rebind_destruct(rebind_variable *x);
+void rebind_destruct(REBINDC(Value) *x);
 
-rebind_variable * rebind_variable_new();
+REBINDC(Value) * REBINDC(Value_new)();
 
-rebind_variable * rebind_variable_copy(rebind_variable *v);
+REBINDC(Value) * REBINDC(Value_copy)(REBINDC(Value) *v);
 
 
 // static_assert(std::is_standard_layout_v<rebind::TypeIndex>);
@@ -22,13 +24,13 @@ rebind_variable * rebind_variable_copy(rebind_variable *v);
 // static_assert(std::is_trivially_copyable_v<std::pair<std::type_info const *, rebind::Qualifier>>);
 // static_assert(std::is_trivially_copyable_v<rebind::TypeIndex>);
 
-struct rebind_type_index {
+struct REBINDC(TypeIndex) {
     std::aligned_storage_t<sizeof(rebind::TypeIndex), alignof(rebind::TypeIndex)> blah;
 };
 
-rebind_type_index rebind_variable_type(rebind_variable *v);
+REBINDC(TypeIndex) REBINDC(Value_type)(REBINDC(Value) *v);
 
-char const * rebind_type_index_name(rebind_type_index v);
+char const * REBINDC(TypeIndex_name)(REBINDC(TypeIndex) v);
 
 int rebind_add();
 
