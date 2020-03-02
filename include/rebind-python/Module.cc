@@ -126,9 +126,9 @@ Object initialize(Document const &doc) {
         && attach_type(m, "Pointer", type_object<Pointer>())
         && attach_type(m, "Function", type_object<Function>())
         && attach_type(m, "TypeIndex", type_object<TypeIndex>())
-        && attach_type(m, "DelegatingFunction", type_object<DelegatingFunction>())
-        && attach_type(m, "DelegatingMethod", type_object<DelegatingMethod>())
-        && attach_type(m, "Method", type_object<Method>())
+        // && attach_type(m, "DelegatingFunction", type_object<DelegatingFunction>())
+        // && attach_type(m, "DelegatingMethod", type_object<DelegatingMethod>())
+        // && attach_type(m, "Method", type_object<Method>())
             // Tuple[Tuple[int, TypeIndex, int], ...]
         && attach(m, "scalars", map_as_tuple(scalars, [](auto const &x) {
             return args_as_tuple(as_object(static_cast<Integer>(std::get<0>(x))),
