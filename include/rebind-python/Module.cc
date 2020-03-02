@@ -52,7 +52,7 @@ int array_data_buffer(PyObject *self, Py_buffer *view, int flags) {
 PyBufferProcs buffer_procs{array_data_buffer, nullptr};
 
 template <>
-PyTypeObject Holder<ArrayBuffer>::type = []{
+PyTypeObject Wrap<ArrayBuffer>::type = []{
     auto o = type_definition<ArrayBuffer>("rebind.ArrayBuffer", "C++ ArrayBuffer object");
     o.tp_as_buffer = &buffer_procs;
     return o;
@@ -89,7 +89,7 @@ PyObject *type_index_compare(PyObject *self, PyObject *other, int op) {
 }
 
 template <>
-PyTypeObject Holder<TypeIndex>::type = []{
+PyTypeObject Wrap<TypeIndex>::type = []{
     auto o = type_definition<TypeIndex>("rebind.TypeIndex", "C++ type_index object");
     o.tp_repr = type_index_repr;
     o.tp_hash = type_index_hash;
@@ -122,7 +122,8 @@ Object initialize(Document const &doc) {
     if (PyType_Ready(type_object<ArrayBuffer>()) < 0) return {};
     incref(type_object<ArrayBuffer>());
 
-    bool ok = attach_type(m, "Variable", type_object<Variable>())
+    bool ok = attach_type(m, "Value", type_object<Value>())
+        && attach_type(m, "Pointer", type_object<Pointer>())
         && attach_type(m, "Function", type_object<Function>())
         && attach_type(m, "TypeIndex", type_object<TypeIndex>())
         && attach_type(m, "DelegatingFunction", type_object<DelegatingFunction>())
@@ -137,34 +138,34 @@ Object initialize(Document const &doc) {
             // Tuple[Tuple[TypeIndex, Tuple[Tuple[str, function], ...]], ...]
         && attach(m, "contents", map_as_tuple(doc.contents, [](auto const &x) {
             Object o;
-            if (auto p = x.second.template target<Function const &>()) o = as_object(*p);
-            else if (auto p = x.second.template target<TypeIndex const &>()) o = as_object(*p);
-            else if (auto p = x.second.template target<TypeData const &>()) o = args_as_tuple(
-                map_as_tuple(p->methods, [](auto const &x) {return args_as_tuple(as_object(x.first), as_object(x.second));}),
-                map_as_tuple(p->data, [](auto const &x) {return args_as_tuple(as_object(x.first), variable_cast(Variable(x.second)));})
-            );
-            else o = variable_cast(Variable(x.second));
+            if (auto p = x.second.template target<Function>()) o = as_object(*p);
+            else if (auto p = x.second.template target<TypeIndex>()) o = as_object(*p);
+            // else if (auto p = x.second.template target<TypeData const &>()) o = args_as_tuple(
+            //     map_as_tuple(p->methods, [](auto const &x) {return args_as_tuple(as_object(x.first), as_object(x.second));}),
+            //     map_as_tuple(p->data, [](auto const &x) {return args_as_tuple(as_object(x.first), variable_cast(Variable(x.second)));})
+            // );
+            else o = value_to_object(Value(x.second));
             return args_as_tuple(as_object(x.first), std::move(o));
         }))
-        && attach(m, "set_output_conversion", as_object(Function::of([](Object t, Object o) {
+        && attach(m, "set_output_conversion", as_object(Function::from([](Object t, Object o) {
             output_conversions.insert_or_assign(std::move(t), std::move(o));
         })))
-        && attach(m, "set_input_conversion", as_object(Function::of([](Object t, Object o) {
+        && attach(m, "set_input_conversion", as_object(Function::from([](Object t, Object o) {
             input_conversions.insert_or_assign(std::move(t), std::move(o));
         })))
-        && attach(m, "set_translation", as_object(Function::of([](Object t, Object o) {
+        && attach(m, "set_translation", as_object(Function::from([](Object t, Object o) {
             type_translations.insert_or_assign(std::move(t), std::move(o));
         })))
-        && attach(m, "clear_global_objects", as_object(Function::of(&clear_global_objects)))
-        && attach(m, "set_debug", as_object(Function::of([](bool b) {return std::exchange(Debug, b);})))
-        && attach(m, "debug", as_object(Function::of([] {return Debug;})))
-        && attach(m, "set_type_error", as_object(Function::of([](Object o) {TypeError = std::move(o);})))
-        && attach(m, "set_type", as_object(Function::of([](TypeIndex idx, Object o) {
+        && attach(m, "clear_global_objects", as_object(Function::from(&clear_global_objects)))
+        && attach(m, "set_debug", as_object(Function::from([](bool b) {return std::exchange(Debug, b);})))
+        && attach(m, "debug", as_object(Function::from([] {return Debug;})))
+        && attach(m, "set_type_error", as_object(Function::from([](Object o) {TypeError = std::move(o);})))
+        && attach(m, "set_type", as_object(Function::from([](TypeIndex idx, Object o) {
             DUMP("set_type in");
             python_types.emplace(idx.info(), std::move(o));
             DUMP("set_type out");
         })))
-        && attach(m, "set_type_names", as_object(Function::of([](Zip<TypeIndex, std::string_view> v) {
+        && attach(m, "set_type_names", as_object(Function::from([](Zip<TypeIndex, std::string_view> v) {
             for (auto const &p : v) type_names.insert_or_assign(p.first, p.second);
         })));
     return ok ? m : Object();

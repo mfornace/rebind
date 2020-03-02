@@ -6,6 +6,11 @@
 
 namespace rebind {
 
+/******************************************************************************/
+
+template <class T>
+static constexpr bool is_usable = std::is_nothrow_move_constructible_v<T> && !is_type_t<T>::value;
+
 /******************************************************************************************/
 
 class Function;
@@ -198,6 +203,10 @@ public:
 
     template <class T>
     static Pointer from(T &&t) {return {std::addressof(t), Rvalue};}
+
+    static Pointer from(Value &t);
+    static Pointer from(Value const &t);
+    static Pointer from(Value &&t);
 };
 
 /******************************************************************************************/

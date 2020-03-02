@@ -2,8 +2,10 @@
  * @brief Python-related C++ source code for rebind
  * @file Python.cc
  */
-#include <rebind-python/API.h>
-#include <rebind/Document.h>
+#include "API.h"
+#include "Wrap.h"
+
+// #include <rebind/Document.h>
 #include <complex>
 #include <any>
 #include <iostream>
@@ -85,38 +87,37 @@ std::string_view from_bytes(PyObject *o) {
 /******************************************************************************/
 
 template <class T>
-bool to_arithmetic(Object const &o, Variable &v) {
-    DUMP("cast arithmetic in: ", v.type());
-    if (PyFloat_Check(o)) return v = static_cast<T>(PyFloat_AsDouble(+o)), true;
-    if (PyLong_Check(o)) return v = static_cast<T>(PyLong_AsLongLong(+o)), true;
-    if (PyBool_Check(o)) return v = static_cast<T>(+o == Py_True), true;
+bool to_arithmetic(Object const &o, Value &v) {
+    DUMP("cast arithmetic in: ", v.index());
+    if (PyFloat_Check(o)) return v.emplace<T>(PyFloat_AsDouble(+o)), true;
+    if (PyLong_Check(o)) return v.emplace<T>(PyLong_AsLongLong(+o)), true;
+    if (PyBool_Check(o)) return v.emplace<T>(+o == Py_True), true;
     if (PyNumber_Check(+o)) { // This can be hit for e.g. numpy.int64
         if (std::is_integral_v<T>) {
             if (auto i = Object::from(PyNumber_Long(+o)))
-                return v = static_cast<T>(PyLong_AsLongLong(+i)), true;
+                return v.emplace<T>(PyLong_AsLongLong(+i)), true;
         } else {
             if (auto i = Object::from(PyNumber_Float(+o)))
-               return v = static_cast<T>(PyFloat_AsDouble(+i)), true;
+               return v.emplace<T>(PyFloat_AsDouble(+i)), true;
         }
     }
-    DUMP("cast arithmetic out: ", v.type());
+    DUMP("cast arithmetic out: ", v.index());
     return false;
 }
 
 /******************************************************************************/
 
-bool object_response(Variable &v, TypeIndex t, Object o) {
+bool object_response(Value &v, TypeIndex t, Object o) {
     if (Debug) {
         auto repr = Object::from(PyObject_Repr(SubClass<PyTypeObject>{(+o)->ob_type}));
         DUMP("input object reference count", reference_count(o));
         DUMP("trying to convert object to ", t.name(), " ", from_unicode(+repr));
-        DUMP(bool(cast_if<Variable>(o)));
+        DUMP(bool(cast_if<Value>(o)));
     }
 
-    if (auto p = cast_if<Variable>(o)) {
-        DUMP("its a variable");
-        Dispatch msg;
-        v = p->request_variable(msg, t);
+    if (auto p = cast_if<Value>(o)) {
+        DUMP("its a value");
+        // v = p->request(t);
         return v.has_value();
     }
 
@@ -135,16 +136,16 @@ bool object_response(Variable &v, TypeIndex t, Object o) {
         else if (auto p = cast_if<Function>(o)) v = *p;
         // general python function has no signature associated with it right now.
         // we could get them out via function.__annotations__ and process them into a tuple
-        else v.emplace(Type<Function>())->emplace(PythonFunction({+o, true}, {Py_None, true}), {});
+        else v.emplace(Type<Function>(), Function::from(PythonFunction({+o, true}, {Py_None, true})));
         return true;
     }
 
     if (t.equals<Sequence>()) {
         if (PyTuple_Check(o) || PyList_Check(o)) {
             DUMP("making a Sequence");
-            Sequence *s = v.emplace(Type<Sequence>());
-            s->reserve(PyObject_Length(o));
-            map_iterable(o, [&](Object o) {s->emplace_back(std::move(o));});
+            Sequence &s = v.emplace(Type<Sequence>());
+            s.reserve(PyObject_Length(o));
+            map_iterable(o, [&](Object o) {s.emplace_back(std::move(o));});
             return true;
         } else return false;
     }
@@ -201,7 +202,7 @@ bool object_response(Variable &v, TypeIndex t, Object o) {
         return false;
     }
 
-    DUMP("requested ", v.type(), t);
+    DUMP("requested ", v.index(), t);
     return false;
 }
 
@@ -209,10 +210,10 @@ bool object_response(Variable &v, TypeIndex t, Object o) {
 
 std::string get_type_name(TypeIndex idx) noexcept {
     std::string out;
-    auto it = type_names.find(idx);
-    if (it == type_names.end() || it->second.empty()) out = idx.name();
-    else out = it->second;
-    out += QualifierSuffixes[static_cast<unsigned char>(idx.qualifier())];
+    // auto it = type_names.find(idx);
+    // if (it == type_names.end() || it->second.empty()) out = idx.name();
+    // else out = it->second;
+    // out += QualifierSuffixes[static_cast<unsigned char>(idx.qualifier())];
     return out;
 }
 
@@ -239,23 +240,26 @@ std::string wrong_type_message(WrongType const &e, std::string_view prefix) {
 
 /******************************************************************************/
 
-Variable variable_from_object(Object o) {
-    if (auto p = cast_if<Function>(o)) return {Type<Function const &>(), *p};
-    else if (auto p = cast_if<std::type_index>(o)) return {Type<std::type_index>(), *p};
-    else if (auto p = cast_if<Variable>(o)) {
-        DUMP("variable from object ", p, " ", p->data());
-        DUMP("variable qualifier=", p->qualifier(), ", reference qualifier=", p->reference().qualifier());
-        return p->reference();
+Pointer pointer_from_object(Object &o) {
+    if (auto p = cast_if<Function>(o)) {
+        return Pointer::from(*p);
+    } else if (auto p = cast_if<TypeIndex>(o)) {
+        return Pointer::from(*p);
+    } else if (auto p = cast_if<Value>(o)) {
+        return Pointer::from(*p);
+    } else if (auto p = cast_if<Pointer>(o)) {
+        return *p;
+    } else {
+        return Pointer::from(o);
     }
-    else return std::move(o);
 }
 
 /******************************************************************************/
 
 // Store the objects in args in pack
-void args_from_python(Sequence &v, Object const &args) {
+void args_from_python(Arguments &v, Object const &args) {
     v.reserve(v.size() + PyObject_Length(+args));
-    map_iterable(args, [&v](Object o) {v.emplace_back(variable_from_object(std::move(o)));});
+    map_iterable(args, [&v](Object o) {v.emplace_back(pointer_from_object(std::move(o)));});
 }
 
 /******************************************************************************/

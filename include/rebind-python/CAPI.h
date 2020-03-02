@@ -36,52 +36,9 @@ struct SubClass {
     operator T *() const {return ptr;}
 };
 
-template <class T>
-struct Holder {
-    static PyTypeObject type;
-    PyObject_HEAD // 16 bytes for the ref count and the type object
-    T value; // I think stack is OK because this object is only casted to anyway.
-};
-
-template <class T>
-PyTypeObject Holder<T>::type;
-
-template <class T>
-SubClass<PyTypeObject> type_object(Type<T> t={}) {return {&Holder<T>::type};}
-
 /******************************************************************************/
 
-template <class T>
-T * cast_if(PyObject *o) {
-    if (!PyObject_TypeCheck(o, type_object<T>())) return nullptr;
-    return std::addressof(reinterpret_cast<Holder<T> *>(o)->value);
-}
-
-template <class T>
-T & cast_object(PyObject *o) {
-    if (!PyObject_TypeCheck(o, type_object<T>()))
-        throw std::invalid_argument("Expected instance of rebind.TypeIndex");
-    return reinterpret_cast<Holder<T> *>(o)->value;
-}
-
-/******************************************************************************/
-
-template <class T>
-PyObject *tp_new(PyTypeObject *subtype, PyObject *, PyObject *) noexcept {
-    static_assert(noexcept(T{}), "Default constructor should be noexcept");
-    PyObject *o = subtype->tp_alloc(subtype, 0); // 0 unused
-    if (o) new (&cast_object<T>(o)) T; // Default construct the C++ type
-    return o;
-}
-
-template <class T>
-void tp_delete(PyObject *o) noexcept {
-    reinterpret_cast<Holder<T> *>(o)->~Holder<T>();
-    Py_TYPE(o)->tp_free(o);
-}
-
-/******************************************************************************/
-
+/// Helper class for dealing with memoryview, Py_buffer
 class Buffer {
     static Vector<std::pair<std::string_view, std::type_info const *>> formats;
     bool valid;
@@ -106,6 +63,7 @@ public:
     static std::type_info const & format(std::string_view s);
     static std::string_view format(std::type_info const &t);
     static std::size_t itemsize(std::type_info const &t);
+
     // static Binary binary(Py_buffer *view, std::size_t len);
     // static Variable binary_view(Py_buffer *view, std::size_t len);
 
@@ -122,7 +80,7 @@ public:
 /******************************************************************************/
 
 template <class T, class U>
-bool compare(decltype(Py_EQ) op, T const &t, U const &u) {
+bool compare(decltype(Py_EQ) op, T const &t, U const &u) noexcept {
     switch(op) {
         case(Py_EQ): return t == u;
         case(Py_NE): return t != u;
@@ -136,16 +94,11 @@ bool compare(decltype(Py_EQ) op, T const &t, U const &u) {
 
 /******************************************************************************/
 
-template <class T>
-PyTypeObject type_definition(char const *name, char const *doc) {
-    PyTypeObject o{PyVarObject_HEAD_INIT(NULL, 0)};
-    o.tp_name = name;
-    o.tp_basicsize = sizeof(Holder<T>);
-    o.tp_dealloc = tp_delete<T>;
-    o.tp_new = tp_new<T>;
-    o.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
-    o.tp_doc = doc;
-    return o;
+inline bool set_tuple_item(PyObject *t, Py_ssize_t i, PyObject *x) {
+    if (!x) return false;
+    incref(x);
+    PyTuple_SET_ITEM(t, i, x);
+    return true;
 }
 
 }

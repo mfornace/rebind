@@ -1,11 +1,15 @@
 #pragma once
+#include "Wrap.h"
 #include "API.h"
+#include <rebind/BasicTypes.h>
+#include <rebind/Arrays.h>
+#include <rebind/Function.h>
 
 namespace rebind {
 
 /******************************************************************************/
 
-Object python_cast(Value &&v, Object const &t, Object const &root);
+Object python_cast(Pointer const &v, Object const &t, Object const &root);
 
 /******************************************************************************/
 

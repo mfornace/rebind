@@ -1,4 +1,5 @@
 #pragma once
+#include <type_traits>
 #include <utility>
 #include <typeindex>
 #include <string_view>
@@ -41,6 +42,16 @@ struct Type  {
 
 template <class T, class U>
 constexpr std::is_same<T, U> is_same(Type<T>, Type<U>) {return {};}
+
+/******************************************************************************************/
+
+template <class T>
+struct is_type_t : std::false_type {};
+
+template <class T>
+struct is_type_t<Type<T>> : std::true_type {};
+
+/******************************************************************************************/
 
 template <class T>
 static constexpr Type<T> ctype = {};

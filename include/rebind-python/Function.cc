@@ -2,79 +2,80 @@ namespace rebind {
 
 /******************************************************************************/
 
-Object call_overload(ErasedFunction const &fun, Sequence args, bool gil) {
+Object call_overload(ErasedFunction const &fun, Arguments args, bool gil) {
     // if (auto py = fun.target<PythonFunction>())
     //     return {PyObject_CallObject(+py->function, +args), false};
     DUMP("constructed python args ", args.size());
-    for (auto const &p : args) DUMP(p.type());
-    Variable out;
+    for (auto const &p : args) DUMP(p.index());
+    Value out;
     {
         auto lk = std::make_shared<PythonFrame>(!gil);
         Caller ct(lk);
         DUMP("calling the args: size=", args.size());
         out = fun(ct, std::move(args));
     }
-    DUMP("got the output ", out.type());
-    if (auto p = out.target<Object const &>()) return *p;
+    DUMP("got the output ", out.index());
+    if (auto p = out.target<Object>()) return std::move(*p);
     // if (auto p = out.target<PyObject * &>()) return {*p, true};
-    // Convert the C++ Variable to a rebind.Variable
-    return variable_cast(std::move(out));
+    // Convert the C++ Value to a rebind.Value
+    return value_to_object(std::move(out));
 }
 
 /******************************************************************************/
 
-Object function_call_impl(Function const &fun, Sequence args, PyObject *sig, TypeIndex const &t0, TypeIndex const &t1, bool gil) {
-    auto const &overloads = fun.overloads;
+Object function_call_impl(Function const &fun, Arguments &&args, PyObject *sig, TypeIndex const &t0, TypeIndex const &t1, bool gil) {
+    return {};
+    // auto const &overloads = fun.overloads;
 
-    if (overloads.size() == 1) // only 1 overload
-        return call_overload(overloads[0].second, args, gil);
+    // if (overloads.size() == 1) // only 1 overload
+    //     return call_overload(overloads[0].second, args, gil);
 
-    if (sig && PyLong_Check(sig)) { // signature given as an integer index
-        auto i = PyLong_AsLongLong(sig);
-        if (i < 0) i += overloads.size();
-        if (i <= overloads.size() || i < 0)
-            return call_overload(overloads[i].second, std::move(args), gil);
-        PyErr_SetString(PyExc_IndexError, "signature index out of bounds");
-        return Object();
-    }
+    // if (sig && PyLong_Check(sig)) { // signature given as an integer index
+    //     auto i = PyLong_AsLongLong(sig);
+    //     if (i < 0) i += overloads.size();
+    //     if (i <= overloads.size() || i < 0)
+    //         return call_overload(overloads[i].second, std::move(args), gil);
+    //     PyErr_SetString(PyExc_IndexError, "signature index out of bounds");
+    //     return Object();
+    // }
 
-    auto errors = Object::from(PyList_New(0));
+    // auto errors = Object::from(PyList_New(0));
 
-    //  Check for equivalence on the first argument first -- provides short-circuiting for methods
-    for (auto const exact : {true, false}) {
-        for (auto const &o : overloads) {
-            bool const match = (o.first.size() < 2) || (!args.empty() && args[0].type().matches(o.first[1]));
-            if (match != exact) continue;
-            if (sig) { // check the explicit signature that was passed in
-                if (PyTuple_Check(sig)) {
-                    auto const len = PyObject_Length(sig);
-                    if (len > o.first.size())
-                        return type_error("C++: too many types given in signature");
-                    for (Py_ssize_t i = 0; i != len; ++i) {
-                        PyObject *x = PyTuple_GET_ITEM(sig, i);
-                        if (x != Py_None && !cast_object<TypeIndex>(x).matches(o.first[i])) continue;
-                    }
-                } else return type_error("C++: expected 'signature' to be a tuple");
-            } else {
-                if (t0 && o.first.size() > 0 && !o.first[0].matches(t0)) continue; // check that the return type matches if specified
-                if (t1 && o.first.size() > 1 && !o.first[1].matches(t1)) continue; // check that the first argument type matches if specified
-            }
+    // //  Check for equivalence on the first argument first -- provides short-circuiting for methods
+    // for (auto const exact : {true, false}) {
+    //     for (auto const &o : overloads) {
+    //         bool const match = (o.first.size() < 2) || (!args.empty() && args[0].type().matches(o.first[1]));
+    //         if (match != exact) continue;
+    //         if (sig) { // check the explicit signature that was passed in
+    //             if (PyTuple_Check(sig)) {
+    //                 auto const len = PyObject_Length(sig);
+    //                 if (len > o.first.size())
+    //                     return type_error("C++: too many types given in signature");
+    //                 for (Py_ssize_t i = 0; i != len; ++i) {
+    //                     PyObject *x = PyTuple_GET_ITEM(sig, i);
+    //                     if (x != Py_None && !cast_object<TypeIndex>(x).matches(o.first[i])) continue;
+    //                 }
+    //             } else return type_error("C++: expected 'signature' to be a tuple");
+    //         } else {
+    //             if (t0 && o.first.size() > 0 && !o.first[0].matches(t0)) continue; // check that the return type matches if specified
+    //             if (t1 && o.first.size() > 1 && !o.first[1].matches(t1)) continue; // check that the first argument type matches if specified
+    //         }
 
-            try {
-                return call_overload(o.second, args, gil);
-            } catch (WrongType const &e) {
-                if (PyList_Append(+errors, +as_object(wrong_type_message(e)))) return {};
-            } catch (WrongNumber const &e) {
-                unsigned int n0 = e.expected, n = e.received;
-                auto s = Object::from(PyUnicode_FromFormat("C++: wrong number of arguments (expected %u, got %u)", n0, n));
-                if (PyList_Append(+errors, +s)) return {};
-            } catch (DispatchError const &e) {
-                if (PyList_Append(+errors, +as_object(std::string_view(e.what())))) return {};
-            }
-        }
-    }
-    // Raise an exception with a list of the messages
-    return PyErr_SetObject(TypeError, +errors), nullptr;
+    //         try {
+    //             return call_overload(o.second, args, gil);
+    //         } catch (WrongType const &e) {
+    //             if (PyList_Append(+errors, +as_object(wrong_type_message(e)))) return {};
+    //         } catch (WrongNumber const &e) {
+    //             unsigned int n0 = e.expected, n = e.received;
+    //             auto s = Object::from(PyUnicode_FromFormat("C++: wrong number of arguments (expected %u, got %u)", n0, n));
+    //             if (PyList_Append(+errors, +s)) return {};
+    //         } catch (DispatchError const &e) {
+    //             if (PyList_Append(+errors, +as_object(std::string_view(e.what())))) return {};
+    //         }
+    //     }
+    // }
+    // // Raise an exception with a list of the messages
+    // return PyErr_SetObject(TypeError, +errors), nullptr;
 }
 
 /******************************************************************************/
@@ -120,21 +121,21 @@ struct AnnotatedMethod {
 
 PyObject *function_annotated_impl(PyObject *data, PyObject *args, PyObject *kws) noexcept {
     return raw_object([=]() -> Object {
-        auto const &v = *cast_object<Variable>(data).target<AnnotatedFunction const &>();
+        auto const &v = *cast_object<Value>(data).target<AnnotatedFunction>();
         if (PyTuple_GET_SIZE(args) > v.max_positional) return nullptr;
         std::vector<PyObject *> args;
         std::vector<char const *> names;
         // PyArg_VaParseTupleAndKeywords(args, kws, v.format.data(), va_list); with defaults
 
-        std::vector<Variable> arguments;
+        Arguments arguments;
         for (auto const &p : v.annotations) {
             arguments.emplace_back(); // make_callback = make function that wraps it but casts to the given argument types
         }
-        Variable out;// = function(arguments);
+        Value out;// = function(arguments);
 
-        if (!v.return_type) return variable_cast(std::move(out)); // no cast
+        if (!v.return_type) return value_to_object(std::move(out)); // no cast
         else if (v.return_type == Py_None || +v.return_type == reinterpret_cast<PyObject const *>(Py_None->ob_type)) return {Py_None, true}; // cast to None
-        else return python_cast(std::move(out), v.return_type, Object());
+        else return python_cast(Pointer::from(std::move(out)), v.return_type, Object());
     });
 }
 
@@ -151,7 +152,7 @@ PyObject *function_annotated(PyObject *self, PyObject *args) noexcept {
         AnnotatedFunction a;
         a.function = cast_object<Function>(self);
         // std::cout << function_annotated_ml.ml_name << function_annotated_ml.ml_doc << std::endl;
-        return Object::from(PyCFunction_New(&function_annotated_ml, variable_cast(std::move(a))));
+        return Object::from(PyCFunction_New(&function_annotated_ml, value_to_object(std::move(a))));
         // auto c = _PyType_GetTextSignatureFromInternalDoc(function_annotated_ml.ml_name, function_annotated_ml.ml_doc);
         // if (c) print(c);
         // return o;
@@ -178,7 +179,7 @@ struct DelegatingMethod {
 };
 
 template <>
-PyTypeObject Holder<DelegatingMethod>::type = []{
+PyTypeObject Wrap<DelegatingMethod>::type = []{
     auto t = type_definition<DelegatingMethod>("rebind.DelegatingMethod", "C++ delegating method");
     t.tp_call = DelegatingMethod::call;
     return t;
@@ -215,7 +216,7 @@ struct DelegatingFunction {
 };
 
 template <>
-PyTypeObject Holder<DelegatingFunction>::type = []{
+PyTypeObject Wrap<DelegatingFunction>::type = []{
     auto t = type_definition<DelegatingFunction>("rebind.DelegatingFunction", "C++ delegating function");
     t.tp_call = DelegatingFunction::call;
     t.tp_descr_get = DelegatingFunction::get;
@@ -232,8 +233,8 @@ struct Method {
         return raw_object([=] {
             auto const &s = cast_object<Method>(self);
             auto [t0, t1, sig, gil] = function_call_keywords(kws);
-            Sequence args;
-            args.emplace_back(variable_from_object(s.self));
+            Arguments args;
+            args.emplace_back(pointer_from_object(s.self));
             args_from_python(args, {pyargs, true});
             return function_call_impl(s.fun, std::move(args), sig, t0, t1, gil);
         });
@@ -249,7 +250,7 @@ struct Method {
 };
 
 template <>
-PyTypeObject Holder<Method>::type = []{
+PyTypeObject Wrap<Method>::type = []{
     auto o = type_definition<Method>("rebind.Method", "Bound method");
     o.tp_call = Method::call;
     return o;
@@ -266,13 +267,14 @@ PyTypeObject Holder<Method>::type = []{
  */
 PyObject * function_call(PyObject *self, PyObject *pyargs, PyObject *kws) noexcept {
     return raw_object([=] {
-        auto const [t0, t1, sig, gil] = function_call_keywords(kws);
-        DUMP("specified types", bool(t0), bool(t1));
-        DUMP("gil = ", gil, " ", Py_REFCNT(self), Py_REFCNT(pyargs));
-        DUMP("number of signatures ", cast_object<Function>(self).overloads.size());
-        Sequence args;
-        args_from_python(args, {pyargs, true});
-        return function_call_impl(cast_object<Function>(self), std::move(args), sig, t0, t1, gil);
+        return Object();
+        // auto const [t0, t1, sig, gil] = function_call_keywords(kws);
+        // DUMP("specified types", bool(t0), bool(t1));
+        // DUMP("gil = ", gil, " ", Py_REFCNT(self), Py_REFCNT(pyargs));
+        // DUMP("number of signatures ", cast_object<Function>(self).overloads.size());
+        // Sequence args;
+        // args_from_python(args, {pyargs, true});
+        // return function_call_impl(cast_object<Function>(self), std::move(args), sig, t0, t1, gil);
     });
 }
 
@@ -280,10 +282,11 @@ PyObject * function_call(PyObject *self, PyObject *pyargs, PyObject *kws) noexce
 
 PyObject * function_signatures(PyObject *self, PyObject *) noexcept {
     return raw_object([=] {
-        return map_as_tuple(cast_object<Function>(self).overloads, [](auto const &p) -> Object {
-            if (!p.first) return {Py_None, true};
-            return map_as_tuple(p.first, [](auto const &o) {return as_object(o);});
-        });
+        return Object();
+        // return map_as_tuple(cast_object<Function>(self).overloads, [](auto const &p) -> Object {
+        //     if (!p.first) return {Py_None, true};
+        //     return map_as_tuple(p.first, [](auto const &o) {return as_object(o);});
+        // });
     });
 }
 
@@ -293,15 +296,15 @@ int function_init(PyObject *self, PyObject *args, PyObject *kws) noexcept {
     static char const * keys[] = {"function", "signature", nullptr};
     PyObject *fun = nullptr;
     PyObject *sig = nullptr;
-    if (!PyArg_ParseTupleAndKeywords(args, kws, "|OO", const_cast<char **>(keys), &fun, &sig))
-        return -1;
-    if (!fun || +fun == Py_None) return 0;
+    // if (!PyArg_ParseTupleAndKeywords(args, kws, "|OO", const_cast<char **>(keys), &fun, &sig))
+    //     return -1;
+    // if (!fun || +fun == Py_None) return 0;
 
-    if (!PyCallable_Check(fun))
-        return type_error("Expected callable type but got %R", fun->ob_type), -1;
-    if (sig && sig != Py_None && !PyTuple_Check(sig))
-        return type_error("Expected signature to be tuple or None but got %R", sig->ob_type), -1;
-    cast_object<Function>(self).emplace(PythonFunction(Object(fun, true), Object(sig ? sig : Py_None, true)), {});
+    // if (!PyCallable_Check(fun))
+    //     return type_error("Expected callable type but got %R", fun->ob_type), -1;
+    // if (sig && sig != Py_None && !PyTuple_Check(sig))
+    //     return type_error("Expected signature to be tuple or None but got %R", sig->ob_type), -1;
+    // cast_object<Function>(self).emplace(PythonFunction(Object(fun, true), Object(sig ? sig : Py_None, true)), {});
     return 0;
 }
 
@@ -320,7 +323,7 @@ PyMethodDef FunctionTypeMethods[] = {
 /******************************************************************************/
 
 template <>
-PyTypeObject Holder<Function>::type = []{
+PyTypeObject Wrap<Function>::type = []{
     auto o = type_definition<Function>("rebind.Function", "C++function object");
     o.tp_init = function_init;
     o.tp_call = function_call;

@@ -15,22 +15,17 @@
 namespace rebind {
 
 extern std::unordered_map<TypeIndex, std::string> type_names;
+
 extern Object TypeError, UnionType;
+
 extern std::unordered_map<Object, Object> output_conversions, input_conversions, type_translations;
-extern std::unordered_map<std::type_index, Object> python_types;
+
+extern std::unordered_map<TypeIndex, Object> python_types;
 
 /******************************************************************************/
 
 template <class ...Ts>
 std::nullptr_t type_error(char const *s, Ts ...ts) {PyErr_Format(TypeError, s, ts...); return nullptr;}
-
-struct Var : Value {
-    using Value::Value;
-    Object ward = {};
-};
-
-template <>
-struct Holder<Value> : Holder<Var> {};
 
 /******************************************************************************/
 
@@ -43,6 +38,7 @@ struct ArrayBuffer {
     bool mutate;
 
     ArrayBuffer() noexcept = default;
+
     ArrayBuffer(ArrayView const &a, Object const &b) : n_elem(a.layout.n_elem()),
         base(b), data(const_cast<void *>(a.data.pointer())), type(&a.data.type()), mutate(a.data.mutate()) {
         for (std::size_t i = 0; i != a.layout.depth(); ++i)
@@ -55,24 +51,13 @@ struct ArrayBuffer {
 
 /******************************************************************************/
 
-Value variable_from_object(Object o);
-void args_from_python(Arguments &s, Object const &pypack);
-bool object_response(Value &v, TypeIndex t, Object o);
-std::string_view from_unicode(PyObject *o);
+Pointer pointer_from_object(Object o);
 
-template <>
-struct Response<Object> {
-    Value operator()(TypeIndex t, Object o) const {
-        Value v;
-        DUMP("trying to get Value from Object", t);
-        if (auto p = cast_if<Pointer>(o)) {
-            DUMP("requested qualified variable", t, p->index());
-            v = p->request_value(t);
-            DUMP(p->index(), t, v.index());
-        }
-        return v;
-    }
-};
+void args_from_python(Arguments &s, Object const &pypack);
+
+bool object_response(Value &v, TypeIndex t, Object o);
+
+std::string_view from_unicode(PyObject *o);
 
 // template <>
 // struct Response<Object, Value> {
@@ -100,13 +85,6 @@ struct Response<Object> {
 
 /******************************************************************************/
 
-inline bool set_tuple_item(PyObject *t, Py_ssize_t i, PyObject *x) {
-    if (!x) return false;
-    incref(x);
-    PyTuple_SET_ITEM(t, i, x);
-    return true;
-}
-
 template <class V, class F>
 Object map_as_tuple(V &&v, F &&f) noexcept {
     auto out = Object::from(PyTuple_New(std::size(v)));
@@ -126,7 +104,7 @@ Object args_as_tuple(Ts &&...ts) {
     return (go(ts) && ...) ? out : Object();
 }
 
-Object variable_cast(Value &&v, Object const &t={});
+Object value_to_object(Value &&v, Object const &t={});
 
 inline Object args_to_python(Sequence &&s, Object const &sig={}) {
     if (sig && !PyTuple_Check(+sig))
@@ -142,7 +120,7 @@ inline Object args_to_python(Sequence &&s, Object const &sig={}) {
         } else {
             // special case: if given an rvalue reference, make it into a value
             // Value &&var = v.qualifier() == Rvalue ? v.copy() : std::move(v);
-            if (!set_tuple_item(out, i, variable_cast(std::move(v)))) return {};
+            if (!set_tuple_item(out, i, value_to_object(std::move(v)))) return {};
         }
         ++i;
     }
@@ -262,16 +240,6 @@ PyObject *raw_object(F &&f) noexcept {
             PyErr_SetString(PyExc_RuntimeError, runtime::unknown_exception_description());
     }
     return nullptr;
-}
-
-/******************************************************************************/
-
-template <class T>
-PyObject * copy_from(PyObject *self, PyObject *other) noexcept {
-    return raw_object([=] {
-        cast_object<T>(self) = cast_object<T>(other); // not notexcept
-        return Object(Py_None, true);
-    });
 }
 
 /******************************************************************************/

@@ -48,10 +48,10 @@ target_link_libraries(librebind PUBLIC rebind_interface)
 # Module.cc has to be recompiled based on the exported module name
 # Could just build Python.cc as its own library, but here it's built together with Module.cc
 set_property(GLOBAL PROPERTY rebind_module_files
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/Python.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/Module.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/Cast.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/Globals.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/rebind-python/Python.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/rebind-python/Module.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/rebind-python/Cast.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/rebind-python/Globals.cc
 )
 
 function(rebind_module module_name)

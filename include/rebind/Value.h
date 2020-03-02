@@ -20,14 +20,18 @@ public:
 
     constexpr Value() noexcept = default;
 
-    template <class T>
-    Value(T t) noexcept : Opaque(new T(std::move(t))) {}
+    template <class T, std::enable_if_t<std::is_rvalue_reference_v<T> && is_usable<T>, int> = 0>
+    Value(T &&t) noexcept : Opaque(new T(std::move(t))) {}
+
+    template <class T, std::enable_if_t<is_usable<T>, int> = 0>
+    Value(T const &t) : Opaque(new T(t)) {}
+
+    template <class T, class ...Args>
+    Value(Type<T> t, Args &&...args) : Opaque(new T{static_cast<Args &&>(args)...}) {}
 
     Value(Value const &v) : Opaque(v.allocate_copy()) {}
 
-    Value(Value &&v) noexcept : Opaque(static_cast<Opaque &&>(v)) {
-        v.reset_pointer();
-    }
+    Value(Value &&v) noexcept : Opaque(static_cast<Opaque &&>(v)) {v.reset_pointer();}
 
     Value &operator=(Value const &v) {
         Opaque::operator=(v.allocate_copy());
@@ -47,7 +51,13 @@ public:
     /**************************************************************************/
 
     template <class T, class ...Args>
-    T &emplace(Type<T>, Args &&...args) {return *new T(static_cast<Args &&>(args)...);}
+    T &emplace(Type<T>, Args &&...args) {return *new T{static_cast<Args &&>(args)...};}
+
+    template <class T, std::enable_if_t<is_usable<T>, int> = 0>
+    T &emplace(T const &t) {return *new T{t};}
+
+    template <class T, std::enable_if_t<std::is_rvalue_reference_v<T> && is_usable<T>, int> = 0>
+    T &emplace(T &&t) {return *new T{static_cast<T &&>(t)};}
 
     template <class T>
     T *target() & {return Opaque::target<T>();}
