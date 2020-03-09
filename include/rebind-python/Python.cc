@@ -257,10 +257,10 @@ Pointer pointer_from_object(Object &o) {
 /******************************************************************************/
 
 // Store the objects in args in pack
-void args_from_python(Arguments &v, Object const &args) {
-    v.reserve(v.size() + PyObject_Length(+args));
-    map_iterable(args, [&v](Object o) {v.emplace_back(pointer_from_object(std::move(o)));});
-}
+// void args_from_python(Arguments &v, Vector<Object> const &args) {
+//     v.reserve(v.size() + PyObject_Length(+args));
+//     map_iterable(args, [&v](Object o) {v.emplace_back(pointer_from_object(std::move(o)));});
+// }
 
 /******************************************************************************/
 

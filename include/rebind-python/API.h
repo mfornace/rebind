@@ -51,7 +51,7 @@ struct ArrayBuffer {
 
 /******************************************************************************/
 
-Pointer pointer_from_object(Object o);
+Pointer pointer_from_object(Object &o);
 
 void args_from_python(Arguments &s, Object const &pypack);
 

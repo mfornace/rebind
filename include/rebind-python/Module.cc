@@ -126,9 +126,6 @@ Object initialize(Document const &doc) {
         && attach_type(m, "Pointer", type_object<Pointer>())
         && attach_type(m, "Function", type_object<Function>())
         && attach_type(m, "TypeIndex", type_object<TypeIndex>())
-        // && attach_type(m, "DelegatingFunction", type_object<DelegatingFunction>())
-        // && attach_type(m, "DelegatingMethod", type_object<DelegatingMethod>())
-        // && attach_type(m, "Method", type_object<Method>())
             // Tuple[Tuple[int, TypeIndex, int], ...]
         && attach(m, "scalars", map_as_tuple(scalars, [](auto const &x) {
             return args_as_tuple(as_object(static_cast<Integer>(std::get<0>(x))),
@@ -138,12 +135,12 @@ Object initialize(Document const &doc) {
             // Tuple[Tuple[TypeIndex, Tuple[Tuple[str, function], ...]], ...]
         && attach(m, "contents", map_as_tuple(doc.contents, [](auto const &x) {
             Object o;
-            if (auto p = x.second.template target<Function>()) o = as_object(*p);
+            if (auto p = x.second.template target<OverloadedFunction>()) o = as_object(*p);
             else if (auto p = x.second.template target<TypeIndex>()) o = as_object(*p);
-            // else if (auto p = x.second.template target<TypeData const &>()) o = args_as_tuple(
-            //     map_as_tuple(p->methods, [](auto const &x) {return args_as_tuple(as_object(x.first), as_object(x.second));}),
+            else if (auto p = x.second.template target<OverloadedTable>()) o = args_as_tuple(
+                // map_as_tuple(p->methods, [](auto const &x) {return args_as_tuple(as_object(x.first), as_object(x.second));}),
             //     map_as_tuple(p->data, [](auto const &x) {return args_as_tuple(as_object(x.first), variable_cast(Variable(x.second)));})
-            // );
+            );
             else o = value_to_object(Value(x.second));
             return args_as_tuple(as_object(x.first), std::move(o));
         }))

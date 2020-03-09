@@ -113,6 +113,7 @@ bool make_document() {
     doc.function("vec1", [](std::vector<int> const &) {});
     doc.function("vec2", [](std::vector<int> &) {});
     doc.function("vec3", [](std::vector<int>) {});
+    doc.function<1>("vec4", [](int, int i=2) {});
 
     return bool();
 }

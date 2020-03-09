@@ -147,13 +147,13 @@ constexpr typename Signature<F>::pack_type signature(F const &) {return {};}
 
 /******************************************************************************************/
 
-template <class F, class=void>
+template <class F, int N=-1, class=void>
 struct SimplifyFunction {
     constexpr std::decay_t<F> operator()(F f) const {return f;}
 };
 
 template <class F>
-struct SimplifyFunction<F, std::void_t<decltype(false ? nullptr : std::declval<F>())>> {
+struct SimplifyFunction<F, -1, std::void_t<decltype(false ? nullptr : std::declval<F>())>> {
     constexpr auto operator()(F f) const {return false ? nullptr : f;}
 };
 

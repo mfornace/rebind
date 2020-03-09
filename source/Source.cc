@@ -130,38 +130,33 @@ void set_source(WrongType &err, std::type_info const &t, Value &&v) {
 
 /******************************************************************************/
 
-void Document::type(TypeIndex t, std::string_view s, Value &&data, Table *) {
-    // auto it = contents.try_emplace(std::move(s), TypeData()).first;
-    // if (auto p = it->second.target<TypeData>()) {
-    //     p->data[t] = std::move(data);
-    //     types[t] = &(*it);
-    //     return *p;
-    // }
-    // DUMP(type_index<decltype(it->second)>(), " ", t, " ", s, " ", data.index(), " ", it->second.index());
-    // s.insert(0, "tried to declare both a non-type and a type for the same key ");
-    throw std::runtime_error(s.data());
+void Document::type(TypeIndex t, std::string_view s, Value &&data, Table table) {
+    auto it = contents.try_emplace(std::string(s), OverloadedTable(table)).first;
+    if (auto p = it->second.target<OverloadedTable>()) {
+        p->emplace(table);
+        // table->data = std::move(data);
+    } else {
+        std::string str(s);
+        str.insert(0, "tried to declare both a non-type and a type for the same key ");
+        throw std::runtime_error(str);
+    }
 }
 
+template <class T>
+T & remove_const(T const &t) {return const_cast<T &>(t);}
+
 OverloadedFunction & Document::find_method(TypeIndex t, std::string_view name) {
-    // if (auto it = types.find(t); it != types.end()) {
-    //     if (auto p = it->second->second.target<TypeData>())
-    //         return p->methods.emplace(std::move(name), Function()).first->second;
-    //     name.insert(0, "tried to declare a method ");
-    //     name += "for a non-type key ";
-    //     name += it->second->first;
-    //     throw std::runtime_error(std::move(name));
-    // }
-    // name.insert(0, "tried to declare a method ");
-    // name += "for the undeclared type ";
-    // name += t.name();
-    throw std::runtime_error(name.data());
+    if (auto it = types.find(t); it != types.end()) {
+        return remove_const(it->second->methods)[std::string(name)];
+    } else {
+        throw std::runtime_error("tried to declare a method " + std::string(name) + " for undeclared type " + t.name());
+    }
 }
 
 OverloadedFunction & Document::find_function(std::string_view s) {
-    // auto it = contents.emplace(std::move(s), Type<Function>()).first;
-    // if (auto f = it->second.target<Function>()) return *f;
-    throw std::runtime_error("aa");
-    // throw std::runtime_error("tried to declare both a non-function and a function for the same key " + it->first);
+    auto it = contents.emplace(std::move(s), Type<Function>()).first;
+    if (auto f = it->second.target<OverloadedFunction>()) return *f;
+    throw std::runtime_error("tried to declare a function on a key of a different type " + it->first);
 }
 
 /******************************************************************************/

@@ -1,133 +1,60 @@
 #pragma once
+#include "Table.h"
 #include "Error.h"
-#include "Type.h"
-#include <map>
 #include <stdexcept>
 
 namespace rebind {
 
-/******************************************************************************/
-
-template <class T>
-static constexpr bool is_usable = std::is_nothrow_move_constructible_v<T> && !is_type_t<T>::value;
-
-/******************************************************************************************/
-
-class Function;
-
-struct Table {
-    TypeIndex index;
-    void (*destroy)(void *) noexcept;
-    bool (*relocate)(void *, unsigned short, unsigned short) noexcept; // either relocate the object to the void *, or ...
-    void *(*copy)(void *);
-    void *(*response)(void *, Qualifier, TypeIndex);
-
-    std::string name, const_name, lvalue_name, rvalue_name;
-
-    std::vector<TypeIndex> bases;
-    std::map<std::string_view, Function> methods;
-
-    bool has_base(TypeIndex const &idx) const {
-        for (auto const &i : bases) if (idx == i) return true;
-        return false;
-    }
-};
-
-/******************************************************************************************/
-
-/// Return new-allocated copy of the object
-template <class T>
-void * default_copy(void const *p) {return new T(*static_cast<T const *>(p));}
-
-/// Destroy the object
-template <class T>
-void default_destroy(void *p) noexcept {delete static_cast<T *>(p);}
-
-/// Not sure yet
-template <class T>
-bool default_relocate(void *out, void *p, unsigned short size, unsigned short align) noexcept {
-    if (sizeof(T) <= size && alignof(T) <= align) {
-        new(out) T(std::move(*static_cast<T *>(p)));
-        static_cast<T *>(p)->~T();
-        return true;
-    } else {
-        *static_cast<T **>(out) = new T(std::move(*static_cast<T *>(p)));
-        static_cast<T *>(p)->~T();
-        return false;
-    }
-}
-
-class Value;
-
-template <class T>
-Value default_response(void *, Qualifier, TypeIndex);
-
-template <class T>
-struct TableGenerator {
-    static Table *address;
-
-    static Table table() {
-        static_assert(std::is_nothrow_move_constructible_v<T>);
-
-        void (*copy)(void *) = nullptr;
-        if constexpr(std::is_copy_constructible_v<T>) copy = default_copy<T>;
-
-        std::string const name = typeid(T).name();
-
-        return {typeid(T), default_destroy<T>, default_relocate<T>, copy, default_response<T>,
-                name, name + "const &", name + "&", name + "&&"};
-    }
-};
-
-template <class T>
-Table * TableGenerator<T>::address = nullptr;
-
 /******************************************************************************************/
 
 struct Opaque {
-    Table const *table = nullptr;
+    Table tab;
     void *ptr = nullptr;
 
     template <class T>
-    explicit Opaque(T *t) : table(TableGenerator<T>::address), ptr(static_cast<void *>(t)) {}
+    explicit Opaque(T *t) : tab(get_table<T>()), ptr(static_cast<void *>(t)) {}
 
-    void reset_pointer() {ptr = nullptr; table = nullptr;}
+    Table const &table() const {return tab;}
+
+    void reset_pointer() {ptr = nullptr;}
 
     void * value() const {return ptr;}
 
     bool has_value() const {return ptr;}
 
     template <class T>
-    T *target() const {return (table == TableGenerator<T>::address) ? static_cast<T *>(ptr) : nullptr;}
+    T *target() const {
+        return (tab == get_table<unqualified<T>>()) ? static_cast<T *>(ptr) : nullptr;
+    }
 
     explicit operator bool() const {return ptr;}
 
     constexpr Opaque() = default;
 
-    constexpr Opaque(Table const *t, void *p) noexcept : table(t), ptr(p) {}
+    constexpr Opaque(Table t, void *p) noexcept : tab(t), ptr(p) {}
 
-    void try_destroy() const noexcept {if (has_value()) table->destroy(ptr);}
+    void try_destroy() const noexcept {if (has_value()) tab->destroy(ptr);}
 
     template <class T>
     std::remove_reference_t<T> * request_reference(Qualifier q) const {
         using T0 = std::remove_reference_t<T>;
         if (auto p = target<T0>()) return p;
-        if (has_value() && table->has_base(type_index<T0>())) return static_cast<T0 *>(ptr);
+        if (has_value() && tab.has_base(type_index<T0>())) return static_cast<T0 *>(ptr);
         return nullptr;
     }
 
     template <class T>
     std::optional<T> request_value(Scope &s, Qualifier q) const;
 
-    TypeIndex index() const noexcept {return has_value() ? table->index : TypeIndex();}
+    TypeIndex index() const noexcept {return has_value() ? tab->index : TypeIndex();}
 
     std::string_view name() const noexcept {
-        if (has_value()) return table->name;
+        if (has_value()) return tab->name;
         else return {};
     }
 
     Opaque allocate_copy() const {
-        if (has_value()) return {table, table->copy(ptr)};
+        if (has_value()) return {tab, tab->copy(ptr)};
         else return {};
     }
 };
@@ -142,18 +69,22 @@ public:
     using Opaque::name;
     using Opaque::index;
     using Opaque::has_value;
+    using Opaque::table;
     using Opaque::operator bool;
 
     constexpr Pointer() noexcept = default;
 
-    constexpr Pointer(std::nullptr_t) : Pointer() {}
+    constexpr Pointer(std::nullptr_t) noexcept : Pointer() {}
 
     template <class T>
     constexpr Pointer(T *t, Qualifier q) noexcept : Opaque(t), qual(q) {}
 
+    // template <class T>
+    // constexpr Pointer(T &&t) noexcept : Pointer(std::addressof(t), qualifier_of<T &&>) {}
+
     constexpr Pointer(Opaque o, Qualifier q) noexcept : Opaque(std::move(o)), qual(q) {}
 
-    Qualifier qualifier() const {return qual;}
+    Qualifier qualifier() const noexcept {return qual;}
 
     void reset() {reset_pointer();}
 
@@ -161,7 +92,8 @@ public:
 
     template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
     std::remove_reference_t<T> * request(Scope &s, Type<T> t={}) const {
-        return Opaque::request_reference<T>(qual);
+        assert_usable<unqualified<T>>();
+        return Opaque::request_reference<unqualified<T>>(qual);
     }
 
     template <class T, std::enable_if_t<!std::is_reference_v<T>, int> = 0>
@@ -187,9 +119,9 @@ public:
 
     std::string_view qualified_name() const noexcept {
         if (has_value()) {
-            if (qual == Lvalue) return table->lvalue_name;
-            else if (qual == Rvalue) return table->rvalue_name;
-            else return table->const_name;
+            if (qual == Lvalue) return table()->lvalue_name;
+            else if (qual == Rvalue) return table()->rvalue_name;
+            else return table()->const_name;
         } else return {};
     }
 
@@ -208,6 +140,20 @@ public:
     static Pointer from(Value const &t);
     static Pointer from(Value &&t);
 };
+
+/******************************************************************************************/
+
+using Arguments = Vector<Pointer>;
+
+/******************************************************************************************/
+
+template <class ...Ts>
+Arguments to_arguments(Ts &&...ts) {
+    Arguments out;
+    out.reserve(sizeof...(Ts));
+    (out.emplace_back(std::addressof(ts), qualifier_of<Ts &&>), ...);
+    return out;
+}
 
 /******************************************************************************************/
 

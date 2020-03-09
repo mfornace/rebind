@@ -1,6 +1,7 @@
 #pragma once
 #include "Value.h"
 
+
 namespace rebind {
 
 /******************************************************************************/
@@ -29,6 +30,7 @@ struct Request {
 
 template <class T, std::enable_if_t<!std::is_reference_v<T>, int>>
 std::optional<T> Pointer::request(Scope &s, Type<T> t) const {
+    assert_usable<T>();
     std::optional<T> out;
     if (has_value()) {
         if (auto p = request_reference<T &&>(qual)) out.emplace(std::move(*p));

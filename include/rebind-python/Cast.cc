@@ -30,12 +30,12 @@ Object list_cast(Pointer const &ref, Object const &o, Object const &root) {
     DUMP("Cast to list ", ref.index());
     if (auto args = type_args(o, 1)) {
         DUMP("is list ", PyList_Check(o));
-        auto v = ref.cast<Sequence>();
+        auto v = ref.cast<Arguments>();
         Object vt{PyTuple_GET_ITEM(+args, 0), true};
         auto list = Object::from(PyList_New(v.size()));
         for (Py_ssize_t i = 0; i != v.size(); ++i) {
             DUMP("list index ", i);
-            Object item = python_cast(Pointer::from(std::move(v[i])), vt, root);
+            Object item = python_cast(std::move(v[i]), vt, root);
             if (!item) return {};
             incref(+item);
             PyList_SET_ITEM(+list, i, +item);
@@ -48,7 +48,7 @@ Object tuple_cast(Pointer const &ref, Object const &o, Object const &root) {
     DUMP("Cast to tuple ", ref.index());
     if (auto args = type_args(o)) {
         Py_ssize_t const len = PyTuple_GET_SIZE(+args);
-        auto v = ref.cast<Sequence>();
+        auto v = ref.cast<Arguments>();
         if (len == 2 && PyTuple_GET_ITEM(+args, 1) == Py_Ellipsis) {
             Object vt{PyTuple_GET_ITEM(+args, 0), true};
             auto tup = Object::from(PyTuple_New(v.size()));
@@ -97,7 +97,7 @@ Object dict_cast(Pointer const &ref, Object const &o, Object const &root) {
 }
 
 // Convert Value to a class which is a subclass of rebind.Value
-Object value_cast(Value &&v, Object const &t) {
+Object value_to_object(Value &&v, Object const &t) {
     PyObject *x;
     if (t) x = +t;
     else if (!v.has_value()) return {Py_None, true};
@@ -230,7 +230,7 @@ Object try_python_cast(Pointer const &v, Object const &t, Object const &root) {
         else if (type == &PyUnicode_Type)                     return str_cast(std::move(v));                 // str
         else if (type == &PyBytes_Type)                       return bytes_cast(std::move(v));               // bytes
         else if (type == &PyBaseObject_Type)                  return as_deduced_object(std::move(v));        // object
-        else if (is_subclass(type, type_object<Value>()))     return value_cast(std::move(v), t);            // Value
+        else if (is_subclass(type, type_object<Value>()))     return value_to_object(std::move(v), t);            // Value
         else if (type == type_object<TypeIndex>())            return type_index_cast(std::move(v));          // type(TypeIndex)
         else if (type == type_object<Function>())             return function_cast(std::move(v));            // Function
         else if (is_subclass(type, &PyFunction_Type))         return function_cast(std::move(v));            // Function
@@ -239,7 +239,7 @@ Object try_python_cast(Pointer const &v, Object const &t, Object const &root) {
         DUMP("Not type and not in translations");
         if (auto p = cast_if<TypeIndex>(t)) { // TypeIndex
             // if (auto var = std::move(v).request_value(*p))
-            //     return value_cast(std::move(var));
+            //     return value_to_object(std::move(var));
             std::string c1 = v.index().name(), c2 = p->name();
             return type_error("could not convert object of type %s to type %s", c1.data(), c2.data());
         }

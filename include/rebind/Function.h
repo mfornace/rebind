@@ -7,45 +7,78 @@
 
 namespace rebind {
 
-using ErasedFunction = std::function<Value(Caller, Arguments const &)>;
+// struct Function {
+//     bool operator()(Value *, Pointer *, Arguments const &, Tag) const;
+
+//     // Value operator()(Arguments const &v) const noexcept;
+//     // Pointer ref(Arguments const &v) const; // optional
+//     // bool match(Arguments const &v, Pointer const &tag) const; //optional
+
+//     // Pointer target() const;
+//     // Pointer operator()(Arguments const &v, Pointer const &dispatch) const;
+
+// };
+//exceptions?
 
 /******************************************************************************/
 
 struct Function {
-    ErasedFunction impl;
+    FunctionImpl impl;
     ErasedSignature signature;
 
     Function() = default;
 
-    Function(ErasedFunction f, ErasedSignature const &s={}) : impl(std::move(f)), signature(s) {}
+    Function(FunctionImpl f, ErasedSignature const &s={}) : impl(std::move(f)), signature(s) {}
 
     template <class F>
     Function(F f) : Function(
-        Adapter<0, Value, decltype(SimplifyFunction<F>()(std::move(f)))>(SimplifyFunction<F>()(std::move(f))),
+        Adapter<0, decltype(SimplifyFunction<F>()(std::move(f)))>(SimplifyFunction<F>()(std::move(f))),
         SimpleSignature<decltype(SimplifyFunction<F>()(std::move(f)))>()) {}
 
     template <int N = -1, class F>
     static Function from(F f) {
-        auto fun = SimplifyFunction<F>()(std::move(f));
+        auto fun = SimplifyFunction<F, N>()(std::move(f));
         constexpr std::size_t n = N == -1 ? 0 : SimpleSignature<decltype(fun)>::size - 1 - N;
-        return {Adapter<n, Value, decltype(fun)>{std::move(fun)}, SimpleSignature<decltype(fun)>()};
-    }
-
-    Value operator()(Caller c, Arguments const &v) const {
-        DUMP("    - calling type erased Function ");
-        return impl(std::move(c), v);
+        return {Adapter<n, decltype(fun)>{std::move(fun)}, SimpleSignature<decltype(fun)>()};
     }
 
     explicit operator bool() const {return bool(impl);}
 
     template <class ...Ts>
-    Value operator()(Caller c, Ts &&...ts) const {
-        DUMP("    - calling Function ");
-        Arguments v;
-        v.reserve(sizeof...(Ts));
-        (v.emplace_back(static_cast<Ts &&>(ts)), ...);
-        return (*this)(std::move(c), std::move(v));
+    Value value(Caller c, Ts &&...ts) const {
+        return value(std::move(c), to_arguments(static_cast<Ts &&>(ts)...));
     }
+
+    template <class ...Ts>
+    Pointer reference(Caller c, Ts &&...ts) const {
+        return reference(std::move(c), to_arguments(static_cast<Ts &&>(ts)...));
+    }
+
+    template <class ...Ts>
+    Value operator()(Caller c, Ts &&...ts) const {
+        return value(std::move(c), static_cast<Ts &&>(ts)...);
+    }
+
+    Value call_value(Caller c, Arguments const &v) const {
+        Value out;
+        impl(&c, &out, nullptr, v);
+        return out;
+    }
+
+    Pointer call_reference(Caller c, Arguments const &v) const {
+        Pointer out;
+        impl(&c, nullptr, &out, v);
+        return out;
+    }
+    //     Arguments v;
+    //     v.reserve(sizeof...(Ts));
+    //     (v.emplace_back(static_cast<Ts &&>(ts)), ...);
+};
+
+/******************************************************************************/
+
+struct OverloadedFunction : Overload<Function> {
+    using Overload<Function>::Overload;
 };
 
 /******************************************************************************/
@@ -59,10 +92,7 @@ struct AnnotatedCallback {
     AnnotatedCallback(Function f, Caller c) : function(std::move(f)), caller(std::move(c)) {}
 
     R operator()(Ts ...ts) const {
-        Sequence pack;
-        pack.reserve(sizeof...(Ts));
-        (pack.emplace_back(static_cast<Ts &&>(ts)), ...);
-        return function(caller, std::move(pack)).cast(Type<R>());
+        return function(caller, to_arguments(static_cast<Ts &&>(ts)...)).cast(Type<R>());
     }
 };
 
@@ -76,10 +106,7 @@ struct Callback {
 
     template <class ...Ts>
     R operator()(Ts &&...ts) const {
-        Arguments pack;
-        pack.reserve(sizeof...(Ts));
-        (pack.emplace_back(static_cast<Ts &&>(ts)), ...);
-        return function(caller, std::move(pack)).cast(Type<R>());
+        return function(caller, to_arguments(static_cast<Ts &&>(ts)...)).cast(Type<R>());
     }
 };
 

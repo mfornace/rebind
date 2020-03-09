@@ -2,7 +2,7 @@ namespace rebind {
 
 /******************************************************************************/
 
-Object call_overload(ErasedFunction const &fun, Arguments args, bool gil) {
+Object call_overload(Function const &fun, Arguments args, bool gil) {
     // if (auto py = fun.target<PythonFunction>())
     //     return {PyObject_CallObject(+py->function, +args), false};
     DUMP("constructed python args ", args.size());
@@ -10,9 +10,8 @@ Object call_overload(ErasedFunction const &fun, Arguments args, bool gil) {
     Value out;
     {
         auto lk = std::make_shared<PythonFrame>(!gil);
-        Caller ct(lk);
         DUMP("calling the args: size=", args.size());
-        out = fun(ct, std::move(args));
+        out = fun(Caller(lk), std::move(args));
     }
     DUMP("got the output ", out.index());
     if (auto p = out.target<Object>()) return std::move(*p);

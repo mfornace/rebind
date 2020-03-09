@@ -51,6 +51,14 @@ auto binary_search(V const &v, typename V::value_type::first_type t) {
 template <class T>
 using Vector = std::vector<T>;
 
+template <class T, class ...Ts>
+Vector<T> vectorize(Ts &&...ts) {
+    Vector<T> out;
+    out.reserve(sizeof...(Ts));
+    (out.emplace_back(static_cast<Ts &&>(ts)), ...);
+    return out;
+}
+
 template <class ...Ts>
 struct ZipType {using type = std::tuple<Ts...>;};
 
@@ -99,6 +107,34 @@ public:
     T * target() {
         if (auto p = model.lock()) return dynamic_cast<T *>(p.get());
         return nullptr;
+    }
+};
+
+/******************************************************************************/
+
+template <class T>
+struct Overload {
+    T first;
+    Vector<T> rest;
+
+    Overload() = default;
+    Overload(T t) : first(std::move(t)) {}
+
+    template <class F>
+    void visit(F &&f) const {
+        f(first);
+        for (auto const &x : rest) f(x);
+    }
+
+    template <class ...Args>
+    T & emplace(Args &&...args) {
+        if (first) {
+            rest.emplace_back(std::forward<Args>(args)...);
+            return rest.back();
+        } else {
+            first = T{std::forward<Args>(args)...};
+            return first;
+        }
     }
 };
 

@@ -2,36 +2,35 @@
 #include "Signature.h"
 #include "BasicTypes.h"
 #include <functional>
+#include <stdexcept>
 
 namespace rebind {
-
 
 /******************************************************************************/
 
 /// Invoke a function and arguments, storing output in a Variable if it doesn't return void
 template <class Out, class F, class ...Ts>
-Out opaque_invoke(F const &f, Ts &&... ts) {
+void opaque_invoke(Out &out, F const &f, Ts &&... ts) {
     using O = std::remove_cv_t<std::invoke_result_t<F, Ts...>>;
     static_assert(std::is_same_v<Out, Value> || std::is_reference_v<O>);
     DUMP("invoking function with output type ", typeid(Type<O>).name());
     if constexpr(std::is_same_v<void, O>) {
         std::invoke(f, static_cast<Ts &&>(ts)...);
-        return {};
     } else {
-        return Out::from(std::invoke(f, static_cast<Ts &&>(ts)...));
+        out = Out::from(std::invoke(f, static_cast<Ts &&>(ts)...));
     }
 }
 
 template <class Out, class F, class ...Ts>
-Out caller_invoke(std::true_type, F const &f, Caller &&c, Ts &&...ts) {
+void caller_invoke(Out &out, std::true_type, F const &f, Caller &&c, Ts &&...ts) {
     c.enter();
-    return opaque_invoke<Out>(f, std::move(c), static_cast<Ts &&>(ts)...);
+    opaque_invoke(out, f, std::move(c), static_cast<Ts &&>(ts)...);
 }
 
 template <class Out, class F, class ...Ts>
-Out caller_invoke(std::false_type, F const &f, Caller &&c, Ts &&...ts) {
+void caller_invoke(Out &out, std::false_type, F const &f, Caller &&c, Ts &&...ts) {
     c.enter();
-    return opaque_invoke<Out>(f, static_cast<Ts &&>(ts)...);
+    opaque_invoke(out, f, static_cast<Ts &&>(ts)...);
 }
 
 /******************************************************************************/
@@ -66,6 +65,9 @@ Pack<Ts...> skip_head(Pack<R, Ts...>);
 template <int N, class R, class C, class ...Ts, std::enable_if_t<N == 2, int> = 0>
 Pack<Ts...> skip_head(Pack<R, C, Ts...>);
 
+template <class R, class ...Ts>
+R head(Pack<R, Ts...>);
+
 template <class C, class R>
 std::false_type has_head(Pack<R>);
 
@@ -79,105 +81,141 @@ std::is_convertible<T, C> has_head(Pack<R, T, Ts...>);
 //     std::is_reference_v<decltype(*SimpleSignature<F>::template at<0>())>, Pointer, Value>;
 
 
-// N is the number of trailing optional arguments
-template <std::size_t N, class Out, class F, class SFINAE=void>
-struct Adapter {
+// enum class Tag {call, call_except, match};
+
+using FunctionImpl = std::function<bool(Caller *, Value *, Pointer *, Arguments const &)>;
+// if caller, call function and store in value or pointer
+// if not caller, match and return if match
+// call_except?: call function, store output in the pointer or value, return if success
+
+template <std::size_t N, class F, class SFINAE=void>
+struct Adapter;
+
+/******************************************************************************/
+
+template <class F, class SFINAE>
+struct Adapter<0, F, SFINAE> {
     F function;
-    using UsesCaller = decltype(has_head<Caller>(SimpleSignature<F>()));
-    using AllTypes = decltype(skip_head<1 + int(UsesCaller::value)>(SimpleSignature<F>()));
+    using Signature = SimpleSignature<F>;
+    using Return = decltype(head(Signature()));
+    using UseCaller = decltype(has_head<Caller>(Signature()));
+    using Args = decltype(skip_head<1 + int(UseCaller::value)>(Signature()));
 
-    template <class P>
-    void call_one(P, Out &out, Caller &&c, Scope &s, Arguments &args) const {
-        P::indexed([&](auto ...ts) {
-            out = caller_invoke<Out>(UsesCaller(), function, std::move(c), cast_index(args, s, simplify_argument(ts))...);
-        });
-    }
-
-    template <std::size_t ...Is>
-    Out call(Arguments &args, Caller &&c, Scope &s, std::index_sequence<Is...>) const {
-        Out out;
-        constexpr std::size_t const M = AllTypes::size - 1; // number of total arguments minus 1
-        // check the number of arguments given and call with the under-specified arguments
-        ((args.size() == M - Is ? call_one(AllTypes::template slice<0, M - Is>(), out, std::move(c), s, args) : void()), ...);
-        return out;
-    }
-
-    Out operator()(Caller c, Arguments args) const {
+    template <class Out>
+    bool call(Caller &&c, Out &out, Arguments const &args) const {
         auto frame = c();
         Caller handle(frame);
         Scope s(handle);
-        if (args.size() == AllTypes::size) { // handle fully specified arguments
-            return AllTypes::indexed([&](auto ...ts) {
-                return caller_invoke<Out>(UsesCaller(), function,
-                    std::move(handle), cast_index(args, s, simplify_argument(ts))...);
-            });
-        } else if (args.size() < AllTypes::size - N) {
-            throw WrongNumber(AllTypes::size - N, args.size());
-        } else if (args.size() > AllTypes::size) {
-            throw WrongNumber(AllTypes::size, args.size()); // try under-specified arguments
-        } else {
-            return call(args, std::move(handle), s, std::make_index_sequence<N>());
-        }
-    }
-};
 
-/******************************************************************************/
-
-template <class Out, class F, class SFINAE>
-struct Adapter<0, Out, F, SFINAE> {
-    F function;
-    using Ctx = decltype(has_head<Caller>(SimpleSignature<F>()));
-    using Sig = decltype(skip_head<1 + int(Ctx::value)>(SimpleSignature<F>()));
-
-    Out operator()(Caller c, Arguments args) const {
-        DUMP("Adapter<", type_index<F>(), ">::()");
-        if (args.size() != Sig::size)
-            throw WrongNumber(Sig::size, args.size());
-        return Sig::indexed([&](auto ...ts) {
-            auto frame = c();
-            Caller handle(frame);
-            Scope s(handle);
-            return caller_invoke<Out>(Ctx(), function, std::move(handle), cast_index(args, s, ts)...);
+        return Args::indexed([&](auto ...ts) {
+            caller_invoke(out, UseCaller(), function, std::move(handle), cast_index(args, s, ts)...);
+            return true;
         });
     }
+
+    bool operator()(Caller *c, Value *v, Pointer *p, Arguments const &args) const {
+        DUMP("Adapter<", type_index<F>(), ">::()");
+
+        if (args.size() != Args::size)
+            throw WrongNumber(Args::size, args.size());
+
+        if constexpr (std::is_reference_v<Return>) {
+            if (p) return call(std::move(c), *p, args);
+        } else {
+            if (p) throw std::runtime_error("Asked for reference");
+        }
+
+        return call(std::move(*c), *v, args);
+    }
+
+};
+
+// N is the number of trailing optional arguments
+template <std::size_t N, class F, class SFINAE>
+struct Adapter {
+    F function;
+    using Signature = SimpleSignature<F>;
+    using Return = decltype(head(Signature()));
+    using UsesCaller = decltype(has_head<Caller>(Signature()));
+    using Args = decltype(skip_head<1 + int(UsesCaller::value)>(Signature()));
+
+    template <class P, class Out>
+    bool call_one(P, Out &out, Caller &c, Scope &s, Arguments const &args) const {
+        return P::indexed([&](auto ...ts) {
+            caller_invoke(out, UsesCaller(), function, std::move(c), cast_index(args, s, simplify_argument(ts))...);
+            return true;
+        });
+    }
+
+    template <class Out, std::size_t ...Is>
+    bool call_indexed(Out &out, Arguments const &args, Caller &c, Scope &s, std::index_sequence<Is...>) const {
+        constexpr std::size_t const M = Args::size - 1; // number of total arguments minus 1
+        // check the number of arguments given and call with the under-specified arguments
+        return ((args.size() == M - Is ? call_one(Args::template slice<0, M - Is>(), out, c, s, args) : false) || ...);
+    }
+
+    template <class Out>
+    bool call(Caller &c, Out &out, Arguments const &args) const {
+        auto frame = c();
+        Caller handle(frame);
+        Scope s(handle);
+        if (args.size() == Args::size) { // handle fully specified arguments
+            return Args::indexed([&](auto ...ts) {
+                caller_invoke(out, UsesCaller(), function,
+                    std::move(handle), cast_index(args, s, simplify_argument(ts))...);
+                return true;
+            });
+        } else if (args.size() < Args::size - N) {
+            throw WrongNumber(Args::size - N, args.size());
+        } else if (args.size() > Args::size) {
+            throw WrongNumber(Args::size, args.size()); // try under-specified arguments
+        } else {
+            return call_indexed(out, args, handle, s, std::make_index_sequence<N>());
+        }
+    }
+
+    bool operator()(Caller *c, Value *v, Pointer *p, Arguments const &args) const {
+        if (args.size() != 1) throw WrongNumber(1, args.size());
+
+        if constexpr (std::is_reference_v<Return>) {
+            if (p) return call(c, *p, args);
+        } else {
+            if (p) throw std::runtime_error("Asked for reference");
+        }
+
+        return call(*c, *v, args);
+    }
 };
 
 /******************************************************************************/
 
-template <class Out, class R, class C>
-struct Adapter<0, Out, R C::*, std::enable_if_t<std::is_member_object_pointer_v<R C::*>>> {
+template <class R, class C>
+struct Adapter<0, R C::*, std::enable_if_t<std::is_member_object_pointer_v<R C::*>>> {
     R C::* function;
 
-    Out operator()(Caller c, Arguments args) const {
-        if (args.size() != 1) throw WrongNumber(1, args.size());
-
-        auto &r = args[0];
+    template <class Out>
+    bool call(Caller &&c, Out &out, Pointer const &self) const {
         auto frame = c();
         DUMP("Adapter<", type_index<R>(), ", ", type_index<C>(), ">::()");
         Caller handle(frame);
         Scope s(handle);
 
-        if (!r.index().matches<C>() || r.qualifier() == Lvalue) {
-            DUMP("Adapter<", type_index<R>(), ", ", type_index<C>(), ">::() try &");
-            if (auto p = r.request(s, Type<C &>())) {
-                frame->enter();
-                return {Type<R &>(), std::invoke(function, *p)};
-            }
+        if (auto p = self.request_reference<C &&>()) {
+            return out = Out::from(std::move(*p)), true;
+        } else if (auto p = self.request_reference<C &>()) {
+            return out = Out::from(*p), true;
+        } else if (auto p = self.request_reference<C const &>()) {
+            return out = Out::from(*p), true;
         }
-
-        DUMP("Adapter<", type_index<R>(), ", ", type_index<C>(), ">::() try const &");
-        if (auto p = r.request(s, Type<C const &>())) {
-            frame->enter();
-            return {Type<R const &>(), std::invoke(function, *p)};
-        }
-
-        if (auto p = r.request(s, Type<C>())) {
-            DUMP("Adapter<", type_index<R>(), ", ", type_index<C>(), ">::() try &&");
-            frame->enter();
-            return {Type<std::remove_cv_t<R>>(), std::invoke(function, std::move(*p))};
-        }
-
+        // else if (auto p = self.request_value<C>()) { }
         throw std::move(s.set_error("invalid argument"));
+    }
+
+    bool operator()(Caller *c, Value *v, Pointer *p, Arguments const &args) const {
+        if (args.size() != 1) throw WrongNumber(1, args.size());
+
+        if (v) call(std::move(*c), *v, args[0]);
+        if (p) call(std::move(*c), *p, args[0]);
     }
 };
 

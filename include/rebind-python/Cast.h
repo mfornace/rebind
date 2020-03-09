@@ -31,7 +31,7 @@ Object default_object(T t) {
 }
 
 inline Object as_object(TypeIndex t) {return default_object(std::move(t));}
-inline Object as_object(Function t) {return default_object(std::move(t));}
+inline Object as_object(OverloadedFunction t) {return default_object(std::move(t));}
 
 /// Source driven conversion: guess the correct Python type from the source type
 /// I guess this is where automatic class conversions should be done?

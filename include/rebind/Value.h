@@ -1,6 +1,7 @@
 #pragma once
 #include "Pointer.h"
 #include "Error.h"
+#include "Type.h"
 #include <optional>
 
 namespace rebind {
@@ -142,7 +143,13 @@ public:
     T cast(Type<T> t={}) && {Scope s; return cast(s, t);}
 
     /**************************************************************************/
+
+    Opaque const &opaque() const {return *this;}
 };
+
+inline Pointer Pointer::from(Value &t) {return {t.opaque(), Lvalue};}
+inline Pointer Pointer::from(Value const &t) {return {t.opaque(), Const};}
+inline Pointer Pointer::from(Value &&t) {return {t.opaque(), Rvalue};}
 
 /******************************************************************************/
 
