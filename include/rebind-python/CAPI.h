@@ -38,13 +38,10 @@ struct SubClass {
 
 template <class T>
 struct Holder {
-    static PyTypeObject type;
+    static inline PyTypeObject type;
     PyObject_HEAD // 16 bytes for the ref count and the type object
     T value; // I think stack is OK because this object is only casted to anyway.
 };
-
-template <class T>
-PyTypeObject Holder<T>::type;
 
 template <class T>
 SubClass<PyTypeObject> type_object(Type<T> t={}) {return {&Holder<T>::type};}
