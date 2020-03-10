@@ -36,9 +36,9 @@ struct Document {
         return table;
     }
 
-    OverloadedFunction & find_method(TypeIndex t, std::string_view name);
+    Overload & find_method(TypeIndex t, std::string_view name);
 
-    OverloadedFunction & find_function(std::string_view s);
+    Overload & find_function(std::string_view s);
 
     template <class T>
     bool render(Type<T> t={}) {

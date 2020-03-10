@@ -77,8 +77,29 @@ struct Function {
 
 /******************************************************************************/
 
-struct OverloadedFunction : Overload<Function> {
-    using Overload<Function>::Overload;
+struct Overload {
+    Function first;
+    Vector<Function> rest;
+
+    Overload() = default;
+    Overload(Function fun) : first(fun) {}
+
+    template <class F>
+    void visit(F &&f) const {
+        f(first);
+        for (auto const &x : rest) f(x);
+    }
+
+    template <class ...Args>
+    Function & emplace(Args &&...args) {
+        if (first) {
+            rest.emplace_back(std::forward<Args>(args)...);
+            return rest.back();
+        } else {
+            first = Function{std::forward<Args>(args)...};
+            return first;
+        }
+    }
 };
 
 /******************************************************************************/

@@ -21,18 +21,15 @@ public:
 
     constexpr Value() noexcept = default;
 
-    template <class T, std::enable_if_t<std::is_rvalue_reference_v<T> && is_usable<T>, int> = 0>
-    Value(T &&t) noexcept : Opaque(new T(std::move(t))) {}
-
-    template <class T, std::enable_if_t<is_usable<T>, int> = 0>
-    Value(T const &t) : Opaque(new T(t)) {}
+    template <class T> // , std::enable_if_t<is_usable<T>, int> = 0
+    Value(T &&t) noexcept : Opaque(*new unqualified<T>{static_cast<T &&>(t)}) {assert_usable<unqualified<T>>();}
 
     template <class T, class ...Args>
-    Value(Type<T> t, Args &&...args) : Opaque(new T{static_cast<Args &&>(args)...}) {}
+    Value(Type<T> t, Args &&...args) : Opaque(*new T{static_cast<Args &&>(args)...}) {assert_usable<T>();}
 
     Value(Value const &v) : Opaque(v.allocate_copy()) {}
 
-    Value(Value &&v) noexcept : Opaque(static_cast<Opaque &&>(v)) {v.reset_pointer();}
+    Value(Value &&v) noexcept : Opaque(static_cast<Opaque &&>(v)) {Opaque::reset();}
 
     Value &operator=(Value const &v) {
         Opaque::operator=(v.allocate_copy());
@@ -41,24 +38,21 @@ public:
 
     Value &operator=(Value &&v) {
         Opaque::operator=(std::move(v));
-        v.reset_pointer();
+        static_cast<Opaque &>(v).reset();
         return *this;
     }
 
     ~Value() {Opaque::try_destroy();}
 
-    void reset() {Opaque::try_destroy(); reset_pointer();}
+    void reset() {Opaque::try_destroy(); Opaque::reset();}
 
     /**************************************************************************/
 
     template <class T, class ...Args>
-    T &emplace(Type<T>, Args &&...args) {return *new T{static_cast<Args &&>(args)...};}
+    T &emplace(Type<T>, Args &&...args) {return Opaque::emplace(*new T{static_cast<Args &&>(args)...});}
 
     template <class T, std::enable_if_t<is_usable<T>, int> = 0>
-    T &emplace(T const &t) {return *new T{t};}
-
-    template <class T, std::enable_if_t<std::is_rvalue_reference_v<T> && is_usable<T>, int> = 0>
-    T &emplace(T &&t) {return *new T{static_cast<T &&>(t)};}
+    T &emplace(T &&t) {return Opaque::emplace(*new unqualified<T>{static_cast<T &&>(t)});}
 
     template <class T>
     T *target() & {return Opaque::target<T>();}
@@ -150,6 +144,23 @@ public:
 inline Pointer Pointer::from(Value &t) {return {t.opaque(), Lvalue};}
 inline Pointer Pointer::from(Value const &t) {return {t.opaque(), Const};}
 inline Pointer Pointer::from(Value &&t) {return {t.opaque(), Rvalue};}
+
+/******************************************************************************/
+
+template <class T>
+Value default_response(void *, Qualifier, TypeIndex) {
+    assert_usable<T>();
+    return {};
+}
+
+template <class T>
+Value default_request(Scope &s, Pointer const &p) {
+    assert_usable<T>();
+    Value out;
+    if (auto t = p.request(s, Type<T>())) out.emplace(Type<T>(), std::move(*t));
+    return out;
+    // return {};
+}
 
 /******************************************************************************/
 

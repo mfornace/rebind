@@ -11,27 +11,29 @@ struct Opaque {
     Table tab;
     void *ptr = nullptr;
 
+    Opaque() = default;
+
+    constexpr Opaque(Table t, void *p) noexcept : tab(t), ptr(p) {}
+
     template <class T>
-    explicit Opaque(T *t) : tab(get_table<T>()), ptr(static_cast<void *>(t)) {}
+    explicit Opaque(T &t) : tab(get_table<T>()), ptr(static_cast<void *>(std::addressof(t))) {}
+
+    template <class T>
+    T & emplace(T &t) {tab = get_table<T>(); ptr = static_cast<void *>(std::addressof(t)); return t;}
 
     Table const &table() const {return tab;}
 
-    void reset_pointer() {ptr = nullptr;}
+    void reset() {ptr = nullptr; tab = {};}
 
     void * value() const {return ptr;}
 
     bool has_value() const {return ptr;}
+    explicit operator bool() const {return ptr;}
 
     template <class T>
     T *target() const {
-        return (tab == get_table<unqualified<T>>()) ? static_cast<T *>(ptr) : nullptr;
+        return (has_value() && tab == get_table<unqualified<T>>()) ? static_cast<T *>(ptr) : nullptr;
     }
-
-    explicit operator bool() const {return ptr;}
-
-    constexpr Opaque() = default;
-
-    constexpr Opaque(Table t, void *p) noexcept : tab(t), ptr(p) {}
 
     void try_destroy() const noexcept {if (has_value()) tab->destroy(ptr);}
 
@@ -39,7 +41,7 @@ struct Opaque {
     std::remove_reference_t<T> * request_reference(Qualifier q) const {
         using T0 = std::remove_reference_t<T>;
         if (auto p = target<T0>()) return p;
-        if (has_value() && tab.has_base(type_index<T0>())) return static_cast<T0 *>(ptr);
+        if (has_value() && tab->has_base(type_index<T0>())) return static_cast<T0 *>(ptr);
         return nullptr;
     }
 
@@ -49,8 +51,8 @@ struct Opaque {
     TypeIndex index() const noexcept {return has_value() ? tab->index : TypeIndex();}
 
     std::string_view name() const noexcept {
-        if (has_value()) return tab->name;
-        else return {};
+        if (has_value()) return tab->name();
+        else return "<null>";
     }
 
     Opaque allocate_copy() const {
@@ -70,6 +72,7 @@ public:
     using Opaque::index;
     using Opaque::has_value;
     using Opaque::table;
+    using Opaque::reset;
     using Opaque::operator bool;
 
     constexpr Pointer() noexcept = default;
@@ -85,8 +88,6 @@ public:
     constexpr Pointer(Opaque o, Qualifier q) noexcept : Opaque(std::move(o)), qual(q) {}
 
     Qualifier qualifier() const noexcept {return qual;}
-
-    void reset() {reset_pointer();}
 
     /**************************************************************************************/
 
@@ -118,11 +119,8 @@ public:
     // Pointer request_pointer(TypeIndex t, Scope s={}) const;
 
     std::string_view qualified_name() const noexcept {
-        if (has_value()) {
-            if (qual == Lvalue) return table()->lvalue_name;
-            else if (qual == Rvalue) return table()->rvalue_name;
-            else return table()->const_name;
-        } else return {};
+        if (has_value()) return table()->name(qual);
+        else return "<null>";
     }
 
     /**************************************************************************************/

@@ -115,6 +115,7 @@ bool make_document() {
     doc.function("vec3", [](std::vector<int>) {});
     doc.function<1>("vec4", [](int, int i=2) {});
 
+    DUMP("made document");
     return bool();
 }
 

@@ -1,11 +1,23 @@
 #include <rebind/Document.h>
 #include <stdexcept>
+#include <string_view>
 
 namespace rebind {
 
+/******************************************************************************/
+
+template <class ...Ts>
+std::string cat(Ts const &...ts) {
+    std::stringstream ss;
+    ((ss << ts), ...);
+    return ss.str();
+}
+
+/******************************************************************************/
+
 std::function<std::string(char const *)> demangle;
 
-bool Debug = false;
+bool Debug = true;
 
 /******************************************************************************/
 
@@ -131,32 +143,37 @@ void set_source(WrongType &err, std::type_info const &t, Value &&v) {
 /******************************************************************************/
 
 void Document::type(TypeIndex t, std::string_view s, Value &&data, Table table) {
-    auto it = contents.try_emplace(std::string(s), OverloadedTable(table)).first;
-    if (auto p = it->second.target<OverloadedTable>()) {
-        p->emplace(table);
-        // table->data = std::move(data);
-    } else {
-        std::string str(s);
-        str.insert(0, "tried to declare both a non-type and a type for the same key ");
-        throw std::runtime_error(str);
+    DUMP("type ", t, s);
+    auto it = contents.try_emplace(std::string(s), Type<Vector<Table>>()).first;
+    if (auto p = it->second.target<Vector<Table>>()) {
+        p->emplace_back(table);
+        return;
     }
+    throw std::runtime_error(cat("tried to declare a type on a non-type key (key=", s, ", type=", t.name(), ")"));
 }
 
 template <class T>
 T & remove_const(T const &t) {return const_cast<T &>(t);}
 
-OverloadedFunction & Document::find_method(TypeIndex t, std::string_view name) {
+Overload & Document::find_method(TypeIndex t, std::string_view name) {
+    DUMP("find_method ", t, name);
     if (auto it = types.find(t); it != types.end()) {
         return remove_const(it->second->methods)[std::string(name)];
     } else {
-        throw std::runtime_error("tried to declare a method " + std::string(name) + " for undeclared type " + t.name());
+        throw std::runtime_error(cat("tried to declare a method on an undeclared type (key=", name, ", type=", t.name(), ")"));
     }
 }
 
-OverloadedFunction & Document::find_function(std::string_view s) {
-    auto it = contents.emplace(std::move(s), Type<Function>()).first;
-    if (auto f = it->second.target<OverloadedFunction>()) return *f;
-    throw std::runtime_error("tried to declare a function on a key of a different type " + it->first);
+Overload & Document::find_function(std::string_view s) {
+    DUMP("function ", s);
+    auto it = contents.emplace(s, Type<Overload>()).first;
+    DUMP("emplaced ", s);
+    DUMP(it->second.name(), bool(it->second));
+    if (auto f = it->second.target<Overload>()) return *f;
+    DUMP("bad", s);
+    throw std::runtime_error(cat(
+        "tried to declare a function on a non-function key (key=",
+        it->first, ", type=", it->second.name(), ")"));
 }
 
 /******************************************************************************/

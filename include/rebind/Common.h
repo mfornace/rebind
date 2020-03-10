@@ -2,7 +2,7 @@
 #include "Signature.h"
 #include <vector>
 #include <iostream>
-#include <string_view>
+#include <sstream>
 #include <memory>
 
 #define DUMP(...) ::rebind::dump(__FILE__, __LINE__, __VA_ARGS__);
@@ -18,6 +18,7 @@ template <class From, class To> struct copy_qualifier_t<From &&, To> {using type
 
 template <class From, class To> using copy_qualifier = typename copy_qualifier_t<From, To>::type;
 
+/******************************************************************************/
 
 template <class ...Ts>
 void dump(char const *s, int n, Ts const &...ts) {
@@ -107,34 +108,6 @@ public:
     T * target() {
         if (auto p = model.lock()) return dynamic_cast<T *>(p.get());
         return nullptr;
-    }
-};
-
-/******************************************************************************/
-
-template <class T>
-struct Overload {
-    T first;
-    Vector<T> rest;
-
-    Overload() = default;
-    Overload(T t) : first(std::move(t)) {}
-
-    template <class F>
-    void visit(F &&f) const {
-        f(first);
-        for (auto const &x : rest) f(x);
-    }
-
-    template <class ...Args>
-    T & emplace(Args &&...args) {
-        if (first) {
-            rest.emplace_back(std::forward<Args>(args)...);
-            return rest.back();
-        } else {
-            first = T{std::forward<Args>(args)...};
-            return first;
-        }
     }
 };
 

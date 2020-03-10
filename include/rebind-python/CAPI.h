@@ -38,6 +38,30 @@ struct SubClass {
 
 /******************************************************************************/
 
+template <class T, class U>
+bool compare(decltype(Py_EQ) op, T const &t, U const &u) noexcept {
+    switch(op) {
+        case(Py_EQ): return t == u;
+        case(Py_NE): return t != u;
+        case(Py_LT): return t <  u;
+        case(Py_GT): return t >  u;
+        case(Py_LE): return t <= u;
+        case(Py_GE): return t >= u;
+    }
+    return false;
+}
+
+/******************************************************************************/
+
+inline bool set_tuple_item(PyObject *t, Py_ssize_t i, PyObject *x) {
+    if (!x) return false;
+    incref(x);
+    PyTuple_SET_ITEM(t, i, x);
+    return true;
+}
+
+/******************************************************************************/
+
 /// Helper class for dealing with memoryview, Py_buffer
 class Buffer {
     static Vector<std::pair<std::string_view, std::type_info const *>> formats;
@@ -78,27 +102,5 @@ public:
 };
 
 /******************************************************************************/
-
-template <class T, class U>
-bool compare(decltype(Py_EQ) op, T const &t, U const &u) noexcept {
-    switch(op) {
-        case(Py_EQ): return t == u;
-        case(Py_NE): return t != u;
-        case(Py_LT): return t <  u;
-        case(Py_GT): return t >  u;
-        case(Py_LE): return t <= u;
-        case(Py_GE): return t >= u;
-    }
-    return false;
-}
-
-/******************************************************************************/
-
-inline bool set_tuple_item(PyObject *t, Py_ssize_t i, PyObject *x) {
-    if (!x) return false;
-    incref(x);
-    PyTuple_SET_ITEM(t, i, x);
-    return true;
-}
 
 }

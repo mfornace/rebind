@@ -2,7 +2,7 @@ namespace rebind {
 
 /******************************************************************************/
 
-Object call_overload(Function const &fun, Arguments args, bool gil) {
+Object call_overload(Function const &fun, Arguments &&args, bool gil) {
     // if (auto py = fun.target<PythonFunction>())
     //     return {PyObject_CallObject(+py->function, +args), false};
     DUMP("constructed python args ", args.size());
@@ -22,8 +22,10 @@ Object call_overload(Function const &fun, Arguments args, bool gil) {
 
 /******************************************************************************/
 
-Object function_call_impl(Function const &fun, Arguments &&args, PyObject *sig, TypeIndex const &t0, TypeIndex const &t1, bool gil) {
-    return {};
+Object function_call_impl(Overload const &fun, Arguments &&args, bool gil, Object tag) {
+    return call_overload(fun.first, std::move(args), gil);
+    // throw std::runtime_error("not implemented");
+    // return {};
     // auto const &overloads = fun.overloads;
 
     // if (overloads.size() == 1) // only 1 overload
@@ -81,21 +83,20 @@ Object function_call_impl(Function const &fun, Arguments &&args, PyObject *sig, 
 
 auto function_call_keywords(PyObject *kws) {
     bool gil = true;
-    TypeIndex t0, t1;
-    PyObject *sig=nullptr;
+    Object tag;
     if (kws && PyDict_Check(kws)) {
         PyObject *g = PyDict_GetItemString(kws, "gil");
         if (g) gil = PyObject_IsTrue(g);
-        sig = not_none(PyDict_GetItemString(kws, "signature")); // either int or Tuple[TypeIndex] or None
-        auto r = not_none(PyDict_GetItemString(kws, "return_type")); // either TypeIndex or None
-        auto f = not_none(PyDict_GetItemString(kws, "first_type")); // either TypeIndex or None
-        // std::cout << PyObject_Length(kws) << bool(g) << bool(sig) << bool(f) << bool(r) << std::endl;
-        // if (PyObject_Length(kws) != unsigned(bool(g)) + (sig || r || f))
-            // return type_error("C++: unexpected extra keywords");
-        if (r) t0 = cast_object<TypeIndex>(r);
-        if (f) t1 = cast_object<TypeIndex>(f);
+        tag = {not_none(PyDict_GetItemString(kws, "tag")), true};
+         // either int or Tuple[TypeIndex] or None
+    //     auto r = not_none(PyDict_GetItemString(kws, "return_type")); // either TypeIndex or None
+    //     auto f = not_none(PyDict_GetItemString(kws, "first_type")); // either TypeIndex or None
+    //     // std::cout << PyObject_Length(kws) << bool(g) << bool(sig) << bool(f) << bool(r) << std::endl;
+    //     // if (PyObject_Length(kws) != unsigned(bool(g)) + (sig || r || f))
+    //         // return type_error("C++: unexpected extra keywords");
+    //     if (f) t1 = cast_object<TypeIndex>(f);
     }
-    return std::make_tuple(t0, t1, sig, gil);
+    return std::make_tuple(gil, tag);
 }
 
 /******************************************************************************/
@@ -257,6 +258,14 @@ auto function_call_keywords(PyObject *kws) {
 
 /******************************************************************************/
 
+Vector<Object> objects_from_argument_tuple(PyObject *args) {
+    return {};
+}
+
+Arguments arguments_from_objects(Vector<Object> &v) {
+    return {};
+}
+
 /* Function call has effectively the following signature
  * *args: the arguments to be passed to C++
  * gil (bool): whether to keep the gil on (default: True)
@@ -264,16 +273,15 @@ auto function_call_keywords(PyObject *kws) {
  * return_type (TypeIndex or None): manual selection of overload by return type
  * first_type (TypeIndex or None): manual selection overload by first type (useful for methods)
  */
-PyObject * function_call(PyObject *self, PyObject *pyargs, PyObject *kws) noexcept {
+PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept {
     return raw_object([=] {
-        return Object();
-        // auto const [t0, t1, sig, gil] = function_call_keywords(kws);
+        auto const [gil, tag] = function_call_keywords(kws);
         // DUMP("specified types", bool(t0), bool(t1));
-        // DUMP("gil = ", gil, " ", Py_REFCNT(self), Py_REFCNT(pyargs));
+        DUMP("gil = ", gil, " ", Py_REFCNT(self), Py_REFCNT(args));
         // DUMP("number of signatures ", cast_object<Function>(self).overloads.size());
         // Sequence args;
-        // args_from_python(args, {pyargs, true});
-        // return function_call_impl(cast_object<Function>(self), std::move(args), sig, t0, t1, gil);
+        auto objects = objects_from_argument_tuple(args);
+        return function_call_impl(cast_object<Overload>(self), arguments_from_objects(objects), gil, tag);
     });
 }
 
@@ -322,8 +330,8 @@ PyMethodDef FunctionTypeMethods[] = {
 /******************************************************************************/
 
 template <>
-PyTypeObject Wrap<Function>::type = []{
-    auto o = type_definition<Function>("rebind.Function", "C++function object");
+PyTypeObject Wrap<Overload>::type = []{
+    auto o = type_definition<Overload>("rebind.Function", "C++function object");
     o.tp_init = function_init;
     o.tp_call = function_call;
     o.tp_methods = FunctionTypeMethods;

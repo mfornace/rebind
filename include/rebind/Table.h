@@ -3,11 +3,10 @@
 #include "Common.h"
 #include <map>
 #include <stdexcept>
+#include <array>
 #include <type_traits>
 
 namespace rebind {
-
-
 
 /******************************************************************************/
 
@@ -36,24 +35,45 @@ constexpr void assert_usable() {
 
 /******************************************************************************************/
 
-class OverloadedFunction;
+class Overload;
 class Function;
 class Pointer;
 class Value;
+class Scope;
 
 
 struct TypeTable {
     TypeIndex index;
-    void (*destroy)(void *) noexcept;
-    bool (*relocate)(void *, void *, unsigned short, unsigned short) noexcept; // either relocate the object to the void *, or ...
-    void *(*copy)(void const *);
-    Value (*response)(void *, Qualifier, TypeIndex);
-    Value (*request)(Pointer const &);
+    void (*m_destroy)(void *) noexcept = nullptr;
+    bool (*m_relocate)(void *, void *, unsigned short, unsigned short) noexcept = nullptr; // either relocate the object to the void *, or ...
+    void *(*m_copy)(void const *) = nullptr;
+    Value (*m_response)(void *, Qualifier, TypeIndex) = nullptr;
+    Value (*m_request)(Scope &s, Pointer const &) = nullptr;
 
-    std::string name, const_name, lvalue_name, rvalue_name;
+    std::string m_name;
+    std::array<std::string, 3> qualified_names;
 
     std::vector<TypeIndex> bases;
-    std::map<std::string_view, OverloadedFunction> methods;
+    std::map<std::string, Overload> methods;
+
+    std::string const & name() const noexcept {return m_name;}
+
+    std::string const & name(Qualifier q) const noexcept {return qualified_names[q];}
+
+    void destroy(void *p) const noexcept {
+        if (!m_destroy) std::terminate();
+        m_destroy(p);
+    }
+
+    bool has_base(TypeIndex const &idx) const noexcept {
+        for (auto const &i : bases) if (idx == i) return true;
+        return false;
+    }
+
+    void *copy(void const *p) const {
+        if (m_copy) return m_copy(p);
+        throw std::runtime_error("held type is not copyable: " + name());
+    }
 };
 
 /******************************************************************************************/
@@ -67,11 +87,6 @@ struct Table {
         return ptr;
     }
 
-    bool has_base(TypeIndex const &idx) const {
-        for (auto const &i : ptr->bases) if (idx == i) return true;
-        return false;
-    }
-
     constexpr bool operator==(Table t) const {return ptr == t.ptr;}
     constexpr bool operator!=(Table t) const {return ptr != t.ptr;}
     constexpr operator bool() const {return ptr;}
@@ -79,9 +94,9 @@ struct Table {
 
 /******************************************************************************************/
 
-struct OverloadedTable : Overload<Table> {
-    using Overload<Table>::Overload;
-};
+// struct Table : Overloaded<Table> {
+//     using Overloaded<Table>::Overloaded;
+// };
 
 /******************************************************************************************/
 
@@ -114,7 +129,7 @@ template <class T>
 Value default_response(void *, Qualifier, TypeIndex);
 
 template <class T>
-Value default_request(Pointer const &);
+Value default_request(Scope &s, Pointer const &);
 
 /******************************************************************************************/
 
@@ -125,16 +140,17 @@ TypeTable default_table() {
     TypeTable t;
 
     t.index = typeid(T);
-    t.name = typeid(T).name();
-    t.const_name = t.name + QualifierSuffixes[Const].data();
-    t.lvalue_name = t.name + QualifierSuffixes[Lvalue].data();
-    t.rvalue_name = t.name + QualifierSuffixes[Rvalue].data();
+    t.m_name = typeid(T).name();
+    t.qualified_names = {
+        t.m_name + QualifierSuffixes[Const].data(),
+        t.m_name + QualifierSuffixes[Lvalue].data(),
+        t.m_name + QualifierSuffixes[Rvalue].data()};
 
-    t.copy = default_copy<T>;
-    t.destroy = default_destroy<T>;
-    t.relocate = default_relocate<T>;
-    t.response = default_response<T>;
-    t.request = default_request<T>;
+    t.m_copy = default_copy<T>;
+    t.m_destroy = default_destroy<T>;
+    t.m_relocate = default_relocate<T>;
+    t.m_response = default_response<T>;
+    t.m_request = default_request<T>;
     return t;
 }
 

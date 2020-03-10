@@ -156,7 +156,8 @@ Object type_index_cast(Pointer const &ref) {
 }
 
 Object function_cast(Pointer const &ref) {
-    if (auto p = ref.request<Function>()) return as_object(std::move(*p));
+    if (auto p = ref.request<Overload>()) return as_object(std::move(*p));
+    if (auto p = ref.request<Function>()) return as_object(Overload(std::move(*p)));
     else return {};
 }
 
