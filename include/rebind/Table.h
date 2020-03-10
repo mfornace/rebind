@@ -44,11 +44,11 @@ class Scope;
 
 struct TypeTable {
     TypeIndex index;
-    void (*m_destroy)(void *) noexcept = nullptr;
-    bool (*m_relocate)(void *, void *, unsigned short, unsigned short) noexcept = nullptr; // either relocate the object to the void *, or ...
-    void *(*m_copy)(void const *) = nullptr;
-    Value (*m_response)(void *, Qualifier, TypeIndex) = nullptr;
-    Value (*m_request)(Scope &s, Pointer const &) = nullptr;
+    void (*m_destroy)(void*) noexcept = nullptr;
+    bool (*m_relocate)(void*, void*, unsigned short, unsigned short) noexcept = nullptr; // either relocate the object to the void*, or ...
+    void* (*m_copy)(void const*) = nullptr;
+    Value (*m_response)(void*, Qualifier, TypeIndex) = nullptr;
+    Value (*m_request)(Scope& s, Pointer const&) = nullptr;
 
     std::string m_name;
     std::array<std::string, 3> qualified_names;
@@ -56,11 +56,11 @@ struct TypeTable {
     std::vector<TypeIndex> bases;
     std::map<std::string, Overload> methods;
 
-    std::string const & name() const noexcept {return m_name;}
+    std::string const& name() const noexcept {return m_name;}
 
-    std::string const & name(Qualifier q) const noexcept {return qualified_names[q];}
+    std::string const& name(Qualifier q) const noexcept {return qualified_names[q];}
 
-    void destroy(void *p) const noexcept {
+    void destroy(void*p) const noexcept {
         if (!m_destroy) std::terminate();
         m_destroy(p);
     }
@@ -70,7 +70,7 @@ struct TypeTable {
         return false;
     }
 
-    void *copy(void const *p) const {
+    void* copy(void const* p) const {
         if (m_copy) return m_copy(p);
         throw std::runtime_error("held type is not copyable: " + name());
     }
@@ -80,7 +80,7 @@ struct TypeTable {
 
 struct Table {
     constexpr Table() = default;
-    TypeTable const *ptr = nullptr;
+    TypeTable const* ptr = nullptr;
 
     TypeTable const* operator->() const {
         if (!ptr) throw std::runtime_error("Null TypeTable");
@@ -102,31 +102,31 @@ struct Table {
 
 /// Return new-allocated copy of the object
 template <class T>
-void * default_copy(void const *p) {
-    if constexpr(std::is_copy_constructible_v<T>) return new T(*static_cast<T const *>(p));
+void* default_copy(void const* p) {
+    if constexpr(std::is_copy_constructible_v<T>) return new T(*static_cast<T const*>(p));
     return nullptr;
 }
 
 /// Destroy the object
 template <class T>
-void default_destroy(void *p) noexcept {delete static_cast<T *>(p);}
+void default_destroy(void* p) noexcept {delete static_cast<T *>(p);}
 
 /// Not sure yet
 template <class T>
-bool default_relocate(void *out, void *p, unsigned short size, unsigned short align) noexcept {
+bool default_relocate(void*out, void*p, unsigned short size, unsigned short align) noexcept {
     if (sizeof(T) <= size && alignof(T) <= align) {
         new(out) T(std::move(*static_cast<T *>(p)));
         static_cast<T *>(p)->~T();
         return true;
     } else {
-        *static_cast<T **>(out) = new T(std::move(*static_cast<T *>(p)));
-        static_cast<T *>(p)->~T();
+        *static_cast<T**>(out) = new T(std::move(*static_cast<T *>(p)));
+        static_cast<T*>(p)->~T();
         return false;
     }
 }
 
 template <class T>
-Value default_response(void *, Qualifier, TypeIndex);
+Value default_response(void*, Qualifier, TypeIndex);
 
 template <class T>
 Value default_request(Scope &s, Pointer const &);
