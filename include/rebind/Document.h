@@ -36,9 +36,9 @@ struct Document {
         return table;
     }
 
-    Overload & find_method(TypeIndex t, std::string_view name);
+    Function & find_method(TypeIndex t, std::string_view name);
 
-    Overload & find_function(std::string_view s);
+    Function & find_function(std::string_view s);
 
     template <class T>
     bool render(Type<T> t={}) {
@@ -62,14 +62,14 @@ struct Document {
     template <int N=-1, class F>
     void function(std::string name, F functor) {
         render(typename Signature<F>::unqualified());
-        find_function(std::move(name)).emplace(Function::from<N>(std::move(functor)));
+        find_function(std::move(name)).emplace(Overload::from<N>(std::move(functor)));
     }
 
     /// Always a function - no vagueness here
     template <int N=-1, class F, class ...Ts>
     void method(TypeIndex t, std::string name, F f) {
         Signature<F>::unqualified::for_each([&](auto r) {if (t != +r) render(+r);});
-        find_method(t, std::move(name)).emplace(Function::from<N>(std::move(f)));
+        find_method(t, std::move(name)).emplace(Overload::from<N>(std::move(f)));
     }
 };
 

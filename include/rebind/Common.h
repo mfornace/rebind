@@ -9,6 +9,10 @@
 
 namespace rebind {
 
+namespace runtime {
+    char const * unknown_exception_description() noexcept;
+}
+
 extern bool Debug;
 
 template <class From, class To> struct copy_qualifier_t {using type = To;};

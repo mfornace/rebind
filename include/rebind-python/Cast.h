@@ -5,7 +5,7 @@
 #include <rebind/Arrays.h>
 #include <rebind/Function.h>
 
-namespace rebind {
+namespace rebind::py {
 
 /******************************************************************************/
 
@@ -31,7 +31,7 @@ Object default_object(T t) {
 }
 
 inline Object as_object(TypeIndex t) {return default_object(std::move(t));}
-inline Object as_object(Overload t) {return default_object(std::move(t));}
+inline Object as_object(Function t) {return default_object(std::move(t));}
 
 /// Source driven conversion: guess the correct Python type from the source type
 /// I guess this is where automatic class conversions should be done?
@@ -44,7 +44,7 @@ inline Object as_deduced_object(Value &&ref) {
     if (auto v = ref.request<bool>())             return as_object(std::move(*v));
     if (auto v = ref.request<std::string_view>()) return as_object(std::move(*v));
     if (auto v = ref.request<std::string>())      return as_object(std::move(*v));
-    if (auto v = ref.request<Overload>())         return as_object(std::move(*v));
+    if (auto v = ref.request<Function>())         return as_object(std::move(*v));
     if (auto v = ref.request<TypeIndex>())  return as_object(std::move(*v));
     if (auto v = ref.request<Binary>())           return as_object(std::move(*v));
     if (auto v = ref.request<BinaryView>())       return as_object(std::move(*v));

@@ -35,8 +35,8 @@ constexpr void assert_usable() {
 
 /******************************************************************************************/
 
-class Overload;
 class Function;
+class Overload;
 class Pointer;
 class Value;
 class Scope;
@@ -54,7 +54,7 @@ struct TypeTable {
     std::array<std::string, 3> qualified_names;
 
     std::vector<TypeIndex> bases;
-    std::map<std::string, Overload> methods;
+    std::map<std::string, Function> methods;
 
     std::string const& name() const noexcept {return m_name;}
 

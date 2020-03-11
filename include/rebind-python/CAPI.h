@@ -9,7 +9,7 @@
 #include <rebind/Common.h>
 #include <rebind/Error.h>
 
-namespace rebind {
+namespace rebind::py {
 
 /******************************************************************************/
 

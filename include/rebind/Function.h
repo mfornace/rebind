@@ -7,7 +7,7 @@
 
 namespace rebind {
 
-// struct Function {
+// struct Overload {
 //     bool operator()(Value *, Pointer *, Arguments const &, Tag) const;
 
 //     // Value operator()(Arguments const &v) const noexcept;
@@ -22,21 +22,21 @@ namespace rebind {
 
 /******************************************************************************/
 
-struct Function {
+struct Overload {
     FunctionImpl impl;
     ErasedSignature signature;
 
-    Function() = default;
+    Overload() = default;
 
-    Function(FunctionImpl f, ErasedSignature const &s={}) : impl(std::move(f)), signature(s) {}
+    Overload(FunctionImpl f, ErasedSignature const &s={}) : impl(std::move(f)), signature(s) {}
 
     template <class F>
-    Function(F f) : Function(
+    Overload(F f) : Overload(
         Adapter<0, decltype(SimplifyFunction<F>()(std::move(f)))>(SimplifyFunction<F>()(std::move(f))),
         SimpleSignature<decltype(SimplifyFunction<F>()(std::move(f)))>()) {}
 
     template <int N = -1, class F>
-    static Function from(F f) {
+    static Overload from(F f) {
         auto fun = SimplifyFunction<F, N>()(std::move(f));
         constexpr std::size_t n = N == -1 ? 0 : SimpleSignature<decltype(fun)>::size - 1 - N;
         return {Adapter<n, decltype(fun)>{std::move(fun)}, SimpleSignature<decltype(fun)>()};
@@ -60,6 +60,8 @@ struct Function {
     }
 
     Value call_value(Caller c, Arguments const &v) const {
+        DUMP("call_value ", v.size());
+        for (auto &&p: v) {DUMP(p.name(), " ", p.index());}
         Value out;
         impl(&c, &out, nullptr, v);
         return out;
@@ -77,12 +79,12 @@ struct Function {
 
 /******************************************************************************/
 
-struct Overload {
-    Function first;
-    Vector<Function> rest;
+struct Function {
+    Overload first;
+    Vector<Overload> rest;
 
-    Overload() = default;
-    Overload(Function fun) : first(fun) {}
+    Function() = default;
+    Function(Overload fun) : first(fun) {}
 
     template <class F>
     void visit(F &&f) const {
@@ -91,12 +93,12 @@ struct Overload {
     }
 
     template <class ...Args>
-    Function & emplace(Args &&...args) {
+    Overload & emplace(Args &&...args) {
         if (first) {
             rest.emplace_back(std::forward<Args>(args)...);
             return rest.back();
         } else {
-            first = Function{std::forward<Args>(args)...};
+            first = Overload{std::forward<Args>(args)...};
             return first;
         }
     }
@@ -107,10 +109,10 @@ struct Overload {
 template <class R, class ...Ts>
 struct AnnotatedCallback {
     Caller caller;
-    Function function;
+    Overload function;
 
     AnnotatedCallback() = default;
-    AnnotatedCallback(Function f, Caller c) : function(std::move(f)), caller(std::move(c)) {}
+    AnnotatedCallback(Overload f, Caller c) : function(std::move(f)), caller(std::move(c)) {}
 
     R operator()(Ts ...ts) const {
         return function(caller, to_arguments(static_cast<Ts &&>(ts)...)).cast(Type<R>());
@@ -120,10 +122,10 @@ struct AnnotatedCallback {
 template <class R>
 struct Callback {
     Caller caller;
-    Function function;
+    Overload function;
 
     Callback() = default;
-    Callback(Function f, Caller c) : function(std::move(f)), caller(std::move(c)) {}
+    Callback(Overload f, Caller c) : function(std::move(f)), caller(std::move(c)) {}
 
     template <class ...Ts>
     R operator()(Ts &&...ts) const {
@@ -196,8 +198,8 @@ template <class ...Ts, class R>
 constexpr auto construct(Type<R>) {return Construct<R, Ts...>();}
 
 // template <std::size_t N, class ...Ts, class R>
-// Function construct(Type<R>) {
-//     Function out;
+// Overload construct(Type<R>) {
+//     Overload out;
 //     out.emplace<N>(PartialConstruct<N, R, Ts...>());
 //     return out;
 // }
@@ -220,7 +222,7 @@ Streamable<T> streamable(Type<T> t={}) {return {};}
 // struct Request<Callback<R>> {
 //     std::optional<Callback<R>> operator()(Pointer const &v, Scope &msg) const {
 //         if (!msg.caller) msg.error("Calling context expired", typeid(Callback<R>));
-//         else if (auto p = v.request<Function>(msg)) return Callback<R>{std::move(*p), msg.caller};
+//         else if (auto p = v.request<Overload>(msg)) return Callback<R>{std::move(*p), msg.caller};
 //         return {};
 //     }
 // };
@@ -231,7 +233,7 @@ Streamable<T> streamable(Type<T> t={}) {return {};}
 //     using type = AnnotatedCallback<R, Ts...>;
 //     std::optional<type> operator()(Variable const &v, Scope &msg) const {
 //         if (!msg.caller) msg.error("Calling context expired", typeid(type));
-//         else if (auto p = v.request<Function>(msg)) return type{std::move(*p), msg.caller};
+//         else if (auto p = v.request<Overload>(msg)) return type{std::move(*p), msg.caller};
 //         return {};
 //     }
 // };

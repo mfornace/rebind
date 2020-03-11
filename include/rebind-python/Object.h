@@ -6,7 +6,7 @@
 #pragma once
 #include "CAPI.h"
 
-namespace rebind {
+namespace rebind::py {
 
 void initialize_global_objects();
 
@@ -58,7 +58,7 @@ struct Object {
 
 namespace std {
     template <>
-    struct hash<rebind::Object> {
-        size_t operator()(rebind::Object const &o) const {return std::hash<PyObject *>()(o.ptr);}
+    struct hash<rebind::py::Object> {
+        size_t operator()(rebind::py::Object const &o) const {return std::hash<PyObject *>()(o.ptr);}
     };
 }

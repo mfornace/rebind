@@ -79,8 +79,8 @@ public:
 
     constexpr Pointer(std::nullptr_t) noexcept : Pointer() {}
 
-    template <class T>
-    constexpr Pointer(T *t, Qualifier q) noexcept : Opaque(t), qual(q) {}
+    template <class T, std::enable_if_t<is_usable<T>, int> = 0>
+    constexpr Pointer(T &t, Qualifier q) noexcept : Opaque(t), qual(q) {}
 
     // template <class T>
     // constexpr Pointer(T &&t) noexcept : Pointer(std::addressof(t), qualifier_of<T &&>) {}
@@ -126,13 +126,13 @@ public:
     /**************************************************************************************/
 
     template <class T>
-    static Pointer from(T &t) {return {std::addressof(t), Lvalue};}
+    static Pointer from(T &t) {return {t, Lvalue};}
 
     template <class T>
-    static Pointer from(T const &t) {return {const_cast<T *>(std::addressof(t)), Const};}
+    static Pointer from(T const &t) {return {const_cast<T &>(t), Const};}
 
     template <class T>
-    static Pointer from(T &&t) {return {std::addressof(t), Rvalue};}
+    static Pointer from(T &&t) {return {t, Rvalue};}
 
     static Pointer from(Value &t);
     static Pointer from(Value const &t);

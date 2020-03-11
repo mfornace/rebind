@@ -12,7 +12,8 @@
 #include <mutex>
 #include <unordered_map>
 
-namespace rebind {
+
+namespace rebind::py {
 
 extern std::unordered_map<TypeIndex, std::string> type_names;
 
@@ -97,7 +98,7 @@ Object map_as_tuple(V &&v, F &&f) noexcept {
 }
 
 template <class ...Ts>
-Object args_as_tuple(Ts &&...ts) {
+Object tuple_from(Ts &&...ts) {
     auto out = Object::from(PyTuple_New(sizeof...(Ts)));
     Py_ssize_t i = 0;
     auto go = [&](Object const &x) {return set_tuple_item(out, i++, x);};
@@ -185,7 +186,7 @@ struct PythonFunction {
     PythonFunction(Object f, Object s={}) : function(std::move(f)), signature(std::move(s)) {
         if (+signature == Py_None) signature = Object();
         if (!function)
-            throw python_error(type_error("cannot convert null object to Function"));
+            throw python_error(type_error("cannot convert null object to Overload"));
         if (!PyCallable_Check(+function))
             throw python_error(type_error("expected callable type but got %R", (+function)->ob_type));
         if (+signature && !PyTuple_Check(+signature))
@@ -209,10 +210,6 @@ struct PythonFunction {
 std::string get_type_name(TypeIndex idx) noexcept;
 
 std::string wrong_type_message(WrongType const &e, std::string_view={});
-
-namespace runtime {
-    char const * unknown_exception_description() noexcept;
-}
 
 /******************************************************************************/
 

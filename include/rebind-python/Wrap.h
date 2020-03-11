@@ -4,7 +4,7 @@
 #include <rebind/Value.h>
 #include <rebind/Conversions.h>
 
-namespace rebind {
+namespace rebind::py {
 
 /******************************************************************************/
 
@@ -100,9 +100,13 @@ PyTypeObject type_definition(char const *name, char const *doc) {
 
 /******************************************************************************/
 
+}
+
+namespace rebind {
+
 template <>
-struct Response<Object> {
-    Value operator()(TypeIndex t, Object o) const {
+struct Response<py::Object> {
+    Value operator()(TypeIndex t, py::Object o) const {
         Value v;
         DUMP("trying to get Value from Object", t);
         // if (auto p = cast_if<Pointer>(o)) {

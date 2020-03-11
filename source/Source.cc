@@ -155,7 +155,7 @@ void Document::type(TypeIndex t, std::string_view s, Value &&data, Table table) 
 template <class T>
 T & remove_const(T const &t) {return const_cast<T &>(t);}
 
-Overload & Document::find_method(TypeIndex t, std::string_view name) {
+Function & Document::find_method(TypeIndex t, std::string_view name) {
     DUMP("find_method ", t, name);
     if (auto it = types.find(t); it != types.end()) {
         return remove_const(it->second->methods)[std::string(name)];
@@ -164,12 +164,12 @@ Overload & Document::find_method(TypeIndex t, std::string_view name) {
     }
 }
 
-Overload & Document::find_function(std::string_view s) {
+Function & Document::find_function(std::string_view s) {
     DUMP("function ", s);
-    auto it = contents.emplace(s, Type<Overload>()).first;
+    auto it = contents.emplace(s, Type<Function>()).first;
     DUMP("emplaced ", s);
     DUMP(it->second.name(), bool(it->second));
-    if (auto f = it->second.target<Overload>()) return *f;
+    if (auto f = it->second.target<Function>()) return *f;
     DUMP("bad", s);
     throw std::runtime_error(cat(
         "tried to declare a function on a non-function key (key=",
@@ -181,16 +181,16 @@ Overload & Document::find_function(std::string_view s) {
 }
 
 
-#if __has_include(<boost/core/demangle.hpp>)
-#   include <boost/core/demangle.hpp>
-    namespace rebind::runtime {
-        std::string demangle(char const *s) {return boost::demangle(s);}
+// #if __has_include(<boost/core/demangle.hpp>)
+// #   include <boost/core/demangle.hpp>
+//     namespace rebind::runtime {
+//         std::string demangle(char const *s) {return boost::demangle(s);}
 
-        std::string unknown_exception_description() noexcept {
-            return abi::__cxa_current_exception_type()->name();
-        }
-    }
-#elif __has_include(<cxxabi.h>)
+//         char const * unknown_exception_description() noexcept {
+//             return abi::__cxa_current_exception_type()->name();
+//         }
+//     }
+#if __has_include(<cxxabi.h>)
 #   include <cxxabi.h>
 
     namespace rebind::runtime {
@@ -205,7 +205,7 @@ Overload & Document::find_function(std::string_view s) {
             return out;
         }
 
-        std::string unknown_exception_description() noexcept {
+        char const * unknown_exception_description() noexcept {
             return abi::__cxa_current_exception_type()->name();
         }
     }
@@ -213,6 +213,6 @@ Overload & Document::find_function(std::string_view s) {
     namespace rebind::runtime {
         std::string demangle(char const *s) {return s;}
 
-        std::string unknown_exception_description() noexcept {return "C++: unknown exception";}
+        char const * unknown_exception_description() noexcept {return "C++: unknown exception";}
     }
 #endif

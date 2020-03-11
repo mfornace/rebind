@@ -1,7 +1,7 @@
 #include <rebind-python/Cast.h>
 #include <numeric>
 
-namespace rebind {
+namespace rebind::py {
 
 bool is_subclass(PyTypeObject *o, PyTypeObject *t) {
     int x = PyObject_IsSubclass(reinterpret_cast<PyObject *>(o), reinterpret_cast<PyObject *>(t));
@@ -156,8 +156,8 @@ Object type_index_cast(Pointer const &ref) {
 }
 
 Object function_cast(Pointer const &ref) {
-    if (auto p = ref.request<Overload>()) return as_object(std::move(*p));
-    if (auto p = ref.request<Function>()) return as_object(Overload(std::move(*p)));
+    if (auto p = ref.request<Function>()) return as_object(std::move(*p));
+    if (auto p = ref.request<Overload>()) return as_object(Function(std::move(*p)));
     else return {};
 }
 
@@ -214,7 +214,7 @@ Object union_cast(Pointer const &v, Object const &t, Object const &root) {
 
 // Convert C++ Value to a requested Python type
 // First explicit types are checked:
-// None, object, bool, int, float, str, bytes, TypeIndex, list, tuple, dict, Value, Function, memoryview
+// None, object, bool, int, float, str, bytes, TypeIndex, list, tuple, dict, Value, Overload, memoryview
 // Then, the output_conversions map is queried for Python function callable with the Value
 Object try_python_cast(Pointer const &v, Object const &t, Object const &root) {
     DUMP("try_python_cast ", v.index());
@@ -233,8 +233,8 @@ Object try_python_cast(Pointer const &v, Object const &t, Object const &root) {
         else if (type == &PyBaseObject_Type)                  return as_deduced_object(std::move(v));        // object
         else if (is_subclass(type, type_object<Value>()))     return value_to_object(std::move(v), t);            // Value
         else if (type == type_object<TypeIndex>())            return type_index_cast(std::move(v));          // type(TypeIndex)
-        else if (type == type_object<Function>())             return function_cast(std::move(v));            // Function
-        else if (is_subclass(type, &PyFunction_Type))         return function_cast(std::move(v));            // Function
+        else if (type == type_object<Overload>())             return function_cast(std::move(v));            // Overload
+        else if (is_subclass(type, &PyFunction_Type))         return function_cast(std::move(v));            // Overload
         else if (type == &PyMemoryView_Type)                  return memoryview_cast(std::move(v), root);    // memory_view
     } else {
         DUMP("Not type and not in translations");

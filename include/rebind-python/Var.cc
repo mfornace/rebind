@@ -1,6 +1,6 @@
 #include "Wrap.h"
 
-namespace rebind {
+namespace rebind::py {
 
 // move_from is called 1) during init, V.move_from(V), to transfer the object (here just use Var move constructor)
 //                     2) during assignment, R.move_from(L), to transfer the object (here cast V to new object of same type, swap)

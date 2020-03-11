@@ -1,6 +1,6 @@
 #include <rebind-python/API.h>
 
-namespace rebind {
+namespace rebind::py {
 
 Object UnionType, TypeError;
 
@@ -39,7 +39,7 @@ std::unordered_map<TypeIndex, std::string> type_names = {
     {typeid(BinaryView),       "BinaryView"},
     {typeid(BinaryData),       "BinaryData"},
     {typeid(ArrayView),        "ArrayView"},
-    {typeid(Function),         "Function"},
+    {typeid(Overload),         "Overload"},
     {typeid(Pointer),          "Pointer"},
     {typeid(Value),            "Value"},
     {typeid(Sequence),         "Sequence"},

@@ -10,7 +10,7 @@
 #include <any>
 #include <iostream>
 
-namespace rebind {
+namespace rebind::py {
 
 /******************************************************************************/
 
@@ -130,13 +130,13 @@ bool object_response(Value &v, TypeIndex t, Object o) {
         if (+o == Py_None) return v = nullptr, true;
     }
 
-    if (t.matches<Function>()) {
+    if (t.matches<Overload>()) {
         DUMP("requested function");
-        if (+o == Py_None) v.emplace(Type<Function>());
-        else if (auto p = cast_if<Function>(o)) v = *p;
+        if (+o == Py_None) v.emplace(Type<Overload>());
+        else if (auto p = cast_if<Overload>(o)) v = *p;
         // general python function has no signature associated with it right now.
         // we could get them out via function.__annotations__ and process them into a tuple
-        else v.emplace(Type<Function>(), Function::from(PythonFunction({+o, true}, {Py_None, true})));
+        else v.emplace(Type<Overload>(), Overload::from(PythonFunction({+o, true}, {Py_None, true})));
         return true;
     }
 
@@ -241,7 +241,7 @@ std::string wrong_type_message(WrongType const &e, std::string_view prefix) {
 /******************************************************************************/
 
 Pointer pointer_from_object(Object &o) {
-    if (auto p = cast_if<Function>(o)) {
+    if (auto p = cast_if<Overload>(o)) {
         return Pointer::from(*p);
     } else if (auto p = cast_if<TypeIndex>(o)) {
         return Pointer::from(*p);

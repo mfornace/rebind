@@ -34,6 +34,9 @@ endfunction(link_file)
 link_file(python/__init__.py example/__init__.py)
 link_file(python/submodule.py example/submodule.py)
 link_file(python/test.py example/test.py)
+foreach(f ${REBIND_PYTHON_FILES})
+    link_file(../python/rebind/${f} example/rebind/${f})
+endforeach()
 
 ################################################################################
 

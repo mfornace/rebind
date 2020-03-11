@@ -2,7 +2,7 @@ import inspect, importlib, functools, logging, typing, atexit, collections
 from . import Config, common, ConversionError
 
 log = logging.getLogger(__name__)
-# logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO)
 
 ################################################################################
 
@@ -21,14 +21,16 @@ def render_module(pkg: str, doc: dict, set_type_names=False):
 def _render_module(pkg, doc, set_type_names):
     log.info('rendering document into module %s', repr(pkg))
     config, out = Config(doc), doc.copy()
+    log.info('setting type error')
     config.set_type_error(ConversionError)
 
     classes, modules, translate = set(), set(), {}
 
-    # render classes and methods
+    log.info('rendering classes and methods')
     out['types'] = {k: v for k, v in doc['contents'] if isinstance(v, tuple)}
+    log.info(str(out['types']))
     for k, (meth, data) in out['types'].items():
-        mod, cls = render_type(translate, pkg, (doc['Variable'],), k, dict(meth))
+        mod, cls = render_type(translate, pkg, (doc['Value'],), k, dict(meth))
         modules.add(mod)
         classes.add(cls)
         cls._metadata_ = {k: v or None for k, v in data}
