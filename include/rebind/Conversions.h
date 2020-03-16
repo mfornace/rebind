@@ -106,49 +106,10 @@ using response_method = typename ResponseMethod<T>::type;
 // void lvalue_fails(Variable const &, Scope &, Index);
 // void rvalue_fails(Variable const &, Scope &, Index);
 
-
-/******************************************************************************************/
-
-template <class T, std::enable_if_t<std::is_reference_v<T>, int>>
-std::remove_reference_t<T> * Erased::request(Scope &s, Type<T> t, Qualifier q) const {
-    assert_usable<unqualified<T>>();
-    using T0 = std::remove_reference_t<T>;
-#warning "need to do this, supposed to call m_to_pointer"
-    // if (auto p = target<T0>()) return p;
-    // if (has_value() && tab->has_base(type_index<T0>())) return static_cast<T0 *>(ptr);
-    return nullptr;
-}
-
-/******************************************************************************/
-
-template <class T, std::enable_if_t<!std::is_reference_v<T>, int>>
-std::optional<T> Erased::request(Scope &s, Type<T> t, Qualifier q) const {
-    assert_usable<T>();
-    std::optional<T> out;
-#warning "need to do this, supposed to call m_to_value"
-    if (has_value()) {
-        if (auto p = request(s, Type<T &&>(), q)) {
-            out.emplace(std::move(*p));
-        } else {
-            if constexpr(std::is_copy_constructible_v<T>) {
-                if (auto p = request(s, Type<T const &>(), q)) {
-                    out.emplace(*p);
-                } else {
-                    out = FromPointer<T>()(Pointer(*this, q), s);
-                }
-            } else {
-                out = FromPointer<T>()(Pointer(*this, q), s);
-            }
-        }
-    }
-    return out;
-}
-
 /******************************************************************************/
 
 template <class T>
 Value default_from_pointer(Pointer const &p, Scope &s) {
-#warning "need to do this, supposed to call m_from_pointer"
     Value v;
     if (auto o = FromPointer<T>()(p, s)) v.place<T>(std::move(*o));
     return v;
@@ -168,12 +129,6 @@ bool default_to_value(Value &v, void *p, Qualifier const q) {
     }
 }
 
-
-inline bool Erased::request_to(Value &v, Qualifier q) const {
-    if (has_value()) return tab->m_to_value(v, ptr, q);
-    return false;
-}
-
 /******************************************************************************/
 
 template <class T>
@@ -189,5 +144,65 @@ void default_to_pointer(Pointer &v, void *p, Qualifier const q) {
 }
 
 /******************************************************************************/
+
+template <class T, std::enable_if_t<std::is_reference_v<T>, int>>
+std::remove_reference_t<T> * Erased::request(Scope &s, Type<T> t, Qualifier q) const {
+    using U = unqualified<T>;
+    assert_usable<U>();
+
+    if (!has_value()) return nullptr;
+
+    if (compatible_qualifier(q, qualifier_of<T>)) {
+        if (auto p = target<U>()) return p;
+        if (tab->has_base(type_index<U>())) return static_cast<std::remove_reference_t<T> *>(ptr);
+    }
+
+    Pointer out(Erased(static_cast<U *>(nullptr)), q);
+    tab->m_to_pointer(out, ptr, q);
+    return out.target<T>();
+}
+
+/******************************************************************************/
+
+template <class T, std::enable_if_t<!std::is_reference_v<T>, int>>
+std::optional<T> Erased::request(Scope &s, Type<T> t, Qualifier q) const {
+    assert_usable<T>();
+    std::optional<T> out;
+
+    if (!has_value()) return out;
+
+    if (auto p = request(s, Type<T &&>(), q)) {
+        out.emplace(std::move(*p));
+        return out;
+    }
+
+    if constexpr(std::is_copy_constructible_v<T>) {
+        if (auto p = request(s, Type<T const &>(), q)) {
+            out.emplace(*p);
+            return out;
+        }
+    }
+
+    // ToValue
+    Value v;
+    const_cast<Erased &>(v.as_erased()).tab = get_table<T>();
+    if (tab->m_to_value(v, ptr, q)) {
+        if (auto p = v.target<T>()) out.emplace(std::move(*p));
+        return out;
+    }
+
+    // FromPointer
+    out = FromPointer<T>()(Pointer(*this, q), s);
+
+    return out;
+}
+
+/******************************************************************************/
+
+inline bool Erased::request_to(Value &v, Qualifier q) const {
+    if (has_value()) return tab->m_to_value(v, ptr, q);
+    return false;
+}
+
 
 }

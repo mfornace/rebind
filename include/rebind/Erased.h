@@ -37,7 +37,10 @@ struct Erased {
     void * value() const {return ptr;}
 
     template <class T>
-    bool matches(Type<T> t={}) const {return tab == get_table<unqualified<T>>();}
+    bool matches(Type<T> t={}) const {
+        static_assert(is_usable<T>);
+        return tab == get_table<unqualified<T>>();
+    }
 
     bool has_value() const {return ptr;}
 
@@ -73,7 +76,7 @@ struct Erased {
 
     Erased allocate_copy() const {
         if (has_value()) return {tab, tab->copy(ptr)};
-        else return {};
+        else return *this;
     }
 
     /**************************************************************************/

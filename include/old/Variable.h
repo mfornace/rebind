@@ -169,10 +169,10 @@ public:
 
     /**************************************************************************/
 
-    // from_pointer reference T by custom conversions
+    // request reference T by custom conversions
     template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
-    std::remove_reference_t<T> *from_pointer(Dispatch &msg, Type<T> t={}) const {
-        DUMP("Variable.from_pointer() ", typeid(Type<T>).name(), qualifier(), " from variable ", idx);
+    std::remove_reference_t<T> *request(Dispatch &msg, Type<T> t={}) const {
+        DUMP("Variable.request() ", typeid(Type<T>).name(), qualifier(), " from variable ", idx);
         if (idx.matches<T>()) return target<T>();
         auto v = request_variable(msg, type_index<T>());
         if (auto p = v.template target<T>()) {msg.source.clear(); return p;}
@@ -181,7 +181,7 @@ public:
     }
 
     template <class T, std::enable_if_t<!std::is_reference_v<T>, int> = 0>
-    std::optional<T> from_pointer(Dispatch &msg, Type<T> t={}) const {
+    std::optional<T> request(Dispatch &msg, Type<T> t={}) const {
         static_assert(std::is_same_v<T, unqualified<T>>);
         if constexpr(std::is_same_v<T, Variable>) return *this;
 
@@ -204,19 +204,19 @@ public:
 
     template <class T>
     T cast(Dispatch &msg, Type<T> t={}) const {
-        if (auto p = from_pointer(msg, t)) return static_cast<T>(*p);
+        if (auto p = request(msg, t)) return static_cast<T>(*p);
         throw std::move(msg).exception();
     }
 
-    // from_pointer non-reference T by custom conversions
+    // request non-reference T by custom conversions
     template <class T>
-    std::optional<T> from_pointer(Type<T> t={}) const {Dispatch msg; return from_pointer(msg, t);}
+    std::optional<T> request(Type<T> t={}) const {Dispatch msg; return request(msg, t);}
 
-    // from_pointer non-reference T by custom conversions
+    // request non-reference T by custom conversions
     template <class T>
     T cast(Type<T> t={}) const {
         Dispatch msg;
-        if (auto p = from_pointer(msg, t))
+        if (auto p = request(msg, t))
             return msg.storage.empty() ? static_cast<T>(*p) : throw std::runtime_error("contains temporaries");
         return cast(msg, t);
     }
@@ -329,7 +329,7 @@ struct Action {
         } else if (a == ActionType::assign) { // Assign from another variable
             // DUMP("assign", v->idx.name(), typeid(T).name(), v->qual);
             if constexpr(std::is_move_assignable_v<T>) {
-                if (auto r = reinterpret_cast<Variable &&>(*v).from_pointer<T>()) {
+                if (auto r = reinterpret_cast<Variable &&>(*v).request<T>()) {
                     // DUMP("got the assignable", v->idx.name(), typeid(T).name(), v->qual, typeid(T).name());
                     *static_cast<T *>(p) = std::move(*r);
                     reinterpret_cast<Variable &>(*v).reset(); // signifies that assignment took place

@@ -43,6 +43,13 @@ public:
 
     /**************************************************************************************/
 
+    template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
+    std::remove_reference_t<T> *target() const {
+        return compatible_qualifier(qual, qualifier_of<T>) ? Erased::target<unqualified<T>>() : nullptr;
+    }
+
+    /**************************************************************************************/
+
     template <class T>
     auto request(Scope &s, Type<T> t={}) const {return Erased::request(s, t, qual);}
 

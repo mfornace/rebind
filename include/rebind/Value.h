@@ -20,10 +20,12 @@ T * alloc(Args &&...args) {
 
 class Value : protected Erased {
     using Erased::Erased;
+
 public:
 
     using Erased::name;
     using Erased::index;
+    using Erased::matches;
     using Erased::has_value;
     using Erased::as_erased;
     using Erased::operator bool;
@@ -58,12 +60,6 @@ public:
     void reset() {Erased::try_destroy(); Erased::reset();}
 
     /**************************************************************************/
-
-    template <class T>
-    bool matches() const {
-        static_assert(is_usable<T>);
-        return Erased::matches<T>();
-    }
 
     template <class T>
     unqualified<T> * set_if(T &&t) {
@@ -162,6 +158,23 @@ public:
     bool request_to(Value &v) const & {return Erased::request_to(v, Const);}
     bool request_to(Value &v) & {return Erased::request_to(v, Lvalue);}
     bool request_to(Value &v) && {return Erased::request_to(v, Rvalue);}
+};
+
+/******************************************************************************/
+
+class OutputValue : protected Value {
+    using Value::name;
+    using Value::index;
+    using Value::matches;
+    using Value::has_value;
+    using Value::as_erased;
+    using Value::operator bool;
+
+    template <class T>
+    OutputValue(Type<T>) : Value(get_table<T>(), nullptr) {}
+
+    OutputValue(OutputValue const &) = delete;
+
 };
 
 // inline Pointer Pointer::from(Value &t) {return {t.as_erased(), Lvalue};}

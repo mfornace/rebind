@@ -114,6 +114,17 @@ bool object_to_value(Value &v, Object o) {
         DUMP("trying to convert object to ", v.name(), " ", from_unicode(+repr));
         DUMP(bool(cast_if<Value>(o)));
     }
+    if (!o) return false;
+
+#warning "need to finish ToValue<py::Object>"
+
+    Object type = Object(reinterpret_cast<PyObject *>((+o)->ob_type), true);
+
+    if (auto p = input_conversions.find(type); p != input_conversions.end()) {
+        Object guard(+o, false); // PyObject_CallFunctionObjArgs increments reference
+        o = Object::from(PyObject_CallFunctionObjArgs(+p->second, +o, nullptr));
+        type = Object(reinterpret_cast<PyObject *>((+o)->ob_type), true);
+    }
 
     if (auto p = cast_if<Value>(o)) {
         DUMP("object_to_value Value");
@@ -205,6 +216,13 @@ bool object_to_value(Value &v, Object o) {
     }
 
     DUMP("request failed for py::Object to ", v.index());
+
+    // if (!ok) { // put diagnostic for the source type
+    //     auto o = py::Object::from(PyObject_Repr(+type));
+    //     DUMP("setting object error description", from_unicode(o));
+    //     v = {Type<std::string>(), from_unicode(o)};
+    // }
+
     return false;
 }
 

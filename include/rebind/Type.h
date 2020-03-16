@@ -30,6 +30,13 @@ template <class T>
 static constexpr Qualifier qualifier_of =
     std::is_rvalue_reference_v<T> ? Rvalue : (std::is_const_v<std::remove_reference_t<T>> ? Const : Lvalue);
 
+inline constexpr bool compatible_qualifier(Qualifier from, Qualifier to) {
+    // from = const: {const yes, rvalue no, lvalue no}
+    // from = rvalue: {const yes, rvalue yes, lvalue no}
+    // from = lvalue: {const yes, rvalue no, lvalue yes}
+    return to == Const || from == to;
+}
+
 /******************************************************************************************/
 
 /// Compile-time type a la boost::hana
