@@ -32,7 +32,7 @@ void render_default(Document &, std::type_info const &t) {
 
 /******************************************************************************/
 
-// void lvalue_fails(Variable const &v, Scope &msg, TypeIndex t) {
+// void lvalue_fails(Variable const &v, Scope &msg, Index t) {
 //     char const *s = "could not convert to lvalue reference";
 //     if (v.type() == t) {
 //         if (v.qualifier() == Rvalue) s = "could not convert rvalue to lvalue reference";
@@ -43,7 +43,7 @@ void render_default(Document &, std::type_info const &t) {
 // }
 // /******************************************************************************/
 
-// void rvalue_fails(Variable const &v, Scope &msg, TypeIndex t) {
+// void rvalue_fails(Variable const &v, Scope &msg, Index t) {
 //     char const *s = "could not convert to rvalue reference";
 //     if (v.type() == t) {
 //         if (v.qualifier() == Lvalue) s = "could not convert lvalue to rvalue reference";
@@ -86,11 +86,11 @@ void render_default(Document &, std::type_info const &t) {
 
 /******************************************************************************/
 
-// Variable Variable::request_var(Scope &msg, TypeIndex const &t, Qualifier q) const {
+// Variable Variable::request_var(Scope &msg, Index const &t, Qualifier q) const {
 //     DUMP((act != nullptr), " asking for ", t, "from", q, type());
 //     Variable v;
 //     if (!has_value()) {
-//         // Nothing to do; request always fails
+//         // Nothing to do; from_pointer always fails
 //     } else if (idx.matches(t)) { // Exact type match
 //         // auto info = reinterpret_cast<std::type_info const * const &>(t);
 //         if (t.qualifier() == Value) { // Make a copy or move
@@ -133,7 +133,7 @@ void set_source(WrongType &err, std::type_info const &t, Value &&v) {
         err.source = std::move(*p);
     } else if (auto p = v.target<std::string_view>()) {
         err.source = std::move(*p);
-    } else if (auto p = v.target<TypeIndex>()) {
+    } else if (auto p = v.target<Index>()) {
         err.source = p->name();
     } else {
         err.source = t.name();
@@ -142,7 +142,7 @@ void set_source(WrongType &err, std::type_info const &t, Value &&v) {
 
 /******************************************************************************/
 
-void Document::type(TypeIndex t, std::string_view s, Value &&data, Table table) {
+void Document::type(Index t, std::string_view s, Value &&data, Table table) {
     DUMP("type ", t, s);
     auto it = contents.try_emplace(std::string(s), Type<Vector<Table>>()).first;
     if (auto p = it->second.target<Vector<Table>>()) {
@@ -155,7 +155,7 @@ void Document::type(TypeIndex t, std::string_view s, Value &&data, Table table) 
 template <class T>
 T & remove_const(T const &t) {return const_cast<T &>(t);}
 
-Function & Document::find_method(TypeIndex t, std::string_view name) {
+Function & Document::find_method(Index t, std::string_view name) {
     DUMP("find_method ", t, name);
     if (auto it = types.find(t); it != types.end()) {
         return remove_const(it->second->methods)[std::string(name)];

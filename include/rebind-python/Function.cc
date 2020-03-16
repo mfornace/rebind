@@ -55,7 +55,7 @@ Object function_call_impl(Function const &fun, Arguments &&args, bool gil, Objec
     //                     return type_error("C++: too many types given in signature");
     //                 for (Py_ssize_t i = 0; i != len; ++i) {
     //                     PyObject *x = PyTuple_GET_ITEM(sig, i);
-    //                     if (x != Py_None && !cast_object<TypeIndex>(x).matches(o.first[i])) continue;
+    //                     if (x != Py_None && !cast_object<Index>(x).matches(o.first[i])) continue;
     //                 }
     //             } else return type_error("C++: expected 'signature' to be a tuple");
     //         } else {
@@ -89,13 +89,13 @@ auto function_call_keywords(PyObject *kws) {
         PyObject *g = PyDict_GetItemString(kws, "gil");
         if (g) gil = PyObject_IsTrue(g);
         tag = {not_none(PyDict_GetItemString(kws, "tag")), true};
-         // either int or Tuple[TypeIndex] or None
-    //     auto r = not_none(PyDict_GetItemString(kws, "return_type")); // either TypeIndex or None
-    //     auto f = not_none(PyDict_GetItemString(kws, "first_type")); // either TypeIndex or None
+         // either int or Tuple[Index] or None
+    //     auto r = not_none(PyDict_GetItemString(kws, "return_type")); // either Index or None
+    //     auto f = not_none(PyDict_GetItemString(kws, "first_type")); // either Index or None
     //     // std::cout << PyObject_Length(kws) << bool(g) << bool(sig) << bool(f) << bool(r) << std::endl;
     //     // if (PyObject_Length(kws) != unsigned(bool(g)) + (sig || r || f))
     //         // return type_error("C++: unexpected extra keywords");
-    //     if (f) t1 = cast_object<TypeIndex>(f);
+    //     if (f) t1 = cast_object<Index>(f);
     }
     return std::make_tuple(gil, tag);
 }
@@ -270,16 +270,16 @@ Vector<Object> objects_from_argument_tuple(PyObject *args) {
 Arguments arguments_from_objects(Vector<Object> &v) {
     Arguments out;
     out.reserve(v.size());
-    for (auto &o : v) out.emplace_back(Pointer::from(o));
+    for (auto &o : v) out.emplace_back(pointer_from_object(o));
     return out;
 }
 
 /* Overload call has effectively the following signature
  * *args: the arguments to be passed to C++
  * gil (bool): whether to keep the gil on (default: True)
- * signature (int, Tuple[TypeIndex], or None): manual selection of overload to call
- * return_type (TypeIndex or None): manual selection of overload by return type
- * first_type (TypeIndex or None): manual selection overload by first type (useful for methods)
+ * signature (int, Tuple[Index], or None): manual selection of overload to call
+ * return_type (Index or None): manual selection of overload by return type
+ * first_type (Index or None): manual selection overload by first type (useful for methods)
  */
 PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept {
     return raw_object([=] {

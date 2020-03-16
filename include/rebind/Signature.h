@@ -21,7 +21,8 @@ template <class T>
 T operator|(T, NotFound);
 
 /// A lightweight ordered container of types
-template <class ...Ts> struct Pack {
+template <class ...Ts>
+struct Pack {
     using pack_type = Pack;
 
     static constexpr auto size = sizeof...(Ts);
@@ -161,13 +162,13 @@ struct SimplifyFunction<F, -1, std::void_t<decltype(false ? nullptr : std::declv
 /******************************************************************************/
 
 template <class R, class ...Ts>
-static TypeIndex const signature_types[] = {typeid(R), typeid(Ts)...};
+static Index const signature_types[] = {typeid(R), typeid(Ts)...};
 
 /******************************************************************************/
 
 struct ErasedSignature {
-    TypeIndex const *b = nullptr;
-    TypeIndex const *e = nullptr;
+    Index const *b = nullptr;
+    Index const *e = nullptr;
 public:
     ErasedSignature() = default;
 
@@ -184,9 +185,26 @@ public:
     explicit operator bool() const {return b;}
     auto begin() const {return b;}
     auto end() const {return e;}
-    TypeIndex operator[](std::size_t i) const {return b[i];}
+    Index operator[](std::size_t i) const {return b[i];}
     std::size_t size() const {return e - b;}
 };
+
+/******************************************************************************/
+
+template <int N, class R, class ...Ts, std::enable_if_t<N == 1, int> = 0>
+Pack<Ts...> without_first_types(Pack<R, Ts...>);
+
+template <int N, class R, class C, class ...Ts, std::enable_if_t<N == 2, int> = 0>
+Pack<Ts...> without_first_types(Pack<R, C, Ts...>);
+
+template <class R, class ...Ts>
+R first_type(Pack<R, Ts...>);
+
+template <class C, class R>
+std::false_type second_is_convertible(Pack<R>);
+
+template <class C, class R, class T, class ...Ts>
+std::is_convertible<T, C> second_is_convertible(Pack<R, T, Ts...>);
 
 /******************************************************************************/
 

@@ -1,6 +1,6 @@
 
 #include <rebind/Document.h>
-#include <rebind/Arrays.h>
+#include <rebind/types/Arrays.h>
 #include <iostream>
 
 namespace rebind {
@@ -19,7 +19,7 @@ Value response(std::type_index t, Blah b) {
 }
 
 template <class T>
-std::optional<Blah> request(Type<Blah>, T &&, Scope &s) {
+std::optional<Blah> from_pointer(Type<Blah>, T &&, Scope &s) {
     if constexpr(std::is_same_v<unqualified<T>, std::string>)
         return Blah("haha");
     return s.error("bad blah", typeid(Blah));
@@ -47,7 +47,7 @@ struct Goo {
 };
 
 template <Qualifier Q>
-auto response(TypeIndex t, qualified<Goo, Q> b) {
+auto response(Index t, qualified<Goo, Q> b) {
     DUMP("casting Blah to double const &");
     return (t == typeid(double)) ? &b.x : nullptr;
 }

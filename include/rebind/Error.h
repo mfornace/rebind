@@ -43,7 +43,7 @@ struct WrongNumber : DispatchError {
 struct WrongType : DispatchError {
     std::vector<unsigned int> indices;
     std::string source;
-    TypeIndex dest;
+    Index dest;
     int index = -1, expected = -1, received = -1;
 
     WrongType(std::string_view const &n) : DispatchError(n.data()) {}
@@ -60,7 +60,7 @@ struct CallingScope {
 
     explicit CallingScope(Caller c) : caller(std::move(c)) {}
 
-    /// Store a value which will last the lifetime of a conversion request. Return its address
+    /// Store a value which will last the lifetime of a conversion from_pointer. Return its address
     template <class T>
     unqualified<T> * emplace(T &&t) {
         return std::addressof(storage.emplace_back().emplace<unqualified<T>>(static_cast<T &&>(t)));
@@ -89,14 +89,14 @@ struct Scope {
     }
 
     /// Set error information and return std::nullopt for convenience
-    std::nullopt_t error(TypeIndex d) noexcept {
+    std::nullopt_t error(Index d) noexcept {
         auto &err = set_error("mismatched type");
         err.dest = std::move(d);
         return std::nullopt;
     }
 
     /// Set error information and return std::nullopt for convenience
-    std::nullopt_t error(std::string_view msg, TypeIndex d, int e=-1, int r=-1) noexcept {
+    std::nullopt_t error(std::string_view msg, Index d, int e=-1, int r=-1) noexcept {
         auto &err = set_error(msg);
         err.dest = std::move(d);
         err.expected = e;
@@ -104,12 +104,7 @@ struct Scope {
         return std::nullopt;
     }
 
-    /// Create exception from the current scopes and messages
-    // WrongType & exception() {return std::get<WrongType>(content);}
-
     CallingScope * scope() {return std::get_if<CallingScope>(&content);}
-
-    // Dispatch(Caller c={}) : scope(s), caller(std::move(c)) {indices.reserve(8);}
 };
 
 /******************************************************************************/

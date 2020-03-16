@@ -52,7 +52,7 @@ T * cast_if(PyObject *o) {
 template <class T>
 T & cast_object(PyObject *o) {
     if (!PyObject_TypeCheck(o, type_object<T>()))
-        throw std::invalid_argument("Expected instance of rebind.TypeIndex");
+        throw std::invalid_argument("Expected instance of rebind.Index");
     return reinterpret_cast<Wrap<T> *>(o)->value;
 }
 
@@ -105,17 +105,52 @@ PyTypeObject type_definition(char const *name, char const *doc) {
 namespace rebind {
 
 template <>
-struct Response<py::Object> {
-    Value operator()(TypeIndex t, py::Object o) const {
-        Value v;
-        DUMP("trying to get Value from Object", t);
+struct ToValue<py::Object> {
+    bool operator()(Value &v, py::Object const &o) const {
+        DUMP("trying to get Value from Object", v.name());
+#warning "need to do this Object"
+        return false;
         // if (auto p = cast_if<Pointer>(o)) {
         //     DUMP("requested qualified variable", t, p->index());
         //     v = p->request_value(t);
         //     DUMP(p->index(), t, v.index());
         // }
-        return v;
     }
 };
 
 }
+
+
+// namespace rebind {
+
+// template <>
+// struct ToValue<py::Object, Value> {
+//     void operator()(Value &v, py::Object const &o) const {
+//         // Value v;
+//         // DUMP("trying to get reference from unqualified Object", t);
+//         // if (!o) return v;
+
+//         // DUMP("ref1", reference_count(o));
+//         // Object type = Object(reinterpret_cast<PyObject *>((+o)->ob_type), true);
+
+//         // if (auto p = input_conversions.find(type); p != input_conversions.end()) {
+//         //     Object guard(+o, false); // PyObject_CallFunctionObjArgs increments reference
+//         //     o = Object::from(PyObject_CallFunctionObjArgs(+p->second, +o, nullptr));
+//         //     type = Object(reinterpret_cast<PyObject *>((+o)->ob_type), true);
+//         // }
+
+//         // DUMP("ref2", reference_count(o));
+
+//         // bool ok = object_response(v, t, std::move(o));
+
+//         // DUMP("got response from object", ok);
+//         // if (!ok) { // put diagnostic for the source type
+//         //     auto o = Object::from(PyObject_Repr(+type));
+//         //     DUMP("setting object error description", from_unicode(o));
+//         //     v = {Type<std::string>(), from_unicode(o)};
+//         // }
+//         // return ok;
+//     }
+// };
+
+// }

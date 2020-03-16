@@ -6,7 +6,7 @@ Object UnionType, TypeError;
 
 std::unordered_map<Object, Object> type_translations{}, output_conversions{}, input_conversions{};
 
-std::unordered_map<TypeIndex, Object> python_types{};
+std::unordered_map<Index, Object> python_types{};
 
 
 void initialize_global_objects() {
@@ -25,7 +25,7 @@ void clear_global_objects() {
     TypeError = nullptr;
 }
 
-std::unordered_map<TypeIndex, std::string> type_names = {
+std::unordered_map<Index, std::string> type_names = {
     {typeid(void),             "void"},
     {typeid(void *),           "pointer"},
     {typeid(PyObject),         "PyObject"},
@@ -34,7 +34,7 @@ std::unordered_map<TypeIndex, std::string> type_names = {
     {typeid(Real),             "float64"},
     {typeid(std::string_view), "str"},
     {typeid(std::string),      "str"},
-    {typeid(TypeIndex),        "TypeIndex"},
+    {typeid(Index),        "Index"},
     {typeid(Binary),           "Binary"},
     {typeid(BinaryView),       "BinaryView"},
     {typeid(BinaryData),       "BinaryData"},
@@ -86,7 +86,7 @@ Zip<std::string_view, std::type_info const *> Buffer::formats = {
 
 #define REBIND_TMP(C, T) {Scalar::C, typeid(T), sizeof(T) * CHAR_BIT}
 
-Zip<Scalar, TypeIndex, unsigned> scalars = {
+Zip<Scalar, Index, unsigned> scalars = {
     REBIND_TMP(Bool,         bool),
     REBIND_TMP(Char,         char),
     REBIND_TMP(SignedChar,   signed char),

@@ -44,15 +44,15 @@ PyObject * has_value(PyObject *self, PyObject *) noexcept {
 template <class Self>
 PyObject * cast(PyObject *self, PyObject *type) noexcept {
     return raw_object([=] {
-        return python_cast(Pointer::from(cast_object<Self>(self)), Object(type, true), Object(self, true));
+        return python_cast(Pointer(cast_object<Self>(self)), Object(type, true), Object(self, true));
     });
 }
 
 template <class Self>
 PyObject * get_index(PyObject *self, PyObject *) noexcept {
     return raw_object([=] {
-        auto o = Object::from(PyObject_CallObject(type_object<TypeIndex>(), nullptr));
-        cast_object<TypeIndex>(o) = cast_object<Self>(self).index();
+        auto o = Object::from(PyObject_CallObject(type_object<Index>(), nullptr));
+        cast_object<Index>(o) = cast_object<Self>(self).index();
         return o;
     });
 }
@@ -105,7 +105,7 @@ PyObject * value_from(PyObject *cls, PyObject *obj) noexcept {
         }
         if (auto p = cast_if<Value>(obj)) {
             // if a Value try .cast
-            return python_cast(Pointer::from(*p), Object(cls, true), Object(obj, true));
+            return python_cast(Pointer(*p), Object(cls, true), Object(obj, true));
         }
         // Try cls.__init__(obj)
         return Object::from(PyObject_CallFunctionObjArgs(cls, obj, nullptr));
@@ -126,7 +126,7 @@ PyMethodDef ValueMethods[] = {
     {"_set_ward",     static_cast<PyCFunction>(set_ward<PyValue>),      METH_O,       "set ward object and return self"},
     // {"qualifier",     static_cast<PyCFunction>(qualifier),     METH_NOARGS,  "return qualifier of self"},
     // {"is_stack_type", static_cast<PyCFunction>(var_is_stack_type), METH_NOARGS,  "return if object is held in stack storage"},
-    {"type",          static_cast<PyCFunction>(get_index<Value>),          METH_NOARGS,  "return TypeIndex of the held C++ object"},
+    {"type",          static_cast<PyCFunction>(get_index<Value>),          METH_NOARGS,  "return Index of the held C++ object"},
     {"has_value",     static_cast<PyCFunction>(has_value<Value>), METH_NOARGS,  "return if a C++ object is being held"},
     {"cast",          static_cast<PyCFunction>(cast<Value>), METH_O,       "cast to a given Python type"},
     {"from_object",   static_cast<PyCFunction>(value_from), METH_CLASS | METH_O, "cast an object to a given Python type"},
@@ -158,7 +158,7 @@ PyMethodDef PointerMethods[] = {
     {"_set_ward",     static_cast<PyCFunction>(set_ward<PyPointer>),      METH_O,       "set ward object and return self"},
     // {"qualifier",     static_cast<PyCFunction>(qualifier),     METH_NOARGS,  "return qualifier of self"},
     // {"is_stack_type", static_cast<PyCFunction>(var_is_stack_type), METH_NOARGS,  "return if object is held in stack storage"},
-    {"type",          static_cast<PyCFunction>(get_index<Pointer>),          METH_NOARGS,  "return TypeIndex of the held C++ object"},
+    {"type",          static_cast<PyCFunction>(get_index<Pointer>),          METH_NOARGS,  "return Index of the held C++ object"},
     {"has_value",     static_cast<PyCFunction>(has_value<Pointer>),     METH_NOARGS,  "return if a C++ object is being held"},
     {"cast",          static_cast<PyCFunction>(cast<Pointer>),          METH_O,       "cast to a given Python type"},
     // {"from_object",   static_cast<PyCFunction>(from),          METH_CLASS | METH_O, "cast an object to a given Python type"},

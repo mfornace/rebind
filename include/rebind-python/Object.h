@@ -14,7 +14,7 @@ void clear_global_objects();
 
 enum class Scalar {Bool, Char, SignedChar, UnsignedChar, Unsigned, Signed, Float, Pointer};
 
-extern Zip<Scalar, TypeIndex, unsigned> scalars;
+extern Zip<Scalar, Index, unsigned> scalars;
 
 /******************************************************************************/
 

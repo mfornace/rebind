@@ -1,4 +1,4 @@
-from .example_cpp import document
+from .cpp import document
 from .rebind import render_module
 from . import submodule
 

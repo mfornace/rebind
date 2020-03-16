@@ -87,18 +87,18 @@ std::string_view from_bytes(PyObject *o) {
 /******************************************************************************/
 
 template <class T>
-bool to_arithmetic(Object const &o, Value &v) {
+bool arithmetic_to_value(Value &v, Object const &o) {
     DUMP("cast arithmetic in: ", v.index());
-    if (PyFloat_Check(o)) return v.emplace<T>(PyFloat_AsDouble(+o)), true;
-    if (PyLong_Check(o)) return v.emplace<T>(PyLong_AsLongLong(+o)), true;
-    if (PyBool_Check(o)) return v.emplace<T>(+o == Py_True), true;
+    if (PyFloat_Check(o)) return v.place_if<T>(PyFloat_AsDouble(+o));
+    if (PyLong_Check(o))  return v.place_if<T>(PyLong_AsLongLong(+o));
+    if (PyBool_Check(o))  return v.place_if<T>(+o == Py_True);
     if (PyNumber_Check(+o)) { // This can be hit for e.g. numpy.int64
         if (std::is_integral_v<T>) {
             if (auto i = Object::from(PyNumber_Long(+o)))
-                return v.emplace<T>(PyLong_AsLongLong(+i)), true;
+                return v.place_if<T>(PyLong_AsLongLong(+i));
         } else {
             if (auto i = Object::from(PyNumber_Float(+o)))
-               return v.emplace<T>(PyFloat_AsDouble(+i)), true;
+               return v.place_if<T>(PyFloat_AsDouble(+i));
         }
     }
     DUMP("cast arithmetic out: ", v.index());
@@ -107,74 +107,76 @@ bool to_arithmetic(Object const &o, Value &v) {
 
 /******************************************************************************/
 
-bool object_response(Value &v, TypeIndex t, Object o) {
+bool object_to_value(Value &v, Object o) {
     if (Debug) {
         auto repr = Object::from(PyObject_Repr(SubClass<PyTypeObject>{(+o)->ob_type}));
         DUMP("input object reference count", reference_count(o));
-        DUMP("trying to convert object to ", t.name(), " ", from_unicode(+repr));
+        DUMP("trying to convert object to ", v.name(), " ", from_unicode(+repr));
         DUMP(bool(cast_if<Value>(o)));
     }
 
     if (auto p = cast_if<Value>(o)) {
-        DUMP("its a value");
-        // v = p->request(t);
-        return v.has_value();
+        DUMP("object_to_value Value");
+        return p->request_to(v);
     }
 
-    if (t.matches<TypeIndex>()) {
-        if (auto p = cast_if<TypeIndex>(o)) return v = *p, true;
+    if (v.matches<Index>()) {
+        if (auto p = cast_if<Index>(o)) return v.set_if(*p);
         else return false;
     }
 
-    if (t.equals<std::nullptr_t>()) {
+    if (v.matches<std::nullptr_t>()) {
+        DUMP("nullptr....");
         if (+o == Py_None) return v = nullptr, true;
     }
 
-    if (t.matches<Overload>()) {
+    if (v.matches<Overload>()) {
         DUMP("requested function");
-        if (+o == Py_None) v.emplace(Type<Overload>());
-        else if (auto p = cast_if<Overload>(o)) v = *p;
+        if (+o == Py_None) return v.place_if<Overload>();
+        else if (auto p = cast_if<Overload>(o)) v.set_if(*p);
         // general python function has no signature associated with it right now.
         // we could get them out via function.__annotations__ and process them into a tuple
-        else v.emplace(Type<Overload>(), Overload::from(PythonFunction({+o, true}, {Py_None, true})));
+        else v.set_if(Overload::from(PythonFunction({+o, true}, {Py_None, true})));
         return true;
     }
 
-    if (t.equals<Sequence>()) {
+    if (v.matches<Sequence>()) {
         if (PyTuple_Check(o) || PyList_Check(o)) {
             DUMP("making a Sequence");
-            Sequence &s = v.emplace(Type<Sequence>());
-            s.reserve(PyObject_Length(o));
-            map_iterable(o, [&](Object o) {s.emplace_back(std::move(o));});
+            if (auto s = v.place_if<Sequence>()) {
+                s->reserve(PyObject_Length(o));
+                map_iterable(o, [&](Object o) {s->emplace_back(std::move(o));});
+            }
             return true;
-        } else return false;
+        }
+        return false;
     }
 
-    if (t.equals<Real>())
-        return to_arithmetic<Real>(o, v);
+    if (v.matches<Real>())
+        return arithmetic_to_value<Real>(v, o);
 
-    if (t.equals<Integer>())
-        return to_arithmetic<Integer>(o, v);
+    if (v.matches<Integer>())
+        return arithmetic_to_value<Integer>(v, o);
 
-    if (t.equals<bool>()) {
+    if (v.matches<bool>()) {
         if ((+o)->ob_type == Py_None->ob_type) { // fix, doesnt work with Py_None...
             return v = false, true;
-        } else return to_arithmetic<bool>(o, v);
+        } else return arithmetic_to_value<bool>(v, o);
     }
 
-    if (t.equals<std::string_view>()) {
-        if (PyUnicode_Check(+o)) return v.emplace(Type<std::string_view>(), from_unicode(+o)), true;
-        if (PyBytes_Check(+o)) return v.emplace(Type<std::string_view>(), from_bytes(+o)), true;
+    if (v.matches<std::string_view>()) {
+        if (PyUnicode_Check(+o)) return v.place_if<std::string_view>(from_unicode(+o));
+        if (PyBytes_Check(+o)) return v.place_if<std::string_view>(from_bytes(+o));
         return false;
     }
 
-    if (t.equals<std::string>()) {
-        if (PyUnicode_Check(+o)) return v.emplace(Type<std::string>(), from_unicode(+o)), true;
-        if (PyBytes_Check(+o)) return v.emplace(Type<std::string>(), from_bytes(+o)), true;
+    if (v.matches<std::string>()) {
+        if (PyUnicode_Check(+o)) return v.place_if<std::string>(from_unicode(+o));
+        if (PyBytes_Check(+o)) return v.place_if<std::string>(from_bytes(+o));
         return false;
     }
 
-    if (t.equals<ArrayView>()) {
+    if (v.matches<ArrayView>()) {
         if (PyObject_CheckBuffer(+o)) {
             // Read in the shape but ignore strides, suboffsets
             DUMP("cast buffer", reference_count(o));
@@ -192,24 +194,25 @@ bool object_response(Value &v, TypeIndex t, Object o) {
                 DUMP("layout", lay, reference_count(o));
                 DUMP("depth", lay.depth());
                 ArrayData data{buff.view.buf, buff.view.format ? &Buffer::format(buff.view.format) : &typeid(void), !buff.view.readonly};
-                return v.emplace(Type<ArrayView>(), std::move(data), std::move(lay)), true;
-            } else throw python_error(type_error("C++: could not get buffer"));
+                return v.place_if<ArrayView>(std::move(data), std::move(lay));
+            } else throw python_error(type_error("C++: could not get buffer from Python obhect"));
         } else return false;
     }
 
-    if (t.equals<std::complex<double>>()) {
-        if (PyComplex_Check(+o)) return v.emplace(Type<std::complex<double>>(), PyComplex_RealAsDouble(+o), PyComplex_ImagAsDouble(+o)), true;
+    if (v.matches<std::complex<double>>()) {
+        if (PyComplex_Check(+o)) return v.place_if<std::complex<double>>(PyComplex_RealAsDouble(+o), PyComplex_ImagAsDouble(+o));
         return false;
     }
 
-    DUMP("requested ", v.index(), t);
+    DUMP("request failed for py::Object to ", v.index());
     return false;
 }
 
 /******************************************************************************/
 
-std::string get_type_name(TypeIndex idx) noexcept {
+std::string get_type_name(Index idx) noexcept {
     std::string out;
+#warning "not done"
     // auto it = type_names.find(idx);
     // if (it == type_names.end() || it->second.empty()) out = idx.name();
     // else out = it->second;
@@ -242,25 +245,17 @@ std::string wrong_type_message(WrongType const &e, std::string_view prefix) {
 
 Pointer pointer_from_object(Object &o) {
     if (auto p = cast_if<Overload>(o)) {
-        return Pointer::from(*p);
-    } else if (auto p = cast_if<TypeIndex>(o)) {
-        return Pointer::from(*p);
+        return Pointer(*p);
+    } else if (auto p = cast_if<Index>(o)) {
+        return Pointer(*p);
     } else if (auto p = cast_if<Value>(o)) {
-        return Pointer::from(*p);
+        return Pointer(*p);
     } else if (auto p = cast_if<Pointer>(o)) {
         return *p;
     } else {
-        return Pointer::from(o);
+        return Pointer(o);
     }
 }
-
-/******************************************************************************/
-
-// Store the objects in args in pack
-// void args_from_python(Arguments &v, Vector<Object> const &args) {
-//     v.reserve(v.size() + PyObject_Length(+args));
-//     map_iterable(args, [&v](Object o) {v.emplace_back(pointer_from_object(std::move(o)));});
-// }
 
 /******************************************************************************/
 

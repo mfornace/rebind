@@ -24,7 +24,7 @@ enum class ActionType : std::uint_fast8_t {destroy, copy, move, response, assign
 using ActionFunction = void(*)(ActionType, void *, VariableData *);
 
 struct RequestData {
-    TypeIndex type;
+    Index type;
     Dispatch *msg;
     Qualifier source;
 };
@@ -41,18 +41,18 @@ static_assert(std::is_trivially_destructible_v<RequestData>);
 
 /******************************************************************************/
 
-// static_assert(sizeof(std::type_info const *) == sizeof(TypeIndex));
-// static_assert(alignof(std::type_info const *) == alignof(TypeIndex));
+// static_assert(sizeof(std::type_info const *) == sizeof(Index));
+// static_assert(alignof(std::type_info const *) == alignof(Index));
 
 struct VariableData {
     Storage buff; //< Buffer holding either pointer to the object, or the object itself
     ActionFunction act; //< Action<T>::apply of the held object, or NULL
-    TypeIndex idx; //< type and qualifier of the held object, or NULL
+    Index idx; //< type and qualifier of the held object, or NULL
     bool stack; //< Whether the held type (non-reference) can fit in the buffer
 
     constexpr VariableData() noexcept : buff(), act(nullptr), stack(false) {}
 
-    VariableData(TypeIndex i, ActionFunction a, bool s) noexcept : buff(), idx(i), act(a), stack(s) {}
+    VariableData(Index i, ActionFunction a, bool s) noexcept : buff(), idx(i), act(a), stack(s) {}
 
     void reset_data() noexcept {
         if (!act) return;

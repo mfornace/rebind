@@ -29,13 +29,14 @@ def _render_module(pkg, doc, set_type_names):
     log.info('rendering classes and methods')
     out['types'] = {k: v for k, v in doc['contents'] if isinstance(v, tuple)}
     log.info(str(out['types']))
-    for k, (meth, data) in out['types'].items():
-        mod, cls = render_type(translate, pkg, (doc['Value'],), k, dict(meth))
+
+    for name, overloads in out['types'].items():
+        mod, cls = render_type(translate, pkg, (doc['Value'],), name, overloads)
         modules.add(mod)
         classes.add(cls)
-        cls._metadata_ = {k: v or None for k, v in data}
-        for k, v in data:
-            config.set_type(k, cls)
+        # cls._metadata_ = {k: v or None for k, v in data}
+        # for k, v in data:
+        #     config.set_type(k, cls)
 
     # put type names if desired
     if set_type_names:
@@ -132,7 +133,7 @@ def find_class(mod, name):
 
 ################################################################################
 
-def render_type(translate, pkg: str, bases: tuple, name: str, methods):
+def render_type(translate, pkg: str, bases: tuple, name: str, overloads):
     '''Define a new type in pkg'''
     mod, name = common.split_module(pkg, name)
     old_cls, props = find_class(mod, name)
@@ -140,6 +141,11 @@ def render_type(translate, pkg: str, bases: tuple, name: str, methods):
     new = props.pop('__new__', None)
     if callable(new):
         log.warning('{}.{}.__new__ will not be rendered'.format(pkg, name))
+
+    # print('**********')
+    methods, data = overloads[0]
+    methods = dict(methods)
+    print(methods)
     methods['__init__'] = render_init(methods.pop('new', None))
 
     for k, v in methods.items():

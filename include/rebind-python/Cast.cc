@@ -53,12 +53,12 @@ Object tuple_cast(Pointer const &ref, Object const &o, Object const &root) {
             Object vt{PyTuple_GET_ITEM(+args, 0), true};
             auto tup = Object::from(PyTuple_New(v.size()));
             for (Py_ssize_t i = 0; i != v.size(); ++i)
-                if (!set_tuple_item(tup, i, python_cast(Pointer::from(std::move(v[i])), vt, root))) return {};
+                if (!set_tuple_item(tup, i, python_cast(Pointer(std::move(v[i])), vt, root))) return {};
             return tup;
         } else if (len == v.size()) {
             auto tup = Object::from(PyTuple_New(len));
             for (Py_ssize_t i = 0; i != len; ++i)
-                if (!set_tuple_item(tup, i, python_cast(Pointer::from(std::move(v[i])), {PyTuple_GET_ITEM(+args, i), true}, root))) return {};
+                if (!set_tuple_item(tup, i, python_cast(Pointer(std::move(v[i])), {PyTuple_GET_ITEM(+args, i), true}, root))) return {};
             return tup;
         }
     }
@@ -76,7 +76,7 @@ Object dict_cast(Pointer const &ref, Object const &o, Object const &root) {
                 auto out = Object::from(PyDict_New());
                 for (auto &x : *v) {
                     Object k = as_object(x.first);
-                    Object v = python_cast(Pointer::from(std::move(x.second)), val, root);
+                    Object v = python_cast(Pointer(std::move(x.second)), val, root);
                     if (!k || !v || PyDict_SetItem(out, k, v)) return {};
                 }
                 return out;
@@ -86,8 +86,8 @@ Object dict_cast(Pointer const &ref, Object const &o, Object const &root) {
         if (auto v = ref.request<Vector<std::pair<Value, Value>>>()) {
             auto out = Object::from(PyDict_New());
             for (auto &x : *v) {
-                Object k = python_cast(Pointer::from(std::move(x.first)), key, root);
-                Object v = python_cast(Pointer::from(std::move(x.second)), val, root);
+                Object k = python_cast(Pointer(std::move(x.first)), key, root);
+                Object v = python_cast(Pointer(std::move(x.second)), val, root);
                 if (!k || !v || PyDict_SetItem(out, k, v)) return {};
             }
             return out;
@@ -151,7 +151,7 @@ Object bytes_cast(Pointer const &ref) {
 }
 
 Object type_index_cast(Pointer const &ref) {
-    if (auto p = ref.request<TypeIndex>()) return as_object(std::move(*p));
+    if (auto p = ref.request<Index>()) return as_object(std::move(*p));
     else return {};
 }
 
@@ -214,7 +214,7 @@ Object union_cast(Pointer const &v, Object const &t, Object const &root) {
 
 // Convert C++ Value to a requested Python type
 // First explicit types are checked:
-// None, object, bool, int, float, str, bytes, TypeIndex, list, tuple, dict, Value, Overload, memoryview
+// None, object, bool, int, float, str, bytes, Index, list, tuple, dict, Value, Overload, memoryview
 // Then, the output_conversions map is queried for Python function callable with the Value
 Object try_python_cast(Pointer const &v, Object const &t, Object const &root) {
     DUMP("try_python_cast ", v.index());
@@ -232,14 +232,15 @@ Object try_python_cast(Pointer const &v, Object const &t, Object const &root) {
         else if (type == &PyBytes_Type)                       return bytes_cast(std::move(v));               // bytes
         else if (type == &PyBaseObject_Type)                  return as_deduced_object(std::move(v));        // object
         else if (is_subclass(type, type_object<Value>()))     return value_to_object(std::move(v), t);            // Value
-        else if (type == type_object<TypeIndex>())            return type_index_cast(std::move(v));          // type(TypeIndex)
+        else if (type == type_object<Index>())            return type_index_cast(std::move(v));          // type(Index)
         else if (type == type_object<Overload>())             return function_cast(std::move(v));            // Overload
         else if (is_subclass(type, &PyFunction_Type))         return function_cast(std::move(v));            // Overload
         else if (type == &PyMemoryView_Type)                  return memoryview_cast(std::move(v), root);    // memory_view
     } else {
         DUMP("Not type and not in translations");
-        if (auto p = cast_if<TypeIndex>(t)) { // TypeIndex
-            // if (auto var = std::move(v).request_value(*p))
+        if (auto p = cast_if<Index>(t)) { // Index
+#warning "need to add custom conversions"
+            // if (auto var = std::move(v).request_to(*p))
             //     return value_to_object(std::move(var));
             std::string c1 = v.index().name(), c2 = p->name();
             return type_error("could not convert object of type %s to type %s", c1.data(), c2.data());

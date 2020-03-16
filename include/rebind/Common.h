@@ -9,11 +9,17 @@
 
 namespace rebind {
 
+/******************************************************************************/
+
 namespace runtime {
     char const * unknown_exception_description() noexcept;
 }
 
+/******************************************************************************/
+
 extern bool Debug;
+
+/******************************************************************************/
 
 template <class From, class To> struct copy_qualifier_t {using type = To;};
 template <class From, class To> struct copy_qualifier_t<From &, To> {using type = To &;};
@@ -24,6 +30,7 @@ template <class From, class To> using copy_qualifier = typename copy_qualifier_t
 
 /******************************************************************************/
 
+/// For debugging purposes
 template <class ...Ts>
 void dump(char const *s, int n, Ts const &...ts) {
     if (!Debug) return;
@@ -36,7 +43,14 @@ void dump(char const *s, int n, Ts const &...ts) {
 
 /// To avoid template type deduction on a given parameter
 template <class T>
-struct SameType {using type=T;};
+struct SameType {using type = T;};
+
+/******************************************************************************/
+
+struct Ignore {
+    template <class ...Ts>
+    Ignore(Ts const &...ts) {}
+};
 
 /******************************************************************************/
 

@@ -7,7 +7,7 @@
 #include "Object.h"
 
 #include <rebind/Document.h>
-#include <rebind/Arrays.h>
+#include <rebind/types/Arrays.h>
 
 #include <mutex>
 #include <unordered_map>
@@ -15,13 +15,13 @@
 
 namespace rebind::py {
 
-extern std::unordered_map<TypeIndex, std::string> type_names;
+extern std::unordered_map<Index, std::string> type_names;
 
 extern Object TypeError, UnionType;
 
 extern std::unordered_map<Object, Object> output_conversions, input_conversions, type_translations;
 
-extern std::unordered_map<TypeIndex, Object> python_types;
+extern std::unordered_map<Index, Object> python_types;
 
 /******************************************************************************/
 
@@ -56,33 +56,9 @@ Pointer pointer_from_object(Object &o);
 
 void args_from_python(Arguments &s, Object const &pypack);
 
-bool object_response(Value &v, TypeIndex t, Object o);
+bool object_response(Value &v, Index t, Object o);
 
 std::string_view from_unicode(PyObject *o);
-
-// template <>
-// struct Response<Object, Value> {
-//     bool operator()(Value &v, TypeIndex t, Object o) const {
-//         DUMP("trying to get reference from unqualified Object", t);
-//         if (!o) return false;
-//         DUMP("ref1", reference_count(o));
-//         Object type = Object(reinterpret_cast<PyObject *>((+o)->ob_type), true);
-//         if (auto p = input_conversions.find(type); p != input_conversions.end()) {
-//             Object guard(+o, false); // PyObject_CallFunctionObjArgs increments reference
-//             o = Object::from(PyObject_CallFunctionObjArgs(+p->second, +o, nullptr));
-//             type = Object(reinterpret_cast<PyObject *>((+o)->ob_type), true);
-//         }
-//         DUMP("ref2", reference_count(o));
-//         bool ok = object_response(v, t, std::move(o));
-//         DUMP("got response from object", ok);
-//         if (!ok) { // put diagnostic for the source type
-//             auto o = Object::from(PyObject_Repr(+type));
-//             DUMP("setting object error description", from_unicode(o));
-//             v = {Type<std::string>(), from_unicode(o)};
-//         }
-//         return ok;
-//     }
-// };
 
 /******************************************************************************/
 
@@ -120,6 +96,7 @@ inline Object args_to_python(Sequence &&s, Object const &sig={}) {
             throw python_error(type_error("conversion to python signature not implemented yet"));
         } else {
             // special case: if given an rvalue reference, make it into a value
+#warning "need to add rvalue thing"
             // Value &&var = v.qualifier() == Rvalue ? v.copy() : std::move(v);
             if (!set_tuple_item(out, i, value_to_object(std::move(v)))) return {};
         }
@@ -207,7 +184,7 @@ struct PythonFunction {
 
 /******************************************************************************/
 
-std::string get_type_name(TypeIndex idx) noexcept;
+std::string get_type_name(Index idx) noexcept;
 
 std::string wrong_type_message(WrongType const &e, std::string_view={});
 
@@ -239,7 +216,6 @@ PyObject *raw_object(F &&f) noexcept {
     return nullptr;
 }
 
-/******************************************************************************/
-
 }
 
+/******************************************************************************/

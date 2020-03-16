@@ -1,6 +1,6 @@
 #pragma once
 #include "Signature.h"
-#include "BasicTypes.h"
+#include "types/Core.h"
 #include <functional>
 #include <stdexcept>
 
@@ -17,7 +17,7 @@ void opaque_invoke(Out &out, F const &f, Ts &&... ts) {
     if constexpr(std::is_same_v<void, O>) {
         std::invoke(f, static_cast<Ts &&>(ts)...);
     } else {
-        out = Out::from(std::invoke(f, static_cast<Ts &&>(ts)...));
+        out.set(std::invoke(f, static_cast<Ts &&>(ts)...));
     }
 }
 
@@ -59,21 +59,6 @@ Pack<decltype(*simplify_argument(Type<Ts>()))...> simplify_signature(Pack<Ts...>
 template <class F>
 using SimpleSignature = decltype(simplify_signature(Signature<F>()));
 
-template <int N, class R, class ...Ts, std::enable_if_t<N == 1, int> = 0>
-Pack<Ts...> skip_head(Pack<R, Ts...>);
-
-template <int N, class R, class C, class ...Ts, std::enable_if_t<N == 2, int> = 0>
-Pack<Ts...> skip_head(Pack<R, C, Ts...>);
-
-template <class R, class ...Ts>
-R head(Pack<R, Ts...>);
-
-template <class C, class R>
-std::false_type has_head(Pack<R>);
-
-template <class C, class R, class T, class ...Ts>
-std::is_convertible<T, C> has_head(Pack<R, T, Ts...>);
-
 /******************************************************************************/
 
 // template <class F>
@@ -97,13 +82,13 @@ template <class F, class SFINAE>
 struct Adapter<0, F, SFINAE> {
     F function;
     using Signature = SimpleSignature<F>;
-    using Return = decltype(head(Signature()));
-    using UseCaller = decltype(has_head<Caller>(Signature()));
-    using Args = decltype(skip_head<1 + int(UseCaller::value)>(Signature()));
+    using Return = decltype(first_type(Signature()));
+    using UseCaller = decltype(second_is_convertible<Caller>(Signature()));
+    using Args = decltype(without_first_types<1 + int(UseCaller::value)>(Signature()));
 
     template <class Out>
-    bool call(Caller &&c, Out &out, Arguments const &args) const {
-        auto frame = c();
+    bool call(Caller &&caller, Out &out, Arguments const &args) const {
+        auto frame = caller();
         Caller handle(frame);
         Scope s(handle);
 
@@ -113,6 +98,13 @@ struct Adapter<0, F, SFINAE> {
         });
     }
 
+    /*
+     Interface implementation for a function with no optional arguments.
+     - Caller is assumed non-null
+     - One of Value and Pointer should be non-null--it will be set to the function output
+     - Throws WrongNumber if args is not the right length
+     - Always returns true
+     */
     bool operator()(Caller *c, Value *v, Pointer *p, Arguments const &args) const {
         DUMP("Adapter<", type_index<F>(), ">::()");
 
@@ -135,9 +127,9 @@ template <std::size_t N, class F, class SFINAE>
 struct Adapter {
     F function;
     using Signature = SimpleSignature<F>;
-    using Return = decltype(head(Signature()));
-    using UsesCaller = decltype(has_head<Caller>(Signature()));
-    using Args = decltype(skip_head<1 + int(UsesCaller::value)>(Signature()));
+    using Return = decltype(first_type(Signature()));
+    using UsesCaller = decltype(second_is_convertible<Caller>(Signature()));
+    using Args = decltype(without_first_types<1 + int(UsesCaller::value)>(Signature()));
 
     template <class P, class Out>
     bool call_one(P, Out &out, Caller &c, Scope &s, Arguments const &args) const {
@@ -194,19 +186,20 @@ struct Adapter<0, R C::*, std::enable_if_t<std::is_member_object_pointer_v<R C::
     R C::* function;
 
     template <class Out>
-    bool call(Caller &&c, Out &out, Pointer const &self) const {
-        auto frame = c();
+    bool call(Caller &&caller, Out &out, Pointer const &self) const {
+        auto frame = caller();
         DUMP("Adapter<", type_index<R>(), ", ", type_index<C>(), ">::()");
         Caller handle(frame);
         Scope s(handle);
 
-        if (auto p = self.request_reference<C &&>()) {
-            return out = Out::from(std::move(*p)), true;
-        } else if (auto p = self.request_reference<C &>()) {
-            return out = Out::from(*p), true;
-        } else if (auto p = self.request_reference<C const &>()) {
-            return out = Out::from(*p), true;
+        if (auto p = self.request<C &&>()) {
+            return out.set(std::move(*p)), true;
+        } else if (auto p = self.request<C &>()) {
+            return out.set(*p), true;
+        } else if (auto p = self.request<C const &>()) {
+            return out.set(*p), true;
         }
+#warning "not sure on method thing here"
         // else if (auto p = self.request_value<C>()) { }
         throw std::move(s.set_error("invalid argument"));
     }

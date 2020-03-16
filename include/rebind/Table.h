@@ -43,18 +43,31 @@ class Scope;
 
 
 struct TypeTable {
-    TypeIndex index;
+    Index index;
+    // Destructor function pointer
     void (*m_destroy)(void*) noexcept = nullptr;
-    bool (*m_relocate)(void*, void*, unsigned short, unsigned short) noexcept = nullptr; // either relocate the object to the void*, or ...
-    void* (*m_copy)(void const*) = nullptr;
-    Value (*m_response)(void*, Qualifier, TypeIndex) = nullptr;
-    Value (*m_request)(Scope& s, Pointer const&) = nullptr;
+    // Relocate function pointer
+    bool (*m_relocate)(void *, void *, unsigned short, unsigned short) noexcept = nullptr; // either relocate the object to the void*, or ...
+    // Copy function pointer
+    void* (*m_copy)(void const *) = nullptr;
+    // ToValue function pointer
+    bool (*m_to_value)(Value &, void *, Qualifier) = nullptr;
+    // ToValue function pointer
+    void (*m_to_pointer)(Pointer &, void *, Qualifier) = nullptr;
+    // FromPointer function pointer
+    Value (*m_from_pointer)(Pointer const &, Scope &) = nullptr;
 
+    // Output name
     std::string m_name;
     std::array<std::string, 3> qualified_names;
 
-    std::vector<TypeIndex> bases;
+    // List of base classes that this type can be cast into
+    Vector<Index> bases;
+
+    // List of methods on this class
     std::map<std::string, Function> methods;
+
+    /**************************************************************************************/
 
     std::string const& name() const noexcept {return m_name;}
 
@@ -65,7 +78,7 @@ struct TypeTable {
         m_destroy(p);
     }
 
-    bool has_base(TypeIndex const &idx) const noexcept {
+    bool has_base(Index const &idx) const noexcept {
         for (auto const &i : bases) if (idx == i) return true;
         return false;
     }
@@ -91,12 +104,6 @@ struct Table {
     constexpr bool operator!=(Table t) const {return ptr != t.ptr;}
     constexpr operator bool() const {return ptr;}
 };
-
-/******************************************************************************************/
-
-// struct Table : Overloaded<Table> {
-//     using Overloaded<Table>::Overloaded;
-// };
 
 /******************************************************************************************/
 
@@ -126,10 +133,13 @@ bool default_relocate(void*out, void*p, unsigned short size, unsigned short alig
 }
 
 template <class T>
-Value default_response(void*, Qualifier, TypeIndex);
+bool default_to_value(Value &, void*, Qualifier const);
 
 template <class T>
-Value default_request(Scope &s, Pointer const &);
+void default_to_pointer(Pointer &, void*, Qualifier const);
+
+template <class T>
+Value default_from_pointer(Pointer const &, Scope &);
 
 /******************************************************************************************/
 
@@ -144,13 +154,15 @@ TypeTable default_table() {
     t.qualified_names = {
         t.m_name + QualifierSuffixes[Const].data(),
         t.m_name + QualifierSuffixes[Lvalue].data(),
-        t.m_name + QualifierSuffixes[Rvalue].data()};
+        t.m_name + QualifierSuffixes[Rvalue].data()
+    };
 
     t.m_copy = default_copy<T>;
     t.m_destroy = default_destroy<T>;
     t.m_relocate = default_relocate<T>;
-    t.m_response = default_response<T>;
-    t.m_request = default_request<T>;
+    t.m_to_value = default_to_value<T>;
+    t.m_to_pointer = default_to_pointer<T>;
+    t.m_from_pointer = default_from_pointer<T>;
     return t;
 }
 

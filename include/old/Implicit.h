@@ -24,12 +24,12 @@ bool implicit_match(Variable &out, Type<U>, TargetQualifier const q, T &&t) {
 }
 
 template <class U, class T>
-bool recurse_implicit(Variable &out, Type<U>, TypeIndex const &idx, TargetQualifier q, T &&t);
+bool recurse_implicit(Variable &out, Type<U>, Index const &idx, TargetQualifier q, T &&t);
 
 /******************************************************************************/
 
 template <class T>
-bool implicit_response(Variable &out, TypeIndex const &idx, TargetQualifier q, T &&t) {
+bool implicit_response(Variable &out, Index const &idx, TargetQualifier q, T &&t) {
     DUMP("implicit_response", typeid(Type<T &&>).name(), idx.name(), typeid(typename ImplicitConversions<std::decay_t<T>>::types).name(), q);
     return ImplicitConversions<std::decay_t<T>>::types::apply([&](auto ...ts) {
         static_assert((!decltype(is_same(+Type<T>(), +ts))::value && ...), "Implicit conversion creates a cycle");
@@ -39,7 +39,7 @@ bool implicit_response(Variable &out, TypeIndex const &idx, TargetQualifier q, T
 }
 
 template <class U, class T>
-bool recurse_implicit(Variable &out, Type<U>, TypeIndex const &idx, TargetQualifier q, T &&t) {
+bool recurse_implicit(Variable &out, Type<U>, Index const &idx, TargetQualifier q, T &&t) {
     if constexpr(std::is_convertible_v<T &&, U &&>)
         return implicit_response(out, idx, q, static_cast<U &&>(t));
     else if constexpr(std::is_convertible_v<T &&, U &>)

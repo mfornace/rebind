@@ -1,5 +1,5 @@
 use capi;
-use capi::TypeIndex;
+use capi::Index;
 
 /******************************************************************************/
 
@@ -12,7 +12,7 @@ impl Variable {
         Variable{ptr: unsafe {capi::rebind_variable_new()}}
     }
 
-    pub fn index(&self) -> TypeIndex {
+    pub fn index(&self) -> Index {
         unsafe {capi::rebind_variable_type(self.ptr)}
     }
 }

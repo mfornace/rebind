@@ -1,9 +1,9 @@
 
-## `Request` for defining how to make your object from an opaque `Pointer`
+## `FromPointer` for defining how to make your object from an opaque `Pointer`
 
 ```c++
 template <class T, class SFINAE=void> // T is qualified
-struct Request {
+struct FromPointer {
     /// Convert variable `r` into type `T`, log failures in Scope
     /// OUT is either T *, T const *, or std::optional<T>
     std::optional<T> operator()(Pointer const &, Scope &) const;
@@ -14,34 +14,35 @@ struct Request {
 ```
 
 
-## `Response` for defining what `Value` your object can be converted to
+## `ToValue` for defining what `Value` your object can be converted to
 
 ```c++
 template <class T, class SFINAE=void> // T is unqualified
-struct Response {
-
-    /// Convert `t` into type `(idx, Q)`, put it in the Value, and return if conversion took place
-    Value operator()(TypeIndex const &, T &) const;
-    Value operator()(TypeIndex const &, T const &) const;
-    Value operator()(TypeIndex const &, T &&) const;
+struct ToValue {
+   /// Define these if needed, though it's often not necessary
+    bool operator()(Value &, T &) const;
+    bool operator()(Value &, T const &) const;
+    bool operator()(Value &, T &&) const;
 
     /// Return if conversion is possible
-    bool operator()(TypeIndex const &, Qualifier, T const &t) const;
+    // bool operator()(Index const &, Qualifier, T const &t) const;
 };
 ```
 
-<!-- ### Reference variant
+### Reference variant
+
+Names: Pointer, Reference, Handle
 
 ```c++
 template <class T, class SFINAE=void> // T is unqualified
-struct RefResponse {
+struct ToPointer {
 
     /// Convert `t` into type `(idx, Q)`, put it in the Value, and return if conversion took place
-    Pointer operator()(TypeIndex const &, Qualifier, T &) const;
-    Pointer operator()(TypeIndex const &, Qualifier, T const &) const;
-    Pointer operator()(TypeIndex const &, Qualifier, T &&) const;
+    bool operator()(Pointer &, T &) const;
+    bool operator()(Pointer &, T const &) const;
+    bool operator()(Pointer &, T &&) const;
 
     // cheap, no need
-    // bool operator()(TypeIndex const &idx, T const &t, Qualifier q) const;
+    // bool operator()(Index const &idx, T const &t, Qualifier q) const;
 };
-``` -->
+```

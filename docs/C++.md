@@ -1,34 +1,34 @@
 
 ## User conversions
 
-### Request
+### FromPointer
 
-`Request` converts a `Variable` to type `T`. It returns a null object if this is impossible. To specify more information on an error, call `msg.error(...)`.
+`FromPointer` converts a `Variable` to type `T`. It returns a null object if this is impossible. To specify more information on an error, call `msg.error(...)`.
 
 In this case `T` may be a reference type. In the below, read `return_type` as:
-- `T *` for `Request<T &>`
-- `T *` for `Request<T &&>`
-- `T const *` for `Request<T const &>`
-- `std::optional<T>` for `Request<T>`
+- `T *` for `FromPointer<T &>`
+- `T *` for `FromPointer<T &&>`
+- `T const *` for `FromPointer<T const &>`
+- `std::optional<T>` for `FromPointer<T>`
 
 
 ```c++
 template <class T, class SFINAE=void>
-struct Request {
+struct FromPointer {
     /* Mandatory */ return_type operator()(Variable const &r, Dispatch &msg);
     /* Optional  */ return_type operator()(Variable &&r, Dispatch &msg);
 };
 ```
 
-### Response
+### ToValue
 
-`Response<T>` converts type `T` into a `Variable` holding the requested type `idx`. If the conversion is impossible, it does nothing. In this case, `T` is always a non-reference type.
+`ToValue<T>` converts type `T` into a `Variable` holding the requested type `idx`. If the conversion is impossible, it does nothing. In this case, `T` is always a non-reference type.
 
 ```c++
 template <class T, class SFINAE=void>
-struct Response {
-    /* Mandatory */ void operator()(Variable &out, TypeIndex idx, T const &t);
-    /* Optional  */ void operator()(Variable &out, TypeIndex idx, T &&t);
+struct ToValue {
+    /* Mandatory */ void operator()(Variable &out, Index idx, T const &t);
+    /* Optional  */ void operator()(Variable &out, Index idx, T &&t);
 };
 ```
 
@@ -107,21 +107,21 @@ Variable reference() &&;
 
 ### Conversions
 
-Request any type T by non-custom conversions
+FromPointer any type T by non-custom conversions
 ```c++
 Variable request_variable(Dispatch &msg, std::type_index const, Qualifier q=Value) const;
 ```
 
-Request reference T by custom conversions
+FromPointer reference T by custom conversions
 ```c++
 template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
-std::remove_reference_t<T> *request(Dispatch &msg={}, Type<T> t={}) const;
+std::remove_reference_t<T> *from_pointer(Dispatch &msg={}, Type<T> t={}) const;
 
 template <class T, std::enable_if_t<!std::is_reference_v<T>, int> = 0>
-std::optional<T> request(Dispatch &msg={}, Type<T> t={}) const;
+std::optional<T> from_pointer(Dispatch &msg={}, Type<T> t={}) const;
 ```
 
-Request non-reference T by custom conversions
+FromPointer non-reference T by custom conversions
 ```c++
 template <class T>
 T downcast(Dispatch &msg={}, Type<T> t={}) const;

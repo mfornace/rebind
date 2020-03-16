@@ -1,8 +1,8 @@
 #pragma once
 #include "Wrap.h"
 #include "API.h"
-#include <rebind/BasicTypes.h>
-#include <rebind/Arrays.h>
+#include <rebind/types/Core.h>
+#include <rebind/types/Arrays.h>
 #include <rebind/Function.h>
 
 namespace rebind::py {
@@ -30,7 +30,7 @@ Object default_object(T t) {
     return o;
 }
 
-inline Object as_object(TypeIndex t) {return default_object(std::move(t));}
+inline Object as_object(Index t) {return default_object(std::move(t));}
 inline Object as_object(Function t) {return default_object(std::move(t));}
 
 /// Source driven conversion: guess the correct Python type from the source type
@@ -45,7 +45,7 @@ inline Object as_deduced_object(Value &&ref) {
     if (auto v = ref.request<std::string_view>()) return as_object(std::move(*v));
     if (auto v = ref.request<std::string>())      return as_object(std::move(*v));
     if (auto v = ref.request<Function>())         return as_object(std::move(*v));
-    if (auto v = ref.request<TypeIndex>())  return as_object(std::move(*v));
+    if (auto v = ref.request<Index>())            return as_object(std::move(*v));
     if (auto v = ref.request<Binary>())           return as_object(std::move(*v));
     if (auto v = ref.request<BinaryView>())       return as_object(std::move(*v));
     if (auto v = ref.request<Sequence>())

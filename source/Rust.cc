@@ -21,13 +21,13 @@ REBINDC(Value) * REBINDC(Value_copy)(REBINDC(Value) *v) {
     }
 }
 
-REBINDC(TypeIndex) REBINDC(Value_type)(REBINDC(Value) *v) {
-    // REBINDC(TypeIndex)[16] REBINDC(variable_type)(REBINDC(value) *v);
+REBINDC(Index) REBINDC(Value_type)(REBINDC(Value) *v) {
+    // REBINDC(Index)[16] REBINDC(variable_type)(REBINDC(value) *v);
     auto t = reinterpret_cast<rebind::Value const *>(v)->index();
-    static_assert(sizeof(t) == sizeof(REBINDC(TypeIndex)));
-    return reinterpret_cast<REBINDC(TypeIndex) const &>(t);
+    static_assert(sizeof(t) == sizeof(REBINDC(Index)));
+    return reinterpret_cast<REBINDC(Index) const &>(t);
 }
 
-char const * REBINDC(TypeIndex_name)(REBINDC(TypeIndex) v) {
-    return reinterpret_cast<rebind::TypeIndex const &>(v).info().name();
+char const * REBINDC(TypeIndex_name)(REBINDC(Index) v) {
+    return reinterpret_cast<rebind::Index const &>(v).info().name();
 }

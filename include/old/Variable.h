@@ -23,10 +23,10 @@ using TargetQualifier = Qualifier;
 /******************************************************************************/
 
 template <class SourceType, TargetQualifier Q=Value, class SFINAE=void>
-struct Response; // converts type T with qualifier Q into any qualified type
+struct ToValue; // converts type T with qualifier Q into any qualified type
 
 template <class TargetType, class SFINAE=void>
-struct Request; // makes type T, a qualified type, from a Variable
+struct FromPointer; // makes type T, a qualified type, from a Variable
 
 template <class T>
 struct Action;
@@ -34,8 +34,8 @@ struct Action;
 /******************************************************************************/
 
 class Variable : protected VariableData {
-    Variable(void *p, TypeIndex idx, ActionFunction act, bool s) noexcept
-        : VariableData(p ? idx : TypeIndex(), p ? act : nullptr, p && s)
+    Variable(void *p, Index idx, ActionFunction act, bool s) noexcept
+        : VariableData(p ? idx : Index(), p ? act : nullptr, p && s)
         {if (p) reinterpret_cast<void *&>(buff) = p;}
 
     Variable(Variable const &v, bool move) : VariableData(v) {
@@ -44,14 +44,14 @@ class Variable : protected VariableData {
         idx.set_qualifier(Value);
     }
 
-    Variable request_var(Dispatch &msg, TypeIndex const &, Qualifier source) const;
+    Variable request_var(Dispatch &msg, Index const &, Qualifier source) const;
 
 public:
 
     Qualifier qualifier() const {return idx.qualifier();}
     void const * data() const {return pointer();}
 
-    TypeIndex type() const {return idx;}
+    Index type() const {return idx;}
     ActionFunction action() const {return act;}
     bool is_stack_type() const {return stack;}
 
@@ -161,27 +161,27 @@ public:
     Variable reference() const & {return {pointer(), idx.add(Const), act, stack};}
     Variable reference() && {return {pointer(), idx.add(Rvalue), act, stack};}
 
-    Variable request_variable(Dispatch &msg, TypeIndex const &t) const & {return request_var(msg, t, add(qualifier(), Const));}
-    Variable request_variable(Dispatch &msg, TypeIndex const &t) & {return request_var(msg, t, add(qualifier(), Lvalue));}
-    Variable request_variable(Dispatch &msg, TypeIndex const &t) && {return request_var(msg, t, add(qualifier(), Rvalue));}
+    Variable request_variable(Dispatch &msg, Index const &t) const & {return request_var(msg, t, add(qualifier(), Const));}
+    Variable request_variable(Dispatch &msg, Index const &t) & {return request_var(msg, t, add(qualifier(), Lvalue));}
+    Variable request_variable(Dispatch &msg, Index const &t) && {return request_var(msg, t, add(qualifier(), Rvalue));}
 
     bool move_if_lvalue() {return idx.qualifier() == Lvalue ? idx.set_qualifier(Rvalue), true : false;}
 
     /**************************************************************************/
 
-    // request reference T by custom conversions
+    // from_pointer reference T by custom conversions
     template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
-    std::remove_reference_t<T> *request(Dispatch &msg, Type<T> t={}) const {
-        DUMP("Variable.request() ", typeid(Type<T>).name(), qualifier(), " from variable ", idx);
+    std::remove_reference_t<T> *from_pointer(Dispatch &msg, Type<T> t={}) const {
+        DUMP("Variable.from_pointer() ", typeid(Type<T>).name(), qualifier(), " from variable ", idx);
         if (idx.matches<T>()) return target<T>();
         auto v = request_variable(msg, type_index<T>());
         if (auto p = v.template target<T>()) {msg.source.clear(); return p;}
-        if (auto p = Request<T>()(*this, msg)) {msg.source.clear(); return p;}
+        if (auto p = FromPointer<T>()(*this, msg)) {msg.source.clear(); return p;}
         return nullptr;
     }
 
     template <class T, std::enable_if_t<!std::is_reference_v<T>, int> = 0>
-    std::optional<T> request(Dispatch &msg, Type<T> t={}) const {
+    std::optional<T> from_pointer(Dispatch &msg, Type<T> t={}) const {
         static_assert(std::is_same_v<T, unqualified<T>>);
         if constexpr(std::is_same_v<T, Variable>) return *this;
 
@@ -190,7 +190,7 @@ public:
         else {
             auto v = request_variable(msg, typeid(T));
             if (auto p = std::move(v).target<T &&>()) {msg.source.clear(); out.emplace(std::move(*p));}
-            else if ((out = Request<T>()(*this, msg))) msg.source.clear();
+            else if ((out = FromPointer<T>()(*this, msg))) msg.source.clear();
         }
         // DUMP(type(), p, &buff, reinterpret_cast<void * const &>(buff), stack, typeid(p).name(), typeid(Type<T>).name());
 
@@ -204,19 +204,19 @@ public:
 
     template <class T>
     T cast(Dispatch &msg, Type<T> t={}) const {
-        if (auto p = request(msg, t)) return static_cast<T>(*p);
+        if (auto p = from_pointer(msg, t)) return static_cast<T>(*p);
         throw std::move(msg).exception();
     }
 
-    // request non-reference T by custom conversions
+    // from_pointer non-reference T by custom conversions
     template <class T>
-    std::optional<T> request(Type<T> t={}) const {Dispatch msg; return request(msg, t);}
+    std::optional<T> from_pointer(Type<T> t={}) const {Dispatch msg; return from_pointer(msg, t);}
 
-    // request non-reference T by custom conversions
+    // from_pointer non-reference T by custom conversions
     template <class T>
     T cast(Type<T> t={}) const {
         Dispatch msg;
-        if (auto p = request(msg, t))
+        if (auto p = from_pointer(msg, t))
             return msg.storage.empty() ? static_cast<T>(*p) : throw std::runtime_error("contains temporaries");
         return cast(msg, t);
     }
@@ -247,17 +247,17 @@ public:
 void set_source(Dispatch &, std::type_info const &, Variable &&v);
 
 template <TargetQualifier Q, class T>
-bool get_response(Variable &out, TypeIndex const &target_type, T &&t) {
+bool get_response(Variable &out, Index const &target_type, T &&t) {
     DUMP("get_response: trying to get ", target_type, " from ", type_index<T &&>());
     if (target_type.matches<T>()) {
         DUMP("get_response: requested type matches held type");
         if constexpr(std::is_convertible_v<T &&, qualified<unqualified<T>, Q>>)
             return out = {Type<qualified<unqualified<T>, Q>>(), static_cast<T &&>(t)}, true;
     } else {
-        using R = Response<unqualified<T>, Q>;
-        DUMP("get_response: calling Response specialization ", type_index<R>());
-        // if constexpr(std::is_invocable_v<R, Variable &, TypeIndex &&, T &&>) {
-            // DUMP("get_response Response works", type_index<R>());
+        using R = ToValue<unqualified<T>, Q>;
+        DUMP("get_response: calling ToValue specialization ", type_index<R>());
+        // if constexpr(std::is_invocable_v<R, Variable &, Index &&, T &&>) {
+            // DUMP("get_response ToValue works", type_index<R>());
         bool ok = R()(out, target_type, static_cast<T &&>(t));
         DUMP("get_response: got result of type ", out.type());
         return ok;
@@ -268,7 +268,7 @@ bool get_response(Variable &out, TypeIndex const &target_type, T &&t) {
 
 /// Set out to a new variable with given qualifier dest and type idx from type T
 template <class T>
-bool get_response(Variable &out, TypeIndex const &target_type, T &&t) {
+bool get_response(Variable &out, Index const &target_type, T &&t) {
     DUMP("get_response: ", target_type, type_index<T &&>());
     // Switch on the runtime value of the qualifier to hit compile-time overloads
     switch (target_type.qualifier()) {
@@ -281,7 +281,7 @@ bool get_response(Variable &out, TypeIndex const &target_type, T &&t) {
 }
 
 template <class T>
-bool get_response(TypeIndex const &target_type, T &&t) {
+bool get_response(Index const &target_type, T &&t) {
     Variable out;
     return get_response(out, target_type, static_cast<T &&>(t));
 }
@@ -329,7 +329,7 @@ struct Action {
         } else if (a == ActionType::assign) { // Assign from another variable
             // DUMP("assign", v->idx.name(), typeid(T).name(), v->qual);
             if constexpr(std::is_move_assignable_v<T>) {
-                if (auto r = reinterpret_cast<Variable &&>(*v).request<T>()) {
+                if (auto r = reinterpret_cast<Variable &&>(*v).from_pointer<T>()) {
                     // DUMP("got the assignable", v->idx.name(), typeid(T).name(), v->qual, typeid(T).name());
                     *static_cast<T *>(p) = std::move(*r);
                     reinterpret_cast<Variable &>(*v).reset(); // signifies that assignment took place

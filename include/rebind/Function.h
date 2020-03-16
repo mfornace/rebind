@@ -22,9 +22,10 @@ namespace rebind {
 
 /******************************************************************************/
 
+// A single (non-ambiguous) callable object
 struct Overload {
     FunctionImpl impl;
-    ErasedSignature signature;
+    ErasedSignature signature; // not sure this is useful
 
     Overload() = default;
 
@@ -61,7 +62,7 @@ struct Overload {
 
     Value call_value(Caller c, Arguments const &v) const {
         DUMP("call_value ", v.size());
-        for (auto &&p: v) {DUMP(p.name(), " ", p.index());}
+        for (auto &&p: v) {DUMP("call_value argument", p.name(), " ", p.index(), " ", p.qualifier());}
         Value out;
         impl(&c, &out, nullptr, v);
         return out;
@@ -72,19 +73,20 @@ struct Overload {
         impl(&c, nullptr, &out, v);
         return out;
     }
-    //     Arguments v;
-    //     v.reserve(sizeof...(Ts));
-    //     (v.emplace_back(static_cast<Ts &&>(ts)), ...);
 };
 
 /******************************************************************************/
 
+// A list of at least one overload
+// A bit of optimization is used since commonly only one overload will be used
+// No other API is currently provided here
+// The user is expected to disambiguate the overloading if needed
 struct Function {
     Overload first;
     Vector<Overload> rest;
 
     Function() = default;
-    Function(Overload fun) : first(fun) {}
+    Function(Overload fun) : first(std::move(fun)) {}
 
     template <class F>
     void visit(F &&f) const {
@@ -219,21 +221,21 @@ Streamable<T> streamable(Type<T> t={}) {return {};}
 /******************************************************************************/
 
 // template <class R>
-// struct Request<Callback<R>> {
+// struct FromPointer<Callback<R>> {
 //     std::optional<Callback<R>> operator()(Pointer const &v, Scope &msg) const {
 //         if (!msg.caller) msg.error("Calling context expired", typeid(Callback<R>));
-//         else if (auto p = v.request<Overload>(msg)) return Callback<R>{std::move(*p), msg.caller};
+//         else if (auto p = v.from_pointer<Overload>(msg)) return Callback<R>{std::move(*p), msg.caller};
 //         return {};
 //     }
 // };
 
 
 // template <class R, class ...Ts>
-// struct Request<AnnotatedCallback<R, Ts...>> {
+// struct FromPointer<AnnotatedCallback<R, Ts...>> {
 //     using type = AnnotatedCallback<R, Ts...>;
 //     std::optional<type> operator()(Variable const &v, Scope &msg) const {
 //         if (!msg.caller) msg.error("Calling context expired", typeid(type));
-//         else if (auto p = v.request<Overload>(msg)) return type{std::move(*p), msg.caller};
+//         else if (auto p = v.from_pointer<Overload>(msg)) return type{std::move(*p), msg.caller};
 //         return {};
 //     }
 // };

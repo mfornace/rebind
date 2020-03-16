@@ -1,4 +1,6 @@
 #pragma once
+#include "../Value.h"
+#include "../Conversions.h"
 
 namespace rebind {
 
@@ -49,6 +51,7 @@ struct ArrayLayout {
 
     bool column_major() const {return array_major(contents.begin(), contents.end());}
     bool row_major() const {return array_major(contents.rbegin(), contents.rend());}
+    bool contiguous() const;
 
     /// Number of dimensions
     std::size_t depth() const {return contents.size();}
@@ -122,23 +125,23 @@ public:
     operator BinaryView() const {return {m_begin, size()};}
 };
 
+/******************************************************************************/
+
 template <>
-struct Response<BinaryData> {
-    Value operator()(TypeIndex const &t, BinaryData const &v) const {
-        if (t.equals<BinaryView>()) return Value::from<BinaryView>(v.begin(), v.size());
-        return {};
+struct ToValue<BinaryData> {
+    bool operator()(Value &v, BinaryData const &t) const {
+        if (v.matches<BinaryView>()) return v.place_if<BinaryView>(t.begin(), t.size());
+        return false;
     }
 };
 
 template <>
-struct Response<BinaryView> {
-    Value operator()(TypeIndex const &, BinaryView const &v) const {
-        return {};
-    }
+struct ToValue<BinaryView> {
+    bool operator()(Value &, BinaryView const &v) const {return false;}
 };
 
 template <>
-struct Request<BinaryView> {
+struct FromPointer<BinaryView> {
     std::optional<BinaryView> operator()(Pointer const &v, Scope &s) const {
         if (auto p = v.request<BinaryData>()) return BinaryView(p->data(), p->size());
         return s.error("not convertible to binary view", typeid(BinaryView));
@@ -146,7 +149,7 @@ struct Request<BinaryView> {
 };
 
 template <>
-struct Request<BinaryData> {
+struct FromPointer<BinaryData> {
     std::optional<BinaryData> operator()(Pointer const &v, Scope &s) const {
         return s.error("not convertible to binary data", typeid(BinaryData));
     }

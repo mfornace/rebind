@@ -67,16 +67,16 @@ struct IndexedType {
 
 extern std::function<std::string(char const *)> demangle;
 
-class TypeIndex {
+class Index {
     std::type_info const *p = nullptr;
 
 public:
 
-    constexpr TypeIndex() noexcept = default;
-    constexpr TypeIndex(std::type_info const &t) noexcept : p(&t) {}
+    constexpr Index() noexcept = default;
+    constexpr Index(std::type_info const &t) noexcept : p(&t) {}
 
     template <class T>
-    TypeIndex(Type<T>) noexcept : p(&typeid(T)) {}
+    Index(Type<T>) noexcept : p(&typeid(T)) {}
 
     /**************************************************************************************/
 
@@ -94,7 +94,7 @@ public:
     bool matches(Type<T> t={}) const noexcept {return p && typeid(T) == *p;}
 
     /// Test if this type equals another one, but ignoring all qualifiers
-    bool matches(TypeIndex const &t) const noexcept {return p == t.p;}
+    bool matches(Index const &t) const noexcept {return p == t.p;}
 
     /// Test if this type equals a type, including qualifiers
     template <class T>
@@ -104,18 +104,18 @@ public:
 
     /**************************************************************************************/
 
-    constexpr bool operator==(TypeIndex const &t) const {return p == t.p;}
-    constexpr bool operator!=(TypeIndex const &t) const {return p != t.p;}
-    constexpr bool operator<(TypeIndex const &t) const {return p < t.p;}
-    constexpr bool operator>(TypeIndex const &t) const {return p > t.p;}
-    constexpr bool operator<=(TypeIndex const &t) const {return p <= t.p;}
-    constexpr bool operator>=(TypeIndex const &t) const {return p >= t.p;}
+    constexpr bool operator==(Index const &t) const {return p == t.p;}
+    constexpr bool operator!=(Index const &t) const {return p != t.p;}
+    constexpr bool operator<(Index const &t) const {return p < t.p;}
+    constexpr bool operator>(Index const &t) const {return p > t.p;}
+    constexpr bool operator<=(Index const &t) const {return p <= t.p;}
+    constexpr bool operator>=(Index const &t) const {return p >= t.p;}
 };
 
-inline std::ostream & operator<<(std::ostream &os, TypeIndex t) {return os << t.name();}
+inline std::ostream & operator<<(std::ostream &os, Index t) {return os << t.name();}
 
 template <class T>
-constexpr TypeIndex type_index(Type<T> t={}) {return t;}
+constexpr Index type_index(Type<T> t={}) {return t;}
 
 /******************************************************************************************/
 
@@ -124,8 +124,8 @@ constexpr TypeIndex type_index(Type<T> t={}) {return t;}
 namespace std {
 
 template <>
-struct hash<rebind::TypeIndex> {
-    size_t operator()(rebind::TypeIndex const &t) const {return t.hash_code();}
+struct hash<rebind::Index> {
+    size_t operator()(rebind::Index const &t) const {return t.hash_code();}
 };
 
 }

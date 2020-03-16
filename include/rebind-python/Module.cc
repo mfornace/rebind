@@ -21,6 +21,7 @@
 
 #include "Var.cc"
 #include "Function.cc"
+#include "Index.cc"
 
 namespace rebind::py {
 
@@ -60,46 +61,6 @@ PyTypeObject Wrap<ArrayBuffer>::type = []{
 
 /******************************************************************************/
 
-PyObject *type_index_new(PyTypeObject *subtype, PyObject *, PyObject *) noexcept {
-    PyObject* o = subtype->tp_alloc(subtype, 0); // 0 unused
-    if (o) new (&cast_object<TypeIndex>(o)) TypeIndex(typeid(void)); // noexcept
-    return o;
-}
-
-long type_index_hash(PyObject *o) noexcept {
-    return static_cast<long>(cast_object<TypeIndex>(o).hash_code());
-}
-
-PyObject *type_index_repr(PyObject *o) noexcept {
-    TypeIndex const *p = cast_if<TypeIndex>(o);
-    if (p) return PyUnicode_FromFormat("TypeIndex('%s')", get_type_name(*p).data());
-    return type_error("Expected instance of rebind.TypeIndex");
-}
-
-PyObject *type_index_str(PyObject *o) noexcept {
-    TypeIndex const *p = cast_if<TypeIndex>(o);
-    if (p) return PyUnicode_FromString(get_type_name(*p).data());
-    return type_error("Expected instance of rebind.TypeIndex");
-}
-
-PyObject *type_index_compare(PyObject *self, PyObject *other, int op) {
-    return raw_object([=]() -> Object {
-        return {compare(op, cast_object<TypeIndex>(self), cast_object<TypeIndex>(other)) ? Py_True : Py_False, true};
-    });
-}
-
-template <>
-PyTypeObject Wrap<TypeIndex>::type = []{
-    auto o = type_definition<TypeIndex>("rebind.TypeIndex", "C++ type_index object");
-    o.tp_repr = type_index_repr;
-    o.tp_hash = type_index_hash;
-    o.tp_str = type_index_str;
-    o.tp_richcompare = type_index_compare;
-    return o;
-}();
-
-/******************************************************************************/
-
 bool attach_type(Object const &m, char const *name, PyTypeObject *t) noexcept {
     if (PyType_Ready(t) < 0) return false;
     incref(reinterpret_cast<PyObject *>(t));
@@ -108,6 +69,21 @@ bool attach_type(Object const &m, char const *name, PyTypeObject *t) noexcept {
 
 bool attach(Object const &m, char const *name, Object o) noexcept {
     return o && PyDict_SetItemString(m, name, o) >= 0;
+}
+
+/******************************************************************************/
+
+// List[Table]
+// where Table = Tuple[List[Method], bool]
+// where Method = Tuple[str, Function]
+Object tables_to_object(Vector<Table> const &v) {
+    return map_as_tuple(v, [](auto const &t) {
+        return tuple_from(
+            map_as_tuple(t->methods, [](auto const &x) {return tuple_from(as_object(x.first), as_object(x.second));}),
+            as_object(false)
+            // map_as_tuple(p->data, [](auto const &x) {return tuple_from(as_object(x.first), variable_cast(Variable(x.second)));})
+        );
+    });
 }
 
 /******************************************************************************/
@@ -124,59 +100,73 @@ Object initialize(Document const &doc) {
 
     DUMP("making python");
 
-    bool ok = attach_type(m, "Value", type_object<Value>());
-    ok = ok && attach_type(m, "Pointer", type_object<Pointer>());
-    ok = ok && attach_type(m, "Function", type_object<Function>());
-    // ok = ok && attach_type(m, "Overload", type_object<Overload>())
-    ok = ok && attach_type(m, "TypeIndex", type_object<TypeIndex>());
-            // Tuple[Tuple[int, TypeIndex, int], ...]
-    ok = ok && attach(m, "scalars", map_as_tuple(scalars, [](auto const &x) {
+    bool s = true;
+
+    // Builtin types
+    s = s && attach_type(m, "Value", type_object<Value>());
+    s = s && attach_type(m, "Pointer", type_object<Pointer>());
+    s = s && attach_type(m, "Function", type_object<Function>());
+    // s = s && attach_type(m, "Overload", type_object<Overload>())
+    s = s && attach_type(m, "Index", type_object<Index>());
+
+    // scalars: exposed as Tuple[Tuple[int, Index, int], ...]
+    s = s && attach(m, "scalars", map_as_tuple(scalars, [](auto const &x) {
         return tuple_from(as_object(static_cast<Integer>(std::get<0>(x))),
-                                as_object(static_cast<TypeIndex>(std::get<1>(x))),
+                                as_object(static_cast<Index>(std::get<1>(x))),
                                 as_object(static_cast<Integer>(std::get<2>(x))));
     }));
-            // Tuple[Tuple[TypeIndex, Tuple[Tuple[str, function], ...]], ...]
-    ok = ok && attach(m, "contents", map_as_tuple(doc.contents, [](auto const &x) {
+
+    // Tuple[Tuple[Index, Tuple[Tuple[str, function], ...]], ...]
+    s = s && attach(m, "contents", map_as_tuple(doc.contents, [](auto const &x) {
         Object o;
-        if (auto p = x.second.template target<Function>()) o = as_object(*p);
-        else if (auto p = x.second.template target<TypeIndex>()) o = as_object(*p);
-        else if (auto p = x.second.template target<Vector<Table>>()) {
-            return map_as_tuple(*p, [](auto const &t) {
-                return tuple_from(
-                    map_as_tuple(t->methods, [](auto const &x) {return tuple_from(as_object(x.first), as_object(x.second));}),
-                    as_object(false)
-                    // map_as_tuple(p->data, [](auto const &x) {return tuple_from(as_object(x.first), variable_cast(Variable(x.second)));})
-                );
-            });
-        } else o = value_to_object(Value(x.second));
+        if (auto p = x.second.template target<Function>()) { // a function
+            o = as_object(*p);
+        } else if (auto p = x.second.template target<Index>()) { // a type index
+            o = as_object(*p);
+        } else if (auto p = x.second.template target<Vector<Table>>()) { // a type table
+            o = tables_to_object(*p);
+        // } else if (auto p = x.second.template target<Pointer>()) {
+        //     o = pointer_to_object(*p);
+        } else { // anything else
+            o = value_to_object(Value(x.second));
+        }
         return tuple_from(as_object(x.first), std::move(o));
     }));
-    ok = ok && attach(m, "set_output_conversion", as_object(Overload::from([](Object t, Object o) {
+
+    // Configuration functions
+    s = s && attach(m, "set_output_conversion", as_object(Overload::from([](Object t, Object o) {
         output_conversions.insert_or_assign(std::move(t), std::move(o));
     })));
-    ok = ok && attach(m, "set_input_conversion", as_object(Overload::from([](Object t, Object o) {
+    s = s && attach(m, "set_input_conversion", as_object(Overload::from([](Object t, Object o) {
         input_conversions.insert_or_assign(std::move(t), std::move(o));
     })));
-    ok = ok && attach(m, "set_translation", as_object(Overload::from([](Object t, Object o) {
+    s = s && attach(m, "set_translation", as_object(Overload::from([](Object t, Object o) {
         type_translations.insert_or_assign(std::move(t), std::move(o));
     })));
-    ok = ok && attach(m, "clear_global_objects", as_object(Overload::from(&clear_global_objects)));
-    ok = ok && attach(m, "set_debug", as_object(Overload::from([](bool b) {return std::exchange(Debug, b);})));
-    ok = ok && attach(m, "debug", as_object(Overload::from([] {return Debug;})));
-    ok = ok && attach(m, "set_type_error", as_object(Overload::from([](Object o) {
+
+    s = s && attach(m, "clear_global_objects", as_object(Overload::from(&clear_global_objects)));
+
+    s = s && attach(m, "set_debug", as_object(Overload::from([](bool b) {return std::exchange(Debug, b);})));
+
+    s = s && attach(m, "debug", as_object(Overload::from([] {return Debug;})));
+
+    s = s && attach(m, "set_type_error", as_object(Overload::from([](Object o) {
         DUMP("setting type error");
         TypeError = std::move(o);
     })));
-    ok = ok && attach(m, "set_type", as_object(Overload::from([](TypeIndex idx, Object o) {
+
+    s = s && attach(m, "set_type", as_object(Overload::from([](Index idx, Object o) {
         DUMP("set_type in");
         python_types.emplace(idx.info(), std::move(o));
         DUMP("set_type out");
     })));
-    ok = ok && attach(m, "set_type_names", as_object(Overload::from([](Zip<TypeIndex, std::string_view> v) {
+
+    s = s && attach(m, "set_type_names", as_object(Overload::from([](Zip<Index, std::string_view> v) {
         for (auto const &p : v) type_names.insert_or_assign(p.first, p.second);
     })));
-    DUMP("attached all module objects");
-    return ok ? m : Object();
+
+    DUMP("attached all module objects, status = ", s);
+    return s ? m : Object();
 }
 
 }
