@@ -79,8 +79,8 @@ bool attach(Object const &m, char const *name, Object o) noexcept {
 Object tables_to_object(Vector<Table> const &v) {
     return map_as_tuple(v, [](auto const &t) {
         return tuple_from(
-            map_as_tuple(t->methods, [](auto const &x) {return tuple_from(as_object(x.first), as_object(x.second));}),
-            as_object(false)
+            as_object(t->index),
+            map_as_tuple(t->methods, [](auto const &x) {return tuple_from(as_object(x.first), as_object(x.second));})
             // map_as_tuple(p->data, [](auto const &x) {return tuple_from(as_object(x.first), variable_cast(Variable(x.second)));})
         );
     });
@@ -141,6 +141,7 @@ Object initialize(Document const &doc) {
         input_conversions.insert_or_assign(std::move(t), std::move(o));
     })));
     s = s && attach(m, "set_translation", as_object(Overload::from([](Object t, Object o) {
+        DUMP("set_translation ", repr(t), " -> ", repr(o));
         type_translations.insert_or_assign(std::move(t), std::move(o));
     })));
 
@@ -155,9 +156,9 @@ Object initialize(Document const &doc) {
         TypeError = std::move(o);
     })));
 
-    s = s && attach(m, "set_type", as_object(Overload::from([](Index idx, Object o) {
+    s = s && attach(m, "set_type", as_object(Overload::from([](Index idx, Object cls, Object ref) {
         DUMP("set_type in");
-        python_types.emplace(idx.info(), std::move(o));
+        python_types[idx.info()] = {std::move(cls), std::move(ref)};
         DUMP("set_type out");
     })));
 

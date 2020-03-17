@@ -6,7 +6,7 @@ Object UnionType, TypeError;
 
 std::unordered_map<Object, Object> type_translations{}, output_conversions{}, input_conversions{};
 
-std::unordered_map<Index, Object> python_types{};
+std::unordered_map<Index, std::pair<Object, Object>> python_types{};
 
 
 void initialize_global_objects() {

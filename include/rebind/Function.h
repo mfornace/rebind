@@ -47,30 +47,38 @@ struct Overload {
 
     template <class ...Ts>
     Value value(Caller c, Ts &&...ts) const {
-        return value(std::move(c), to_arguments(static_cast<Ts &&>(ts)...));
+        return call_value(std::move(c), to_arguments(static_cast<Ts &&>(ts)...));
     }
 
     template <class ...Ts>
     Pointer reference(Caller c, Ts &&...ts) const {
-        return reference(std::move(c), to_arguments(static_cast<Ts &&>(ts)...));
+        return call_reference(std::move(c), to_arguments(static_cast<Ts &&>(ts)...));
     }
 
     template <class ...Ts>
     Value operator()(Caller c, Ts &&...ts) const {
-        return value(std::move(c), static_cast<Ts &&>(ts)...);
+        return call_value(std::move(c), static_cast<Ts &&>(ts)...);
     }
 
+    bool call(Caller &c, Value *v, Pointer *p, Arguments const &args) const {
+        DUMP("call function: n=", args.size(), ", v=", bool(v), ", p=", bool(p));
+        for (auto &&p: args) {DUMP("argument ", p.name(), " ", p.index(), " ", p.qualifier());}
+        return impl(&c, v, p, args);
+    }
+
+    void call_in_place(Value &out, Caller c, Arguments const &v) const {call(c, &out, nullptr, v);}
+
+    void call_in_place(Pointer &out, Caller c, Arguments const &v) const {call(c, nullptr, &out, v);}
+
     Value call_value(Caller c, Arguments const &v) const {
-        DUMP("call_value ", v.size());
-        for (auto &&p: v) {DUMP("call_value argument", p.name(), " ", p.index(), " ", p.qualifier());}
         Value out;
-        impl(&c, &out, nullptr, v);
+        call(c, &out, nullptr, v);
         return out;
     }
 
     Pointer call_reference(Caller c, Arguments const &v) const {
         Pointer out;
-        impl(&c, nullptr, &out, v);
+        call(c, nullptr, &out, v);
         return out;
     }
 };

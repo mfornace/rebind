@@ -26,6 +26,19 @@ std::pair<Object, char const *> str(PyObject *o) {
     return out;
 }
 
+std::string repr(PyObject *o) {
+    if (!o) return "null";
+    Object out(PyObject_Repr(o), false);
+    if (!out) throw python_error();
+    if (out) {
+#       if PY_MAJOR_VERSION > 2
+            return PyUnicode_AsUTF8(out); // PyErr_Clear
+#       else
+            return PyString_AsString(out);
+#       endif
+    }
+}
+
 void print(PyObject *o) {
     auto p = str(o);
     if (p.second) std::cout << p.second << std::endl;
@@ -110,9 +123,9 @@ bool arithmetic_to_value(Value &v, Object const &o) {
 bool object_to_value(Value &v, Object o) {
     if (Debug) {
         auto repr = Object::from(PyObject_Repr(SubClass<PyTypeObject>{(+o)->ob_type}));
-        DUMP("input object reference count", reference_count(o));
+        DUMP("input object reference count = ", reference_count(o));
         DUMP("trying to convert object to ", v.name(), " ", from_unicode(+repr));
-        DUMP(bool(cast_if<Value>(o)));
+        DUMP("is Value = ", bool(cast_if<Value>(o)));
     }
     if (!o) return false;
 
@@ -138,7 +151,7 @@ bool object_to_value(Value &v, Object o) {
 
     if (v.matches<std::nullptr_t>()) {
         DUMP("nullptr....");
-        if (+o == Py_None) return v = nullptr, true;
+        if (+o == Py_None) return v.reset(), true;
     }
 
     if (v.matches<Overload>()) {
@@ -171,7 +184,7 @@ bool object_to_value(Value &v, Object o) {
 
     if (v.matches<bool>()) {
         if ((+o)->ob_type == Py_None->ob_type) { // fix, doesnt work with Py_None...
-            return v = false, true;
+            return v.set_if(false);
         } else return arithmetic_to_value<bool>(v, o);
     }
 
@@ -228,14 +241,10 @@ bool object_to_value(Value &v, Object o) {
 
 /******************************************************************************/
 
-std::string get_type_name(Index idx) noexcept {
-    std::string out;
-#warning "not done"
-    // auto it = type_names.find(idx);
-    // if (it == type_names.end() || it->second.empty()) out = idx.name();
-    // else out = it->second;
-    // out += QualifierSuffixes[static_cast<unsigned char>(idx.qualifier())];
-    return out;
+std::string_view get_type_name(Index idx) noexcept {
+    auto it = type_names.find(idx);
+    if (it == type_names.end() || it->second.empty()) return idx.name();
+    else return it->second;
 }
 
 /******************************************************************************/
@@ -261,14 +270,17 @@ std::string wrong_type_message(WrongType const &e, std::string_view prefix) {
 
 /******************************************************************************/
 
-Pointer pointer_from_object(Object &o) {
+Pointer pointer_from_object(Object &o, bool move) {
     if (auto p = cast_if<Overload>(o)) {
         return Pointer(*p);
     } else if (auto p = cast_if<Index>(o)) {
+        DUMP("pointer_from_object: Index = ", p->name());
         return Pointer(*p);
     } else if (auto p = cast_if<Value>(o)) {
-        return Pointer(*p);
+        DUMP("pointer_from_object: Value = ", p->name());
+        return Pointer(p->as_erased(), move ? Rvalue : Lvalue);
     } else if (auto p = cast_if<Pointer>(o)) {
+        DUMP("pointer_from_object: Pointer = ", p->name());
         return *p;
     } else {
         return Pointer(o);

@@ -21,7 +21,7 @@ extern Object TypeError, UnionType;
 
 extern std::unordered_map<Object, Object> output_conversions, input_conversions, type_translations;
 
-extern std::unordered_map<Index, Object> python_types;
+extern std::unordered_map<Index, std::pair<Object, Object>> python_types;
 
 /******************************************************************************/
 
@@ -52,7 +52,7 @@ struct ArrayBuffer {
 
 /******************************************************************************/
 
-Pointer pointer_from_object(Object &o);
+Pointer pointer_from_object(Object &o, bool move=false);
 
 void args_from_python(Arguments &s, Object const &pypack);
 
@@ -184,7 +184,7 @@ struct PythonFunction {
 
 /******************************************************************************/
 
-std::string get_type_name(Index idx) noexcept;
+std::string_view get_type_name(Index idx) noexcept;
 
 std::string wrong_type_message(WrongType const &e, std::string_view={});
 

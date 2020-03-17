@@ -16,6 +16,15 @@ T * alloc(Args &&...args) {
     }
 }
 
+template <class T>
+using Maybe = std::conditional_t<std::is_reference_v<T>, std::remove_reference_t<T> *, std::optional<T>>;
+
+template <class T, class Arg>
+Maybe<T> some(Arg &&t) {
+    if constexpr(std::is_reference_v<T>) return std::addressof(t);
+    else return static_cast<Arg &&>(t);
+}
+
 /******************************************************************************/
 
 class Value : protected Erased {
@@ -41,6 +50,8 @@ public:
     Value(Type<T> t, Args &&...args) : Erased(alloc<T>(static_cast<Args &&>(args)...)) {}
 
     Value(Value const &v) : Erased(v.allocate_copy()) {}
+
+    Value(Pointer const &v) : Erased(v.as_erased().allocate_copy()) {}
 
     Value &operator=(Value const &v) {
         Erased::operator=(v.allocate_copy());
@@ -103,24 +114,33 @@ public:
     /**************************************************************************/
 
     template <class T>
-    auto request(Scope &s, Type<T> t={}) const & {return Erased::request(s, t, Const);}
+    Maybe<T> request(Scope &s, Type<T> t={}) const & {
+        if constexpr(std::is_convertible_v<Value const &, T>) return some<T>(*this);
+        else return Erased::request(s, t, Const);
+    }
 
     template <class T>
-    auto request(Scope &s, Type<T> t={}) & {return Erased::request(s, t, Lvalue);}
+    Maybe<T> request(Scope &s, Type<T> t={}) & {
+        if constexpr(std::is_convertible_v<Value &, T>) return some<T>(*this);
+        else return Erased::request(s, t, Lvalue);
+    }
 
     template <class T>
-    auto request(Scope &s, Type<T> t={}) && {return Erased::request(s, t, Rvalue);}
+    Maybe<T> request(Scope &s, Type<T> t={}) && {
+        if constexpr(std::is_convertible_v<Value &&, T>) return some<T>(std::move(*this));
+        else return Erased::request(s, t, Rvalue);
+    }
 
     /**************************************************************************/
 
     template <class T>
-    auto request(Type<T> t={}) const & {Scope s; return request(s, t);}
+    Maybe<T> request(Type<T> t={}) const & {Scope s; return request(s, t);}
 
     template <class T>
-    auto request(Type<T> t={}) & {Scope s; return request(s, t);}
+    Maybe<T> request(Type<T> t={}) & {Scope s; return request(s, t);}
 
     template <class T>
-    auto request(Type<T> t={}) && {Scope s; return std::move(*this).request(s, t);}
+    Maybe<T> request(Type<T> t={}) && {Scope s; return std::move(*this).request(s, t);}
 
     /**************************************************************************/
 
@@ -140,7 +160,9 @@ public:
     T cast(Scope &s, Type<T> t={}) && {
         if (auto p = from_pointer(s, t)) return static_cast<T &&>(*p);
         throw std::move(s.set_error("invalid cast (rebind::Value &&)"));
-        }
+    }
+
+    bool assign_if(Pointer const &p) {return Erased::assign_if(p);}
 
     /**************************************************************************/
 
@@ -180,6 +202,10 @@ class OutputValue : protected Value {
 // inline Pointer Pointer::from(Value &t) {return {t.as_erased(), Lvalue};}
 // inline Pointer Pointer::from(Value const &t) {return {t.as_erased(), Const};}
 // inline Pointer Pointer::from(Value &&t) {return {t.as_erased(), Rvalue};}
+
+inline constexpr Pointer::Pointer(Value const &v) : Pointer(v.as_erased(), Const) {}
+inline constexpr Pointer::Pointer(Value &v) : Pointer(v.as_erased(), Lvalue) {}
+inline constexpr Pointer::Pointer(Value &&v) : Pointer(v.as_erased(), Rvalue) {}
 
 /******************************************************************************/
 

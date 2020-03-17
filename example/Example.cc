@@ -69,6 +69,7 @@ void render(Document &doc, Type<Goo> t) {
         DUMP(x.x);
         return x;
     });
+    doc.method(t, ".x", &Goo::x);
     doc.method(t, "{}", streamable(t));
 }
 

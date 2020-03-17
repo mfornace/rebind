@@ -2,29 +2,46 @@ namespace rebind::py {
 
 /******************************************************************************/
 
-Object call_overload(Overload const &fun, Arguments &&args, bool gil) {
-    // if (auto py = fun.target<PythonFunction>())
-    //     return {PyObject_CallObject(+py->function, +args), false};
-    DUMP("constructed python args ", args.size());
-    for (auto const &p : args) DUMP(p.index());
-    Value out;
-    {
-        auto lk = std::make_shared<PythonFrame>(!gil);
-        DUMP("calling the args: size=", args.size(), " ", bool(fun));
-        out = fun.call_value(Caller(lk), std::move(args));
-    }
-    DUMP("got the output ", out.index());
-    if (auto p = out.target<Object>()) return std::move(*p);
-    // if (auto p = out.target<PyObject * &>()) return {*p, true};
-    // Convert the C++ Value to a rebind.Value
-    return value_to_object(std::move(out));
+template <class Out>
+void call_with_gil(Out &out, Overload const &fun, Arguments &&args, bool gil) {
+    auto lk = std::make_shared<PythonFrame>(!gil);
+    DUMP("calling the args: size=", args.size(), " ", bool(fun));
+    fun.call_in_place(out, Caller(lk), std::move(args));
 }
 
 /******************************************************************************/
 
-Object function_call_impl(Function const &fun, Arguments &&args, bool gil, Object tag) {
+Object call_overload(void *out, Overload const &fun, Arguments &&args, bool is_value, bool gil) {
+    // if (auto py = fun.target<PythonFunction>())
+    //     return {PyObject_CallObject(+py->function, +args), false};
+    DUMP("constructed python args ", args.size());
+    for (auto const &p : args) DUMP("argument type: ", p.index(), QualifierSuffixes[p.qualifier()]);
+
+    if (out) {
+        if (is_value) {
+            call_with_gil(*static_cast<Value *>(out), fun, std::move(args), gil);
+        } else {
+            call_with_gil(*static_cast<Pointer *>(out), fun, std::move(args), gil);
+        }
+        return {Py_None, true};
+    } else {
+        Value out;
+        call_with_gil(out, fun, std::move(args), gil);
+        DUMP("got the output Value ", out.index(), " ", out.has_value());
+        if (auto p = out.target<Object>()) return std::move(*p);
+        // if (auto p = out.target<PyObject * &>()) return {*p, true};
+        // Convert the C++ Value to a rebind.Value
+        return value_to_object(std::move(out));
+    }
+}
+
+/******************************************************************************/
+
+Object function_call_impl(void *out, Function const &fun, Arguments &&args, bool is_value, bool gil, Object tag) {
     DUMP("function_call_impl ", gil, " ", args.size());
-    return call_overload(fun.first, std::move(args), gil);
+    return call_overload(out, fun.first, std::move(args), is_value, gil);
+}
+
     // throw std::runtime_error("not implemented");
     // return {};
     // auto const &overloads = fun.overloads;
@@ -78,16 +95,28 @@ Object function_call_impl(Function const &fun, Arguments &&args, bool gil, Objec
     // }
     // // Raise an exception with a list of the messages
     // return PyErr_SetObject(TypeError, +errors), nullptr;
-}
 
 /******************************************************************************/
 
 auto function_call_keywords(PyObject *kws) {
-    bool gil = true;
+    bool is_value, gil = true;
+    void *out = nullptr;
     Object tag;
+
     if (kws && PyDict_Check(kws)) {
+        PyObject *o = PyDict_GetItemString(kws, "output");
+        if (o) {
+            if ((out = cast_if<Pointer>(o))) {
+                is_value = false;
+            } else {
+                out = &cast_object<Value>(o);
+                is_value = true;
+            }
+        }
+
         PyObject *g = PyDict_GetItemString(kws, "gil");
         if (g) gil = PyObject_IsTrue(g);
+
         tag = {not_none(PyDict_GetItemString(kws, "tag")), true};
          // either int or Tuple[Index] or None
     //     auto r = not_none(PyDict_GetItemString(kws, "return_type")); // either Index or None
@@ -97,7 +126,7 @@ auto function_call_keywords(PyObject *kws) {
     //         // return type_error("C++: unexpected extra keywords");
     //     if (f) t1 = cast_object<Index>(f);
     }
-    return std::make_tuple(gil, tag);
+    return std::make_tuple(tag, out, is_value, gil);
 }
 
 /******************************************************************************/
@@ -136,7 +165,7 @@ auto function_call_keywords(PyObject *kws) {
 
 //         if (!v.return_type) return value_to_object(std::move(out)); // no cast
 //         else if (v.return_type == Py_None || +v.return_type == reinterpret_cast<PyObject const *>(Py_None->ob_type)) return {Py_None, true}; // cast to None
-//         else return python_cast(Pointer::from(std::move(out)), v.return_type, Object());
+//         else return cast_to_object(Pointer::from(std::move(out)), v.return_type, Object());
 //     });
 // }
 
@@ -232,7 +261,7 @@ auto function_call_keywords(PyObject *kws) {
 
 //     static PyObject *call(PyObject *self, PyObject *pyargs, PyObject *kws) noexcept {
 //         return raw_object([=] {
-//             auto const &s = cast_object<Method>(self);
+//             auto const &, outs = cast_object<Method>(self);
 //             auto [t0, t1, sig, gil] = function_call_keywords(kws);
 //             Arguments args;
 //             args.emplace_back(pointer_from_object(s.self));
@@ -267,12 +296,16 @@ Vector<Object> objects_from_argument_tuple(PyObject *args) {
     return out;
 }
 
+/******************************************************************************/
+
 Arguments arguments_from_objects(Vector<Object> &v) {
     Arguments out;
     out.reserve(v.size());
     for (auto &o : v) out.emplace_back(pointer_from_object(o));
     return out;
 }
+
+/******************************************************************************/
 
 /* Overload call has effectively the following signature
  * *args: the arguments to be passed to C++
@@ -283,26 +316,34 @@ Arguments arguments_from_objects(Vector<Object> &v) {
  */
 PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept {
     return raw_object([=] {
-        auto const [gil, tag] = function_call_keywords(kws);
+        auto const [tag, out, is_value, gil] = function_call_keywords(kws);
         // DUMP("specified types", bool(t0), bool(t1));
-        DUMP("gil = ", gil, " ", Py_REFCNT(self), Py_REFCNT(args));
+        DUMP("gil = ", gil, ", reference counts = ", Py_REFCNT(self), Py_REFCNT(args));
+        DUMP("out = ", bool(out), ", is_value = ", is_value);
         // DUMP("number of signatures ", cast_object<Overload>(self).overloads.size());
         auto objects = objects_from_argument_tuple(args);
-        return function_call_impl(cast_object<Function>(self), arguments_from_objects(objects), gil, tag);
+
+        Object o = function_call_impl(out, cast_object<Function>(self),
+            arguments_from_objects(objects), is_value, gil, tag);
+        // call_with_gil(out, fun, std::move(args), gil);
+        if (auto v = cast_if<Value>(o)) {
+            DUMP("returning Value to python ", v->has_value(), " ", v->name());
+        }
+        return o;
     });
 }
 
 /******************************************************************************/
 
-PyObject * function_signatures(PyObject *self, PyObject *) noexcept {
-    return raw_object([=] {
-        return Object();
-        // return map_as_tuple(cast_object<Overload>(self).overloads, [](auto const &p) -> Object {
-        //     if (!p.first) return {Py_None, true};
-        //     return map_as_tuple(p.first, [](auto const &o) {return as_object(o);});
-        // });
-    });
-}
+// PyObject * function_signatures(PyObject *self, PyObject *) noexcept {
+//     return raw_object([=] {
+//         return Object();
+//         // return map_as_tuple(cast_object<Overload>(self).overloads, [](auto const &p) -> Object {
+//         //     if (!p.first) return {Py_None, true};
+//         //     return map_as_tuple(p.first, [](auto const &o) {return as_object(o);});
+//         // });
+//     });
+// }
 
 /******************************************************************************/
 
@@ -326,11 +367,16 @@ int function_init(PyObject *self, PyObject *args, PyObject *kws) noexcept {
 
 
 PyMethodDef FunctionTypeMethods[] = {
-    // {"move_from", static_cast<PyCFunction>(move_from<Overload>),   METH_VARARGS, "move it"},
-    {"copy_from",   static_cast<PyCFunction>(copy_from<Overload>), METH_O,       "copy from another Overload"},
-    {"signatures",  static_cast<PyCFunction>(function_signatures), METH_NOARGS,  "get signatures"},
-    // {"delegating",  static_cast<PyCFunction>(DelegatingFunction::make), METH_O,  "delegating(self, other): return an equivalent of partial(other, _fun_=self)"},
-    // {"annotated",   static_cast<PyCFunction>(function_annotated),  METH_VARARGS, "annotated(self, annotations): return a function wrapping self which casts inputs and output to the given type annotations"},
+    {"move_from", static_cast<PyCFunction>(c_move_from<Overload>),
+        METH_VARARGS, "move it"},
+    {"copy_from",   static_cast<PyCFunction>(c_copy_from<Overload>),
+        METH_O,       "copy from another Overload"},
+    // {"signatures",  static_cast<PyCFunction>(function_signatures),
+    // METH_NOARGS,  "get signatures"},
+    // {"delegating",  static_cast<PyCFunction>(DelegatingFunction::make),
+    // METH_O,  "delegating(self, other): return an equivalent of partial(other, _fun_=self)"},
+    // {"annotated",   static_cast<PyCFunction>(function_annotated),
+    // METH_VARARGS, "annotated(self, annotations): return a function wrapping self which casts inputs and output to the given type annotations"},
     {nullptr, nullptr, 0, nullptr}
 };
 

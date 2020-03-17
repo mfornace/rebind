@@ -23,6 +23,7 @@ inline PyObject * not_none(PyObject *o) {return o == Py_None ? nullptr : o;}
 /******************************************************************************/
 
 void print(PyObject *o);
+std::string repr(PyObject *o);
 
 using Version = std::tuple<unsigned, unsigned, unsigned>;
 static constexpr Version PythonVersion{PY_MAJOR_VERSION, PY_MINOR_VERSION, PY_MICRO_VERSION};

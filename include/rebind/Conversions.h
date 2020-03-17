@@ -1,4 +1,5 @@
 #pragma once
+#include "Type.h"
 #include "Value.h"
 
 
@@ -50,7 +51,7 @@ struct ToValue {
     static_assert(std::is_same_v<unqualified<T>, T>);
 
     bool operator()(Value &v, T const &) const {
-        DUMP("no conversion found from source ", type_index<T>(), " to ", v.name());
+        DUMP("no conversion found from source ", type_index<T>(), " to value of type ", v.name());
         return false;
     }
 };
@@ -74,8 +75,8 @@ struct ToPointer {
     using method = Default;
     static_assert(std::is_same_v<unqualified<T>, T>);
 
-    void operator()(Pointer &p, T const &) const {
-        DUMP("no conversion found from source ", type_index<T>(), " to ", p.name());
+    void operator()(Pointer const &p, T const &) const {
+        DUMP("no conversion found from source ", get_table<T>()->name(), " to pointer of type ", p.name());
     }
 };
 
@@ -145,6 +146,29 @@ void default_to_pointer(Pointer &v, void *p, Qualifier const q) {
 
 /******************************************************************************/
 
+template <class T>
+bool default_assign_if(void *ptr, Pointer const &other) {
+    assert_usable<T>();
+    DUMP("assign_if: ", typeid(T).name());
+    auto &self = *static_cast<T *>(ptr);
+    if (auto p = other.request<T &&>()) {
+        DUMP("assign_if: got T &&");
+        self = std::move(*p);
+    } else if (auto p = other.request<T const &>()) {
+        DUMP("assign_if: got T const &");
+        self = *p;
+    } else if (auto p = other.request<T>()) {
+        DUMP("assign_if: T succeeded, type=", typeid(*p).name());
+        self = std::move(*p);
+    } else {
+        DUMP("assign_if: failed");
+        return false;
+    }
+    return true;
+}
+
+/******************************************************************************/
+
 template <class T, std::enable_if_t<std::is_reference_v<T>, int>>
 std::remove_reference_t<T> * Erased::request(Scope &s, Type<T> t, Qualifier q) const {
     using U = unqualified<T>;
@@ -152,6 +176,7 @@ std::remove_reference_t<T> * Erased::request(Scope &s, Type<T> t, Qualifier q) c
 
     if (!has_value()) return nullptr;
 
+    DUMP("Erased::request reference ", get_table<U>()->name(qualifier_of<T>), " from ", tab->name(), " ", QualifierSuffixes[q]);
     if (compatible_qualifier(q, qualifier_of<T>)) {
         if (auto p = target<U>()) return p;
         if (tab->has_base(type_index<U>())) return static_cast<std::remove_reference_t<T> *>(ptr);
@@ -186,8 +211,10 @@ std::optional<T> Erased::request(Scope &s, Type<T> t, Qualifier q) const {
     // ToValue
     Value v;
     const_cast<Erased &>(v.as_erased()).tab = get_table<T>();
+    DUMP("calling m_to_value ", v.name());
     if (tab->m_to_value(v, ptr, q)) {
         if (auto p = v.target<T>()) out.emplace(std::move(*p));
+        DUMP("m_to_value succeeded");
         return out;
     }
 
@@ -203,6 +230,8 @@ inline bool Erased::request_to(Value &v, Qualifier q) const {
     if (has_value()) return tab->m_to_value(v, ptr, q);
     return false;
 }
+
+/******************************************************************************/
 
 
 }

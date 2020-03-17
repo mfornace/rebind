@@ -43,15 +43,18 @@ struct Erased {
     }
 
     bool has_value() const {return ptr;}
+    bool has_type() const {return tab;}
 
     explicit operator bool() const {return ptr;}
 
-    Index index() const noexcept {return tab ? tab->index : Index();}
+    Index index() const noexcept {return has_type() ? tab->index : Index();}
 
     std::string_view name() const noexcept {
-        if (tab) return tab->name();
-        else return "<null>";
+        if (has_type()) return tab->name();
+        else return "null";
     }
+
+    bool assign_if(Pointer const &p) const {return has_value() && tab->m_assign_if(ptr, p);}
 
     /**************************************************************************************/
 

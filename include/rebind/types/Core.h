@@ -130,7 +130,7 @@ struct VectorFromPointer {
 
     std::optional<V> operator()(Pointer const &v, Scope &msg) const {
         // if (auto p = v.request<Vector<T>>()) return get(*p, msg);
-        if (!std::is_same_v<V, Sequence>)
+        if constexpr (!std::is_same_v<V, Sequence> && !std::is_same_v<T, Pointer>)
             if (auto p = v.request<Sequence>()) return get(*p, msg);
         return msg.error("expected sequence", typeid(V));
     }
@@ -314,7 +314,10 @@ bool range_to_value(Value &v, Iter1 b, Iter2 e) {
     if (v.matches<Sequence>()) {
         Sequence s;
         s.reserve(std::distance(b, e));
-        for (; b != e; ++b) s.emplace_back(Type<T>(), *b);
+        for (; b != e; ++b) {
+            if constexpr(std::is_same_v<T, Value>) s.emplace_back(*b);
+            else if constexpr(!std::is_same_v<T, Pointer>) s.emplace_back(Type<T>(), *b);
+        }
         return v.set_if(std::move(s));
     }
     if (v.matches<Vector<T>>()) {

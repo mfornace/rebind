@@ -11,6 +11,7 @@ protected:
 
 public:
     using Erased::index;
+    using Erased::as_erased;
     using Erased::has_value;
     using Erased::table;
     using Erased::reset;
@@ -29,12 +30,16 @@ public:
     template <class T, std::enable_if_t<is_usable<T>, int> = 0>
     explicit constexpr Pointer(T &&t) noexcept : Erased(std::addressof(t)), qual(Rvalue) {}
 
+    explicit constexpr Pointer(Value const &);
+    explicit constexpr Pointer(Value &);
+    explicit constexpr Pointer(Value &&);
+
     Qualifier qualifier() const noexcept {return qual;}
 
     /**************************************************************************************/
 
     template <class T>
-    bool set(T &&t) {
+    bool set_if(T &&t) {
         if (qualifier_of<T &&> == qual && tab->index.equals<unqualified<T>>()) {
             ptr = const_cast<T *>(static_cast<T const *>(std::addressof(t)));
             return true;
@@ -67,23 +72,25 @@ public:
     template <class T>
     T cast(Type<T> t={}) const {Scope s; return cast(s, t);}
 
+    bool assign_if(Pointer const &p) const {return qual != Const && Erased::assign_if(p);}
+
     /**************************************************************************************/
 
     std::string_view name(bool qualified=true) const noexcept {
-        if (has_value()) return qualified ? table()->name(qual) : table()->name();
-        else return "<null>";
+        if (has_type()) return qualified ? table()->name(qual) : table()->name();
+        else return "null";
     }
 
     /**************************************************************************************/
 
     template <class T>
-    void set(T &t) {*this = Pointer(t, Lvalue);}
+    void set(T &t) {*this = Pointer(t);}
 
     template <class T>
-    void set(T &&t) {*this = Pointer(t, Rvalue);}
+    void set(T &&t) {*this = Pointer(std::move(t));}
 
     template <class T>
-    void set(T const &t) {*this = Pointer(const_cast<T &>(t), Const);}
+    void set(T const &t) {*this = Pointer(t);}
 
 
     constexpr Pointer(Erased const &o, Qualifier q) noexcept : Erased(o), qual(q) {}

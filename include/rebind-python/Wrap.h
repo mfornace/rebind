@@ -52,14 +52,14 @@ T * cast_if(PyObject *o) {
 template <class T>
 T & cast_object(PyObject *o) {
     if (!PyObject_TypeCheck(o, type_object<T>()))
-        throw std::invalid_argument("Expected instance of rebind.Index");
+        throw std::invalid_argument("Expected instance of " + std::string(typeid(T).name()));
     return reinterpret_cast<Wrap<T> *>(o)->value;
 }
 
 /******************************************************************************/
 
 template <class T>
-PyObject *tp_new(PyTypeObject *subtype, PyObject *, PyObject *) noexcept {
+PyObject *c_new(PyTypeObject *subtype, PyObject *, PyObject *) noexcept {
     static_assert(noexcept(T{}), "Default constructor should be noexcept");
     PyObject *o = subtype->tp_alloc(subtype, 0); // 0 unused
     if (o) new (&cast_object<T>(o)) T; // Default construct the C++ type
@@ -69,38 +69,35 @@ PyObject *tp_new(PyTypeObject *subtype, PyObject *, PyObject *) noexcept {
 /******************************************************************************/
 
 template <class T>
-void tp_delete(PyObject *o) noexcept {
+void c_delete(PyObject *o) noexcept {
     reinterpret_cast<Wrap<T> *>(o)->~Wrap<T>();
     Py_TYPE(o)->tp_free(o);
 }
 
 /******************************************************************************/
 
-template <class T>
-PyObject * copy_from(PyObject *self, PyObject *other) noexcept {
-    return raw_object([=] {
-        cast_object<T>(self) = cast_object<T>(other); // not notexcept
-        return Object(Py_None, true);
-    });
-}
-
-/******************************************************************************/
+// #pragma clang diagnostic push
+// #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 
 template <class T>
 PyTypeObject type_definition(char const *name, char const *doc) {
     PyTypeObject o{PyVarObject_HEAD_INIT(NULL, 0)};
     o.tp_name = name;
     o.tp_basicsize = sizeof(Wrap<T>);
-    o.tp_dealloc = tp_delete<T>;
-    o.tp_new = tp_new<T>;
+    o.tp_dealloc = c_delete<T>;
+    o.tp_new = c_new<T>;
     o.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
     o.tp_doc = doc;
     return o;
 }
 
+// #pragma clang diagnostic pop
+
 /******************************************************************************/
 
 bool object_to_value(Value &v, Object o);
+
+/******************************************************************************/
 
 }
 

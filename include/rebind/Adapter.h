@@ -114,7 +114,7 @@ struct Adapter<0, F, SFINAE> {
         if constexpr (std::is_reference_v<Return>) {
             if (p) return call(std::move(c), *p, args);
         } else {
-            if (p) throw std::runtime_error("Asked for reference");
+            if (p) throw std::runtime_error("Requested reference from a function returning a value");
         }
 
         return call(std::move(*c), *v, args);
@@ -172,7 +172,7 @@ struct Adapter {
         if constexpr (std::is_reference_v<Return>) {
             if (p) return call(c, *p, args);
         } else {
-            if (p) throw std::runtime_error("Asked for reference");
+            if (p) throw std::runtime_error("Requested reference from a function returning a value");
         }
 
         return call(*c, *v, args);
@@ -193,13 +193,13 @@ struct Adapter<0, R C::*, std::enable_if_t<std::is_member_object_pointer_v<R C::
         Scope s(handle);
 
         if (auto p = self.request<C &&>()) {
-            return out.set(std::move(*p)), true;
+            return out.set(std::move(*p).*function), true;
         } else if (auto p = self.request<C &>()) {
-            return out.set(*p), true;
+            return out.set((*p).*function), true;
         } else if (auto p = self.request<C const &>()) {
-            return out.set(*p), true;
+            return out.set((*p).*function), true;
         }
-#warning "not sure on method thing here"
+        // value conversions not allowed currently
         // else if (auto p = self.request_value<C>()) { }
         throw std::move(s.set_error("invalid argument"));
     }
@@ -207,8 +207,9 @@ struct Adapter<0, R C::*, std::enable_if_t<std::is_member_object_pointer_v<R C::
     bool operator()(Caller *c, Value *v, Pointer *p, Arguments const &args) const {
         if (args.size() != 1) throw WrongNumber(1, args.size());
 
-        if (v) call(std::move(*c), *v, args[0]);
-        if (p) call(std::move(*c), *p, args[0]);
+        if (v) return call(std::move(*c), *v, args[0]);
+        if (p) return call(std::move(*c), *p, args[0]);
+        return false;
     }
 };
 

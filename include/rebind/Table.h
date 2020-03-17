@@ -10,6 +10,12 @@ namespace rebind {
 
 /******************************************************************************/
 
+class Function;
+class Overload;
+class Pointer;
+class Value;
+class Scope;
+
 template <class T>
 static constexpr bool is_usable = true
     && !std::is_reference_v<T>
@@ -17,6 +23,8 @@ static constexpr bool is_usable = true
     && !std::is_volatile_v<T>
     && !std::is_void_v<T>
     && std::is_nothrow_move_constructible_v<T>
+    && !std::is_same_v<T, Pointer>
+    && !std::is_same_v<T, Value>
     // && !std::is_null_pointer_v<T>
     && !is_type_t<T>::value;
 
@@ -29,18 +37,13 @@ constexpr void assert_usable() {
     static_assert(!std::is_volatile_v<T>);
     static_assert(!std::is_void_v<T>);
     static_assert(std::is_nothrow_move_constructible_v<T>);
+    static_assert(!std::is_same_v<T, Pointer>);
+    static_assert(!std::is_same_v<T, Value>);
     // static_assert(!std::is_null_pointer_v<T>);
     static_assert(!is_type_t<T>::value);
 }
 
 /******************************************************************************************/
-
-class Function;
-class Overload;
-class Pointer;
-class Value;
-class Scope;
-
 
 struct TypeTable {
     Index index;
@@ -56,6 +59,8 @@ struct TypeTable {
     void (*m_to_pointer)(Pointer &, void *, Qualifier) = nullptr;
     // FromPointer function pointer
     Value (*m_from_pointer)(Pointer const &, Scope &) = nullptr;
+    // FromPointer function pointer
+    bool (*m_assign_if)(void *, Pointer const &) = nullptr;
 
     // Output name
     std::string m_name;
@@ -133,13 +138,16 @@ bool default_relocate(void*out, void*p, unsigned short size, unsigned short alig
 }
 
 template <class T>
-bool default_to_value(Value &, void*, Qualifier const);
+bool default_to_value(Value &, void *, Qualifier const);
 
 template <class T>
-void default_to_pointer(Pointer &, void*, Qualifier const);
+void default_to_pointer(Pointer &, void *, Qualifier const);
 
 template <class T>
 Value default_from_pointer(Pointer const &, Scope &);
+
+template <class T>
+bool default_assign_if(void *, Pointer const &);
 
 /******************************************************************************************/
 
@@ -163,6 +171,7 @@ TypeTable default_table() {
     t.m_to_value = default_to_value<T>;
     t.m_to_pointer = default_to_pointer<T>;
     t.m_from_pointer = default_from_pointer<T>;
+    t.m_assign_if = default_assign_if<T>;
     return t;
 }
 
