@@ -10,7 +10,7 @@ set(REBIND_PYTHON_INCLUDE "" CACHE STRING "Specified include directory containin
 
 if (${REBIND_PYTHON_INCLUDE})
     message("-- Using specified Python include")
-    set(REBIND_PYTHON_INCLUDE_DIR ${REBIND_PYTHON_INCLUDE} CACHE STRING "Include to use")
+    set_property(GLOBAL PROPERTY rebind_python_include ${REBIND_PYTHON_INCLUDE})
 else()
     execute_process(
         COMMAND ${REBIND_PYTHON} -c "import sys, sysconfig; sys.stdout.write(sysconfig.get_paths()['include'])"
@@ -20,11 +20,11 @@ else()
         message(FATAL_ERROR "Failed to deduce include directory from '${REBIND_PYTHON}' executable.\nMaybe specify REBIND_PYTHON_INCLUDE directly.")
     endif()
     message("-- Using Python include directory deduced from REBIND_PYTHON=${REBIND_PYTHON}")
-    set (REBIND_PYTHON_INCLUDE_DIR ${python_include} CACHE STRING "Include to use")
+    set_property(GLOBAL PROPERTY rebind_python_include ${python_include})
     # set (REBIND_PYTHON_OLD ${REBIND_PYTHON} CACHE INTERNAL "Last value of REBIND_PYTHON")
 endif()
 
-message("-- Using Python include directory ${REBIND_PYTHON_INCLUDE_DIR}")
+message("-- Using Python include directory ${python_include}")
 
 ################################################################################
 
@@ -65,7 +65,9 @@ function(rebind_module module_name)
 
     target_compile_definitions(${module_name} PRIVATE REBIND_MODULE=${module_name})
     target_link_libraries(${module_name} PRIVATE rebind_interface ${ARGN})
-    target_include_directories(${module_name} PRIVATE ${REBIND_PYTHON_INCLUDE_DIR})
+
+    get_property(python_include GLOBAL PROPERTY rebind_python_include)
+    target_include_directories(${module_name} PRIVATE ${python_include})
 endfunction(rebind_module)
 
 ################################################################################
