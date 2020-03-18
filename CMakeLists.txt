@@ -3,16 +3,15 @@ project(rebind VERSION 0.0.0 LANGUAGES CXX)
 
 ################################################################################
 
-set(REBIND_PYTHON "python" CACHE STRING "Python executable to use in deducing include directory")
-# set(REBIND_PYTHON_OLD CACHE STRING INTERNAL)
-# set(REBIND_PYTHON_INCLUDE "" CACHE STRING "Include directory containing Python.h")
-set(REBIND_MIN_PYTHON 2.7 CACHE STRING "Minimum python version to look for (if REBIND_PYTHON and REBIND_PYTHON_INCLUDE not defined)")
+set(REBIND_PYTHON "python" CACHE STRING "Specified Python executable used to deduce include directory")
+set(REBIND_PYTHON_INCLUDE "" CACHE STRING "Specified include directory containing Python.h")
 
 ################################################################################
 
 if (${REBIND_PYTHON_INCLUDE})
-    message("-- Using pre-specified Python include ${REBIND_PYTHON_INCLUDE}")
-elseif (NOT REBIND_PYTHON STREQUAL REBIND_PYTHON_OLD)
+    message("-- Using specified Python include")
+    set(REBIND_PYTHON_INCLUDE_DIR ${REBIND_PYTHON_INCLUDE} CACHE STRING "Include to use")
+else()
     execute_process(
         COMMAND ${REBIND_PYTHON} -c "import sys, sysconfig; sys.stdout.write(sysconfig.get_paths()['include'])"
         RESULT_VARIABLE python_stat OUTPUT_VARIABLE python_include
@@ -20,13 +19,12 @@ elseif (NOT REBIND_PYTHON STREQUAL REBIND_PYTHON_OLD)
     if (python_stat)
         message(FATAL_ERROR "Failed to deduce include directory from '${REBIND_PYTHON}' executable.\nMaybe specify REBIND_PYTHON_INCLUDE directly.")
     endif()
-    message("-- Using Python include ${python_include} deduced from REBIND_PYTHON=${REBIND_PYTHON}")
-    set (REBIND_PYTHON_INCLUDE ${python_include} CACHE STRING "Python include directory for rebind")
-    set (REBIND_PYTHON_OLD ${REBIND_PYTHON} CACHE INTERNAL "Last value of REBIND_PYTHON")
-else()
-    find_package(PythonLibs ${REBIND_MIN_PYTHON} REQUIRED)
-    set (REBIND_PYTHON_INCLUDE ${PYTHON_INCLUDE_DIR} CACHE STRING "Python include directory for rebind")
+    message("-- Using Python include directory deduced from REBIND_PYTHON=${REBIND_PYTHON}")
+    set (REBIND_PYTHON_INCLUDE_DIR ${python_include} CACHE STRING "Include to use")
+    # set (REBIND_PYTHON_OLD ${REBIND_PYTHON} CACHE INTERNAL "Last value of REBIND_PYTHON")
 endif()
+
+message("-- Using Python include directory ${REBIND_PYTHON_INCLUDE_DIR}")
 
 ################################################################################
 
@@ -67,7 +65,7 @@ function(rebind_module module_name)
 
     target_compile_definitions(${module_name} PRIVATE REBIND_MODULE=${module_name})
     target_link_libraries(${module_name} PRIVATE rebind_interface ${ARGN})
-    target_include_directories(${module_name} PRIVATE ${REBIND_PYTHON_INCLUDE})
+    target_include_directories(${module_name} PRIVATE ${REBIND_PYTHON_INCLUDE_DIR})
 endfunction(rebind_module)
 
 ################################################################################
