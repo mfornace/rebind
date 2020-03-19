@@ -36,6 +36,11 @@ Demangler demangler{&runtime::demangle};
 
 void set_demangler(Demangler fun) noexcept {demangler = std::move(fun);}
 
+std::string demangle(char const *s) {
+    if (demangler) return demangler(s);
+    else return s;
+}
+
 /******************************************************************************/
 
 bool Debug = false;
@@ -51,7 +56,7 @@ Document & document() noexcept {
 }
 
 void render_default(Document &, std::type_info const &t) {
-    if (Debug) std::cout << "Not rendering type " << t.name() << std::endl;
+    if (debug()) std::cout << "Not rendering type " << t.name() << std::endl;
 }
 
 /******************************************************************************/
