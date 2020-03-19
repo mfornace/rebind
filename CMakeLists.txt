@@ -21,7 +21,6 @@ else()
     endif()
     message("-- Using Python include directory deduced from REBIND_PYTHON=${REBIND_PYTHON}")
     set_property(GLOBAL PROPERTY rebind_python_include ${python_include})
-    # set (REBIND_PYTHON_OLD ${REBIND_PYTHON} CACHE INTERNAL "Last value of REBIND_PYTHON")
 endif()
 
 message("-- Using Python include directory ${python_include}")

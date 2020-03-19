@@ -1,8 +1,38 @@
 #include <rebind/Document.h>
 
+/******************************************************************************/
+
+#if __has_include(<cxxabi.h>)
+#   include <cxxabi.h>
+    namespace rebind::runtime {
+        using namespace __cxxabiv1;
+
+        std::string demangle(char const *s) {
+            int status = 0;
+            char * buff = __cxa_demangle(s, nullptr, nullptr, &status);
+            if (!buff) return s;
+            std::string out = buff;
+            std::free(buff);
+            return out;
+        }
+
+        char const *unknown_exception_description() noexcept {
+            return abi::__cxa_current_exception_type()->name();
+        }
+    }
+#else
+    namespace rebind::runtime {
+        std::string demangle(char const *s) {return s;}
+
+        char const *unknown_exception_description() noexcept {return "C++: unknown exception";}
+    }
+#endif
+
+/******************************************************************************/
+
 namespace rebind {
 
-std::function<std::string(char const *)> demangle;
+std::function<std::string(char const *)> demangle{&runtime::demangle};
 
 bool Debug = false;
 
@@ -165,29 +195,3 @@ Function & Document::find_function(std::string s) {
 /******************************************************************************/
 
 }
-
-#if __has_include(<cxxabi.h>)
-#   include <cxxabi.h>
-    namespace rebind::runtime {
-        using namespace __cxxabiv1;
-
-        std::string demangle(char const *s) {
-            int status = 0;
-            char * buff = __cxa_demangle(s, nullptr, nullptr, &status);
-            if (!buff) return s;
-            std::string out = buff;
-            std::free(buff);
-            return out;
-        }
-
-        char const *unknown_exception_description() noexcept {
-            return abi::__cxa_current_exception_type()->name();
-        }
-    }
-#else
-    namespace rebind::runtime {
-        std::string demangle(char const *s) {return s;}
-
-        char const *unknown_exception_description() noexcept {return "C++: unknown exception";}
-    }
-#endif
