@@ -32,9 +32,16 @@
 
 namespace rebind {
 
-std::function<std::string(char const *)> demangle{&runtime::demangle};
+Demangler demangler{&runtime::demangle};
+
+void set_demangler(Demangler fun) noexcept {demangler = std::move(fun);}
+
+/******************************************************************************/
 
 bool Debug = false;
+
+void set_debug(bool debug) noexcept {Debug = debug;}
+bool debug() noexcept {return Debug;}
 
 /******************************************************************************/
 

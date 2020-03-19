@@ -9,7 +9,13 @@
 
 namespace rebind {
 
+/******************************************************************************/
+
 extern bool Debug;
+void set_debug(bool debug) noexcept;
+bool debug() noexcept;
+
+/******************************************************************************/
 
 /// Copy CV and reference qualifier from one type to another
 template <class From, class To> struct copy_qualifier_t {using type = To;};
