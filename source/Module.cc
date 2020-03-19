@@ -170,6 +170,8 @@ Object initialize(Document const &doc) {
     return ok ? m : Object();
 }
 
+void init(Document &doc);
+
 }
 
 extern "C" {
@@ -187,6 +189,7 @@ extern "C" {
         return rebind::raw_object([&]() -> rebind::Object {
             rebind::Object mod {PyModule_Create(&rebind_definition), true};
             if (!mod) return {};
+            rebind::init(rebind::document());
             rebind::Object dict = initialize(rebind::document());
             if (!dict) return {};
             rebind::incref(+dict);
