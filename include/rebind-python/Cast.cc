@@ -26,7 +26,7 @@ Object type_args(Object const &o, Py_ssize_t n) {
     return out;
 }
 
-Object list_cast(Pointer const &ref, Object const &o, Object const &root) {
+Object list_cast(Ref const &ref, Object const &o, Object const &root) {
     DUMP("Cast to list ", ref.index());
     if (auto args = type_args(o, 1)) {
         DUMP("is list ", PyList_Check(o));
@@ -44,7 +44,7 @@ Object list_cast(Pointer const &ref, Object const &o, Object const &root) {
     } else return {};
 }
 
-Object tuple_cast(Pointer const &ref, Object const &o, Object const &root) {
+Object tuple_cast(Ref const &ref, Object const &o, Object const &root) {
     DUMP("Cast to tuple ", ref.index());
     if (auto args = type_args(o)) {
         Py_ssize_t const len = PyTuple_GET_SIZE(+args);
@@ -65,7 +65,7 @@ Object tuple_cast(Pointer const &ref, Object const &o, Object const &root) {
     return {};
 }
 
-Object dict_cast(Pointer const &ref, Object const &o, Object const &root) {
+Object dict_cast(Ref const &ref, Object const &o, Object const &root) {
     DUMP("Cast to dict ", ref.index());
     if (auto args = type_args(o, 2)) {
         Object key{PyTuple_GET_ITEM(+args, 0), true};
@@ -76,7 +76,7 @@ Object dict_cast(Pointer const &ref, Object const &o, Object const &root) {
                 auto out = Object::from(PyDict_New());
                 for (auto &x : *v) {
                     Object k = as_object(x.first);
-                    Object v = cast_to_object(Pointer(std::move(x.second)), val, root);
+                    Object v = cast_to_object(Ref(std::move(x.second)), val, root);
                     if (!k || !v || PyDict_SetItem(out, k, v)) return {};
                 }
                 return out;
@@ -86,8 +86,8 @@ Object dict_cast(Pointer const &ref, Object const &o, Object const &root) {
         if (auto v = ref.request<Vector<std::pair<Value, Value>>>()) {
             auto out = Object::from(PyDict_New());
             for (auto &x : *v) {
-                Object k = cast_to_object(Pointer(std::move(x.first)), key, root);
-                Object v = cast_to_object(Pointer(std::move(x.second)), val, root);
+                Object k = cast_to_object(Ref(std::move(x.first)), key, root);
+                Object v = cast_to_object(Ref(std::move(x.second)), val, root);
                 if (!k || !v || PyDict_SetItem(out, k, v)) return {};
             }
             return out;
@@ -113,44 +113,44 @@ Object value_to_object(Value &&v, Object const &t) {
     return o;
 }
 
-// Convert Pointer to a class which is a subclass of rebind.Value
-Object pointer_to_object(Pointer const &v, Object const &t) {
+// Convert Ref to a class which is a subclass of rebind.Value
+Object pointer_to_object(Ref const &v, Object const &t) {
     PyObject *x;
     if (t) x = +t;
     else if (!v.has_value()) return {Py_None, true};
     else if (auto it = python_types.find(v.index().info()); it != python_types.end()) x = +it->second.second;
-    else x = type_object<Pointer>();
+    else x = type_object<Ref>();
 
-    auto o = Object::from((x == type_object<Pointer>()) ?
+    auto o = Object::from((x == type_object<Ref>()) ?
         PyObject_CallObject(x, nullptr) : PyObject_CallMethod(x, "__new__", "O", x));
 
-    DUMP("making Pointer ", v.index(), " ", v.has_value());
-    cast_object<Pointer>(o) = v;
-    DUMP("made Pointer ", v.index(), " ", v.has_value(), cast_object<Pointer>(o).has_value());
+    DUMP("making Ref ", v.index(), " ", v.has_value());
+    cast_object<Ref>(o) = v;
+    DUMP("made Ref ", v.index(), " ", v.has_value(), cast_object<Ref>(o).has_value());
     return o;
 }
 
 /******************************************************************************/
 
-Object bool_cast(Pointer const &ref) {
+Object bool_cast(Ref const &ref) {
     if (auto p = ref.request<bool>()) return as_object(*p);
     return {};//return type_error("could not convert to bool");
 }
 
-Object int_cast(Pointer const &ref) {
+Object int_cast(Ref const &ref) {
     if (auto p = ref.request<Integer>()) return as_object(*p);
     DUMP("bad int");
     return {};
 }
 
-Object float_cast(Pointer const &ref) {
+Object float_cast(Ref const &ref) {
     if (auto p = ref.request<double>()) return as_object(*p);
     if (auto p = ref.request<Integer>()) return as_object(*p);
     DUMP("bad float");
     return {};
 }
 
-Object str_cast(Pointer const &ref) {
+Object str_cast(Ref const &ref) {
     DUMP("converting ", ref.index(), " to str");
     if (auto p = ref.request<std::string_view>()) return as_object(std::move(*p));
     if (auto p = ref.request<std::string>()) return as_object(std::move(*p));
@@ -161,24 +161,24 @@ Object str_cast(Pointer const &ref) {
     return {};
 }
 
-Object bytes_cast(Pointer const &ref) {
+Object bytes_cast(Ref const &ref) {
     if (auto p = ref.request<BinaryView>()) return as_object(std::move(*p));
     if (auto p = ref.request<Binary>()) return as_object(std::move(*p));
     return {};
 }
 
-Object type_index_cast(Pointer const &ref) {
+Object type_index_cast(Ref const &ref) {
     if (auto p = ref.request<Index>()) return as_object(std::move(*p));
     else return {};
 }
 
-Object function_cast(Pointer const &ref) {
+Object function_cast(Ref const &ref) {
     if (auto p = ref.request<Function>()) return as_object(std::move(*p));
     if (auto p = ref.request<Overload>()) return as_object(Function(std::move(*p)));
     else return {};
 }
 
-Object memoryview_cast(Pointer const &ref, Object const &root) {
+Object memoryview_cast(Ref const &ref, Object const &root) {
     if (auto p = ref.request<ArrayView>()) {
         auto x = type_object<ArrayBuffer>();
         auto obj = Object::from(PyObject_CallObject(x, nullptr));
@@ -215,7 +215,7 @@ bool is_structured_type(PyObject *type, PyTypeObject *origin) {
     }
 }
 
-Object union_cast(Pointer const &v, Object const &t, Object const &root) {
+Object union_cast(Ref const &v, Object const &t, Object const &root) {
     if (auto args = type_args(t)) {
         auto const n = PyTuple_GET_SIZE(+args);
         for (Py_ssize_t i = 0; i != n; ++i) {
@@ -233,7 +233,7 @@ Object union_cast(Pointer const &v, Object const &t, Object const &root) {
 // First explicit types are checked:
 // None, object, bool, int, float, str, bytes, Index, list, tuple, dict, Value, Overload, memoryview
 // Then, the output_conversions map is queried for Python function callable with the Value
-Object try_python_cast(Pointer const &v, Object const &t, Object const &root) {
+Object try_python_cast(Ref const &v, Object const &t, Object const &root) {
     DUMP("try_python_cast ", v.index(), " to type ", repr(t), " with root ", repr(root));
     if (auto it = type_translations.find(t); it != type_translations.end()) {
         DUMP("type_translation found");
@@ -249,7 +249,7 @@ Object try_python_cast(Pointer const &v, Object const &t, Object const &root) {
         else if (type == &PyBytes_Type)                       return bytes_cast(v);               // bytes
         else if (type == &PyBaseObject_Type)                  return as_deduced_object(v);        // object
         else if (is_subclass(type, type_object<Value>()))     return value_to_object(v, t);     // Value
-        else if (is_subclass(type, type_object<Pointer>()))   return pointer_to_object(v, t);     // Pointer
+        else if (is_subclass(type, type_object<Ref>()))   return pointer_to_object(v, t);     // Ref
         else if (type == type_object<Index>())                return type_index_cast(v);          // type(Index)
         else if (type == type_object<Overload>())             return function_cast(v);            // Overload
         else if (is_subclass(type, &PyFunction_Type))         return function_cast(v);            // Overload
@@ -284,7 +284,7 @@ Object try_python_cast(Pointer const &v, Object const &t, Object const &root) {
     return nullptr;
 }
 
-Object cast_to_object(Pointer const &v, Object const &t, Object const &root) {
+Object cast_to_object(Ref const &v, Object const &t, Object const &root) {
     Object out = try_python_cast(std::move(v), t, root);
     // if (!out) return type_error("cannot convert value to type %R from type %S", +t, +type_index_cast(v.index()));
     return out;

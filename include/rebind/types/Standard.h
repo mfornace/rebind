@@ -26,11 +26,11 @@ struct ToValue<std::optional<T>, Q> {
 };
 
 template <class T>
-struct FromPointer<std::optional<T>> {
+struct FromRef<std::optional<T>> {
     std::optional<std::optional<T>> operator()(Variable const &v, Dispatch &msg) const {
         std::optional<std::optional<T>> out;
-        if (!v || v.from_pointer<std::nullptr_t>()) out.emplace();
-        else if (auto p = v.from_pointer<std::remove_cv_t<T>>(msg))
+        if (!v || v.from_ref<std::nullptr_t>()) out.emplace();
+        else if (auto p = v.from_ref<std::remove_cv_t<T>>(msg))
             out.emplace(std::move(*p));
         return out;
     }
@@ -47,11 +47,11 @@ struct ToValue<std::shared_ptr<T>, Q> {
 };
 
 template <class T>
-struct FromPointer<std::shared_ptr<T>> {
+struct FromRef<std::shared_ptr<T>> {
     std::optional<std::shared_ptr<T>> operator()(Variable const &v, Dispatch &msg) const {
         std::optional<std::shared_ptr<T>> out;
-        if (!v || v.from_pointer<std::nullptr_t>()) out.emplace();
-        else if (auto p = v.from_pointer<std::remove_cv_t<T>>(msg))
+        if (!v || v.from_ref<std::nullptr_t>()) out.emplace();
+        else if (auto p = v.from_ref<std::remove_cv_t<T>>(msg))
             out.emplace(std::make_shared<T>(std::move(*p)));
         return out;
     }
@@ -70,10 +70,10 @@ struct ToValue<std::variant<Ts...>, Q> {
 static_assert(std::is_same_v<response_method<std::variant<int>>, Specialized>);
 
 template <class ...Ts>
-struct FromPointer<std::variant<Ts...>> {
+struct FromRef<std::variant<Ts...>> {
     template <class T>
     static bool put(std::optional<std::variant<Ts...>> &out, Variable const &v, Dispatch &msg) {
-        if (auto p = v.from_pointer<T>(msg)) return out.emplace(std::move(*p)), true;
+        if (auto p = v.from_ref<T>(msg)) return out.emplace(std::move(*p)), true;
         return false;
     }
 
@@ -105,14 +105,14 @@ struct MapRequest {
 
     std::optional<V> operator()(Variable const &v, Dispatch &msg) const {
         std::optional<V> out;
-        if (auto p = v.from_pointer<Vector<T>>())
+        if (auto p = v.from_ref<Vector<T>>())
             out.emplace(std::make_move_iterator(std::begin(*p)), std::make_move_iterator(std::end(*p)));
         return out;
     }
 };
 
 template <class K, class V, class C, class A>
-struct FromPointer<std::map<K, V, C, A>> : MapRequest<std::map<K, V, C, A>> {};
+struct FromRef<std::map<K, V, C, A>> : MapRequest<std::map<K, V, C, A>> {};
 
 template <class K, class V, class C, class A>
 struct ToValue<std::map<K, V, C, A>> : MapResponse<std::map<K, V, C, A>> {};
@@ -122,13 +122,13 @@ struct ToValue<std::map<K, V, C, A>> : MapResponse<std::map<K, V, C, A>> {};
 template <class F>
 struct FunctionRequest {
     std::optional<F> operator()(Variable const &v, Dispatch &msg) const {
-        if (auto p = v.from_pointer<Callback<typename F::result_type>>(msg)) return F{std::move(*p)};
+        if (auto p = v.from_ref<Callback<typename F::result_type>>(msg)) return F{std::move(*p)};
         return {};
     }
 };
 
 template <class R, class ...Ts>
-struct FromPointer<std::function<R(Ts...)>> : FunctionRequest<std::function<R(Ts...)>> {};
+struct FromRef<std::function<R(Ts...)>> : FunctionRequest<std::function<R(Ts...)>> {};
 
 /******************************************************************************/
 

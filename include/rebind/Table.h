@@ -12,7 +12,7 @@ namespace rebind {
 
 class Function;
 class Overload;
-class Pointer;
+class Ref;
 class Value;
 class Scope;
 
@@ -23,7 +23,7 @@ static constexpr bool is_usable = true
     && !std::is_volatile_v<T>
     && !std::is_void_v<T>
     && std::is_nothrow_move_constructible_v<T>
-    && !std::is_same_v<T, Pointer>
+    && !std::is_same_v<T, Ref>
     && !std::is_same_v<T, Value>
     // && !std::is_null_pointer_v<T>
     && !is_type_t<T>::value;
@@ -37,7 +37,7 @@ constexpr void assert_usable() {
     static_assert(!std::is_volatile_v<T>);
     static_assert(!std::is_void_v<T>);
     static_assert(std::is_nothrow_move_constructible_v<T>);
-    static_assert(!std::is_same_v<T, Pointer>);
+    static_assert(!std::is_same_v<T, Ref>);
     static_assert(!std::is_same_v<T, Value>);
     // static_assert(!std::is_null_pointer_v<T>);
     static_assert(!is_type_t<T>::value);
@@ -56,11 +56,11 @@ struct TypeTable {
     // ToValue function pointer
     bool (*m_to_value)(Value &, void *, Qualifier) = nullptr;
     // ToValue function pointer
-    void (*m_to_pointer)(Pointer &, void *, Qualifier) = nullptr;
-    // FromPointer function pointer
-    Value (*m_from_pointer)(Pointer const &, Scope &) = nullptr;
-    // FromPointer function pointer
-    bool (*m_assign_if)(void *, Pointer const &) = nullptr;
+    void (*m_to_ref)(Ref &, void *, Qualifier) = nullptr;
+    // FromRef function pointer
+    Value (*m_from_ref)(Ref const &, Scope &) = nullptr;
+    // FromRef function pointer
+    bool (*m_assign_if)(void *, Ref const &) = nullptr;
 
     // Output name
     std::string m_name;
@@ -70,7 +70,7 @@ struct TypeTable {
     Vector<Index> bases;
 
     // List of methods on this class
-    std::map<std::string, Function> methods;
+    std::map<std::string, Function, std::less<>> methods;
 
     /**************************************************************************************/
 
@@ -141,13 +141,13 @@ template <class T>
 bool default_to_value(Value &, void *, Qualifier const);
 
 template <class T>
-void default_to_pointer(Pointer &, void *, Qualifier const);
+void default_to_ref(Ref &, void *, Qualifier const);
 
 template <class T>
-Value default_from_pointer(Pointer const &, Scope &);
+Value default_from_ref(Ref const &, Scope &);
 
 template <class T>
-bool default_assign_if(void *, Pointer const &);
+bool default_assign_if(void *, Ref const &);
 
 /******************************************************************************************/
 
@@ -169,8 +169,8 @@ TypeTable default_table() {
     t.m_destroy = default_destroy<T>;
     t.m_relocate = default_relocate<T>;
     t.m_to_value = default_to_value<T>;
-    t.m_to_pointer = default_to_pointer<T>;
-    t.m_from_pointer = default_from_pointer<T>;
+    t.m_to_ref = default_to_ref<T>;
+    t.m_from_ref = default_from_ref<T>;
     t.m_assign_if = default_assign_if<T>;
     return t;
 }

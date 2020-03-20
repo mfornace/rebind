@@ -13,7 +13,7 @@ PyObject * c_copy_from(PyObject *self, PyObject *value) noexcept {
     return raw_object([=]() -> Object {
         DUMP("- copy_from ", typeid(Self).name());
         Object val(value, true);
-        bool ok = Pointer(cast_object<Self>(self)).assign_if(pointer_from_object(val, false));
+        bool ok = Ref(cast_object<Self>(self)).assign_if(ref_from_object(val, false));
         if (!ok) return type_error("could not assign");
         return Object(self, true);
     });
@@ -24,7 +24,7 @@ PyObject * c_move_from(PyObject *self, PyObject *value) noexcept {
     return raw_object([=] {
         DUMP("- move_from");
         Object val(value, true);
-        Pointer(cast_object<Self>(self)).assign_if(pointer_from_object(val, false));
+        Ref(cast_object<Self>(self)).assign_if(ref_from_object(val, false));
         // if (auto p = cast_if<Value>(value)) p->reset();
         return Object(self, true);
     });
@@ -92,6 +92,34 @@ PyObject * c_set_ward(PyObject *self, PyObject *arg) noexcept {
         }
         cast_object<Self>(self).ward = std::move(root);
         return {self, true};
+    });
+}
+
+/******************************************************************************/
+
+template <class Self>
+PyObject * c_call_method(PyObject *s, PyObject *args, PyObject *kws) noexcept {
+    return raw_object([=]() -> Object {
+        auto objects = objects_from_argument_tuple(args);
+        auto const [tag, out, is_value, gil] = function_call_keywords(kws);
+
+        auto refs = arguments_from_objects(objects);
+
+        if (!PyUnicode_Check(objects[0])) return type_error("expected instance of str for method name");
+        std::string_view name = from_unicode(objects[0]);
+
+        auto &self = cast_object<Self>(s);
+        refs[0] = Ref(self);
+
+        if (auto t = self.table()) {
+            if (auto it = t->methods.find(name); it != t->methods.end()) {
+                return function_call_impl(out, it->second, std::move(refs), is_value, gil, tag);
+            } else {
+                return type_error("method not found");
+            }
+        } else {
+            return type_error("cannot lookup method on a null object");
+        }
     });
 }
 

@@ -63,15 +63,15 @@ using SimpleSignature = decltype(simplify_signature(Signature<F>()));
 
 // template <class F>
 // using OpaqueOutput = std::conditional_t<
-//     std::is_reference_v<decltype(*SimpleSignature<F>::template at<0>())>, Pointer, Value>;
+//     std::is_reference_v<decltype(*SimpleSignature<F>::template at<0>())>, Ref, Value>;
 
 
 // enum class Tag {call, call_except, match};
 
-using FunctionImpl = std::function<bool(Caller *, Value *, Pointer *, Arguments const &)>;
-// if caller, call function and store in value or pointer
+using FunctionImpl = std::function<bool(Caller *, Value *, Ref *, Arguments const &)>;
+// if caller, call function and store in value or ref
 // if not caller, match and return if match
-// call_except?: call function, store output in the pointer or value, return if success
+// call_except?: call function, store output in the ref or value, return if success
 
 template <std::size_t N, class F, class SFINAE=void>
 struct Adapter;
@@ -101,11 +101,11 @@ struct Adapter<0, F, SFINAE> {
     /*
      Interface implementation for a function with no optional arguments.
      - Caller is assumed non-null
-     - One of Value and Pointer should be non-null--it will be set to the function output
+     - One of Value and Ref should be non-null--it will be set to the function output
      - Throws WrongNumber if args is not the right length
      - Always returns true
      */
-    bool operator()(Caller *c, Value *v, Pointer *p, Arguments const &args) const {
+    bool operator()(Caller *c, Value *v, Ref *p, Arguments const &args) const {
         DUMP("Adapter<", type_index<F>(), ">::()");
 
         if (args.size() != Args::size)
@@ -166,7 +166,7 @@ struct Adapter {
         }
     }
 
-    bool operator()(Caller *c, Value *v, Pointer *p, Arguments const &args) const {
+    bool operator()(Caller *c, Value *v, Ref *p, Arguments const &args) const {
         if (args.size() != 1) throw WrongNumber(1, args.size());
 
         if constexpr (std::is_reference_v<Return>) {
@@ -186,7 +186,7 @@ struct Adapter<0, R C::*, std::enable_if_t<std::is_member_object_pointer_v<R C::
     R C::* function;
 
     template <class Out>
-    bool call(Caller &&caller, Out &out, Pointer const &self) const {
+    bool call(Caller &&caller, Out &out, Ref const &self) const {
         auto frame = caller();
         DUMP("Adapter<", type_index<R>(), ", ", type_index<C>(), ">::()");
         Caller handle(frame);
@@ -204,7 +204,7 @@ struct Adapter<0, R C::*, std::enable_if_t<std::is_member_object_pointer_v<R C::
         throw std::move(s.set_error("invalid argument"));
     }
 
-    bool operator()(Caller *c, Value *v, Pointer *p, Arguments const &args) const {
+    bool operator()(Caller *c, Value *v, Ref *p, Arguments const &args) const {
         if (args.size() != 1) throw WrongNumber(1, args.size());
 
         if (v) return call(std::move(*c), *v, args[0]);

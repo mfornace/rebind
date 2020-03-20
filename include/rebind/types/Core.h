@@ -16,7 +16,7 @@ namespace rebind {
 /// Built-in floating point with the largest domain -- long double is not used though
 using Real = double;
 
-using Arguments = Vector<Pointer>;
+using Arguments = Vector<Ref>;
 
 using Sequence = Vector<Value>;
 
@@ -25,8 +25,8 @@ using Dictionary = Vector<std::pair<std::string_view, Value>>;
 /******************************************************************************/
 
 template <class T>
-struct FromPointer<T *> {
-    std::optional<T *> operator()(Pointer const &v, Scope &s) const {
+struct FromRef<T *> {
+    std::optional<T *> operator()(Ref const &v, Scope &s) const {
         std::optional<T *> out;
         if (!v || v.request<std::nullptr_t>(s)) out.emplace(nullptr);
         else if (auto p = v.request<T &>(s)) out.emplace(std::addressof(*p));
@@ -35,8 +35,8 @@ struct FromPointer<T *> {
 };
 
 template <>
-struct FromPointer<char const *> {
-    std::optional<char const *> operator()(Pointer const &v, Scope &s) const {
+struct FromRef<char const *> {
+    std::optional<char const *> operator()(Ref const &v, Scope &s) const {
         std::optional<char const *> out;
         if (!v || v.request<std::nullptr_t>()) out.emplace(nullptr);
         else if (auto p = v.request<std::string_view>(s)) out.emplace(p->data());
@@ -46,12 +46,12 @@ struct FromPointer<char const *> {
 };
 
 /*
-Default FromPointer for integer type tries to go through double precision
+Default FromRef for integer type tries to go through double precision
 long double is not expected to be a useful route (it's assumed there are not multiple floating types larger than Real)
 */
 template <class T>
-struct FromPointer<T, std::enable_if_t<std::is_floating_point_v<T>>> {
-    std::optional<T> operator()(Pointer const &v, Scope &msg) const {
+struct FromRef<T, std::enable_if_t<std::is_floating_point_v<T>>> {
+    std::optional<T> operator()(Ref const &v, Scope &msg) const {
         DUMP("convert to floating");
         if (!std::is_same_v<Real, T>) if (auto p = v.request<Real>()) return static_cast<T>(*p);
         return msg.error("not convertible to floating point", typeid(T));
@@ -60,11 +60,11 @@ struct FromPointer<T, std::enable_if_t<std::is_floating_point_v<T>>> {
 
 
 /*
-Default FromPointer for integer type tries to go through Integer
+Default FromRef for integer type tries to go through Integer
 */
 template <class T>
-struct FromPointer<T, std::enable_if_t<std::is_integral_v<T>>> {
-    std::optional<T> operator()(Pointer const &v, Scope &msg) const {
+struct FromRef<T, std::enable_if_t<std::is_integral_v<T>>> {
+    std::optional<T> operator()(Ref const &v, Scope &msg) const {
         DUMP("trying convert to arithmetic", v.index(), type_index<T>());
         if (!std::is_same_v<Integer, T>) if (auto p = v.request<Integer>()) return static_cast<T>(*p);
         DUMP("failed to convert to arithmetic", v.index(), type_index<T>());
@@ -73,11 +73,11 @@ struct FromPointer<T, std::enable_if_t<std::is_integral_v<T>>> {
 };
 
 /*
-Default FromPointer for enum permits conversion from integer types
+Default FromRef for enum permits conversion from integer types
 */
 template <class T>
-struct FromPointer<T, std::enable_if_t<std::is_enum_v<T>>> {
-    std::optional<T> operator()(Pointer const &v, Scope &msg) const {
+struct FromRef<T, std::enable_if_t<std::is_enum_v<T>>> {
+    std::optional<T> operator()(Ref const &v, Scope &msg) const {
         DUMP("trying convert to enum", v.index(), type_index<T>());
         if (auto p = v.request<std::underlying_type_t<T>>()) return static_cast<T>(*p);
         return msg.error("not convertible to enum", typeid(T));
@@ -85,11 +85,11 @@ struct FromPointer<T, std::enable_if_t<std::is_enum_v<T>>> {
 };
 
 /*
-Default FromPointer for string tries to convert from std::string_view and std::string
+Default FromRef for string tries to convert from std::string_view and std::string
 */
 template <class T, class Traits, class Alloc>
-struct FromPointer<std::basic_string<T, Traits, Alloc>> {
-    std::optional<std::basic_string<T, Traits, Alloc>> operator()(Pointer const &v, Scope &msg) const {
+struct FromRef<std::basic_string<T, Traits, Alloc>> {
+    std::optional<std::basic_string<T, Traits, Alloc>> operator()(Ref const &v, Scope &msg) const {
         DUMP("trying to convert to string");
         if (auto p = v.request<std::basic_string_view<T, Traits>>())
             return std::basic_string<T, Traits, Alloc>(std::move(*p));
@@ -101,8 +101,8 @@ struct FromPointer<std::basic_string<T, Traits, Alloc>> {
 };
 
 template <class T, class Traits>
-struct FromPointer<std::basic_string_view<T, Traits>> {
-    std::optional<std::basic_string_view<T, Traits>> operator()(Pointer const &v, Scope &msg) const {
+struct FromRef<std::basic_string_view<T, Traits>> {
+    std::optional<std::basic_string_view<T, Traits>> operator()(Ref const &v, Scope &msg) const {
         return msg.error("not convertible to string view", typeid(T));
     }
 };
@@ -110,7 +110,7 @@ struct FromPointer<std::basic_string_view<T, Traits>> {
 /******************************************************************************/
 
 template <class V>
-struct VectorFromPointer {
+struct VectorFromRef {
     using T = std::decay_t<typename V::value_type>;
 
     template <class P>
@@ -128,38 +128,38 @@ struct VectorFromPointer {
         return out;
     }
 
-    std::optional<V> operator()(Pointer const &v, Scope &msg) const {
+    std::optional<V> operator()(Ref const &v, Scope &msg) const {
         // if (auto p = v.request<Vector<T>>()) return get(*p, msg);
-        if constexpr (!std::is_same_v<V, Sequence> && !std::is_same_v<T, Pointer>)
+        if constexpr (!std::is_same_v<V, Sequence> && !std::is_same_v<T, Ref>)
             if (auto p = v.request<Sequence>()) return get(*p, msg);
         return msg.error("expected sequence", typeid(V));
     }
 };
 
 template <class T, class A>
-struct FromPointer<std::vector<T, A>> : VectorFromPointer<std::vector<T, A>> {};
+struct FromRef<std::vector<T, A>> : VectorFromRef<std::vector<T, A>> {};
 
 /******************************************************************************/
 
 template <class V>
-struct CompiledSequenceFromPointer {
+struct CompiledSequenceFromRef {
     using Array = std::array<Value, std::tuple_size_v<V>>;
 
     template <class ...Ts>
     static void combine(std::optional<V> &out, Ts &&...ts) {
-        DUMP("trying CompiledSequenceFromPointer combine", bool(ts)...);
+        DUMP("trying CompiledSequenceFromRef combine", bool(ts)...);
         if ((bool(ts) && ...)) out = V{*static_cast<Ts &&>(ts)...};
     }
 
     template <class S, std::size_t ...Is>
     static void request_each(std::optional<V> &out, S &&s, Scope &msg, std::index_sequence<Is...>) {
-        DUMP("trying CompiledSequenceFromPointer request");
+        DUMP("trying CompiledSequenceFromRef request");
         combine(out, std::move(s[Is]).request(msg, Type<std::tuple_element_t<Is, V>>())...);
     }
 
     template <class S>
     static void request(std::optional<V> &out, S &&s, Scope &msg) {
-        DUMP("trying CompiledSequenceFromPointer request");
+        DUMP("trying CompiledSequenceFromRef request");
         if (std::size(s) != std::tuple_size_v<V>) {
             msg.error("wrong sequence length", typeid(V), std::tuple_size_v<V>, s.size());
         } else {
@@ -171,7 +171,7 @@ struct CompiledSequenceFromPointer {
 
     std::optional<V> operator()(Value r, Scope &msg) const {
         std::optional<V> out;
-        DUMP("trying CompiledSequenceFromPointer", r.name());
+        DUMP("trying CompiledSequenceFromRef", r.name());
         if constexpr(!std::is_same_v<V, Array>) {
             if (auto p = r.request<std::array<Value, std::tuple_size_v<V>>>()) {
                 DUMP("trying array CompiledSequenceRequest2", r.name());
@@ -192,7 +192,7 @@ struct CompiledSequenceFromPointer {
 
 /// The default implementation is to accept convertible arguments or Value of the exact typeid match
 template <class T>
-struct FromPointer<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : CompiledSequenceFromPointer<T> {};
+struct FromRef<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : CompiledSequenceFromRef<T> {};
 
 /******************************************************************************/
 
@@ -316,7 +316,7 @@ bool range_to_value(Value &v, Iter1 b, Iter2 e) {
         s.reserve(std::distance(b, e));
         for (; b != e; ++b) {
             if constexpr(std::is_same_v<T, Value>) s.emplace_back(*b);
-            else if constexpr(!std::is_same_v<T, Pointer>) s.emplace_back(Type<T>(), *b);
+            else if constexpr(!std::is_same_v<T, Ref>) s.emplace_back(Type<T>(), *b);
         }
         return v.set_if(std::move(s));
     }

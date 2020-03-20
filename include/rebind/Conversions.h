@@ -7,7 +7,7 @@ namespace rebind {
 
 /******************************************************************************/
 
-/// Tags for method of ToValue or FromPointer specialization
+/// Tags for method of ToValue or FromRef specialization
 struct Default {};
 struct Specialized {};
 struct ADL {};
@@ -16,29 +16,29 @@ struct ADL {};
 
 /// The default behavior has no custom conversions
 template <class T, class SFINAE=void>
-struct FromPointer {
+struct FromRef {
     static_assert(std::is_same_v<unqualified<T>, T>);
     using method = Default;
 
-    std::optional<T> operator()(Pointer const &r, Scope &msg) const {
+    std::optional<T> operator()(Ref const &r, Scope &msg) const {
         return msg.error("mismatched class type", typeid(T));
     }
 
-    constexpr bool operator()(Pointer const &r) const {return false;}
+    constexpr bool operator()(Ref const &r) const {return false;}
 };
 
 /******************************************************************************/
 
-/// Unused overload just to register the from_pointer identifier
-// void from_pointer(int, int, int);
+/// Unused overload just to register the from_ref identifier
+// void from_ref(int, int, int);
 
-/// ADL version of FromPointer
+/// ADL version of FromRef
 template <class T>
-struct FromPointer<T, std::void_t<decltype(from_pointer(Type<T>(), std::declval<Pointer const &>(), std::declval<Scope &>()))>> {
+struct FromRef<T, std::void_t<decltype(from_ref(Type<T>(), std::declval<Ref const &>(), std::declval<Scope &>()))>> {
     using method = ADL;
 
-    std::optional<T> operator()(Pointer const &r, Scope &msg) const {
-        return static_cast<std::optional<T>>(from_pointer(Type<T>(), r, msg));
+    std::optional<T> operator()(Ref const &r, Scope &msg) const {
+        return static_cast<std::optional<T>>(from_ref(Type<T>(), r, msg));
     }
 };
 
@@ -71,12 +71,12 @@ struct ToValue<T, std::void_t<decltype(to_value(std::declval<Value &>(), std::de
 /******************************************************************************/
 
 template <class T, class SFINAE=void> // T is unqualified
-struct ToPointer {
+struct ToRef {
     using method = Default;
     static_assert(std::is_same_v<unqualified<T>, T>);
 
-    void operator()(Pointer const &p, T const &) const {
-        DUMP("no conversion found from source ", get_table<T>()->name(), " to pointer of type ", p.name());
+    void operator()(Ref const &p, T const &) const {
+        DUMP("no conversion found from source ", get_table<T>()->name(), " to reference of type ", p.name());
     }
 };
 
@@ -86,7 +86,7 @@ template <class T, class=void>
 struct RequestMethod {using method = Specialized;};
 
 template <class T>
-struct RequestMethod<T, std::void_t<typename FromPointer<T>::method>> {using type = typename FromPointer<T>::method;};
+struct RequestMethod<T, std::void_t<typename FromRef<T>::method>> {using type = typename FromRef<T>::method;};
 
 template <class T>
 using request_method = typename RequestMethod<T>::type;
@@ -110,9 +110,9 @@ using response_method = typename ResponseMethod<T>::type;
 /******************************************************************************/
 
 template <class T>
-Value default_from_pointer(Pointer const &p, Scope &s) {
+Value default_from_ref(Ref const &p, Scope &s) {
     Value v;
-    if (auto o = FromPointer<T>()(p, s)) v.place<T>(std::move(*o));
+    if (auto o = FromRef<T>()(p, s)) v.place<T>(std::move(*o));
     return v;
 }
 
@@ -133,21 +133,21 @@ bool default_to_value(Value &v, void *p, Qualifier const q) {
 /******************************************************************************/
 
 template <class T>
-void default_to_pointer(Pointer &v, void *p, Qualifier const q) {
+void default_to_ref(Ref &v, void *p, Qualifier const q) {
     assert_usable<T>();
     if (q == Lvalue) {
-        return ToPointer<T>()(v, *static_cast<T *>(p));
+        return ToRef<T>()(v, *static_cast<T *>(p));
     } else if (q == Rvalue) {
-        return ToPointer<T>()(v, std::move(*static_cast<T *>(p)));
+        return ToRef<T>()(v, std::move(*static_cast<T *>(p)));
     } else {
-        return ToPointer<T>()(v, *static_cast<T const *>(p));
+        return ToRef<T>()(v, *static_cast<T const *>(p));
     }
 }
 
 /******************************************************************************/
 
 template <class T>
-bool default_assign_if(void *ptr, Pointer const &other) {
+bool default_assign_if(void *ptr, Ref const &other) {
     assert_usable<T>();
     DUMP("assign_if: ", typeid(T).name());
     auto &self = *static_cast<T *>(ptr);
@@ -182,8 +182,8 @@ std::remove_reference_t<T> * Erased::request(Scope &s, Type<T> t, Qualifier q) c
         if (tab->has_base(type_index<U>())) return static_cast<std::remove_reference_t<T> *>(ptr);
     }
 
-    Pointer out(Erased(static_cast<U *>(nullptr)), q);
-    tab->m_to_pointer(out, ptr, q);
+    Ref out(Erased(static_cast<U *>(nullptr)), q);
+    tab->m_to_ref(out, ptr, q);
     return out.target<T>();
 }
 
@@ -218,8 +218,8 @@ std::optional<T> Erased::request(Scope &s, Type<T> t, Qualifier q) const {
         return out;
     }
 
-    // FromPointer
-    out = FromPointer<T>()(Pointer(*this, q), s);
+    // FromRef
+    out = FromRef<T>()(Ref(*this, q), s);
 
     return out;
 }

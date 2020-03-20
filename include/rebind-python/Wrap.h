@@ -29,9 +29,9 @@ struct PyValue : Value {
     Object ward = {};
 };
 
-/// Main wrapper type for Pointer: adds a ward object for lifetime management
-struct PyPointer : Pointer {
-    using Pointer::Pointer;
+/// Main wrapper type for Ref: adds a ward object for lifetime management
+struct PyRef : Ref {
+    using Ref::Ref;
     Object ward = {};
 };
 
@@ -39,7 +39,7 @@ template <>
 struct Wrap<Value> : Wrap<PyValue> {};
 
 template <>
-struct Wrap<Pointer> : Wrap<PyPointer> {};
+struct Wrap<Ref> : Wrap<PyRef> {};
 
 /******************************************************************************/
 

@@ -141,16 +141,16 @@ struct ToValue<BinaryView> {
 };
 
 template <>
-struct FromPointer<BinaryView> {
-    std::optional<BinaryView> operator()(Pointer const &v, Scope &s) const {
+struct FromRef<BinaryView> {
+    std::optional<BinaryView> operator()(Ref const &v, Scope &s) const {
         if (auto p = v.request<BinaryData>()) return BinaryView(p->data(), p->size());
         return s.error("not convertible to binary view", typeid(BinaryView));
     }
 };
 
 template <>
-struct FromPointer<BinaryData> {
-    std::optional<BinaryData> operator()(Pointer const &v, Scope &s) const {
+struct FromRef<BinaryData> {
+    std::optional<BinaryData> operator()(Ref const &v, Scope &s) const {
         return s.error("not convertible to binary data", typeid(BinaryData));
     }
 };

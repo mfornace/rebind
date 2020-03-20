@@ -270,20 +270,20 @@ std::string wrong_type_message(WrongType const &e, std::string_view prefix) {
 
 /******************************************************************************/
 
-Pointer pointer_from_object(Object &o, bool move) {
+Ref ref_from_object(Object &o, bool move) {
     if (auto p = cast_if<Overload>(o)) {
-        return Pointer(*p);
+        return Ref(*p);
     } else if (auto p = cast_if<Index>(o)) {
-        DUMP("pointer_from_object: Index = ", p->name());
-        return Pointer(*p);
+        DUMP("ref_from_object: Index = ", p->name());
+        return Ref(*p);
     } else if (auto p = cast_if<Value>(o)) {
-        DUMP("pointer_from_object: Value = ", p->name());
-        return Pointer(p->as_erased(), move ? Rvalue : Lvalue);
-    } else if (auto p = cast_if<Pointer>(o)) {
-        DUMP("pointer_from_object: Pointer = ", p->name());
+        DUMP("ref_from_object: Value = ", p->name());
+        return Ref(p->as_erased(), move ? Rvalue : Lvalue);
+    } else if (auto p = cast_if<Ref>(o)) {
+        DUMP("ref_from_object: Ref = ", p->name());
         return *p;
     } else {
-        return Pointer(o);
+        return Ref(o);
     }
 }
 

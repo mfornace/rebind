@@ -54,7 +54,7 @@ struct Erased {
         else return "null";
     }
 
-    bool assign_if(Pointer const &p) const {return has_value() && tab->m_assign_if(ptr, p);}
+    bool assign_if(Ref const &p) const {return has_value() && tab->m_assign_if(ptr, p);}
 
     /**************************************************************************************/
 
@@ -66,7 +66,7 @@ struct Erased {
 
     bool request_to(Value &, Qualifier q) const;
 
-    bool request_to(Pointer &, Qualifier q) const;
+    bool request_to(Ref &, Qualifier q) const;
 
     /**************************************************************************************/
 

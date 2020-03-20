@@ -60,7 +60,7 @@ struct CallingScope {
 
     explicit CallingScope(Caller c) : caller(std::move(c)) {}
 
-    /// Store a value which will last the lifetime of a conversion from_pointer. Return its address
+    /// Store a value which will last the lifetime of a conversion from_ref. Return its address
     template <class T>
     unqualified<T> * emplace(T &&t) {
         return std::addressof(storage.emplace_back().emplace<unqualified<T>>(static_cast<T &&>(t)));

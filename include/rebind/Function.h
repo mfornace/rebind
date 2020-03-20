@@ -8,14 +8,14 @@
 namespace rebind {
 
 // struct Overload {
-//     bool operator()(Value *, Pointer *, Arguments const &, Tag) const;
+//     bool operator()(Value *, Ref *, Arguments const &, Tag) const;
 
 //     // Value operator()(Arguments const &v) const noexcept;
-//     // Pointer ref(Arguments const &v) const; // optional
-//     // bool match(Arguments const &v, Pointer const &tag) const; //optional
+//     // Ref ref(Arguments const &v) const; // optional
+//     // bool match(Arguments const &v, Ref const &tag) const; //optional
 
-//     // Pointer target() const;
-//     // Pointer operator()(Arguments const &v, Pointer const &dispatch) const;
+//     // Ref target() const;
+//     // Ref operator()(Arguments const &v, Ref const &dispatch) const;
 
 // };
 //exceptions?
@@ -51,7 +51,7 @@ struct Overload {
     }
 
     template <class ...Ts>
-    Pointer reference(Caller c, Ts &&...ts) const {
+    Ref reference(Caller c, Ts &&...ts) const {
         return call_reference(std::move(c), to_arguments(static_cast<Ts &&>(ts)...));
     }
 
@@ -60,7 +60,7 @@ struct Overload {
         return call_value(std::move(c), static_cast<Ts &&>(ts)...);
     }
 
-    bool call(Caller &c, Value *v, Pointer *p, Arguments const &args) const {
+    bool call(Caller &c, Value *v, Ref *p, Arguments const &args) const {
         DUMP("call function: n=", args.size(), ", v=", bool(v), ", p=", bool(p));
         for (auto &&p: args) {DUMP("argument ", p.name(), " ", p.index(), " ", p.qualifier());}
         return impl(&c, v, p, args);
@@ -68,7 +68,7 @@ struct Overload {
 
     void call_in_place(Value &out, Caller c, Arguments const &v) const {call(c, &out, nullptr, v);}
 
-    void call_in_place(Pointer &out, Caller c, Arguments const &v) const {call(c, nullptr, &out, v);}
+    void call_in_place(Ref &out, Caller c, Arguments const &v) const {call(c, nullptr, &out, v);}
 
     Value call_value(Caller c, Arguments const &v) const {
         Value out;
@@ -76,8 +76,8 @@ struct Overload {
         return out;
     }
 
-    Pointer call_reference(Caller c, Arguments const &v) const {
-        Pointer out;
+    Ref call_reference(Caller c, Arguments const &v) const {
+        Ref out;
         call(c, nullptr, &out, v);
         return out;
     }
@@ -229,21 +229,21 @@ Streamable<T> streamable(Type<T> t={}) {return {};}
 /******************************************************************************/
 
 // template <class R>
-// struct FromPointer<Callback<R>> {
-//     std::optional<Callback<R>> operator()(Pointer const &v, Scope &msg) const {
+// struct FromRef<Callback<R>> {
+//     std::optional<Callback<R>> operator()(Ref const &v, Scope &msg) const {
 //         if (!msg.caller) msg.error("Calling context expired", typeid(Callback<R>));
-//         else if (auto p = v.from_pointer<Overload>(msg)) return Callback<R>{std::move(*p), msg.caller};
+//         else if (auto p = v.from_ref<Overload>(msg)) return Callback<R>{std::move(*p), msg.caller};
 //         return {};
 //     }
 // };
 
 
 // template <class R, class ...Ts>
-// struct FromPointer<AnnotatedCallback<R, Ts...>> {
+// struct FromRef<AnnotatedCallback<R, Ts...>> {
 //     using type = AnnotatedCallback<R, Ts...>;
 //     std::optional<type> operator()(Variable const &v, Scope &msg) const {
 //         if (!msg.caller) msg.error("Calling context expired", typeid(type));
-//         else if (auto p = v.from_pointer<Overload>(msg)) return type{std::move(*p), msg.caller};
+//         else if (auto p = v.from_ref<Overload>(msg)) return type{std::move(*p), msg.caller};
 //         return {};
 //     }
 // };

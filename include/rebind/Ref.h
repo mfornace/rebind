@@ -5,7 +5,7 @@ namespace rebind {
 
 /******************************************************************************************/
 
-class Pointer : protected Erased {
+class Ref : protected Erased {
 protected:
     Qualifier qual = Const;
 
@@ -17,22 +17,22 @@ public:
     using Erased::reset;
     using Erased::operator bool;
 
-    constexpr Pointer() noexcept = default;
+    constexpr Ref() noexcept = default;
 
-    constexpr Pointer(std::nullptr_t) noexcept : Pointer() {}
-
-    template <class T, std::enable_if_t<is_usable<T>, int> = 0>
-    explicit constexpr Pointer(T &t) noexcept : Erased(std::addressof(t)), qual(Lvalue) {}
+    constexpr Ref(std::nullptr_t) noexcept : Ref() {}
 
     template <class T, std::enable_if_t<is_usable<T>, int> = 0>
-    explicit constexpr Pointer(T const &t) noexcept : Erased(std::addressof(const_cast<T &>(t))), qual(Const) {}
+    explicit constexpr Ref(T &t) noexcept : Erased(std::addressof(t)), qual(Lvalue) {}
 
     template <class T, std::enable_if_t<is_usable<T>, int> = 0>
-    explicit constexpr Pointer(T &&t) noexcept : Erased(std::addressof(t)), qual(Rvalue) {}
+    explicit constexpr Ref(T const &t) noexcept : Erased(std::addressof(const_cast<T &>(t))), qual(Const) {}
 
-    explicit constexpr Pointer(Value const &);
-    explicit constexpr Pointer(Value &);
-    explicit constexpr Pointer(Value &&);
+    template <class T, std::enable_if_t<is_usable<T>, int> = 0>
+    explicit constexpr Ref(T &&t) noexcept : Erased(std::addressof(t)), qual(Rvalue) {}
+
+    explicit constexpr Ref(Value const &);
+    explicit constexpr Ref(Value &);
+    explicit constexpr Ref(Value &&);
 
     Qualifier qualifier() const noexcept {return qual;}
 
@@ -66,13 +66,13 @@ public:
     template <class T>
     T cast(Scope &s, Type<T> t={}) const {
         if (auto p = request(s, t)) return static_cast<T &&>(*p);
-        throw std::move(s.set_error("invalid cast (rebind::Pointer)"));
+        throw std::move(s.set_error("invalid cast (rebind::Ref)"));
     }
 
     template <class T>
     T cast(Type<T> t={}) const {Scope s; return cast(s, t);}
 
-    bool assign_if(Pointer const &p) const {return qual != Const && Erased::assign_if(p);}
+    bool assign_if(Ref const &p) const {return qual != Const && Erased::assign_if(p);}
 
     /**************************************************************************************/
 
@@ -84,30 +84,30 @@ public:
     /**************************************************************************************/
 
     template <class T>
-    void set(T &t) {*this = Pointer(t);}
+    void set(T &t) {*this = Ref(t);}
 
     template <class T>
-    void set(T &&t) {*this = Pointer(std::move(t));}
+    void set(T &&t) {*this = Ref(std::move(t));}
 
     template <class T>
-    void set(T const &t) {*this = Pointer(t);}
+    void set(T const &t) {*this = Ref(t);}
 
 
-    constexpr Pointer(Erased const &o, Qualifier q) noexcept : Erased(o), qual(q) {}
+    constexpr Ref(Erased const &o, Qualifier q) noexcept : Erased(o), qual(q) {}
     // template <class T>
-    // static Pointer from(T &t) {return {t, Lvalue};}
-
-    // template <class T>
-    // static Pointer from(T const &t) {return {const_cast<T &>(t), Const};}
+    // static Ref from(T &t) {return {t, Lvalue};}
 
     // template <class T>
-    // static Pointer from(T &&t) {return {t, Rvalue};}
+    // static Ref from(T const &t) {return {const_cast<T &>(t), Const};}
 
-    // static Pointer from(Value &t);
-    // static Pointer from(Value const &t);
-    // static Pointer from(Value &&t);
+    // template <class T>
+    // static Ref from(T &&t) {return {t, Rvalue};}
 
-    // static Pointer from(Pointer p) {return p;}
+    // static Ref from(Value &t);
+    // static Ref from(Value const &t);
+    // static Ref from(Value &&t);
+
+    // static Ref from(Ref p) {return p;}
 
     bool request_to(Value &v) const & {return Erased::request_to(v, qual);}
     bool request_to(Value &v) & {return Erased::request_to(v, qual);}
@@ -116,7 +116,7 @@ public:
 
 /******************************************************************************************/
 
-using Arguments = Vector<Pointer>;
+using Arguments = Vector<Ref>;
 
 /******************************************************************************************/
 

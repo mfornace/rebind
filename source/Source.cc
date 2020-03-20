@@ -143,7 +143,7 @@ void render_default(Document &, std::type_info const &t) {
 //     DUMP((act != nullptr), " asking for ", t, "from", q, type());
 //     Variable v;
 //     if (!has_value()) {
-//         // Nothing to do; from_pointer always fails
+//         // Nothing to do; from_ref always fails
 //     } else if (idx.matches(t)) { // Exact type match
 //         // auto info = reinterpret_cast<std::type_info const * const &>(t);
 //         if (t.qualifier() == Value) { // Make a copy or move

@@ -1,9 +1,9 @@
 
-## `FromPointer` for defining how to make your object from an opaque `Pointer`
+## `FromRef` for defining how to make your object from an opaque `Pointer`
 
 ```c++
 template <class T, class SFINAE=void> // T is qualified
-struct FromPointer {
+struct FromRef {
     /// Convert variable `r` into type `T`, log failures in Scope
     /// OUT is either T *, T const *, or std::optional<T>
     std::optional<T> operator()(Pointer const &, Scope &) const;
@@ -35,7 +35,7 @@ Names: Pointer, Reference, Handle
 
 ```c++
 template <class T, class SFINAE=void> // T is unqualified
-struct ToPointer {
+struct ToRef {
 
     /// Convert `t` into type `(idx, Q)`, put it in the Value, and return if conversion took place
     bool operator()(Pointer &, T &) const;

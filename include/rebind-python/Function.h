@@ -1,3 +1,6 @@
+#pragma once
+#include <rebind-python/API.h>
+
 namespace rebind::py {
 
 /******************************************************************************/
@@ -21,7 +24,7 @@ Object call_overload(void *out, Overload const &fun, Arguments &&args, bool is_v
         if (is_value) {
             call_with_gil(*static_cast<Value *>(out), fun, std::move(args), gil);
         } else {
-            call_with_gil(*static_cast<Pointer *>(out), fun, std::move(args), gil);
+            call_with_gil(*static_cast<Ref *>(out), fun, std::move(args), gil);
         }
         return {Py_None, true};
     } else {
@@ -106,7 +109,7 @@ auto function_call_keywords(PyObject *kws) {
     if (kws && PyDict_Check(kws)) {
         PyObject *o = PyDict_GetItemString(kws, "output");
         if (o) {
-            if ((out = cast_if<Pointer>(o))) {
+            if ((out = cast_if<Ref>(o))) {
                 is_value = false;
             } else {
                 out = &cast_object<Value>(o);
@@ -165,7 +168,7 @@ auto function_call_keywords(PyObject *kws) {
 
 //         if (!v.return_type) return value_to_object(std::move(out)); // no cast
 //         else if (v.return_type == Py_None || +v.return_type == reinterpret_cast<PyObject const *>(Py_None->ob_type)) return {Py_None, true}; // cast to None
-//         else return cast_to_object(Pointer::from(std::move(out)), v.return_type, Object());
+//         else return cast_to_object(Ref::from(std::move(out)), v.return_type, Object());
 //     });
 // }
 
@@ -264,7 +267,7 @@ auto function_call_keywords(PyObject *kws) {
 //             auto const &, outs = cast_object<Method>(self);
 //             auto [t0, t1, sig, gil] = function_call_keywords(kws);
 //             Arguments args;
-//             args.emplace_back(pointer_from_object(s.self));
+//             args.emplace_back(ref_from_object(s.self));
 //             args_from_python(args, {pyargs, true});
 //             return function_call_impl(s.fun, std::move(args), sig, t0, t1, gil);
 //         });
@@ -301,7 +304,7 @@ Vector<Object> objects_from_argument_tuple(PyObject *args) {
 Arguments arguments_from_objects(Vector<Object> &v) {
     Arguments out;
     out.reserve(v.size());
-    for (auto &o : v) out.emplace_back(pointer_from_object(o));
+    for (auto &o : v) out.emplace_back(ref_from_object(o));
     return out;
 }
 
@@ -362,50 +365,6 @@ int function_init(PyObject *self, PyObject *args, PyObject *kws) noexcept {
     // cast_object<Overload>(self).emplace(PythonFunction(Object(fun, true), Object(sig ? sig : Py_None, true)), {});
     return 0;
 }
-
-/******************************************************************************/
-
-
-PyMethodDef FunctionTypeMethods[] = {
-    {"move_from", static_cast<PyCFunction>(c_move_from<Overload>),
-        METH_VARARGS, "move it"},
-    {"copy_from",   static_cast<PyCFunction>(c_copy_from<Overload>),
-        METH_O,       "copy from another Overload"},
-    // {"signatures",  static_cast<PyCFunction>(function_signatures),
-    // METH_NOARGS,  "get signatures"},
-    // {"delegating",  static_cast<PyCFunction>(DelegatingFunction::make),
-    // METH_O,  "delegating(self, other): return an equivalent of partial(other, _fun_=self)"},
-    // {"annotated",   static_cast<PyCFunction>(function_annotated),
-    // METH_VARARGS, "annotated(self, annotations): return a function wrapping self which casts inputs and output to the given type annotations"},
-    {nullptr, nullptr, 0, nullptr}
-};
-
-/******************************************************************************/
-
-template <>
-PyTypeObject Wrap<Function>::type = []{
-    auto o = type_definition<Function>("rebind.Overload", "C++function object");
-    o.tp_init = function_init;
-    o.tp_call = function_call;
-    o.tp_methods = FunctionTypeMethods;
-    // o.tp_descr_get = Method::make;
-    return o;
-}();
-
-
-    // offsetof(PyCFunctionObject, vectorcall),    /* tp_vectorcall_offset */
-    // // (reprfunc)meth_repr,                        /* tp_repr */
-    // (hashfunc)meth_hash,                        /* tp_hash */
-    // PyCFunction_Call,                           /* tp_call */
-    // PyObject_GenericGetAttr,                    /* tp_getattro */
-    // Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC | _Py_TPFLAGS_HAVE_VECTORCALL,                /* tp_flags */
-    // (traverseproc)meth_traverse,                /* tp_traverse */
-    // meth_richcompare,                           /* tp_richcompare */
-    // offsetof(PyCFunctionObject, m_weakreflist), /* tp_weaklistoffset */
-    // meth_methods,                               /* tp_methods */
-    // meth_members,                               /* tp_members */
-    // meth_getsets,                               /* tp_getset */
-
 
 /******************************************************************************/
 

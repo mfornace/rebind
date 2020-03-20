@@ -1,20 +1,20 @@
 
 ## User conversions
 
-### FromPointer
+### FromRef
 
-`FromPointer` converts a `Variable` to type `T`. It returns a null object if this is impossible. To specify more information on an error, call `msg.error(...)`.
+`FromRef` converts a `Variable` to type `T`. It returns a null object if this is impossible. To specify more information on an error, call `msg.error(...)`.
 
 In this case `T` may be a reference type. In the below, read `return_type` as:
-- `T *` for `FromPointer<T &>`
-- `T *` for `FromPointer<T &&>`
-- `T const *` for `FromPointer<T const &>`
-- `std::optional<T>` for `FromPointer<T>`
+- `T *` for `FromRef<T &>`
+- `T *` for `FromRef<T &&>`
+- `T const *` for `FromRef<T const &>`
+- `std::optional<T>` for `FromRef<T>`
 
 
 ```c++
 template <class T, class SFINAE=void>
-struct FromPointer {
+struct FromRef {
     /* Mandatory */ return_type operator()(Variable const &r, Dispatch &msg);
     /* Optional  */ return_type operator()(Variable &&r, Dispatch &msg);
 };
@@ -107,21 +107,21 @@ Variable reference() &&;
 
 ### Conversions
 
-FromPointer any type T by non-custom conversions
+FromRef any type T by non-custom conversions
 ```c++
 Variable request_variable(Dispatch &msg, std::type_index const, Qualifier q=Value) const;
 ```
 
-FromPointer reference T by custom conversions
+FromRef reference T by custom conversions
 ```c++
 template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
-std::remove_reference_t<T> *from_pointer(Dispatch &msg={}, Type<T> t={}) const;
+std::remove_reference_t<T> *from_ref(Dispatch &msg={}, Type<T> t={}) const;
 
 template <class T, std::enable_if_t<!std::is_reference_v<T>, int> = 0>
-std::optional<T> from_pointer(Dispatch &msg={}, Type<T> t={}) const;
+std::optional<T> from_ref(Dispatch &msg={}, Type<T> t={}) const;
 ```
 
-FromPointer non-reference T by custom conversions
+FromRef non-reference T by custom conversions
 ```c++
 template <class T>
 T downcast(Dispatch &msg={}, Type<T> t={}) const;

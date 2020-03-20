@@ -19,9 +19,8 @@
 #define REBIND_STRING_IMPL(x) #x
 #define REBIND_STRING(x) REBIND_STRING_IMPL(x)
 
-#include "Var.cc"
-#include "Function.cc"
-#include "Index.cc"
+#include "Function.h"
+#include "Definitions.cc"
 
 namespace rebind::py {
 
@@ -32,32 +31,6 @@ namespace rebind::py {
 //     else return {name, reinterpret_cast<PyCFunction>(fun), type, doc};
 // }
 
-/******************************************************************************/
-
-int array_data_buffer(PyObject *self, Py_buffer *view, int flags) {
-    auto &p = cast_object<ArrayBuffer>(self);
-    view->buf = p.data;
-    if (p.base) {incref(p.base); view->obj = +p.base;}
-    else view->obj = nullptr;
-    view->itemsize = Buffer::itemsize(*p.type);
-    view->len = p.n_elem;
-    view->readonly = !p.mutate;
-    view->format = const_cast<char *>(Buffer::format(*p.type).data());
-    view->ndim = p.shape_stride.size() / 2;
-    view->shape = p.shape_stride.data();
-    view->strides = p.shape_stride.data() + view->ndim;
-    view->suboffsets = nullptr;
-    return 0;
-}
-
-PyBufferProcs buffer_procs{array_data_buffer, nullptr};
-
-template <>
-PyTypeObject Wrap<ArrayBuffer>::type = []{
-    auto o = type_definition<ArrayBuffer>("rebind.ArrayBuffer", "C++ ArrayBuffer object");
-    o.tp_as_buffer = &buffer_procs;
-    return o;
-}();
 
 /******************************************************************************/
 
@@ -104,7 +77,7 @@ Object initialize(Document const &doc) {
 
     // Builtin types
     s = s && attach_type(m, "Value", type_object<Value>());
-    s = s && attach_type(m, "Pointer", type_object<Pointer>());
+    s = s && attach_type(m, "Ref", type_object<Ref>());
     s = s && attach_type(m, "Function", type_object<Function>());
     // s = s && attach_type(m, "Overload", type_object<Overload>())
     s = s && attach_type(m, "Index", type_object<Index>());
@@ -125,7 +98,7 @@ Object initialize(Document const &doc) {
             o = as_object(*p);
         } else if (auto p = x.second.template target<Vector<Table>>()) { // a type table
             o = tables_to_object(*p);
-        // } else if (auto p = x.second.template target<Pointer>()) {
+        // } else if (auto p = x.second.template target<Ref>()) {
         //     o = pointer_to_object(*p);
         } else { // anything else
             o = value_to_object(Value(x.second));

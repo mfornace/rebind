@@ -26,7 +26,7 @@ template <class SourceType, TargetQualifier Q=Value, class SFINAE=void>
 struct ToValue; // converts type T with qualifier Q into any qualified type
 
 template <class TargetType, class SFINAE=void>
-struct FromPointer; // makes type T, a qualified type, from a Variable
+struct FromRef; // makes type T, a qualified type, from a Variable
 
 template <class T>
 struct Action;
@@ -176,7 +176,7 @@ public:
         if (idx.matches<T>()) return target<T>();
         auto v = request_variable(msg, type_index<T>());
         if (auto p = v.template target<T>()) {msg.source.clear(); return p;}
-        if (auto p = FromPointer<T>()(*this, msg)) {msg.source.clear(); return p;}
+        if (auto p = FromRef<T>()(*this, msg)) {msg.source.clear(); return p;}
         return nullptr;
     }
 
@@ -190,7 +190,7 @@ public:
         else {
             auto v = request_variable(msg, typeid(T));
             if (auto p = std::move(v).target<T &&>()) {msg.source.clear(); out.emplace(std::move(*p));}
-            else if ((out = FromPointer<T>()(*this, msg))) msg.source.clear();
+            else if ((out = FromRef<T>()(*this, msg))) msg.source.clear();
         }
         // DUMP(type(), p, &buff, reinterpret_cast<void * const &>(buff), stack, typeid(p).name(), typeid(Type<T>).name());
 

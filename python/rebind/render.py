@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.INFO)
 def render_module(pkg: str, doc: dict, set_type_names=False):
     clear = doc['clear_global_objects']
     try:
-        record = Record(pkg, doc['Value'], doc['Pointer'])
+        record = Record(pkg, doc['Value'], doc['Ref'])
         out, config = _render_module(record, doc, set_type_names)
         monkey_patch(record, config)
     except BaseException:
@@ -21,13 +21,13 @@ def render_module(pkg: str, doc: dict, set_type_names=False):
 ################################################################################
 
 class Record:
-    def __init__(self, module_name, Value, Pointer):
+    def __init__(self, module_name, Value, Ref):
         self.module_name = str(module_name)
         self.classes = set()
         self.modules = set()
         self.translations = {}
         self.Value = Value
-        self.Pointer = Pointer
+        self.Ref = Ref
 
     def translate(self, old, new):
         if old is not None:
@@ -110,19 +110,19 @@ def render_init(init):
 
 def render_member(record, key, value, old):
     if old is None:
-        def fget(self, _impl=value, _P=record.Pointer):
+        def fget(self, _impl=value, _P=record.Ref):
             ptr = _P()
             _impl(self, output=ptr)
             ptr._set_ward(self)
             return ptr
     else:
-        def fget(self, _impl=value, _R=old, _P=record.Pointer):
+        def fget(self, _impl=value, _R=old, _P=record.Ref):
             ptr = _P()
             _impl(self, output=ptr)
             ptr._set_ward(self) # not sure if needed...?
             return ptr.cast(_R)
 
-    def fset(self, other, _impl=value, _P=record.Pointer):
+    def fset(self, other, _impl=value, _P=record.Ref):
         ptr = _P()
         _impl(self, output=ptr)
         ptr.copy_from(other)
@@ -161,6 +161,7 @@ def render_type(record, name: str, overloads):
     '''Define a new type in pkg'''
     mod, name = common.split_module(record.module_name, name)
     old_cls, props = find_class(mod, name)
+    old_props = props.copy()
 
     new = props.pop('__new__', None)
     if callable(new):
@@ -173,11 +174,11 @@ def render_type(record, name: str, overloads):
     for k, v in methods.items():
         k = common.translations.get(k, k)
         if k.startswith('.'):
-            key = k[1:]
-            old = common.unwrap(props['__annotations__'].get(key))
+            k = k[1:]
+            old = common.unwrap(props['__annotations__'].get(k))
             log.info("deriving member '%s.%s%s' from %r", mod.__name__, name, k, old)
-            props[key] = render_member(record, key, v, old)
-            record.translate('%s.%s' % (name, old), props[key])
+            props[k] = render_member(record, k, v, old)
+            record.translate('%s.%s' % (name, old), props[k])
         else:
             old = common.unwrap(props.get(k, common.default_methods.get(k)))
             log.info("deriving method '%s.%s.%s' from %r", mod.__name__, name, k, old)
@@ -185,9 +186,10 @@ def render_type(record, name: str, overloads):
             record.translate(old, props[k])
 
     props.setdefault('copy', copy)
+    props.setdefault('__old__', old_props)
 
     ref_props = props.copy()
-    props['Reference'] = type('Reference', (record.Pointer,), ref_props)
+    props['Reference'] = type('Reference', (record.Ref,), ref_props)
 
     cls = type(name, (record.Value,), props)
     record.translate(old_cls, cls)

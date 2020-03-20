@@ -31,6 +31,14 @@ static constexpr Version PythonVersion{PY_MAJOR_VERSION, PY_MINOR_VERSION, PY_MI
 /******************************************************************************/
 
 template <class T>
+PyCFunction c_function(T t) {
+    if constexpr(std::is_constructible_v<PyCFunction, T>) return static_cast<PyCFunction>(t);
+    else return reinterpret_cast<PyCFunction>(static_cast<PyCFunctionWithKeywords>(t));
+}
+
+/******************************************************************************/
+
+template <class T>
 struct SubClass {
     T *ptr;
     operator PyObject *() const {return reinterpret_cast<PyObject *>(ptr);}
