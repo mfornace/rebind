@@ -83,22 +83,26 @@ Object tuple_from(Ts &&...ts) {
 
 Object value_to_object(Value &&v, Object const &t={});
 
-inline Object args_to_python(Sequence &&s, Object const &sig={}) {
+Object ref_to_object(Ref const &v, Object const &t={});
+
+inline Object args_to_python(Arguments const &s, Object const &sig={}) {
     if (sig && !PyTuple_Check(+sig))
         throw python_error(type_error("expected tuple but got %R", (+sig)->ob_type));
     std::size_t len = sig ? PyTuple_GET_SIZE(+sig) : 0;
     auto const n = s.size();
     auto out = Object::from(PyTuple_New(n));
     Py_ssize_t i = 0u;
-    for (auto &v : s) {
+    for (auto &r : s) {
         if (i < len) {
             PyObject *t = PyTuple_GET_ITEM(+sig, i);
             throw python_error(type_error("conversion to python signature not implemented yet"));
         } else {
-            // special case: if given an rvalue reference, make it into a value
-#warning "need to add rvalue thing"
-            // Value &&var = v.qualifier() == Rvalue ? v.copy() : std::move(v);
-            if (!set_tuple_item(out, i, value_to_object(std::move(v)))) return {};
+            // special case: if given an rvalue reference, make it into a value (not sure if really desirable or not)
+            if (r.qualifier() == Rvalue) {
+                if (!set_tuple_item(out, i, value_to_object(r))) return {};
+            } else {
+                if (!set_tuple_item(out, i, ref_to_object(r))) return {};
+            }
         }
         ++i;
     }
@@ -153,33 +157,6 @@ struct ActivePython {
 
     ActivePython(PythonFrame &u) : lock(u) {lock.acquire();}
     ~ActivePython() {lock.release();}
-};
-
-/******************************************************************************/
-
-struct PythonFunction {
-    Object function, signature;
-
-    PythonFunction(Object f, Object s={}) : function(std::move(f)), signature(std::move(s)) {
-        if (+signature == Py_None) signature = Object();
-        if (!function)
-            throw python_error(type_error("cannot convert null object to Overload"));
-        if (!PyCallable_Check(+function))
-            throw python_error(type_error("expected callable type but got %R", (+function)->ob_type));
-        if (+signature && !PyTuple_Check(+signature))
-            throw python_error(type_error("expected tuple or None but got %R", (+signature)->ob_type));
-    }
-
-    /// Run C++ functor; logs non-ClientError and rethrows all exceptions
-    Value operator()(Caller c, Sequence args) const {
-        DUMP("calling python function");
-        auto p = c.target<PythonFrame>();
-        if (!p) throw DispatchError("Python context is expired or invalid");
-        ActivePython lk(*p);
-        Object o = args_to_python(std::move(args), signature);
-        if (!o) throw python_error();
-        return Value(Object::from(PyObject_CallObject(function, o)));
-    }
 };
 
 /******************************************************************************/

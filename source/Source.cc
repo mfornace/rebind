@@ -195,10 +195,10 @@ void set_source(WrongType &err, std::type_info const &t, Value &&v) {
 
 /******************************************************************************/
 
-void Document::type(Index t, std::string_view s, Value &&data, Table table) {
+void Document::type(Index t, std::string_view s, Value &&data, Table const * table) {
     DUMP("type ", t, s);
-    auto it = contents.try_emplace(std::string(s), Type<Vector<Table>>()).first;
-    if (auto p = it->second.target<Vector<Table>>()) {
+    auto it = contents.try_emplace(std::string(s), Type<Vector<Table const *>>()).first;
+    if (auto p = it->second.target<Vector<Table const *>>()) {
         p->emplace_back(table);
         return;
     }

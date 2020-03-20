@@ -33,6 +33,7 @@ class Value : protected Erased {
 public:
 
     using Erased::name;
+    using Erased::address;
     using Erased::index;
     using Erased::table;
     using Erased::matches;

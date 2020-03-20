@@ -25,13 +25,13 @@ struct Document {
     std::map<std::string, Value> contents;
 
     // Map from type index to the associated table of C++ type data
-    std::map<Index, Table> types;
+    std::map<Index, Table const *> types;
 
     /**************************************************************************/
 
     // Declare a new type
     template <class T>
-    Table type(Type<T> t, std::string_view s, Value data={}) {
+    Table const * type(Type<T> t, std::string_view s, Value data={}) {
         auto table = get_table<T>();
         type(t, s, std::move(data), table);
         return table;
@@ -61,8 +61,8 @@ struct Document {
 
     /**************************************************************************/
 
-    // Declare a new type with an already fetched Table
-    void type(Index t, std::string_view s, Value &&data, Table);
+    // Declare a new type with an already fetched Table const *
+    void type(Index t, std::string_view s, Value &&data, Table const *);
 
     // Find or create a function for a given type and method name
     Function & find_method(Index t, std::string_view name);

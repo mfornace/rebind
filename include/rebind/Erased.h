@@ -7,13 +7,13 @@ namespace rebind {
 /******************************************************************************************/
 
 struct Erased {
-    // invariant; if ptr is non-null, Table is non-null
+    // invariant; if ptr is non-null, Table const * is non-null
     void *ptr = nullptr;
-    Table tab;
+    Table const * tab = nullptr;
 
     Erased() = default;
 
-    constexpr Erased(Table t, void *p) noexcept : tab(t), ptr(p) {}
+    constexpr Erased(Table const * t, void *p) noexcept : tab(t), ptr(p) {}
 
     template <class T, std::enable_if_t<is_usable<T>, int> = 0>
     explicit Erased(T *t) : tab(get_table<T>()), ptr(static_cast<void *>(t)) {}
@@ -32,9 +32,9 @@ struct Erased {
 
     /**************************************************************************************/
 
-    Table table() const {return tab;}
+    Table const * table() const {return tab;}
 
-    void * value() const {return ptr;}
+    void * address() const {return ptr;}
 
     template <class T>
     bool matches(Type<T> t={}) const {

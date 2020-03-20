@@ -45,7 +45,7 @@ constexpr void assert_usable() {
 
 /******************************************************************************************/
 
-struct TypeTable {
+struct Table {
     Index index;
     // Destructor function pointer
     void (*m_destroy)(void*) noexcept = nullptr;
@@ -56,7 +56,7 @@ struct TypeTable {
     // ToValue function pointer
     bool (*m_to_value)(Value &, void *, Qualifier) = nullptr;
     // ToValue function pointer
-    void (*m_to_ref)(Ref &, void *, Qualifier) = nullptr;
+    bool (*m_to_ref)(Ref &, void *, Qualifier) = nullptr;
     // FromRef function pointer
     Value (*m_from_ref)(Ref const &, Scope &) = nullptr;
     // FromRef function pointer
@@ -96,22 +96,6 @@ struct TypeTable {
 
 /******************************************************************************************/
 
-struct Table {
-    constexpr Table() = default;
-    TypeTable const* ptr = nullptr;
-
-    TypeTable const* operator->() const {
-        if (!ptr) throw std::runtime_error("Null TypeTable");
-        return ptr;
-    }
-
-    constexpr bool operator==(Table t) const {return ptr == t.ptr;}
-    constexpr bool operator!=(Table t) const {return ptr != t.ptr;}
-    constexpr operator bool() const {return ptr;}
-};
-
-/******************************************************************************************/
-
 /// Return new-allocated copy of the object
 template <class T>
 void* default_copy(void const* p) {
@@ -141,7 +125,7 @@ template <class T>
 bool default_to_value(Value &, void *, Qualifier const);
 
 template <class T>
-void default_to_ref(Ref &, void *, Qualifier const);
+bool default_to_ref(Ref &, void *, Qualifier const);
 
 template <class T>
 Value default_from_ref(Ref const &, Scope &);
@@ -152,10 +136,10 @@ bool default_assign_if(void *, Ref const &);
 /******************************************************************************************/
 
 template <class T>
-TypeTable default_table() {
+Table default_table() {
     assert_usable<T>();
 
-    TypeTable t;
+    Table t;
 
     t.index = typeid(T);
     t.m_name = typeid(T).name();
@@ -179,11 +163,11 @@ TypeTable default_table() {
 
 template <class T>
 struct TableImplementation {
-    static inline TypeTable table = default_table<T>();
+    static inline Table table = default_table<T>();
 };
 
 template <class T>
-Table get_table() {return {std::addressof(TableImplementation<T>::table)};}
+Table const * get_table() {return {std::addressof(TableImplementation<T>::table)};}
 
 /******************************************************************************************/
 

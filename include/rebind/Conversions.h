@@ -75,8 +75,9 @@ struct ToRef {
     using method = Default;
     static_assert(std::is_same_v<unqualified<T>, T>);
 
-    void operator()(Ref const &p, T const &) const {
+    bool operator()(Ref const &p, T const &) const {
         DUMP("no conversion found from source ", get_table<T>()->name(), " to reference of type ", p.name());
+        return false;
     }
 };
 
@@ -133,7 +134,7 @@ bool default_to_value(Value &v, void *p, Qualifier const q) {
 /******************************************************************************/
 
 template <class T>
-void default_to_ref(Ref &v, void *p, Qualifier const q) {
+bool default_to_ref(Ref &v, void *p, Qualifier const q) {
     assert_usable<T>();
     if (q == Lvalue) {
         return ToRef<T>()(v, *static_cast<T *>(p));

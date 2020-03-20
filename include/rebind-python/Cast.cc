@@ -114,7 +114,7 @@ Object value_to_object(Value &&v, Object const &t) {
 }
 
 // Convert Ref to a class which is a subclass of rebind.Value
-Object pointer_to_object(Ref const &v, Object const &t) {
+Object ref_to_object(Ref const &v, Object const &t) {
     PyObject *x;
     if (t) x = +t;
     else if (!v.has_value()) return {Py_None, true};
@@ -233,47 +233,47 @@ Object union_cast(Ref const &v, Object const &t, Object const &root) {
 // First explicit types are checked:
 // None, object, bool, int, float, str, bytes, Index, list, tuple, dict, Value, Overload, memoryview
 // Then, the output_conversions map is queried for Python function callable with the Value
-Object try_python_cast(Ref const &v, Object const &t, Object const &root) {
-    DUMP("try_python_cast ", v.index(), " to type ", repr(t), " with root ", repr(root));
+Object try_python_cast(Ref const &r, Object const &t, Object const &root) {
+    DUMP("try_python_cast ", r.index(), " to type ", repr(t), " with root ", repr(root));
     if (auto it = type_translations.find(t); it != type_translations.end()) {
         DUMP("type_translation found");
-        return try_python_cast(v, it->second, root);
+        return try_python_cast(r, it->second, root);
     } else if (PyType_CheckExact(+t)) {
         auto type = reinterpret_cast<PyTypeObject *>(+t);
         DUMP("is Value ", is_subclass(type, type_object<Value>()));
         if (+type == Py_None->ob_type || +t == Py_None)       return {Py_None, true};                        // NoneType
-        else if (type == &PyBool_Type)                        return bool_cast(v);                // bool
-        else if (type == &PyLong_Type)                        return int_cast(v);                 // int
-        else if (type == &PyFloat_Type)                       return float_cast(v);               // float
-        else if (type == &PyUnicode_Type)                     return str_cast(v);                 // str
-        else if (type == &PyBytes_Type)                       return bytes_cast(v);               // bytes
-        else if (type == &PyBaseObject_Type)                  return as_deduced_object(v);        // object
-        else if (is_subclass(type, type_object<Value>()))     return value_to_object(v, t);     // Value
-        else if (is_subclass(type, type_object<Ref>()))   return pointer_to_object(v, t);     // Ref
-        else if (type == type_object<Index>())                return type_index_cast(v);          // type(Index)
-        else if (type == type_object<Overload>())             return function_cast(v);            // Overload
-        else if (is_subclass(type, &PyFunction_Type))         return function_cast(v);            // Overload
-        else if (type == &PyMemoryView_Type)                  return memoryview_cast(v, root);    // memory_view
+        else if (type == &PyBool_Type)                        return bool_cast(r);                // bool
+        else if (type == &PyLong_Type)                        return int_cast(r);                 // int
+        else if (type == &PyFloat_Type)                       return float_cast(r);               // float
+        else if (type == &PyUnicode_Type)                     return str_cast(r);                 // str
+        else if (type == &PyBytes_Type)                       return bytes_cast(r);               // bytes
+        else if (type == &PyBaseObject_Type)                  return as_deduced_object(r);        // object
+        else if (is_subclass(type, type_object<Value>()))     return value_to_object(r, t);     // Value
+        else if (is_subclass(type, type_object<Ref>()))   return ref_to_object(r, t);     // Ref
+        else if (type == type_object<Index>())                return type_index_cast(r);          // type(Index)
+        else if (type == type_object<Overload>())             return function_cast(r);            // Overload
+        else if (is_subclass(type, &PyFunction_Type))         return function_cast(r);            // Overload
+        else if (type == &PyMemoryView_Type)                  return memoryview_cast(r, root);    // memory_view
     } else {
         DUMP("Not type and not in translations");
         if (auto p = cast_if<Index>(t)) { // Index
 #warning "need to add custom conversions"
-            // if (auto var = v.request_to(*p))
+            // if (auto var = r.request_to(*p))
             //     return value_to_object(std::move(var));
-            std::string c1 = v.index().name(), c2 = p->name();
+            std::string c1 = r.index().name(), c2 = p->name();
             return type_error("could not convert object of type %s to type %s", c1.data(), c2.data());
         }
-        else if (is_structured_type(t, UnionType))     return union_cast(v, t, root);
-        else if (is_structured_type(t, &PyList_Type))  return list_cast(v, t, root);       // List[T] for some T (compound type)
-        else if (is_structured_type(t, &PyTuple_Type)) return tuple_cast(v, t, root);      // Tuple[Ts...] for some Ts... (compound type)
-        else if (is_structured_type(t, &PyDict_Type))  return dict_cast(v, t, root);       // Dict[K, V] for some K, V (compound type)
+        else if (is_structured_type(t, UnionType))     return union_cast(r, t, root);
+        else if (is_structured_type(t, &PyList_Type))  return list_cast(r, t, root);       // List[T] for some T (compound type)
+        else if (is_structured_type(t, &PyTuple_Type)) return tuple_cast(r, t, root);      // Tuple[Ts...] for some Ts... (compound type)
+        else if (is_structured_type(t, &PyDict_Type))  return dict_cast(r, t, root);       // Dict[K, V] for some K, V (compound type)
         DUMP("Not one of the structure types");
     }
 
     DUMP("custom convert ", output_conversions.size());
     if (auto p = output_conversions.find(t); p != output_conversions.end()) {
         DUMP(" conversion ");
-        Object o = pointer_to_object(v, {});
+        Object o = ref_to_object(r, {});
         if (!o) return type_error("could not cast Value to Python object");
         DUMP("calling function");
         auto &obj = static_cast<PyValue &>(cast_object<Value>(o)).ward;

@@ -97,9 +97,40 @@ PyTypeObject type_definition(char const *name, char const *doc) {
 
 bool object_to_value(Value &v, Object o);
 
+bool object_to_ref(Ref &v, Object o);
+
 /******************************************************************************/
 
+struct PythonFunction {
+    Object function, signature;
+
+    PythonFunction(Object f, Object s={}) : function(std::move(f)), signature(std::move(s)) {
+        if (+signature == Py_None) signature = Object();
+        if (!function)
+            throw python_error(type_error("cannot convert null object to Overload"));
+        if (!PyCallable_Check(+function))
+            throw python_error(type_error("expected callable type but got %R", (+function)->ob_type));
+        if (+signature && !PyTuple_Check(+signature))
+            throw python_error(type_error("expected tuple or None but got %R", (+signature)->ob_type));
+    }
+
+    /// Run C++ functor; logs non-ClientError and rethrows all exceptions
+    bool operator()(Caller *c, Value *v, Ref *r, Arguments const &args) const {
+        DUMP("calling python function");
+        auto p = c->target<PythonFrame>();
+        if (!p) throw DispatchError("Python context is expired or invalid");
+        ActivePython lk(*p);
+        Object o = args_to_python(args, signature);
+        if (!o) throw python_error();
+        auto output = Object::from(PyObject_CallObject(function, o));
+        if (v) return object_to_value(*v, std::move(output));
+        else return object_to_ref(*r, std::move(output));
+    }
+};
+
 }
+
+/******************************************************************************/
 
 namespace rebind {
 
@@ -108,4 +139,11 @@ struct ToValue<py::Object> {
     bool operator()(Value &v, py::Object o) const {return py::object_to_value(v, std::move(o));}
 };
 
+template <>
+struct ToRef<py::Object> {
+    bool operator()(Ref &v, py::Object o) const {return py::object_to_ref(v, std::move(o));}
+};
+
 }
+
+/******************************************************************************/

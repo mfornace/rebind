@@ -2,7 +2,10 @@ import inspect, importlib, functools, logging, typing, atexit, collections
 from . import Config, common, ConversionError
 
 log = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+
+def set_logger(logger):
+    global log
+    log = logger
 
 ################################################################################
 
@@ -17,6 +20,14 @@ def render_module(pkg: str, doc: dict, set_type_names=False):
         raise
     finally:
         atexit.register(common.finalize, clear, log)
+
+################################################################################
+
+_declared_objects = set()
+
+def forward(x):
+    _declared_objects.add(x)
+    return x
 
 ################################################################################
 
@@ -92,6 +103,9 @@ def monkey_patch(record, config):
     for k, v in record.translations.items():
         if isinstance(k, type) and isinstance(v, type):
             config.set_translation(k, v)
+
+    for k in _declared_objects.difference(record.translations):
+        log.warning('Placeholder {} was declared but not defined'.format(k))
 
     log.info('finished rendering document into module %r', record.module_name)
 

@@ -30,13 +30,11 @@ std::string repr(PyObject *o) {
     if (!o) return "null";
     Object out(PyObject_Repr(o), false);
     if (!out) throw python_error();
-    if (out) {
-#       if PY_MAJOR_VERSION > 2
-            return PyUnicode_AsUTF8(out); // PyErr_Clear
-#       else
-            return PyString_AsString(out);
-#       endif
-    }
+#   if PY_MAJOR_VERSION > 2
+        return PyUnicode_AsUTF8(out); // PyErr_Clear
+#   else
+        return PyString_AsString(out);
+#   endif
 }
 
 void print(PyObject *o) {
@@ -129,7 +127,7 @@ bool object_to_value(Value &v, Object o) {
     }
     if (!o) return false;
 
-#warning "need to finish ToValue<py::Object>"
+#warning "need to finish ToValue<py::Object>?"
 
     Object type = Object(reinterpret_cast<PyObject *>((+o)->ob_type), true);
 
@@ -160,7 +158,7 @@ bool object_to_value(Value &v, Object o) {
         else if (auto p = cast_if<Overload>(o)) v.set_if(*p);
         // general python function has no signature associated with it right now.
         // we could get them out via function.__annotations__ and process them into a tuple
-        else v.set_if(Overload::from(PythonFunction({+o, true}, {Py_None, true})));
+        else v.set_if(Overload(PythonFunction({+o, true}, {Py_None, true}), {}));
         return true;
     }
 
@@ -236,6 +234,12 @@ bool object_to_value(Value &v, Object o) {
     //     v = {Type<std::string>(), from_unicode(o)};
     // }
 
+    return false;
+}
+
+/******************************************************************************/
+
+bool object_to_ref(Ref &v, Object o) {
     return false;
 }
 

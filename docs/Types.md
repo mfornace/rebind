@@ -1,4 +1,4 @@
-# `Table`
+# `Table const *`
 A lot like a vtable, set up at initialization
 
 ```c++
@@ -14,7 +14,7 @@ std::string name, const_name, lvalue_name, rvalue_name;
 # `Pointer`
 
 Non-owning struct containing:
-- `Table const *` pointer to type vtable
+- `Table const * const *` pointer to type vtable
 - `void *` pointer to the referenced object
 - `Qualifier` qualifier on the held reference
 

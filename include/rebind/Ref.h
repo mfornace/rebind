@@ -14,6 +14,7 @@ public:
     using Erased::as_erased;
     using Erased::has_value;
     using Erased::table;
+    using Erased::address;
     using Erased::reset;
     using Erased::operator bool;
 

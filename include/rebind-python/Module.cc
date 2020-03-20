@@ -46,10 +46,10 @@ bool attach(Object const &m, char const *name, Object o) noexcept {
 
 /******************************************************************************/
 
-// List[Table]
-// where Table = Tuple[List[Method], bool]
+// List[Table const *]
+// where Table const * = Tuple[List[Method], bool]
 // where Method = Tuple[str, Function]
-Object tables_to_object(Vector<Table> const &v) {
+Object tables_to_object(Vector<Table const *> const &v) {
     return map_as_tuple(v, [](auto const &t) {
         return tuple_from(
             as_object(t->index),
@@ -96,10 +96,10 @@ Object initialize(Document const &doc) {
             o = as_object(*p);
         } else if (auto p = x.second.template target<Index>()) { // a type index
             o = as_object(*p);
-        } else if (auto p = x.second.template target<Vector<Table>>()) { // a type table
+        } else if (auto p = x.second.template target<Vector<Table const *>>()) { // a type table
             o = tables_to_object(*p);
         // } else if (auto p = x.second.template target<Ref>()) {
-        //     o = pointer_to_object(*p);
+        //     o = ref_to_object(*p);
         } else { // anything else
             o = value_to_object(Value(x.second));
         }

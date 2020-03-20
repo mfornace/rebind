@@ -67,11 +67,12 @@ PyObject * c_qualifier(PyObject *self, PyObject *) noexcept {
 //     });
 // }
 
-// PyObject * var_address(PyObject *self, PyObject *) noexcept {
-//     return raw_object([=] {
-//         return as_object(Integer(reinterpret_cast<std::uintptr_t>(cast_object<Value>(self).data())));
-//     });
-// }
+template <class Self>
+PyObject * c_address(PyObject *self, PyObject *) noexcept {
+    return raw_object([=] {
+        return as_object(Integer(reinterpret_cast<std::uintptr_t>(cast_object<Self>(self).address())));
+    });
+}
 
 template <class Self>
 PyObject * c_get_ward(PyObject *self, PyObject *) noexcept {
