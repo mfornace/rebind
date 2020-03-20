@@ -32,4 +32,12 @@ from .render import render_module, render_init, render_member, \
 
 from .common import update_module
 
-from .types import Tuple, List, Dict, Callable, Array
+from .types import Tuple, List, Dict, Callable, Array, Union
+
+################################################################################
+
+_declared_objects = []
+
+def forward(x):
+    _declared_objects.append(x)
+    return x

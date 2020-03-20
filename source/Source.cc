@@ -2,6 +2,47 @@
 #include <stdexcept>
 #include <string_view>
 
+/******************************************************************************/
+
+
+// #if __has_include(<boost/core/demangle.hpp>)
+// #   include <boost/core/demangle.hpp>
+//     namespace rebind::runtime {
+//         std::string demangle(char const *s) {return boost::demangle(s);}
+
+//         char const * unknown_exception_description() noexcept {
+//             return abi::__cxa_current_exception_type()->name();
+//         }
+//     }
+
+#if __has_include(<cxxabi.h>)
+#   include <cxxabi.h>
+    namespace rebind::runtime {
+        using namespace __cxxabiv1;
+
+        std::string demangle(char const *s) {
+            int status = 0;
+            char * buff = __cxa_demangle(s, nullptr, nullptr, &status);
+            if (!buff) return s;
+            std::string out = buff;
+            std::free(buff);
+            return out;
+        }
+
+        char const *unknown_exception_description() noexcept {
+            return abi::__cxa_current_exception_type()->name();
+        }
+    }
+#else
+    namespace rebind::runtime {
+        std::string demangle(char const *s) {return s;}
+
+        char const *unknown_exception_description() noexcept {return "C++: unknown exception";}
+    }
+#endif
+
+/******************************************************************************/
+
 namespace rebind {
 
 /******************************************************************************/
@@ -15,9 +56,21 @@ std::string cat(Ts const &...ts) {
 
 /******************************************************************************/
 
-std::function<std::string(char const *)> demangle;
+Demangler demangler{&runtime::demangle};
+
+void set_demangler(Demangler fun) noexcept {demangler = std::move(fun);}
+
+std::string demangle(char const *s) {
+    if (demangler) return demangler(s);
+    else return s;
+}
+
+/******************************************************************************/
 
 bool Debug = true;
+
+void set_debug(bool debug) noexcept {Debug = debug;}
+bool debug() noexcept {return Debug;}
 
 /******************************************************************************/
 
@@ -27,7 +80,7 @@ Document & document() noexcept {
 }
 
 void render_default(Document &, std::type_info const &t) {
-    if (Debug) std::cout << "Not rendering type " << t.name() << std::endl;
+    if (debug()) std::cout << "Not rendering type " << t.name() << std::endl;
 }
 
 /******************************************************************************/
@@ -180,39 +233,3 @@ Function & Document::find_function(std::string_view s) {
 
 }
 
-
-// #if __has_include(<boost/core/demangle.hpp>)
-// #   include <boost/core/demangle.hpp>
-//     namespace rebind::runtime {
-//         std::string demangle(char const *s) {return boost::demangle(s);}
-
-//         char const * unknown_exception_description() noexcept {
-//             return abi::__cxa_current_exception_type()->name();
-//         }
-//     }
-#if __has_include(<cxxabi.h>)
-#   include <cxxabi.h>
-
-    namespace rebind::runtime {
-        using namespace __cxxabiv1;
-
-        std::string demangle(char const *s) {
-            int status = 0;
-            char * buff = __cxa_demangle(s, nullptr, nullptr, &status);
-            if (!buff) return s;
-            std::string out = buff;
-            std::free(buff);
-            return out;
-        }
-
-        char const * unknown_exception_description() noexcept {
-            return abi::__cxa_current_exception_type()->name();
-        }
-    }
-#else
-    namespace rebind::runtime {
-        std::string demangle(char const *s) {return s;}
-
-        char const * unknown_exception_description() noexcept {return "C++: unknown exception";}
-    }
-#endif

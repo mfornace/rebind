@@ -11,16 +11,17 @@ namespace rebind {
 
 /******************************************************************************/
 
+extern bool Debug;
+void set_debug(bool debug) noexcept;
+bool debug() noexcept;
+
 namespace runtime {
     char const * unknown_exception_description() noexcept;
 }
 
 /******************************************************************************/
 
-extern bool Debug;
-
-/******************************************************************************/
-
+/// Copy CV and reference qualifier from one type to another
 template <class From, class To> struct copy_qualifier_t {using type = To;};
 template <class From, class To> struct copy_qualifier_t<From &, To> {using type = To &;};
 template <class From, class To> struct copy_qualifier_t<From const &, To> {using type = To const &;};

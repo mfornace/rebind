@@ -3,7 +3,12 @@
 #include <rebind/types/Arrays.h>
 #include <iostream>
 
-namespace rebind {
+namespace example {
+
+using rebind::Type;
+using rebind::Scope;
+using rebind::Value;
+using rebind::Document;
 
 /******************************************************************************/
 
@@ -20,7 +25,7 @@ Value response(std::type_index t, Blah b) {
 
 template <class T>
 std::optional<Blah> from_pointer(Type<Blah>, T &&, Scope &s) {
-    if constexpr(std::is_same_v<unqualified<T>, std::string>)
+    if constexpr(std::is_same_v<rebind::unqualified<T>, std::string>)
         return Blah("haha");
     return s.error("bad blah", typeid(Blah));
 }
@@ -46,17 +51,17 @@ struct Goo {
     }
 };
 
-template <Qualifier Q>
-auto response(Index t, qualified<Goo, Q> b) {
-    DUMP("casting Blah to double const &");
-    return (t == typeid(double)) ? &b.x : nullptr;
-}
+// template <Qualifier Q>
+// auto response(Index t, qualified<Goo, Q> b) {
+//     DUMP("casting Blah to double const &");
+//     return (t == typeid(double)) ? &b.x : nullptr;
+// }
 
 /******************************************************************************/
 
 void render(Document &doc, Type<Blah> t) {
     doc.type(t, "submodule.Blah");
-    doc.method(t, "new", construct<std::string>(t));
+    doc.method(t, "new", rebind::construct<std::string>(t));
     doc.method(t, "dump", &Blah::dump);
 }
 
@@ -74,8 +79,7 @@ void render(Document &doc, Type<Goo> t) {
 }
 
 // could make this return a document
-bool make_document() {
-    auto &doc = document();
+void write_document(rebind::Document &doc) {
     doc.function("fun", [](int i, double d) {
         return i + d;
     });
@@ -105,7 +109,7 @@ bool make_document() {
     doc.function("rref", [](double &&i) {});
     doc.render(Type<Goo>());
 
-    doc.function("buffer", [](std::tuple<BinaryData, std::type_index, Vector<std::size_t>> i) {
+    doc.function("buffer", [](std::tuple<rebind::BinaryData, std::type_index, std::vector<std::size_t>> i) {
         DUMP(std::get<0>(i).size());
         DUMP(std::get<1>(i).name());
         DUMP(std::get<2>(i).size());
@@ -117,10 +121,12 @@ bool make_document() {
     doc.function<1>("vec4", [](int, int i=2) {});
 
     DUMP("made document");
-    return bool();
 }
 
-// then this is just add_document()
-static bool static_document_trigger = make_document();
+}
+
+namespace rebind {
+
+void init(Document &doc) {example::write_document(doc);}
 
 }

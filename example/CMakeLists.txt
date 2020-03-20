@@ -4,10 +4,10 @@ project(rebind_example VERSION 0.0.0 LANGUAGES CXX)
 
 ################################################################################
 
-add_library(libexample SHARED EXCLUDE_FROM_ALL Example.cc)
-set_target_properties(libexample PROPERTIES OUTPUT_NAME "rebind_example")
-target_link_libraries(libexample PRIVATE librebind)
-rebind_module(example_module cpp libexample)
+add_library(example_source STATIC EXCLUDE_FROM_ALL Example.cc)
+set_target_properties(example_source PROPERTIES OUTPUT_NAME "rebind_example")
+target_link_libraries(example_source PRIVATE librebind)
+rebind_module(example_module cpp example_source)
 set_target_properties(example_module PROPERTIES PREFIX "" LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/example)
 
 ################################################################################

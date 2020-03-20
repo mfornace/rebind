@@ -72,7 +72,13 @@ struct IndexedType {
 
 /******************************************************************************************/
 
-extern std::function<std::string(char const *)> demangle;
+using Demangler = std::function<std::string(char const *)>;
+
+std::string demangle(char const *);
+
+void set_demangler(Demangler fun) noexcept;
+
+/******************************************************************************************/
 
 class Index {
     std::type_info const *p = nullptr;
@@ -89,8 +95,9 @@ public:
 
     std::type_info const & info() const noexcept {return p ? *p : typeid(void);}
 
-    std::string name() const {return demangle ? demangle(info().name()) : info().name();}
+    std::string name() const noexcept {return demangle(info().name());}
 
+    /// For now, hash code does not incorporate the qualifier
     std::size_t hash_code() const noexcept {return info().hash_code();}
 
     /// Return if the index is not empty

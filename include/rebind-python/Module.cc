@@ -172,6 +172,12 @@ Object initialize(Document const &doc) {
 
 }
 
+namespace rebind {
+
+void init(Document &doc);
+
+}
+
 extern "C" {
 
 #if PY_MAJOR_VERSION > 2
@@ -187,6 +193,7 @@ extern "C" {
         return rebind::py::raw_object([&]() -> rebind::py::Object {
             rebind::py::Object mod {PyModule_Create(&rebind_definition), true};
             if (!mod) return {};
+            rebind::init(rebind::document());
             rebind::py::Object dict = rebind::py::initialize(rebind::document());
             if (!dict) return {};
             rebind::py::incref(+dict);
