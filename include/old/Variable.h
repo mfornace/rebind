@@ -174,7 +174,7 @@ public:
     std::remove_reference_t<T> *request(Dispatch &msg, Type<T> t={}) const {
         DUMP("Variable.request() ", typeid(Type<T>).name(), qualifier(), " from variable ", idx);
         if (idx.matches<T>()) return target<T>();
-        auto v = request_variable(msg, type_index<T>());
+        auto v = request_variable(msg, fetch<T>());
         if (auto p = v.template target<T>()) {msg.source.clear(); return p;}
         if (auto p = FromRef<T>()(*this, msg)) {msg.source.clear(); return p;}
         return nullptr;
@@ -248,16 +248,16 @@ void set_source(Dispatch &, std::type_info const &, Variable &&v);
 
 template <TargetQualifier Q, class T>
 bool get_response(Variable &out, Index const &target_type, T &&t) {
-    DUMP("get_response: trying to get ", target_type, " from ", type_index<T &&>());
+    DUMP("get_response: trying to get ", target_type, " from ", fetch<T &&>());
     if (target_type.matches<T>()) {
         DUMP("get_response: requested type matches held type");
         if constexpr(std::is_convertible_v<T &&, qualified<unqualified<T>, Q>>)
             return out = {Type<qualified<unqualified<T>, Q>>(), static_cast<T &&>(t)}, true;
     } else {
         using R = ToValue<unqualified<T>, Q>;
-        DUMP("get_response: calling ToValue specialization ", type_index<R>());
+        DUMP("get_response: calling ToValue specialization ", fetch<R>());
         // if constexpr(std::is_invocable_v<R, Variable &, Index &&, T &&>) {
-            // DUMP("get_response ToValue works", type_index<R>());
+            // DUMP("get_response ToValue works", fetch<R>());
         bool ok = R()(out, target_type, static_cast<T &&>(t));
         DUMP("get_response: got result of type ", out.type());
         return ok;
@@ -269,7 +269,7 @@ bool get_response(Variable &out, Index const &target_type, T &&t) {
 /// Set out to a new variable with given qualifier dest and type idx from type T
 template <class T>
 bool get_response(Variable &out, Index const &target_type, T &&t) {
-    DUMP("get_response: ", target_type, type_index<T &&>());
+    DUMP("get_response: ", target_type, fetch<T &&>());
     // Switch on the runtime value of the qualifier to hit compile-time overloads
     switch (target_type.qualifier()) {
         case (Value): return get_response<Value>(out, target_type, static_cast<T &&>(t));

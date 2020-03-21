@@ -27,7 +27,7 @@ Object type_args(Object const &o, Py_ssize_t n) {
 }
 
 Object list_cast(Ref const &ref, Object const &o, Object const &root) {
-    DUMP("Cast to list ", ref.index());
+    DUMP("Cast to list ", ref.name());
     if (auto args = type_args(o, 1)) {
         DUMP("is list ", PyList_Check(o));
         auto v = ref.cast<Arguments>();
@@ -45,7 +45,7 @@ Object list_cast(Ref const &ref, Object const &o, Object const &root) {
 }
 
 Object tuple_cast(Ref const &ref, Object const &o, Object const &root) {
-    DUMP("Cast to tuple ", ref.index());
+    DUMP("Cast to tuple ", ref.name());
     if (auto args = type_args(o)) {
         Py_ssize_t const len = PyTuple_GET_SIZE(+args);
         auto v = ref.cast<Arguments>();
@@ -66,7 +66,7 @@ Object tuple_cast(Ref const &ref, Object const &o, Object const &root) {
 }
 
 Object dict_cast(Ref const &ref, Object const &o, Object const &root) {
-    DUMP("Cast to dict ", ref.index());
+    DUMP("Cast to dict ", ref.name());
     if (auto args = type_args(o, 2)) {
         Object key{PyTuple_GET_ITEM(+args, 0), true};
         Object val{PyTuple_GET_ITEM(+args, 1), true};
@@ -101,15 +101,15 @@ Object value_to_object(Value &&v, Object const &t) {
     PyObject *x;
     if (t) x = +t;
     else if (!v.has_value()) return {Py_None, true};
-    else if (auto it = python_types.find(v.index().info()); it != python_types.end()) x = +it->second.first;
+    else if (auto it = python_types.find(v.index()); it != python_types.end()) x = +it->second.first;
     else x = type_object<Value>();
 
     auto o = Object::from((x == type_object<Value>()) ?
         PyObject_CallObject(x, nullptr) : PyObject_CallMethod(x, "__new__", "O", x));
 
-    DUMP("making Value ", v.index(), " ", v.has_value());
+    DUMP("making Value ", v.name(), " ", v.has_value());
     cast_object<Value>(o) = std::move(v);
-    DUMP("made Value ", v.index(), " ", v.has_value(), cast_object<Value>(o).has_value());
+    DUMP("made Value ", v.name(), " ", v.has_value(), cast_object<Value>(o).has_value());
     return o;
 }
 
@@ -118,15 +118,15 @@ Object ref_to_object(Ref const &v, Object const &t) {
     PyObject *x;
     if (t) x = +t;
     else if (!v.has_value()) return {Py_None, true};
-    else if (auto it = python_types.find(v.index().info()); it != python_types.end()) x = +it->second.second;
+    else if (auto it = python_types.find(v.index()); it != python_types.end()) x = +it->second.second;
     else x = type_object<Ref>();
 
     auto o = Object::from((x == type_object<Ref>()) ?
         PyObject_CallObject(x, nullptr) : PyObject_CallMethod(x, "__new__", "O", x));
 
-    DUMP("making Ref ", v.index(), " ", v.has_value());
+    DUMP("making Ref ", v.name(), " ", v.has_value());
     cast_object<Ref>(o) = v;
-    DUMP("made Ref ", v.index(), " ", v.has_value(), cast_object<Ref>(o).has_value());
+    DUMP("made Ref ", v.name(), " ", v.has_value(), cast_object<Ref>(o).has_value());
     return o;
 }
 
@@ -151,7 +151,7 @@ Object float_cast(Ref const &ref) {
 }
 
 Object str_cast(Ref const &ref) {
-    DUMP("converting ", ref.index(), " to str");
+    DUMP("converting ", ref.name(), " to str");
     if (auto p = ref.request<std::string_view>()) return as_object(std::move(*p));
     if (auto p = ref.request<std::string>()) return as_object(std::move(*p));
     if (auto p = ref.request<std::wstring_view>())
@@ -225,7 +225,7 @@ Object union_cast(Ref const &v, Object const &t, Object const &root) {
         }
     }
     return {};
-    // return type_error("cannot convert value to %R from type %S", +t, +type_index_cast(v.index()));
+    // return type_error("cannot convert value to %R from type %S", +t, +type_index_cast(v.name()));
 }
 
 
@@ -234,7 +234,7 @@ Object union_cast(Ref const &v, Object const &t, Object const &root) {
 // None, object, bool, int, float, str, bytes, Index, list, tuple, dict, Value, Overload, memoryview
 // Then, the output_conversions map is queried for Python function callable with the Value
 Object try_python_cast(Ref const &r, Object const &t, Object const &root) {
-    DUMP("try_python_cast ", r.index(), " to type ", repr(t), " with root ", repr(root));
+    DUMP("try_python_cast ", r.name(), " to type ", repr(t), " with root ", repr(root));
     if (auto it = type_translations.find(t); it != type_translations.end()) {
         DUMP("type_translation found");
         return try_python_cast(r, it->second, root);
@@ -260,7 +260,8 @@ Object try_python_cast(Ref const &r, Object const &t, Object const &root) {
 #warning "need to add custom conversions"
             // if (auto var = r.request_to(*p))
             //     return value_to_object(std::move(var));
-            std::string c1 = r.index().name(), c2 = p->name();
+            auto c1 = r.name();
+            auto c2 = raw::name(*p);
             return type_error("could not convert object of type %s to type %s", c1.data(), c2.data());
         }
         else if (is_structured_type(t, UnionType))     return union_cast(r, t, root);
@@ -286,7 +287,7 @@ Object try_python_cast(Ref const &r, Object const &t, Object const &root) {
 
 Object cast_to_object(Ref const &v, Object const &t, Object const &root) {
     Object out = try_python_cast(std::move(v), t, root);
-    // if (!out) return type_error("cannot convert value to type %R from type %S", +t, +type_index_cast(v.index()));
+    // if (!out) return type_error("cannot convert value to type %R from type %S", +t, +type_index_cast(v.name()));
     return out;
 }
 

@@ -62,7 +62,7 @@ struct Overload {
 
     bool call(Caller &c, Value *v, Ref *p, Arguments const &args) const {
         DUMP("call function: n=", args.size(), ", v=", bool(v), ", p=", bool(p));
-        for (auto &&p: args) {DUMP("argument ", p.name(), " ", p.index(), " ", p.qualifier());}
+        for (auto &&p: args) {DUMP("argument ", p.name(), " ", p.qualifier());}
         return impl(&c, v, p, args);
     }
 

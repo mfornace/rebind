@@ -11,7 +11,6 @@ class Config:
         self._set_debug = methods['set_debug']
         self._get_debug = methods['debug']
         self.set_type_error = methods['set_type_error']
-        self.set_type_names = methods['set_type_names']
         self.set_type = methods['set_type']
         self.set_output_conversion = methods['set_output_conversion']
         self.set_input_conversion = methods['set_input_conversion']

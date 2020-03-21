@@ -162,7 +162,7 @@ struct SimplifyFunction<F, -1, std::void_t<decltype(false ? nullptr : std::declv
 /******************************************************************************/
 
 template <class R, class ...Ts>
-static Index const signature_types[] = {typeid(R), typeid(Ts)...};
+static Index const signature_types[] = {fetch<R>(), fetch<Ts>()...};
 
 /******************************************************************************/
 

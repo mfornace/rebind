@@ -7,7 +7,7 @@
 #include <functional>
 #include <rebind/Type.h>
 #include <rebind/Common.h>
-#include <rebind/Error.h>
+#include <rebind/Scope.h>
 
 namespace rebind::py {
 
@@ -73,7 +73,7 @@ inline bool set_tuple_item(PyObject *t, Py_ssize_t i, PyObject *x) {
 
 /// Helper class for dealing with memoryview, Py_buffer
 class Buffer {
-    static Vector<std::pair<std::string_view, std::type_info const *>> formats;
+    static Vector<std::pair<std::string_view, Index>> formats;
     bool valid;
 
 public:
@@ -93,9 +93,9 @@ public:
         if (valid) DUMP("after buffer", reference_count(o), view.obj == o);
     }
 
-    static std::type_info const & format(std::string_view s);
-    static std::string_view format(std::type_info const &t);
-    static std::size_t itemsize(std::type_info const &t);
+    static Index format(std::string_view s);
+    static std::string_view format(Index i);
+    static std::size_t itemsize(Index i);
 
     // static Binary binary(Py_buffer *view, std::size_t len);
     // static Variable binary_view(Py_buffer *view, std::size_t len);

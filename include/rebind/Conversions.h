@@ -21,7 +21,7 @@ struct FromRef {
     using method = Default;
 
     std::optional<T> operator()(Ref const &r, Scope &msg) const {
-        return msg.error("mismatched class type", typeid(T));
+        return msg.error("mismatched class type", fetch<T>());
     }
 
     constexpr bool operator()(Ref const &r) const {return false;}
@@ -51,7 +51,7 @@ struct ToValue {
     static_assert(std::is_same_v<unqualified<T>, T>);
 
     bool operator()(Value &v, T const &) const {
-        DUMP("no conversion found from source ", type_index<T>(), " to value of type ", v.name());
+        DUMP("no conversion found from source ", fetch<T>(), " to value of type ", v.name());
         return false;
     }
 };
@@ -76,7 +76,7 @@ struct ToRef {
     static_assert(std::is_same_v<unqualified<T>, T>);
 
     bool operator()(Ref const &p, T const &) const {
-        DUMP("no conversion found from source ", get_table<T>()->name(), " to reference of type ", p.name());
+        DUMP("no conversion found from source ", fetch<T>()->name(), " to reference of type ", p.name());
         return false;
     }
 };
@@ -111,10 +111,9 @@ using response_method = typename ResponseMethod<T>::type;
 /******************************************************************************/
 
 template <class T>
-Value default_from_ref(Ref const &p, Scope &s) {
-    Value v;
-    if (auto o = FromRef<T>()(p, s)) v.place<T>(std::move(*o));
-    return v;
+bool default_from_ref(Value &v, Ref const &p, Scope &s) {
+    if (auto o = FromRef<T>()(p, s)) return v.place<T>(std::move(*o)), true;
+    return false;
 }
 
 /******************************************************************************/
@@ -170,69 +169,72 @@ bool default_assign_if(void *ptr, Ref const &other) {
 
 /******************************************************************************/
 
+namespace raw {
+
 template <class T, std::enable_if_t<std::is_reference_v<T>, int>>
-std::remove_reference_t<T> * Erased::request(Scope &s, Type<T> t, Qualifier q) const {
+std::remove_reference_t<T> * request(Index i, void *p, Scope &s, Type<T>, Qualifier q) {
     using U = unqualified<T>;
     assert_usable<U>();
 
-    if (!has_value()) return nullptr;
+    if (!p) return nullptr;
 
-    DUMP("Erased::request reference ", get_table<U>()->name(qualifier_of<T>), " from ", tab->name(), " ", QualifierSuffixes[q]);
+    DUMP("raw::request reference ", fetch<U>()->name(qualifier_of<T>), " from ", i->name(), " ", QualifierSuffixes[q]);
     if (compatible_qualifier(q, qualifier_of<T>)) {
-        if (auto p = target<U>()) return p;
-        if (tab->has_base(type_index<U>())) return static_cast<std::remove_reference_t<T> *>(ptr);
+        if (auto o = target<U>(i, p)) return o;
+        if (i->has_base(fetch<U>())) return static_cast<std::remove_reference_t<T> *>(p);
     }
 
-    Ref out(Erased(static_cast<U *>(nullptr)), q);
-    tab->m_to_ref(out, ptr, q);
+    Ref out(fetch<U>(), nullptr, q);
+    i->m_to_ref(out, p, q);
     return out.target<T>();
 }
 
 /******************************************************************************/
 
 template <class T, std::enable_if_t<!std::is_reference_v<T>, int>>
-std::optional<T> Erased::request(Scope &s, Type<T> t, Qualifier q) const {
+std::optional<T> request(Index i, void *p, Scope &s, Type<T>, Qualifier q) {
     assert_usable<T>();
     std::optional<T> out;
 
-    if (!has_value()) return out;
+    if (!p) return out;
 
-    if (auto p = request(s, Type<T &&>(), q)) {
-        out.emplace(std::move(*p));
+    if (auto o = request(i, p, s, Type<T &&>(), q)) {
+        out.emplace(std::move(*o));
         return out;
     }
 
     if constexpr(std::is_copy_constructible_v<T>) {
-        if (auto p = request(s, Type<T const &>(), q)) {
-            out.emplace(*p);
+        if (auto o = request(i, p, s, Type<T const &>(), q)) {
+            out.emplace(*o);
             return out;
         }
     }
 
     // ToValue
     Value v;
-    const_cast<Erased &>(v.as_erased()).tab = get_table<T>();
+    v.as_raw().ind = fetch<T>();
     DUMP("calling m_to_value ", v.name());
-    if (tab->m_to_value(v, ptr, q)) {
-        if (auto p = v.target<T>()) out.emplace(std::move(*p));
+    if (i->m_to_value(v, p, q)) {
+        if (auto o = v.target<T>()) out.emplace(std::move(*o));
         DUMP("m_to_value succeeded");
         return out;
     }
 
     // FromRef
-    out = FromRef<T>()(Ref(*this, q), s);
+    out = FromRef<T>()(Ref(i, p, q), s);
 
     return out;
 }
 
 /******************************************************************************/
 
-inline bool Erased::request_to(Value &v, Qualifier q) const {
-    if (has_value()) return tab->m_to_value(v, ptr, q);
+inline bool request_to(Index i, void *p, Value &v, Qualifier q) {
+    if (p) return i->m_to_value(v, p, q);
     return false;
 }
 
 /******************************************************************************/
 
+}
 
 }

@@ -69,39 +69,39 @@ struct ArrayLayout {
 /*
 Binary data convenience wrapper for an array of POD data
  */
-class ArrayData {
-    void *ptr;
-    std::type_info const *t;
-    bool mut;
+// class ArrayData {
+//     void *ptr;
+//     Index t;
+//     bool mut;
 
-public:
-    void const *pointer() const {return ptr;}
-    bool mutate() const {return mut;}
-    std::type_info const &type() const {return t ? *t : typeid(void);}
+// public:
+//     void const *pointer() const {return ptr;}
+//     bool mutate() const {return mut;}
+//     std::type_info const &type() const {return t ? *t : typeid(void);}
 
-    ArrayData(void *p, std::type_info const *t, bool mut) : t(t), ptr(p), mut(mut) {}
+//     ArrayData(void *p, std::type_info const *t, bool mut) : t(t), ptr(p), mut(mut) {}
 
-    template <class T>
-    ArrayData(T *t) : ArrayData(const_cast<std::remove_cv_t<T> *>(static_cast<T const *>(t)),
-                                &typeid(std::remove_cv_t<T>), std::is_const_v<T>) {}
+//     template <class T>
+//     ArrayData(T *t) : ArrayData(const_cast<std::remove_cv_t<T> *>(static_cast<T const *>(t)),
+//                                 &typeid(std::remove_cv_t<T>), std::is_const_v<T>) {}
 
-    template <class T>
-    T * target() const {
-        if (!mut && !std::is_const<T>::value) return nullptr;
-        if (type() != typeid(std::remove_cv_t<T>)) return nullptr;
-        return static_cast<T *>(ptr);
-    }
+//     template <class T>
+//     T * target() const {
+//         if (!mut && !std::is_const<T>::value) return nullptr;
+//         if (type() != typeid(std::remove_cv_t<T>)) return nullptr;
+//         return static_cast<T *>(ptr);
+//     }
 
-    friend std::ostream & operator<<(std::ostream &os, ArrayData const &d) {
-        if (!d.t) return os << "ArrayData()";
-        return os << "ArrayData(" << *d.t << QualifierSuffixes[(d.mut ? Const : Lvalue)] << ")";
-    }
-};
+//     friend std::ostream & operator<<(std::ostream &os, ArrayData const &d) {
+//         if (!d.t) return os << "ArrayData()";
+//         return os << "ArrayData(" << *d.t << QualifierSuffixes[(d.mut ? Const : Lvalue)] << ")";
+//     }
+// };
 
 /******************************************************************************/
 
 struct ArrayView {
-    ArrayData data;
+    Ref data;
     ArrayLayout layout;
 };
 
@@ -144,14 +144,14 @@ template <>
 struct FromRef<BinaryView> {
     std::optional<BinaryView> operator()(Ref const &v, Scope &s) const {
         if (auto p = v.request<BinaryData>()) return BinaryView(p->data(), p->size());
-        return s.error("not convertible to binary view", typeid(BinaryView));
+        return s.error("not convertible to binary view", fetch<BinaryView>());
     }
 };
 
 template <>
 struct FromRef<BinaryData> {
     std::optional<BinaryData> operator()(Ref const &v, Scope &s) const {
-        return s.error("not convertible to binary data", typeid(BinaryData));
+        return s.error("not convertible to binary data", fetch<BinaryData>());
     }
 };
 

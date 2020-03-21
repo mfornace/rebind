@@ -172,12 +172,12 @@ PyTypeObject Wrap<Function>::type = []{
 
 PyObject *index_new(PyTypeObject *subtype, PyObject *, PyObject *) noexcept {
     PyObject* o = subtype->tp_alloc(subtype, 0); // 0 unused
-    if (o) new (&cast_object<Index>(o)) Index(typeid(void)); // noexcept
+    if (o) new (&cast_object<Index>(o)) Index(); // noexcept
     return o;
 }
 
 long index_hash(PyObject *o) noexcept {
-    return static_cast<long>(cast_object<Index>(o).hash_code());
+    return static_cast<long>(std::hash<Index>()(cast_object<Index>(o)));
 }
 
 PyObject *index_repr(PyObject *o) noexcept {
@@ -200,7 +200,7 @@ PyObject *index_compare(PyObject *self, PyObject *other, int op) {
 
 template <>
 PyTypeObject Wrap<Index>::type = []{
-    auto o = type_definition<Index>("rebind.Index", "C++ type_index object");
+    auto o = type_definition<Index>("rebind.Index", "C++ type Index");
     o.tp_repr = index_repr;
     o.tp_hash = index_hash;
     o.tp_str = index_str;
@@ -212,13 +212,13 @@ PyTypeObject Wrap<Index>::type = []{
 
 int array_data_buffer(PyObject *self, Py_buffer *view, int flags) {
     auto &p = cast_object<ArrayBuffer>(self);
-    view->buf = p.data;
+    view->buf = p.data.address();
     if (p.base) {incref(p.base); view->obj = +p.base;}
     else view->obj = nullptr;
-    view->itemsize = Buffer::itemsize(*p.type);
+    view->itemsize = Buffer::itemsize(p.data.index());
     view->len = p.n_elem;
-    view->readonly = !p.mutate;
-    view->format = const_cast<char *>(Buffer::format(*p.type).data());
+    view->readonly = p.data.qualifier() == Const;
+    view->format = const_cast<char *>(Buffer::format(p.data.index()).data());
     view->ndim = p.shape_stride.size() / 2;
     view->shape = p.shape_stride.data();
     view->strides = p.shape_stride.data() + view->ndim;

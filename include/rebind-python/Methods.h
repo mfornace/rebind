@@ -112,7 +112,7 @@ PyObject * c_call_method(PyObject *s, PyObject *args, PyObject *kws) noexcept {
         auto &self = cast_object<Self>(s);
         refs[0] = Ref(self);
 
-        if (auto t = self.table()) {
+        if (auto t = self.index()) {
             if (auto it = t->methods.find(name); it != t->methods.end()) {
                 return function_call_impl(out, it->second, std::move(refs), is_value, gil, tag);
             } else {

@@ -18,7 +18,7 @@ Object call_overload(void *out, Overload const &fun, Arguments &&args, bool is_v
     // if (auto py = fun.target<PythonFunction>())
     //     return {PyObject_CallObject(+py->function, +args), false};
     DUMP("constructed python args ", args.size());
-    for (auto const &p : args) DUMP("argument type: ", p.index(), QualifierSuffixes[p.qualifier()]);
+    for (auto const &p : args) DUMP("argument type: ", p.name(), QualifierSuffixes[p.qualifier()]);
 
     if (out) {
         if (is_value) {
@@ -30,7 +30,7 @@ Object call_overload(void *out, Overload const &fun, Arguments &&args, bool is_v
     } else {
         Value out;
         call_with_gil(out, fun, std::move(args), gil);
-        DUMP("got the output Value ", out.index(), " ", out.has_value());
+        DUMP("got the output Value ", out.name(), " ", out.has_value());
         if (auto p = out.target<Object>()) return std::move(*p);
         // if (auto p = out.target<PyObject * &>()) return {*p, true};
         // Convert the C++ Value to a rebind.Value

@@ -1,20 +1,8 @@
 #pragma once
 #include "Ref.h"
-#include "Error.h"
-#include "Type.h"
 #include <optional>
 
 namespace rebind {
-
-template <class T, class ...Args>
-T * alloc(Args &&...args) {
-    assert_usable<T>();
-    if constexpr(std::is_constructible_v<T, Args &&...>) {
-        return new T(static_cast<Args &&>(args)...);
-    } else {
-        return new T{static_cast<Args &&>(args)...};
-    }
-}
 
 template <class T>
 using Maybe = std::conditional_t<std::is_reference_v<T>, std::remove_reference_t<T> *, std::optional<T>>;
@@ -27,82 +15,103 @@ Maybe<T> some(Arg &&t) {
 
 /******************************************************************************/
 
-class Value : protected Erased {
-    using Erased::Erased;
-
-public:
-
-    using Erased::name;
-    using Erased::address;
-    using Erased::index;
-    using Erased::table;
-    using Erased::matches;
-    using Erased::has_value;
-    using Erased::as_erased;
-    using Erased::operator bool;
+struct Value : protected rebind_value {
 
     /**************************************************************************/
 
-    constexpr Value() noexcept = default;
+    constexpr Value() noexcept : rebind_value{nullptr, nullptr} {}
 
     template <class T, std::enable_if_t<is_usable<unqualified<T>>, int> = 0>
-    Value(T &&t) noexcept : Erased(alloc<unqualified<T>>(static_cast<T &&>(t))) {}
+    Value(T &&t) noexcept(std::is_nothrow_move_constructible_v<unqualified<T>>)
+        : rebind_value{fetch<unqualified<T>>(), raw::alloc<unqualified<T>>(static_cast<T &&>(t))} {}
 
     template <class T, class ...Args>
-    Value(Type<T> t, Args &&...args) : Erased(alloc<T>(static_cast<Args &&>(args)...)) {}
+    Value(Type<T> t, Args &&...args)
+        : rebind_value{fetch<T>(), raw::alloc<T>(static_cast<Args &&>(args)...)} {}
 
-    Value(Value const &v) : Erased(v.allocate_copy()) {}
+    Value(Value const &v)
+        : rebind_value{v.ind, v.ptr ? v.ind->copy(v.ptr) : nullptr} {}
 
-    Value(Ref const &v) : Erased(v.as_erased().allocate_copy()) {}
+    Value(Ref const &r)
+        : rebind_value{r.index(), r.address() ? r.index()->copy(r.address()) : nullptr} {}
 
     Value &operator=(Value const &v) {
-        Erased::operator=(v.allocate_copy());
+        ind = v.ind;
+        ptr = v.ptr ? v.ind->copy(v.ptr) : nullptr;
         return *this;
     }
 
-    Value(Value &&v) noexcept : Erased(static_cast<Erased &&>(v)) {Erased::reset();}
+    void release() noexcept {ind = nullptr; ptr = nullptr;}
+    bool destroy_if() noexcept {return ptr ? ind->destroy(ptr), true: false;}
+
+    Value(Value &&v) noexcept : rebind_value(static_cast<rebind_value &&>(v)) {v.release();}
 
     Value &operator=(Value &&v) noexcept {
-        Erased::operator=(std::move(v));
-        static_cast<Erased &>(v).reset();
+        rebind_value::operator=(std::move(v));
+        v.release();
         return *this;
     }
 
-    ~Value() {Erased::try_destroy();}
+    ~Value() {destroy_if();}
 
-    void reset() {Erased::try_destroy(); Erased::reset();}
+    void reset() {destroy_if(); ind = nullptr; ptr = nullptr;}
+
+    /**************************************************************************/
+
+    // Index index() const noexcept {return ind ? ind->index : Index();}
+
+    std::string_view name() const noexcept {return raw::name(ind);}
+
+    rebind_value const &as_raw() const noexcept {return static_cast<rebind_value const &>(*this);}
+    rebind_value &as_raw() noexcept {return static_cast<rebind_value &>(*this);}
+
+    constexpr bool has_value() const noexcept {return ptr;}
+
+    explicit constexpr operator bool() const noexcept {return ptr;}
+
+    constexpr Index index() const noexcept {return ind;}
+
+    constexpr void * address() const noexcept {return ptr;}
+
+    template <class T>
+    bool matches() const noexcept {return raw::matches<T>(ind);}
 
     /**************************************************************************/
 
     template <class T>
     unqualified<T> * set_if(T &&t) {
         using U = unqualified<T>;
-        if (!ptr && matches<U>()) ptr = alloc<U>(static_cast<T &&>(t));
+        if (!ptr && raw::matches<U>(ind))
+            ptr = raw::alloc<U>(static_cast<T &&>(t));
         return static_cast<U *>(ptr);
     }
 
     template <class T, class ...Args>
     T * place_if(Args &&...args) {
-        if (!ptr && matches<T>()) ptr = alloc<T>(static_cast<Args &&>(args)...);
+        if (!ptr && raw::matches<T>(ind))
+            ptr = raw::alloc<T>(static_cast<Args &&>(args)...);
         return static_cast<unqualified<T> *>(ptr);
     }
 
     template <class T, class ...Args>
     T & place(Args &&...args) {
-        Erased::try_destroy();
-        return *Erased::reset(alloc<T>(static_cast<Args &&>(args)...));
+        destroy_if();
+        T *out = raw::alloc<T>(static_cast<Args &&>(args)...);
+        ptr = out;
+        ind = fetch<T>();
+        return *out;
     }
 
     /**************************************************************************/
 
     template <class T>
-    T *target() & {return Erased::target<T>();}
+    T *target() & {return raw::target<T>(ind, ptr);}
 
     template <class T>
-    T *target() && {return Erased::target<T>();}
+    T *target() && {return raw::target<T>(ind, ptr);}
 
     template <class T>
-    T const *target() const & {return Erased::target<T>();}
+    T const *target() const & {return raw::target<T>(ind, ptr);}
 
     // template <class T, class ...Args>
     // static Value from(Args &&...args) {
@@ -118,19 +127,19 @@ public:
     template <class T>
     Maybe<T> request(Scope &s, Type<T> t={}) const & {
         if constexpr(std::is_convertible_v<Value const &, T>) return some<T>(*this);
-        else return Erased::request(s, t, Const);
+        else return raw::request(ind, ptr, s, t, Const);
     }
 
     template <class T>
     Maybe<T> request(Scope &s, Type<T> t={}) & {
         if constexpr(std::is_convertible_v<Value &, T>) return some<T>(*this);
-        else return Erased::request(s, t, Lvalue);
+        else return raw::request(ind, ptr, s, t, Lvalue);
     }
 
     template <class T>
     Maybe<T> request(Scope &s, Type<T> t={}) && {
         if constexpr(std::is_convertible_v<Value &&, T>) return some<T>(std::move(*this));
-        else return Erased::request(s, t, Rvalue);
+        else return raw::request(ind, ptr, s, t, Rvalue);
     }
 
     /**************************************************************************/
@@ -164,7 +173,7 @@ public:
         throw std::move(s.set_error("invalid cast (rebind::Value &&)"));
     }
 
-    bool assign_if(Ref const &p) {return Erased::assign_if(p);}
+    bool assign_if(Ref const &p) {return raw::assign_if(ind, ptr, p);}
 
     /**************************************************************************/
 
@@ -179,31 +188,38 @@ public:
 
     /**************************************************************************/
 
-    bool request_to(Value &v) const & {return Erased::request_to(v, Const);}
-    bool request_to(Value &v) & {return Erased::request_to(v, Lvalue);}
-    bool request_to(Value &v) && {return Erased::request_to(v, Rvalue);}
+    bool request_to(Value &v) const & {return raw::request_to(ind, ptr, v, Const);}
+    bool request_to(Value &v) & {return raw::request_to(ind, ptr, v, Lvalue);}
+    bool request_to(Value &v) && {return raw::request_to(ind, ptr, v, Rvalue);}
 };
 
 /******************************************************************************/
 
-class OutputValue : protected Value {
-    using Value::name;
-    using Value::index;
-    using Value::matches;
-    using Value::has_value;
-    using Value::as_erased;
-    using Value::operator bool;
+static_assert(std::is_standard_layout_v<Value>);
 
-    template <class T>
-    OutputValue(Type<T>) : Value(get_table<T>(), nullptr) {}
+template <>
+struct is_trivially_relocatable<Value> : std::true_type {};
 
-    OutputValue(OutputValue const &) = delete;
+/******************************************************************************/
 
-};
+// class OutputValue : protected Value {
+//     using Value::name;
+//     using Value::index;
+//     using Value::matches;
+//     using Value::has_value;
+//     using Value::as_erased;
+//     using Value::operator bool;
 
-inline constexpr Ref::Ref(Value const &v) : Ref(v.as_erased(), Const) {}
-inline constexpr Ref::Ref(Value &v) : Ref(v.as_erased(), Lvalue) {}
-inline constexpr Ref::Ref(Value &&v) : Ref(v.as_erased(), Rvalue) {}
+//     template <class T>
+//     OutputValue(Type<T>) : Value(fetch<T>(), nullptr) {}
+
+//     OutputValue(OutputValue const &) = delete;
+
+// };
+
+inline constexpr Ref::Ref(Value const &v) : Ref(v.index(), v.address(), Const) {}
+inline constexpr Ref::Ref(Value &v) : Ref(v.index(), v.address(), Lvalue) {}
+inline constexpr Ref::Ref(Value &&v) : Ref(v.index(), v.address(), Rvalue) {}
 
 /******************************************************************************/
 

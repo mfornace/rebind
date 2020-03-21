@@ -9,6 +9,12 @@
 
 namespace rebind {
 
+template <class T, class SFINAE=void>
+struct is_trivially_relocatable : std::is_trivially_copyable<T> {};
+
+template <class T>
+static constexpr bool is_trivially_relocatable_v = is_trivially_relocatable<T>::value;
+
 /******************************************************************************/
 
 extern bool Debug;

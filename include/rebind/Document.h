@@ -1,7 +1,7 @@
 #pragma once
 #include "Function.h"
 #include "Ref.h"
-#include <map>
+#include <set>
 
 namespace rebind {
 
@@ -25,14 +25,14 @@ struct Document {
     std::map<std::string, Value> contents;
 
     // Map from type index to the associated table of C++ type data
-    std::map<Index, Table const *> types;
+    std::set<Index> types;
 
     /**************************************************************************/
 
     // Declare a new type
     template <class T>
-    Table const * type(Type<T> t, std::string_view s, Value data={}) {
-        auto table = get_table<T>();
+    Index type(Type<T> t, std::string_view s, Value data={}) {
+        auto table = fetch<T>();
         type(t, s, std::move(data), table);
         return table;
     }
@@ -61,8 +61,8 @@ struct Document {
 
     /**************************************************************************/
 
-    // Declare a new type with an already fetched Table const *
-    void type(Index t, std::string_view s, Value &&data, Table const *);
+    // Declare a new type with an already fetched Index
+    void type(Index t, std::string_view s, Value &&data, Index);
 
     // Find or create a function for a given type and method name
     Function & find_method(Index t, std::string_view name);
@@ -75,7 +75,7 @@ struct Document {
     bool render(Type<T> t={}) {
         static_assert(!std::is_reference_v<T> && !std::is_const_v<T>);
         if constexpr(is_usable<T>) {
-            return types.emplace(typeid(T), get_table<T>()).second ? Renderer<T>()(*this), true : false;
+            return types.emplace(fetch<T>()).second ? Renderer<T>()(*this), true : false;
         } else return false;
     }
 

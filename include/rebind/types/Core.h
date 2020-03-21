@@ -28,10 +28,25 @@ template <class T>
 struct FromRef<T *> {
     std::optional<T *> operator()(Ref const &v, Scope &s) const {
         std::optional<T *> out;
-        if (!v || v.request<std::nullptr_t>(s)) out.emplace(nullptr);
-        else if (auto p = v.request<T &>(s)) out.emplace(std::addressof(*p));
+        if (!v || v.request<std::nullptr_t>(s)) {
+            out.emplace(nullptr);
+        } else {
+            if constexpr(!std::is_function_v<T>) {
+                if (auto p = v.request<T &>(s)) out.emplace(std::addressof(*p));
+            }
+        }
         return out;
     }
+};
+
+template <>
+struct FromRef<void *> {
+    std::optional<void *> operator()(Ref const &v, Scope &s) const {return v.address();}
+};
+
+template <>
+struct FromRef<void const *> {
+    std::optional<void const *> operator()(Ref const &v, Scope &s) const {return v.address();}
 };
 
 template <>
@@ -54,7 +69,7 @@ struct FromRef<T, std::enable_if_t<std::is_floating_point_v<T>>> {
     std::optional<T> operator()(Ref const &v, Scope &msg) const {
         DUMP("convert to floating");
         if (!std::is_same_v<Real, T>) if (auto p = v.request<Real>()) return static_cast<T>(*p);
-        return msg.error("not convertible to floating point", typeid(T));
+        return msg.error("not convertible to floating point", fetch<T>());
     }
 };
 
@@ -65,10 +80,10 @@ Default FromRef for integer type tries to go through Integer
 template <class T>
 struct FromRef<T, std::enable_if_t<std::is_integral_v<T>>> {
     std::optional<T> operator()(Ref const &v, Scope &msg) const {
-        DUMP("trying convert to arithmetic", v.index(), type_index<T>());
+        DUMP("trying convert to arithmetic", v.name(), fetch<T>());
         if (!std::is_same_v<Integer, T>) if (auto p = v.request<Integer>()) return static_cast<T>(*p);
-        DUMP("failed to convert to arithmetic", v.index(), type_index<T>());
-        return msg.error("not convertible to integer", typeid(T));
+        DUMP("failed to convert to arithmetic", v.name(), fetch<T>());
+        return msg.error("not convertible to integer", fetch<T>());
     }
 };
 
@@ -78,9 +93,9 @@ Default FromRef for enum permits conversion from integer types
 template <class T>
 struct FromRef<T, std::enable_if_t<std::is_enum_v<T>>> {
     std::optional<T> operator()(Ref const &v, Scope &msg) const {
-        DUMP("trying convert to enum", v.index(), type_index<T>());
+        DUMP("trying convert to enum", v.name(), fetch<T>());
         if (auto p = v.request<std::underlying_type_t<T>>()) return static_cast<T>(*p);
-        return msg.error("not convertible to enum", typeid(T));
+        return msg.error("not convertible to enum", fetch<T>());
     }
 };
 
@@ -96,14 +111,14 @@ struct FromRef<std::basic_string<T, Traits, Alloc>> {
         if (!std::is_same_v<std::basic_string<T, Traits, Alloc>, std::basic_string<T, Traits>>)
             if (auto p = v.request<std::basic_string<T, Traits>>())
                 return std::move(*p);
-        return msg.error("not convertible to string", typeid(T));
+        return msg.error("not convertible to string", fetch<T>());
     }
 };
 
 template <class T, class Traits>
 struct FromRef<std::basic_string_view<T, Traits>> {
     std::optional<std::basic_string_view<T, Traits>> operator()(Ref const &v, Scope &msg) const {
-        return msg.error("not convertible to string view", typeid(T));
+        return msg.error("not convertible to string view", fetch<T>());
     }
 };
 
@@ -132,7 +147,7 @@ struct VectorFromRef {
         // if (auto p = v.request<Vector<T>>()) return get(*p, msg);
         if constexpr (!std::is_same_v<V, Sequence> && !std::is_same_v<T, Ref>)
             if (auto p = v.request<Sequence>()) return get(*p, msg);
-        return msg.error("expected sequence", typeid(V));
+        return msg.error("expected sequence", fetch<V>());
     }
 };
 
@@ -161,7 +176,7 @@ struct CompiledSequenceFromRef {
     static void request(std::optional<V> &out, S &&s, Scope &msg) {
         DUMP("trying CompiledSequenceFromRef request");
         if (std::size(s) != std::tuple_size_v<V>) {
-            msg.error("wrong sequence length", typeid(V), std::tuple_size_v<V>, s.size());
+            msg.error("wrong sequence length", fetch<V>(), std::tuple_size_v<V>, s.size());
         } else {
             msg.indices.emplace_back(0);
             request_each(out, std::move(s), msg, std::make_index_sequence<std::tuple_size_v<V>>());
@@ -184,7 +199,7 @@ struct CompiledSequenceFromRef {
             request(out, std::move(*p), msg);
         } else {
             DUMP("trying CompiledSequenceRequest3", r.name());
-            msg.error("expected sequence to make compiled sequence", typeid(V));
+            msg.error("expected sequence to make compiled sequence", fetch<V>());
         }
         return out;
     }
@@ -213,7 +228,7 @@ struct ToValue<char const *> {
 template <class T>
 struct ToValue<T, std::enable_if_t<(std::is_integral_v<T>)>> {
     bool operator()(Value &v, T t) const {
-        DUMP("response from integer", type_index<T>(), v.name());
+        DUMP("response from integer", fetch<T>(), v.name());
         if (v.matches<Integer>()) return v.place_if<Integer>(t);
         if (v.matches<Real>()) return v.place_if<Real>(t);
         DUMP("no response from integer");
@@ -334,16 +349,16 @@ struct VectorToValue {
         if (range_to_value<E>(v, std::begin(t), std::end(t))) {
             return true;
         }
-        if constexpr(HasData<T const &>::value) {
-            if (v.matches<ArrayView>()) return v.place_if<ArrayView>(std::data(t), std::size(t));
-        }
+        // if constexpr(HasData<T const &>::value) {
+        //     if (v.matches<ArrayView>()) return v.place_if<ArrayView>(std::data(t), std::size(t));
+        // }
         return false;
     }
 
     bool operator()(Value &v, T &t) const {
         if (range_to_value<E>(v, std::cbegin(t), std::cend(t))) return true;
-        if constexpr(HasData<T &>::value)
-            if (v.matches<ArrayView>()) return v.place_if<ArrayView>(std::data(t), std::size(t));
+        // if constexpr(HasData<T &>::value)
+        //     if (v.matches<ArrayView>()) return v.place_if<ArrayView>(std::data(t), std::size(t));
         return false;
     }
 

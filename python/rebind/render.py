@@ -9,11 +9,11 @@ def set_logger(logger):
 
 ################################################################################
 
-def render_module(pkg: str, doc: dict, set_type_names=False):
+def render_module(pkg: str, doc: dict):
     clear = doc['clear_global_objects']
     try:
         record = Record(pkg, doc['Value'], doc['Ref'])
-        out, config = _render_module(record, doc, set_type_names)
+        out, config = _render_module(record, doc)
         monkey_patch(record, config)
     except BaseException:
         clear()
@@ -47,7 +47,7 @@ class Record:
 
 ################################################################################
 
-def _render_module(record, doc, set_type_names):
+def _render_module(record, doc):
     log.info('rendering document into module %s', repr(record.module_name))
     config, out = Config(doc), doc.copy()
     log.info('setting type error')
@@ -64,11 +64,6 @@ def _render_module(record, doc, set_type_names):
         # cls._metadata_ = {k: v or None for k, v in data}
         for index, _ in overloads:
             config.set_type(index, cls, cls.Reference)
-
-    # put type names if desired
-    if set_type_names:
-        names = tuple((o[0], k) for k, v in out['types'].items() for o in v[1])
-        config.set_type_names(names)
 
     # render global objects (including free functions)
     out['objects'] = {k: render_object(record, k, v)

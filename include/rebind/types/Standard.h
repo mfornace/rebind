@@ -41,7 +41,7 @@ struct FromRef<std::optional<T>> {
 template <class T, TargetQualifier Q>
 struct ToValue<std::shared_ptr<T>, Q> {
     bool operator()(Variable &out, Index t, std::shared_ptr<T> const &p) const {
-        DUMP("shared_ptr", t, type_index<T>(), bool(p), Q);
+        DUMP("shared_ptr", t, fetch<T>(), bool(p), Q);
         return p && get_response<Q>(out, std::move(t), *p);
     }
 };

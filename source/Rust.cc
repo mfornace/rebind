@@ -4,19 +4,17 @@
 
 /******************************************************************************/
 
-int REBINDM(Value, add)() {return 123;}
-
-void REBINDM(Value, destruct)(REBINDC(Value) *x) { // noexcept
+void rebind_value_destruct(rebind_value *x) { // noexcept
     delete reinterpret_cast<rebind::Value *>(x);
 }
 
-void REBINDM(Value, new)(REBINDC(Value) *v) { // noexcept
-    // return reinterpret_cast<REBINDC(Value) *>(new rebind::Value(std::string()));
+void rebind_value_new(rebind_value *v) { // noexcept
+    // return reinterpret_cast<rebind_value *>(new rebind::Value(std::string()));
 }
 
-bool REBINDM(Value, copy)(REBINDC(Value) *v, REBINDC(Value) const *o) {
+bool rebind_value_copy(rebind_value *v, rebind_value const *o) {
     // try {
-    //     return reinterpret_cast<REBINDC(Value) *>(new rebind::Value(
+    //     return reinterpret_cast<rebind_value *>(new rebind::Value(
     //         *reinterpret_cast<rebind::Value const *>(v)));
     // } catch (...) {
     //     return nullptr;
@@ -25,24 +23,24 @@ bool REBINDM(Value, copy)(REBINDC(Value) *v, REBINDC(Value) const *o) {
 }
 
 
-void REBINDM(Value, move)(REBINDC(Value) *v, REBINDC(Value) *o) {
+void rebind_value_move(rebind_value *v, rebind_value *o) {
     // try {
-    //     return reinterpret_cast<REBINDC(Value) *>(new rebind::Value(
+    //     return reinterpret_cast<rebind_value *>(new rebind::Value(
     //         *reinterpret_cast<rebind::Value const *>(v)));
     // } catch (...) {
     //     return nullptr;
     // }
 }
 
-REBINDC(Index) REBINDM(Value, index)(REBINDC(Value) *v) {
-    // REBINDC(Index)[16] REBINDC(variable_type)(REBINDC(value) *v);
-    auto t = reinterpret_cast<rebind::Value const *>(v)->index();
-    static_assert(sizeof(t) == sizeof(REBINDC(Index)));
-    return reinterpret_cast<REBINDC(Index) const &>(t);
-}
+// rebind_index rebind_value_index(rebind_value *v) {
+//     // rebind_index[16] REBINDC(variable_type)(rebind_value *v);
+//     auto t = reinterpret_cast<rebind::Value const *>(v)->index();
+//     static_assert(sizeof(t) == sizeof(rebind_index));
+//     return reinterpret_cast<rebind_index const &>(t);
+// }
 
-char const * REBINDM(Index, name)(REBINDC(Index) v) {
-    return reinterpret_cast<rebind::Index const &>(v).info().name();
-}
+// char const * rebind_index_name(rebind_index v) {
+//     return reinterpret_cast<rebind::Index const &>(v).info().name();
+// }
 
 /******************************************************************************/

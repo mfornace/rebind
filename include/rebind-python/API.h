@@ -15,8 +15,6 @@
 
 namespace rebind::py {
 
-extern std::unordered_map<Index, std::string> type_names;
-
 extern Object TypeError, UnionType;
 
 extern std::unordered_map<Object, Object> output_conversions, input_conversions, type_translations;
@@ -34,17 +32,15 @@ struct ArrayBuffer {
     std::vector<Py_ssize_t> shape_stride;
     std::size_t n_elem;
     Object base;
-    void *data;
-    std::type_info const * type;
-    bool mutate;
+    Ref data;
 
     ArrayBuffer() noexcept = default;
 
     ArrayBuffer(ArrayView const &a, Object const &b) : n_elem(a.layout.n_elem()),
-        base(b), data(const_cast<void *>(a.data.pointer())), type(&a.data.type()), mutate(a.data.mutate()) {
+        base(b), data(a.data) {
         for (std::size_t i = 0; i != a.layout.depth(); ++i)
             shape_stride.emplace_back(a.layout.shape(i));
-        auto const item = Buffer::itemsize(*type);
+        auto const item = Buffer::itemsize(data.index());
         for (std::size_t i = 0; i != a.layout.depth(); ++i)
             shape_stride.emplace_back(a.layout.stride(i) * item);
     }

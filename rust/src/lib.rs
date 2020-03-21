@@ -5,14 +5,14 @@
 mod submod;
 
 pub mod variable;
-pub mod function;
+// pub mod function;
 pub mod capi;
 
-pub use variable::Variable;
-pub use function::Function;
+pub use variable::Value;
+// pub use function::Function;
 
 // #[repr(C)]
-// pub struct Variable {
+// pub struct Value {
 //     pub many: ::std::os::raw::c_int,
 //     pub wow: ::std::os::raw::c_char,
 // }
@@ -24,12 +24,12 @@ pub fn foo1() {
     use submod::foo;
     //   let _ = fmt!("...");
     foo();
-    let x = unsafe {
-        capi::rebind_add()
-    };
-    println!("Hello {}", x);
+    // let x = unsafe {
+    //     capi::rebind_add()
+    // };
+    // println!("Hello {}", x);
 
-    let v = Variable::new();
+    let v = Value::new();
     let v2 = v.clone();
     let v3 = v;
 
@@ -38,7 +38,7 @@ pub fn foo1() {
     // println!("Hello {}", v.many);
 
     // unsafe {
-    //     rebind_destruct(&mut v as *mut Variable);
+    //     rebind_destruct(&mut v as *mut Value);
     // }
 
     // println!("Hello {}", v.many);

@@ -27,7 +27,7 @@ template <class T>
 std::optional<Blah> from_ref(Type<Blah>, T &&, Scope &s) {
     if constexpr(std::is_same_v<rebind::unqualified<T>, std::string>)
         return Blah("haha");
-    return s.error("bad blah", typeid(Blah));
+    return s.error("bad blah", rebind::fetch<Blah>());
 }
 
 //remove iostream

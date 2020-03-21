@@ -56,21 +56,21 @@ PythonError python_error(std::nullptr_t) noexcept {
 /******************************************************************************/
 
 /// type_index from PyBuffer format string (excludes constness)
-std::type_info const & Buffer::format(std::string_view s) {
+Index Buffer::format(std::string_view s) {
     auto it = std::find_if(Buffer::formats.begin(), Buffer::formats.end(),
         [&](auto const &p) {return p.first == s;});
-    return it == Buffer::formats.end() ? typeid(void) : *it->second;
+    return it == Buffer::formats.end() ? Index() : it->second;
 }
 
-std::string_view Buffer::format(std::type_info const &t) {
+std::string_view Buffer::format(Index i) {
     auto it = std::find_if(Buffer::formats.begin(), Buffer::formats.end(),
-        [&](auto const &p) {return p.second == &t;});
+        [i](auto const &p) {return p.second == i;});
     return it == Buffer::formats.end() ? std::string_view() : it->first;
 }
 
-std::size_t Buffer::itemsize(std::type_info const &t) {
+std::size_t Buffer::itemsize(Index i) {
     auto it = std::find_if(scalars.begin(), scalars.end(),
-        [&](auto const &p) {return std::get<1>(p) == t;});
+        [i](auto const &p) {return std::get<1>(p) == i;});
     return it == scalars.end() ? 0u : std::get<2>(*it) / CHAR_BIT;
 }
 
@@ -99,7 +99,7 @@ std::string_view from_bytes(PyObject *o) {
 
 template <class T>
 bool arithmetic_to_value(Value &v, Object const &o) {
-    DUMP("cast arithmetic in: ", v.index());
+    DUMP("cast arithmetic in: ", v.name());
     if (PyFloat_Check(o)) return v.place_if<T>(PyFloat_AsDouble(+o));
     if (PyLong_Check(o))  return v.place_if<T>(PyLong_AsLongLong(+o));
     if (PyBool_Check(o))  return v.place_if<T>(+o == Py_True);
@@ -112,7 +112,7 @@ bool arithmetic_to_value(Value &v, Object const &o) {
                return v.place_if<T>(PyFloat_AsDouble(+i));
         }
     }
-    DUMP("cast arithmetic out: ", v.index());
+    DUMP("cast arithmetic out: ", v.name());
     return false;
 }
 
@@ -204,7 +204,7 @@ bool object_to_value(Value &v, Object o) {
             DUMP("cast buffer", reference_count(o));
             if (auto buff = Buffer(o, PyBUF_FULL_RO)) {
                 DUMP("making data", reference_count(o));
-                DUMP(Buffer::format(buff.view.format ? buff.view.format : "").name());
+                DUMP(Buffer::format(buff.view.format ? buff.view.format : ""));
                 DUMP("ndim", buff.view.ndim);
                 DUMP((nullptr == buff.view.buf), bool(buff.view.readonly));
                 for (auto i = 0; i != buff.view.ndim; ++i) DUMP(i, buff.view.shape[i], buff.view.strides[i]);
@@ -215,7 +215,7 @@ bool object_to_value(Value &v, Object o) {
                     lay.contents.emplace_back(buff.view.shape[i], buff.view.strides[i] / buff.view.itemsize);
                 DUMP("layout", lay, reference_count(o));
                 DUMP("depth", lay.depth());
-                ArrayData data{buff.view.buf, buff.view.format ? &Buffer::format(buff.view.format) : &typeid(void), !buff.view.readonly};
+                Ref data{buff.view.format ? Buffer::format(buff.view.format) : fetch<void>(), buff.view.buf, buff.view.readonly ? Const : Lvalue};
                 return v.place_if<ArrayView>(std::move(data), std::move(lay));
             } else throw python_error(type_error("C++: could not get buffer from Python obhect"));
         } else return false;
@@ -226,7 +226,7 @@ bool object_to_value(Value &v, Object o) {
         return false;
     }
 
-    DUMP("request failed for py::Object to ", v.index());
+    DUMP("request failed for py::Object to ", v.name());
 
     // if (!ok) { // put diagnostic for the source type
     //     auto o = py::Object::from(PyObject_Repr(+type));
@@ -245,11 +245,7 @@ bool object_to_ref(Ref &v, Object o) {
 
 /******************************************************************************/
 
-std::string_view get_type_name(Index idx) noexcept {
-    auto it = type_names.find(idx);
-    if (it == type_names.end() || it->second.empty()) return idx.name();
-    else return it->second;
-}
+std::string_view get_type_name(Index idx) noexcept {return raw::name(idx);}
 
 /******************************************************************************/
 
@@ -278,11 +274,11 @@ Ref ref_from_object(Object &o, bool move) {
     if (auto p = cast_if<Overload>(o)) {
         return Ref(*p);
     } else if (auto p = cast_if<Index>(o)) {
-        DUMP("ref_from_object: Index = ", p->name());
+        DUMP("ref_from_object: Index = ", raw::name(*p));
         return Ref(*p);
     } else if (auto p = cast_if<Value>(o)) {
         DUMP("ref_from_object: Value = ", p->name());
-        return Ref(p->as_erased(), move ? Rvalue : Lvalue);
+        return Ref(p->index(), p->address(), move ? Rvalue : Lvalue);
     } else if (auto p = cast_if<Ref>(o)) {
         DUMP("ref_from_object: Ref = ", p->name());
         return *p;

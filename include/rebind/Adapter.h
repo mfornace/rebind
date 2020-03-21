@@ -106,7 +106,7 @@ struct Adapter<0, F, SFINAE> {
      - Always returns true
      */
     bool operator()(Caller *c, Value *v, Ref *p, Arguments const &args) const {
-        DUMP("Adapter<", type_index<F>(), ">::()");
+        DUMP("Adapter<", fetch<F>(), ">::()");
 
         if (args.size() != Args::size)
             throw WrongNumber(Args::size, args.size());
@@ -188,7 +188,7 @@ struct Adapter<0, R C::*, std::enable_if_t<std::is_member_object_pointer_v<R C::
     template <class Out>
     bool call(Caller &&caller, Out &out, Ref const &self) const {
         auto frame = caller();
-        DUMP("Adapter<", type_index<R>(), ", ", type_index<C>(), ">::()");
+        DUMP("Adapter<", fetch<R>(), ", ", fetch<C>(), ">::()");
         Caller handle(frame);
         Scope s(handle);
 

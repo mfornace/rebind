@@ -19,6 +19,8 @@ class Scope;
 template <class T>
 static constexpr bool is_usable = true
     && !std::is_reference_v<T>
+    // && !std::is_function_v<T>
+    // && !std::is_void_v<T>
     && !std::is_const_v<T>
     && !std::is_volatile_v<T>
     && !std::is_void_v<T>
@@ -46,29 +48,35 @@ constexpr void assert_usable() {
 /******************************************************************************************/
 
 struct Table {
-    Index index;
+    using destroy_t = void (*)(void*) noexcept;
+    using copy_t = void* (*)(void const *);
+    using to_value_t = bool (*)(Value &, void *, Qualifier);
+    using to_ref_t = bool (*)(Ref &, void *, Qualifier);
+    using assign_if_t = bool (*)(void *, Ref const &);
+    using from_ref_t = bool (*)(Value &, Ref const &, Scope &);
+
+    /**************************************************************************************/
+
+    std::type_info const *info;
     // Destructor function pointer
-    void (*m_destroy)(void*) noexcept = nullptr;
+    destroy_t m_destroy = nullptr;
     // Relocate function pointer
     bool (*m_relocate)(void *, void *, unsigned short, unsigned short) noexcept = nullptr; // either relocate the object to the void*, or ...
     // Copy function pointer
-    void* (*m_copy)(void const *) = nullptr;
+    copy_t m_copy = nullptr;
     // ToValue function pointer
-    bool (*m_to_value)(Value &, void *, Qualifier) = nullptr;
+    to_value_t m_to_value = nullptr;
     // ToValue function pointer
-    bool (*m_to_ref)(Ref &, void *, Qualifier) = nullptr;
+    to_ref_t m_to_ref = nullptr;
     // FromRef function pointer
-    Value (*m_from_ref)(Ref const &, Scope &) = nullptr;
+    from_ref_t m_from_ref = nullptr;
     // FromRef function pointer
-    bool (*m_assign_if)(void *, Ref const &) = nullptr;
-
+    assign_if_t m_assign_if = nullptr;
     // Output name
     std::string m_name;
     std::array<std::string, 3> qualified_names;
-
     // List of base classes that this type can be cast into
     Vector<Index> bases;
-
     // List of methods on this class
     std::map<std::string, Function, std::less<>> methods;
 
@@ -128,7 +136,7 @@ template <class T>
 bool default_to_ref(Ref &, void *, Qualifier const);
 
 template <class T>
-Value default_from_ref(Ref const &, Scope &);
+bool default_from_ref(Value &, Ref const &, Scope &);
 
 template <class T>
 bool default_assign_if(void *, Ref const &);
@@ -137,11 +145,8 @@ bool default_assign_if(void *, Ref const &);
 
 template <class T>
 Table default_table() {
-    assert_usable<T>();
-
     Table t;
-
-    t.index = typeid(T);
+    t.info = &typeid(T);
     t.m_name = typeid(T).name();
     t.qualified_names = {
         t.m_name + QualifierSuffixes[Const].data(),
@@ -149,13 +154,22 @@ Table default_table() {
         t.m_name + QualifierSuffixes[Rvalue].data()
     };
 
-    t.m_copy = default_copy<T>;
-    t.m_destroy = default_destroy<T>;
-    t.m_relocate = default_relocate<T>;
-    t.m_to_value = default_to_value<T>;
-    t.m_to_ref = default_to_ref<T>;
-    t.m_from_ref = default_from_ref<T>;
-    t.m_assign_if = default_assign_if<T>;
+    if constexpr(is_usable<T>) {
+        t.m_copy = default_copy<T>;
+        t.m_destroy = default_destroy<T>;
+        t.m_relocate = default_relocate<T>;
+        t.m_to_value = default_to_value<T>;
+        t.m_to_ref = default_to_ref<T>;
+        t.m_from_ref = default_from_ref<T>;
+        t.m_assign_if = default_assign_if<T>;
+    } else {
+        t.m_copy = [](void const *) -> void * {throw std::runtime_error("bad");};
+        t.m_to_value = [](Value &, void *, Qualifier const) -> bool {throw std::runtime_error("bad");};
+        t.m_to_ref = [](Ref &, void *, Qualifier const) -> bool {throw std::runtime_error("bad");};
+        t.m_from_ref = [](Value &, Ref const &, Scope &) -> bool {throw std::runtime_error("bad");};
+        t.m_assign_if = [](void *, Ref const &) -> bool {throw std::runtime_error("bad");};
+    }
+
     return t;
 }
 
@@ -167,7 +181,7 @@ struct TableImplementation {
 };
 
 template <class T>
-Table const * get_table() {return {std::addressof(TableImplementation<T>::table)};}
+Index fetch() noexcept {return {std::addressof(TableImplementation<T>::table)};}
 
 /******************************************************************************************/
 

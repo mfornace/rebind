@@ -46,13 +46,13 @@ bool attach(Object const &m, char const *name, Object o) noexcept {
 
 /******************************************************************************/
 
-// List[Table const *]
-// where Table const * = Tuple[List[Method], bool]
+// List[Table]
+// where Table = Tuple[List[Method], bool]
 // where Method = Tuple[str, Function]
-Object tables_to_object(Vector<Table const *> const &v) {
+Object tables_to_object(Vector<Index> const &v) {
     return map_as_tuple(v, [](auto const &t) {
         return tuple_from(
-            as_object(t->index),
+            as_object(t),
             map_as_tuple(t->methods, [](auto const &x) {return tuple_from(as_object(x.first), as_object(x.second));})
             // map_as_tuple(p->data, [](auto const &x) {return tuple_from(as_object(x.first), variable_cast(Variable(x.second)));})
         );
@@ -65,8 +65,6 @@ Object initialize(Document const &doc) {
     initialize_global_objects();
 
     auto m = Object::from(PyDict_New());
-    for (auto const &p : doc.types)
-        if (p.second) type_names.emplace(p.first, p.first.name());//p.second->first);
 
     if (PyType_Ready(type_object<ArrayBuffer>()) < 0) return {};
     incref(type_object<ArrayBuffer>());
@@ -96,7 +94,7 @@ Object initialize(Document const &doc) {
             o = as_object(*p);
         } else if (auto p = x.second.template target<Index>()) { // a type index
             o = as_object(*p);
-        } else if (auto p = x.second.template target<Vector<Table const *>>()) { // a type table
+        } else if (auto p = x.second.template target<Vector<Index>>()) { // a type table
             o = tables_to_object(*p);
         // } else if (auto p = x.second.template target<Ref>()) {
         //     o = ref_to_object(*p);
@@ -131,12 +129,8 @@ Object initialize(Document const &doc) {
 
     s = s && attach(m, "set_type", as_object(Overload::from([](Index idx, Object cls, Object ref) {
         DUMP("set_type in");
-        python_types[idx.info()] = {std::move(cls), std::move(ref)};
+        python_types[idx] = {std::move(cls), std::move(ref)};
         DUMP("set_type out");
-    })));
-
-    s = s && attach(m, "set_type_names", as_object(Overload::from([](Zip<Index, std::string_view> v) {
-        for (auto const &p : v) type_names.insert_or_assign(p.first, p.second);
     })));
 
     DUMP("attached all module objects, status = ", s);

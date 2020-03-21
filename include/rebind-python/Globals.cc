@@ -25,66 +25,29 @@ void clear_global_objects() {
     TypeError = nullptr;
 }
 
-std::unordered_map<Index, std::string> type_names = {
-    {typeid(void),             "void"},
-    {typeid(void *),           "pointer"},
-    {typeid(PyObject),         "PyObject"},
-    {typeid(PyObject *),       "PyObject *"},
-    {typeid(bool),             "bool"},
-    {typeid(Real),             "float64"},
-    {typeid(std::string_view), "str"},
-    {typeid(std::string),      "str"},
-    {typeid(Index),            "Index"},
-    {typeid(Binary),           "Binary"},
-    {typeid(BinaryView),       "BinaryView"},
-    {typeid(BinaryData),       "BinaryData"},
-    {typeid(ArrayView),        "ArrayView"},
-    {typeid(Overload),         "Overload"},
-    {typeid(Ref),              "Ref"},
-    {typeid(Value),            "Value"},
-    {typeid(Sequence),         "Sequence"},
-    {typeid(char),             "char"},
-    {typeid(unsigned char),    "unsigned_char"},
-    {typeid(signed char),      "signed_char"},
-    {typeid(char16_t),         "char16_t"},
-    {typeid(char32_t),         "char32_t"},
-    {typeid(int),              "int32"},
-    {typeid(float),            "float32"},
-    {typeid(long double),      "long_double"},
-    {typeid(std::uint8_t),     "uint8"},
-    {typeid(std::uint16_t),    "uint16"},
-    {typeid(std::uint32_t),    "uint32"},
-    {typeid(std::uint64_t),    "uint64"},
-    {typeid(std::int8_t),      "int8"},
-    {typeid(std::int16_t),     "int16"},
-    {typeid(std::int32_t),     "int32"},
-    {typeid(std::int64_t),     "int64"}
+Zip<std::string_view, Index> Buffer::formats = {
+    {"d", fetch<double>()},
+    {"f", fetch<float>()},
+    {"c", fetch<char>()},
+    {"b", fetch<signed char>()},
+    {"B", fetch<unsigned char>()},
+    {"?", fetch<bool>()},
+    {"h", fetch<short>()},
+    {"H", fetch<unsigned short>()},
+    {"i", fetch<int>()},
+    {"I", fetch<unsigned int>()},
+    {"l", fetch<long>()},
+    {"L", fetch<unsigned long>()},
+    {"q", fetch<long long>()},
+    {"Q", fetch<unsigned long long>()},
+    {"n", fetch<ssize_t>()},
+    {"s", fetch<char[]>()},
+    {"p", fetch<char[]>()},
+    {"N", fetch<size_t>()},
+    {"P", fetch<void >()}
 };
 
-
-Zip<std::string_view, std::type_info const *> Buffer::formats = {
-    {"d", &typeid(double)},
-    {"f", &typeid(float)},
-    {"c", &typeid(char)},
-    {"b", &typeid(signed char)},
-    {"B", &typeid(unsigned char)},
-    {"?", &typeid(bool)},
-    {"h", &typeid(short)},
-    {"H", &typeid(unsigned short)},
-    {"i", &typeid(int)},
-    {"I", &typeid(unsigned int)},
-    {"l", &typeid(long)},
-    {"L", &typeid(unsigned long)},
-    {"q", &typeid(long long)},
-    {"Q", &typeid(unsigned long long)},
-    {"n", &typeid(ssize_t)},
-    {"s", &typeid(char[])},
-    {"p", &typeid(char[])},
-    {"N", &typeid(size_t)},
-    {"P", &typeid(void *)}
-};
-
-#define REBIND_TMP(C, T) {Scalar::C, typeid(T), sizeof(T) * CHAR_BIT}
+#define REBIND_TMP(C, T) {Scalar::C, fetch<T>(), sizeof(T) * CHAR_BIT}
 
 Zip<Scalar, Index, unsigned> scalars = {
     REBIND_TMP(Bool,         bool),

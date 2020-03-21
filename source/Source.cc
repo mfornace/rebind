@@ -187,7 +187,7 @@ void set_source(WrongType &err, std::type_info const &t, Value &&v) {
     } else if (auto p = v.target<std::string_view>()) {
         err.source = std::move(*p);
     } else if (auto p = v.target<Index>()) {
-        err.source = p->name();
+        err.source = raw::name(*p);
     } else {
         err.source = t.name();
     }
@@ -195,14 +195,14 @@ void set_source(WrongType &err, std::type_info const &t, Value &&v) {
 
 /******************************************************************************/
 
-void Document::type(Index t, std::string_view s, Value &&data, Table const * table) {
+void Document::type(Index t, std::string_view s, Value &&data, Index table) {
     DUMP("type ", t, s);
-    auto it = contents.try_emplace(std::string(s), Type<Vector<Table const *>>()).first;
-    if (auto p = it->second.target<Vector<Table const *>>()) {
+    auto it = contents.try_emplace(std::string(s), Type<Vector<Index>>()).first;
+    if (auto p = it->second.target<Vector<Index>>()) {
         p->emplace_back(table);
         return;
     }
-    throw std::runtime_error(cat("tried to declare a type on a non-type key (key=", s, ", type=", t.name(), ")"));
+    throw std::runtime_error(cat("tried to declare a type on a non-type key (key=", s, ", type=", t, ")"));
 }
 
 template <class T>
@@ -210,11 +210,7 @@ T & remove_const(T const &t) {return const_cast<T &>(t);}
 
 Function & Document::find_method(Index t, std::string_view name) {
     DUMP("find_method ", t, name);
-    if (auto it = types.find(t); it != types.end()) {
-        return remove_const(it->second->methods)[std::string(name)];
-    } else {
-        throw std::runtime_error(cat("tried to declare a method on an undeclared type (key=", name, ", type=", t.name(), ")"));
-    }
+    return remove_const(t->methods)[std::string(name)];
 }
 
 Function & Document::find_function(std::string_view s) {
