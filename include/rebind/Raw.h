@@ -9,8 +9,6 @@ using rebind_table = rebind::Table;
 
 using rebind_index = rebind::Index;
 
-using rebind_function = rebind::Function;
-
 extern "C" {
 
 #else
@@ -18,8 +16,6 @@ extern "C" {
 typedef struct rebind_table rebind_table;
 
 typedef rebind_table const * rebind_index;
-
-typedef struct rebind_function rebind_function;
 
 // struct rebind_index {
 //     std::aligned_storage_t<sizeof(rebind::Index), alignof(rebind::Index)> blah;
@@ -95,7 +91,7 @@ T * alloc(Args &&...args) {
 /**************************************************************************************/
 
 inline bool assign_if(Index i, void *p, Ref const &r) {
-    return p && i->m_assign_if(p, r);
+    return p && i->c.assign_if(p, r);
 }
 
 /**************************************************************************************/
@@ -109,6 +105,18 @@ std::optional<T> request(Index i, void *p, Scope &s, Type<T>, Qualifier q);
 bool request_to(Index t, void *p, Value &, Qualifier q);
 
 bool request_to(Index t, void *p, Ref &, Qualifier q);
+
+/**************************************************************************************/
+
+bool call_to(Value &v, Index i, void const *p, Caller &&c, Arguments args);
+
+bool call_to(Ref &v, Index i, void const *p, Caller &&c, Arguments args);
+
+template <class ...Args>
+Value call_value(Index i, void const *p, Caller &&c, Args &&...args);
+
+template <class ...Args>
+Ref call_ref(Index i, void const *p, Caller &&c, Args &&...args);
 
 /**************************************************************************************/
 

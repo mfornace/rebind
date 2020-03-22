@@ -5,7 +5,6 @@
 #include "API.h"
 #include "Wrap.h"
 
-// #include <rebind/Document.h>
 #include <complex>
 #include <any>
 #include <iostream>
@@ -152,15 +151,15 @@ bool object_to_value(Value &v, Object o) {
         if (+o == Py_None) return v.reset(), true;
     }
 
-    if (v.matches<Overload>()) {
-        DUMP("requested function");
-        if (+o == Py_None) return v.place_if<Overload>();
-        else if (auto p = cast_if<Overload>(o)) v.set_if(*p);
-        // general python function has no signature associated with it right now.
-        // we could get them out via function.__annotations__ and process them into a tuple
-        else v.set_if(Overload(PythonFunction({+o, true}, {Py_None, true}), {}));
-        return true;
-    }
+    // if (v.matches<Overload>()) {
+    //     DUMP("requested function");
+    //     if (+o == Py_None) return v.place_if<Overload>();
+    //     else if (auto p = cast_if<Overload>(o)) v.set_if(*p);
+    //     // general python function has no signature associated with it right now.
+    //     // we could get them out via function.__annotations__ and process them into a tuple
+    //     else v.set_if(Overload(PythonFunction({+o, true}, {Py_None, true}), {}));
+    //     return true;
+    // }
 
     if (v.matches<Sequence>()) {
         if (PyTuple_Check(o) || PyList_Check(o)) {
@@ -271,9 +270,7 @@ std::string wrong_type_message(WrongType const &e, std::string_view prefix) {
 /******************************************************************************/
 
 Ref ref_from_object(Object &o, bool move) {
-    if (auto p = cast_if<Overload>(o)) {
-        return Ref(*p);
-    } else if (auto p = cast_if<Index>(o)) {
+    if (auto p = cast_if<Index>(o)) {
         DUMP("ref_from_object: Index = ", raw::name(*p));
         return Ref(*p);
     } else if (auto p = cast_if<Value>(o)) {

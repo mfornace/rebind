@@ -16,7 +16,7 @@ namespace rebind {
 /// Built-in floating point with the largest domain -- long double is not used though
 using Real = double;
 
-using Arguments = Vector<Ref>;
+// using Arguments = Vector<Ref>;
 
 using Sequence = Vector<Value>;
 

@@ -173,9 +173,9 @@ Object type_index_cast(Ref const &ref) {
 }
 
 Object function_cast(Ref const &ref) {
-    if (auto p = ref.request<Function>()) return as_object(std::move(*p));
-    if (auto p = ref.request<Overload>()) return as_object(Function(std::move(*p)));
-    else return {};
+    // if (auto p = ref.request<Function>()) return as_object(std::move(*p));
+    // if (auto p = ref.request<Overload>()) return as_object(Function(std::move(*p)));
+    return {};
 }
 
 Object memoryview_cast(Ref const &ref, Object const &root) {
@@ -248,10 +248,10 @@ Object try_python_cast(Ref const &r, Object const &t, Object const &root) {
         else if (type == &PyUnicode_Type)                     return str_cast(r);                 // str
         else if (type == &PyBytes_Type)                       return bytes_cast(r);               // bytes
         else if (type == &PyBaseObject_Type)                  return as_deduced_object(r);        // object
-        else if (is_subclass(type, type_object<Value>()))     return value_to_object(r, t);     // Value
-        else if (is_subclass(type, type_object<Ref>()))   return ref_to_object(r, t);     // Ref
+        else if (is_subclass(type, type_object<Value>()))     return value_to_object(r, t);       // Value
+        else if (is_subclass(type, type_object<Ref>()))   return ref_to_object(r, t);             // Ref
         else if (type == type_object<Index>())                return type_index_cast(r);          // type(Index)
-        else if (type == type_object<Overload>())             return function_cast(r);            // Overload
+        // else if (type == type_object<Overload>())             return function_cast(r);            // Overload
         else if (is_subclass(type, &PyFunction_Type))         return function_cast(r);            // Overload
         else if (type == &PyMemoryView_Type)                  return memoryview_cast(r, root);    // memory_view
     } else {

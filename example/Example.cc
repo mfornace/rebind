@@ -1,5 +1,5 @@
 
-#include <rebind/Document.h>
+#include <rebind/Schema.h>
 #include <rebind/types/Arrays.h>
 #include <iostream>
 
@@ -8,7 +8,7 @@ namespace example {
 using rebind::Type;
 using rebind::Scope;
 using rebind::Value;
-using rebind::Document;
+using rebind::Schema;
 
 /******************************************************************************/
 
@@ -59,74 +59,74 @@ struct Goo {
 
 /******************************************************************************/
 
-void render(Document &doc, Type<Blah> t) {
-    doc.type(t, "submodule.Blah");
-    doc.method(t, "new", rebind::construct<std::string>(t));
-    doc.method(t, "dump", &Blah::dump);
+void render(Schema &s, Type<Blah> t) {
+    s.type(t, "submodule.Blah");
+    s.method(t, "new", rebind::construct<std::string>(t));
+    s.method(t, "dump", &Blah::dump);
 }
 
-void render(Document &doc, Type<Goo> t) {
-    doc.type(t, "Goo");
-    doc.render(Type<Blah>());
-    doc.method(t, "new", [](double x) -> Goo {return x;});
-    doc.method(t, "add", [](Goo x) {
+void render(Schema &s, Type<Goo> t) {
+    s.type(t, "Goo");
+    s.render(Type<Blah>());
+    s.method(t, "new", [](double x) -> Goo {return x;});
+    s.method(t, "add", [](Goo x) {
         x.x += 4;
         DUMP(x.x);
         return x;
     });
-    doc.method(t, ".x", &Goo::x);
-    doc.method(t, "{}", streamable(t));
+    s.method(t, ".x", &Goo::x);
+    s.method(t, "{}", streamable(t));
 }
 
-// could make this return a document
-void write_document(rebind::Document &doc) {
-    doc.function("fun", [](int i, double d) {
+// could make this return a schema
+void write_schema(rebind::Schema &s) {
+    s.function("fun", [](int i, double d) {
         return i + d;
     });
-    doc.function("refthing", [](double const &d) {
+    s.function("refthing", [](double const &d) {
         return d;
     });
-    doc.function("submodule.fun", [](int i, double d) {
+    s.function("submodule.fun", [](int i, double d) {
         return i + d;
     });
-    doc.function("test_pair", [](std::pair<int, double> p) {
+    s.function("test_pair", [](std::pair<int, double> p) {
         p.first += 3;
         p.second += 0.5;
         return p;
     });
-    doc.function("test_tuple", [](std::tuple<int, float> p) {
+    s.function("test_tuple", [](std::tuple<int, float> p) {
         return std::get<1>(p);
     });
-    doc.function("vec", [](double i, double d) {
+    s.function("vec", [](double i, double d) {
         return std::vector<double>{i, i, d};
     });
-    doc.function("moo", [](Goo &i) {
+    s.function("moo", [](Goo &i) {
         i.x += 5;
     });
-    doc.function("lref", [](double &i) {i = 2;});
-    doc.function("clref", [](double const &i) {});
-    doc.function("noref", [](double i) {});
-    doc.function("rref", [](double &&i) {});
-    doc.render(Type<Goo>());
+    s.function("lref", [](double &i) {i = 2;});
+    s.function("clref", [](double const &i) {});
+    s.function("noref", [](double i) {});
+    s.function("rref", [](double &&i) {});
+    s.render(Type<Goo>());
 
-    doc.function("buffer", [](std::tuple<rebind::BinaryData, std::type_index, std::vector<std::size_t>> i) {
+    s.function("buffer", [](std::tuple<rebind::BinaryData, std::type_index, std::vector<std::size_t>> i) {
         DUMP(std::get<0>(i).size());
         DUMP(std::get<1>(i).name());
         DUMP(std::get<2>(i).size());
         for (auto &c : std::get<0>(i)) c += 4;
     });
-    doc.function("vec1", [](std::vector<int> const &) {});
-    doc.function("vec2", [](std::vector<int> &) {});
-    doc.function("vec3", [](std::vector<int>) {});
-    doc.function<1>("vec4", [](int, int i=2) {});
+    s.function("vec1", [](std::vector<int> const &) {});
+    s.function("vec2", [](std::vector<int> &) {});
+    s.function("vec3", [](std::vector<int>) {});
+    s.function<1>("vec4", [](int, int i=2) {});
 
-    DUMP("made document");
+    DUMP("made schema");
 }
 
 }
 
 namespace rebind {
 
-void init(Document &doc) {example::write_document(doc);}
+void init(Schema &s) {example::write_schema(s);}
 
 }

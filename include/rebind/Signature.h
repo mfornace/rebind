@@ -208,4 +208,30 @@ std::is_convertible<T, C> second_is_convertible(Pack<R, T, Ts...>);
 
 /******************************************************************************/
 
+inline Type<void> simplify_argument(Type<void>) {return {};}
+
+/// Check type and remove cv qualifiers on arguments that are not lvalues
+template <class T>
+auto simplify_argument(Type<T>) {
+    using U = std::remove_reference_t<T>;
+    static_assert(!std::is_volatile_v<U> || !std::is_reference_v<T>, "volatile references are not supported");
+    using V = std::conditional_t<std::is_lvalue_reference_v<T>, U &, std::remove_cv_t<U>>;
+    using Out = std::conditional_t<std::is_rvalue_reference_v<T>, V &&, V>;
+    static_assert(std::is_convertible_v<Out, T>, "simplified type should be compatible with original");
+    return Type<Out>();
+}
+
+template <class T>
+auto simplify_argument(IndexedType<T> t) {
+    return IndexedType<typename decltype(simplify_argument(Type<T>()))::type>{t.index};
+}
+
+template <class ...Ts>
+Pack<decltype(*simplify_argument(Type<Ts>()))...> simplify_signature(Pack<Ts...>) {return {};}
+
+template <class F>
+using SimpleSignature = decltype(simplify_signature(Signature<F>()));
+
+/******************************************************************************/
+
 }

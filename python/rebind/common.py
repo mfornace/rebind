@@ -57,7 +57,7 @@ def unwrap(old):
  # The following functions are just used for their signatures
 
 def opaque_signature(*args):
-    '''Call a function from a rebind.Document'''
+    '''Call a function from a rebind.Schema'''
 
 def default_str(self) -> str:
     '''Convert self to a str via C++'''

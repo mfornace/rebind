@@ -6,7 +6,7 @@
 #pragma once
 #include "Object.h"
 
-#include <rebind/Document.h>
+#include <rebind/Schema.h>
 #include <rebind/types/Arrays.h>
 
 #include <mutex>

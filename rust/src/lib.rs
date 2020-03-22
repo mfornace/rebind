@@ -30,7 +30,7 @@ pub fn foo1() {
     // println!("Hello {}", x);
 
     let v = Value::new();
-    let v2 = v.clone();
+    let _v2 = v.clone();
     let v3 = v;
 
     let t = v3.index();

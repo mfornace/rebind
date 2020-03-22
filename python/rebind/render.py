@@ -9,11 +9,11 @@ def set_logger(logger):
 
 ################################################################################
 
-def render_module(pkg: str, doc: dict):
-    clear = doc['clear_global_objects']
+def render_module(pkg: str, schema: dict):
+    clear = schema['clear_global_objects']
     try:
-        record = Record(pkg, doc['Value'], doc['Ref'])
-        out, config = _render_module(record, doc)
+        record = Record(pkg, schema['Value'], schema['Ref'])
+        out, config = _render_module(record, schema)
         monkey_patch(record, config)
     except BaseException:
         clear()
@@ -47,14 +47,14 @@ class Record:
 
 ################################################################################
 
-def _render_module(record, doc):
-    log.info('rendering document into module %s', repr(record.module_name))
-    config, out = Config(doc), doc.copy()
+def _render_module(record, schema):
+    log.info('rendering schema into module %s', repr(record.module_name))
+    config, out = Config(schema), schema.copy()
     log.info('setting type error')
     config.set_type_error(ConversionError)
 
     log.info('rendering classes and methods')
-    out['types'] = {k: v for k, v in doc['contents'] if isinstance(v, tuple)}
+    out['types'] = {k: v for k, v in schema['contents'] if isinstance(v, tuple)}
     log.info(str(out['types']))
 
     for name, overloads in out['types'].items():
@@ -67,9 +67,9 @@ def _render_module(record, doc):
 
     # render global objects (including free functions)
     out['objects'] = {k: render_object(record, k, v)
-        for k, v in doc['contents'] if not isinstance(v, tuple)}
+        for k, v in schema['contents'] if not isinstance(v, tuple)}
 
-    out['scalars'] = common.find_scalars(doc['scalars'])
+    out['scalars'] = common.find_scalars(schema['scalars'])
     return out, config
 
 ################################################################################
@@ -102,7 +102,7 @@ def monkey_patch(record, config):
     for k in _declared_objects.difference(record.translations):
         log.warning('Placeholder {} was declared but not defined'.format(k))
 
-    log.info('finished rendering document into module %r', record.module_name)
+    log.info('finished rendering schema into module %r', record.module_name)
 
 ################################################################################
 
@@ -254,10 +254,10 @@ def is_callable_type(t):
 
 def render_function(fun, old, namespace):
     '''
-    Replace a declared function's contents with the one from the document
+    Replace a declared function's contents with the one from the schema
     - Otherwise if the declared function takes 'function', call the declared function
-    with the document function passed as 'function' and the other arguments filled appropiately
-    - Otherwise, call the document function
+    with the schema function passed as 'function' and the other arguments filled appropiately
+    - Otherwise, call the schema function
     '''
     if old is None:
         def bound(*args, _orig=fun):

@@ -4,7 +4,7 @@
  */
 #include <rebind-python/Cast.h>
 #include <rebind-python/API.h>
-#include <rebind/Document.h>
+#include <rebind/Schema.h>
 #include <any>
 #include <iostream>
 #include <numeric>
@@ -47,21 +47,22 @@ bool attach(Object const &m, char const *name, Object o) noexcept {
 /******************************************************************************/
 
 // List[Table]
-// where Table = Tuple[List[Method], bool]
-// where Method = Tuple[str, Function]
+// where Table = Tuple[List[Property], bool]
+// where Property = Tuple[str, Value]
 Object tables_to_object(Vector<Index> const &v) {
     return map_as_tuple(v, [](auto const &t) {
         return tuple_from(
             as_object(t),
-            map_as_tuple(t->methods, [](auto const &x) {return tuple_from(as_object(x.first), as_object(x.second));})
-            // map_as_tuple(p->data, [](auto const &x) {return tuple_from(as_object(x.first), variable_cast(Variable(x.second)));})
+            map_as_tuple(t->properties, [](auto const &x) {
+                return tuple_from(as_object(x.first), value_to_object(Value(x.second)));
+            })
         );
     });
 }
 
 /******************************************************************************/
 
-Object initialize(Document const &doc) {
+Object initialize(Schema const &schema) {
     initialize_global_objects();
 
     auto m = Object::from(PyDict_New());
@@ -76,23 +77,19 @@ Object initialize(Document const &doc) {
     // Builtin types
     s = s && attach_type(m, "Value", type_object<Value>());
     s = s && attach_type(m, "Ref", type_object<Ref>());
-    s = s && attach_type(m, "Function", type_object<Function>());
-    // s = s && attach_type(m, "Overload", type_object<Overload>())
     s = s && attach_type(m, "Index", type_object<Index>());
 
     // scalars: exposed as Tuple[Tuple[int, Index, int], ...]
     s = s && attach(m, "scalars", map_as_tuple(scalars, [](auto const &x) {
         return tuple_from(as_object(static_cast<Integer>(std::get<0>(x))),
-                                as_object(static_cast<Index>(std::get<1>(x))),
-                                as_object(static_cast<Integer>(std::get<2>(x))));
+                          as_object(static_cast<Index>(std::get<1>(x))),
+                          as_object(static_cast<Integer>(std::get<2>(x))));
     }));
 
     // Tuple[Tuple[Index, Tuple[Tuple[str, function], ...]], ...]
-    s = s && attach(m, "contents", map_as_tuple(doc.contents, [](auto const &x) {
+    s = s && attach(m, "contents", map_as_tuple(schema.contents, [](auto const &x) {
         Object o;
-        if (auto p = x.second.template target<Function>()) { // a function
-            o = as_object(*p);
-        } else if (auto p = x.second.template target<Index>()) { // a type index
+        if (auto p = x.second.template target<Index>()) { // a type index
             o = as_object(*p);
         } else if (auto p = x.second.template target<Vector<Index>>()) { // a type table
             o = tables_to_object(*p);
@@ -105,29 +102,29 @@ Object initialize(Document const &doc) {
     }));
 
     // Configuration functions
-    s = s && attach(m, "set_output_conversion", as_object(Overload::from([](Object t, Object o) {
+    s = s && attach(m, "set_output_conversion", value_to_object(declare_function([](Object t, Object o) {
         output_conversions.insert_or_assign(std::move(t), std::move(o));
     })));
-    s = s && attach(m, "set_input_conversion", as_object(Overload::from([](Object t, Object o) {
+    s = s && attach(m, "set_input_conversion", value_to_object(declare_function([](Object t, Object o) {
         input_conversions.insert_or_assign(std::move(t), std::move(o));
     })));
-    s = s && attach(m, "set_translation", as_object(Overload::from([](Object t, Object o) {
+    s = s && attach(m, "set_translation", value_to_object(declare_function([](Object t, Object o) {
         DUMP("set_translation ", repr(t), " -> ", repr(o));
         type_translations.insert_or_assign(std::move(t), std::move(o));
     })));
 
-    s = s && attach(m, "clear_global_objects", as_object(Overload::from(&clear_global_objects)));
+    s = s && attach(m, "clear_global_objects", value_to_object(declare_function(&clear_global_objects)));
 
-    s = s && attach(m, "set_debug", as_object(Overload::from([](bool b) {return std::exchange(Debug, b);})));
+    s = s && attach(m, "set_debug", value_to_object(declare_function([](bool b) {return std::exchange(Debug, b);})));
 
-    s = s && attach(m, "debug", as_object(Overload::from([] {return Debug;})));
+    s = s && attach(m, "debug", value_to_object(declare_function([] {return Debug;})));
 
-    s = s && attach(m, "set_type_error", as_object(Overload::from([](Object o) {
+    s = s && attach(m, "set_type_error", value_to_object(declare_function([](Object o) {
         DUMP("setting type error");
         TypeError = std::move(o);
     })));
 
-    s = s && attach(m, "set_type", as_object(Overload::from([](Index idx, Object cls, Object ref) {
+    s = s && attach(m, "set_type", value_to_object(declare_function([](Index idx, Object cls, Object ref) {
         DUMP("set_type in");
         python_types[idx] = {std::move(cls), std::move(ref)};
         DUMP("set_type out");
@@ -141,7 +138,7 @@ Object initialize(Document const &doc) {
 
 namespace rebind {
 
-void init(Document &doc);
+void init(Schema &schema);
 
 }
 
@@ -160,11 +157,11 @@ extern "C" {
         return rebind::py::raw_object([&]() -> rebind::py::Object {
             rebind::py::Object mod {PyModule_Create(&rebind_definition), true};
             if (!mod) return {};
-            rebind::init(rebind::document());
-            rebind::py::Object dict = rebind::py::initialize(rebind::document());
+            rebind::init(rebind::schema());
+            rebind::py::Object dict = rebind::py::initialize(rebind::schema());
             if (!dict) return {};
             rebind::py::incref(+dict);
-            if (PyModule_AddObject(+mod, "document", +dict) < 0) return {};
+            if (PyModule_AddObject(+mod, "schema", +dict) < 0) return {};
             return mod;
         });
     }

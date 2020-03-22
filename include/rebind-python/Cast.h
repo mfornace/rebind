@@ -65,7 +65,6 @@ Object default_object(T t) {
 }
 
 inline Object as_object(Index t) {return default_object(std::move(t));}
-inline Object as_object(Function t) {return default_object(std::move(t));}
 
 /******************************************************************************/
 
@@ -80,7 +79,7 @@ inline Object as_deduced_object(Ref const &ref) {
     if (auto v = ref.request<bool>())             return as_object(std::move(*v));
     if (auto v = ref.request<std::string_view>()) return as_object(std::move(*v));
     if (auto v = ref.request<std::string>())      return as_object(std::move(*v));
-    if (auto v = ref.request<Function>())         return as_object(std::move(*v));
+    // if (auto v = ref.request<Function>())         return as_object(std::move(*v));
     if (auto v = ref.request<Index>())            return as_object(std::move(*v));
     if (auto v = ref.request<Binary>())           return as_object(std::move(*v));
     if (auto v = ref.request<BinaryView>())       return as_object(std::move(*v));

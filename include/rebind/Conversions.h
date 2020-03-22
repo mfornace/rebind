@@ -1,6 +1,7 @@
 #pragma once
 #include "Type.h"
 #include "Value.h"
+#include <stdexcept>
 
 
 namespace rebind {
@@ -154,17 +155,21 @@ bool default_assign_if(void *ptr, Ref const &other) {
     if (auto p = other.request<T &&>()) {
         DUMP("assign_if: got T &&");
         self = std::move(*p);
-    } else if (auto p = other.request<T const &>()) {
-        DUMP("assign_if: got T const &");
-        self = *p;
-    } else if (auto p = other.request<T>()) {
+        return true;
+    }
+    if constexpr (std::is_copy_assignable_v<T>) {
+        if (auto p = other.request<T const &>()) {
+            DUMP("assign_if: got T const &");
+            self = *p;
+            return true;
+        }
+    }
+    if (auto p = other.request<T>()) {
         DUMP("assign_if: T succeeded, type=", typeid(*p).name());
         self = std::move(*p);
-    } else {
-        DUMP("assign_if: failed");
-        return false;
+        return true;
     }
-    return true;
+    return false;
 }
 
 /******************************************************************************/
@@ -185,7 +190,7 @@ std::remove_reference_t<T> * request(Index i, void *p, Scope &s, Type<T>, Qualif
     }
 
     Ref out(fetch<U>(), nullptr, q);
-    i->m_to_ref(out, p, q);
+    i->c.to_ref(out, p, q);
     return out.target<T>();
 }
 
@@ -213,10 +218,10 @@ std::optional<T> request(Index i, void *p, Scope &s, Type<T>, Qualifier q) {
     // ToValue
     Value v;
     v.as_raw().ind = fetch<T>();
-    DUMP("calling m_to_value ", v.name());
-    if (i->m_to_value(v, p, q)) {
+    DUMP("calling c.to_value ", v.name());
+    if (i->c.to_value(v, p, q)) {
         if (auto o = v.target<T>()) out.emplace(std::move(*o));
-        DUMP("m_to_value succeeded");
+        DUMP("c.to_value succeeded");
         return out;
     }
 
@@ -229,12 +234,61 @@ std::optional<T> request(Index i, void *p, Scope &s, Type<T>, Qualifier q) {
 /******************************************************************************/
 
 inline bool request_to(Index i, void *p, Value &v, Qualifier q) {
-    if (p) return i->m_to_value(v, p, q);
+    if (p) return i->c.to_value(v, p, q);
     return false;
 }
 
 /******************************************************************************/
 
+// using call_t = bool(*)(void const *, void *, Caller &&, Arguments, Flag);
+inline bool call_to(Value &v, Index i, void const *p, Caller &&c, Arguments args) {
+    return p && i->c.call && i->c.call(p, &v, std::move(c), args, Flag::value);
 }
+
+inline bool call_to(Ref &v, Index i, void const *p, Caller &&c, Arguments args) {
+    return p && i->c.call && i->c.call(p, &v, std::move(c), args, Flag::ref);
+}
+
+template <class ...Args>
+inline Value call_value(Index i, void const *p, Caller &&c, Args &&...args) {
+    Value v;
+    if (!call_to(v, i, p, std::move(c), to_arguments(static_cast<Args &&>(args)...)))
+        throw std::runtime_error("function could not yield Value");
+    return v;
+}
+
+template <class ...Args>
+inline Ref call_ref(Index i, void const *p, Caller &&c, Args &&...args) {
+    Ref r;
+    if (!call_to(r, i, p, std::move(c), to_arguments(static_cast<Args &&>(args)...)))
+        throw std::runtime_error("function could not yield Ref");
+    return r;
+}
+
+/******************************************************************************/
+
+}
+
+template <class ...Args>
+Value Ref::call_value(Args &&...args) const {return raw::call_value(index(), address(), Caller(), static_cast<Args &&>(args)...);}
+
+template <class ...Args>
+Ref Ref::call_ref(Args &&...args) const {return raw::call_ref(index(), address(), Caller(), static_cast<Args &&>(args)...);}
+
+inline bool Ref::call_to(Ref &r, Caller c, Arguments args) const {return raw::call_to(r, index(), address(), std::move(c), std::move(args));}
+inline bool Ref::call_to(Value &r, Caller c, Arguments args) const {return raw::call_to(r, index(), address(), std::move(c), std::move(args));}
+
+/******************************************************************************/
+
+template <class ...Args>
+Value Value::call_value(Args &&...args) const {return raw::call_value(index(), address(), Caller(), static_cast<Args &&>(args)...);}
+
+template <class ...Args>
+Ref Value::call_ref(Args &&...args) const {return raw::call_ref(index(), address(), Caller(), static_cast<Args &&>(args)...);}
+
+inline bool Value::call_to(Ref &r, Caller c, Arguments args) const {return raw::call_to(r, index(), address(), std::move(c), std::move(args));}
+inline bool Value::call_to(Value &r, Caller c, Arguments args) const {return raw::call_to(r, index(), address(), std::move(c), std::move(args));}
+
+/******************************************************************************/
 
 }

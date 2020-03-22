@@ -1,5 +1,5 @@
 #pragma once
-#include "../Document.h"
+#include "../Schema.h"
 #include "../Core.h"
 #include <tuple>
 #include <utility>

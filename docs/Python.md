@@ -12,20 +12,20 @@ Here's an example of a pretty minimal `__init__.py` that implements Step 3 above
 # import whatever modules you want as normal in your __init__.py here
 
 try:
-    from .my_cpp_module import document
+    from .my_cpp_module import schema
 except ImportError:
     raise ImportError('C++ module object "my_package.my_cpp_module" cannot be imported')
 
 from rebind import render_module
-rendered_document, config = render_module(__name__, document)
+rendered_schema, config = render_module(__name__, schema)
 
 # if you need to do some additional steps after export, you can do them here (rare)
 ```
 
 In this wrapper code, there are 3 extra artifacts of the export process. They can all be discarded if you want.
 
-1. `document` is the raw document listing all of the functions and types that are exported from your C++ module.
-2. `rendered_document` is the modified document which includes maps from C++ entities to their Python equivalents.
+1. `schema` is the raw schema listing all of the functions and types that are exported from your C++ module.
+2. `rendered_schema` is the modified schema which includes maps from C++ entities to their Python equivalents.
 3. `config` is an instance of `rebind.Config` which can be used to mess with global `rebind` functionality for your module.
 
 ## Python Config
@@ -50,7 +50,7 @@ config.debug = True
 ### Exporting a function without writing Python code
 
 ```c++
-doc.function("mymodule.add_float_to_int", [](int x, double y) {
+schema.function("mymodule.add_float_to_int", [](int x, double y) {
     return x + y;
 });
 ```
@@ -145,10 +145,10 @@ And we export it as follows:
 
 ```
 Type<Adder> t;
-doc.type("mymodule.Adder", t);
-doc.method(t, "new", rebind::construct<bool>(t));
-doc.method(t, "()", &Adder::operator());
-doc.member(t, &Adder::add);
+schema.type("mymodule.Adder", t);
+schema.method(t, "new", rebind::construct<bool>(t));
+schema.method(t, "()", &Adder::operator());
+schema.member(t, &Adder::add);
 ```
 
 A minimal wrapper will just define the class:
@@ -185,6 +185,6 @@ class Adder:
         '''Either add x and y or just return x'''
 ```
 
-These method wrappers work pretty much the same as function wrappers in `rebind`, and the docstring part is pretty obvious. The main wrinkle is on exporting a class instance member via `add: bool`. You don't have to do this, in which case the member will still be exported, but providing a type annotation will make `Adder().add` look like a Python `bool`. In addition, annotating the class members is a good practice for documenting the class in any case. If you really want to document the member without assigning a type, you can use `add: None`.
+These method wrappers work pretty much the same as function wrappers in `rebind`, and the docstring part is pretty obvious. The main wrinkle is on exporting a class instance member via `add: bool`. You don't have to do this, in which case the member will still be exported, but providing a type annotation will make `Adder().add` look like a Python `bool`. In addition, annotating the class members is a good practice for documenting the class in any case. If you really want to schema the member without assigning a type, you can use `add: None`.
 
 ## Wrapping a global or static variable

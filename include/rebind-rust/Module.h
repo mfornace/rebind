@@ -15,16 +15,16 @@ extern "C" {
 rebind_table* rebind_table_emplace(rebind_index);
 
 void rebind_table_set(rebind_table*,
-    rebind::Table::destroy_t,
-    rebind::Table::copy_t,
-    rebind::Table::to_value_t,
-    rebind::Table::to_ref_t,
-    rebind::Table::assign_if_t,
-    rebind::Table::from_ref_t,
+    rebind::CTable::destroy_t,
+    rebind::CTable::copy_t,
+    rebind::CTable::to_value_t,
+    rebind::CTable::to_ref_t,
+    rebind::CTable::assign_if_t,
+    rebind::CTable::from_ref_t,
     char const *
 );
 
-void rebind_table_add_method(rebind_table*, char const *, rebind_function const *);
+void rebind_table_add_method(rebind_table*, char const *, rebind_value *);
 
 void rebind_table_add_base(rebind_table*, rebind_index);
 
@@ -81,9 +81,9 @@ rebind_value* rebind_value_move(rebind_value *v);
 // static_assert(std::is_trivially_copyable_v<std::pair<std::type_info const *, rebind::Qualifier>>);
 // static_assert(std::is_trivially_copyable_v<rebind::Index>);
 
-rebind_index rebind_value_index(rebind_value const *v);
+// rebind_index rebind_value_index(rebind_value const *v);
 
-char const * index_name(rebind_index v);
+char const * rebind_index_name(rebind_index v);
 
 
 }

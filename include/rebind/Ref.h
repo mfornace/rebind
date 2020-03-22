@@ -106,25 +106,23 @@ struct Ref : protected rebind_ref {
     template <class T>
     void set(T const &t) {*this = Ref(t);}
 
-    // constexpr Ref(Erased const &o, Qualifier q) noexcept : Erased(o), qual(q) {}
-    // template <class T>
-    // static Ref from(T &t) {return {t, Lvalue};}
-
-    // template <class T>
-    // static Ref from(T const &t) {return {const_cast<T &>(t), Const};}
-
-    // template <class T>
-    // static Ref from(T &&t) {return {t, Rvalue};}
-
-    // static Ref from(Value &t);
-    // static Ref from(Value const &t);
-    // static Ref from(Value &&t);
-
-    // static Ref from(Ref p) {return p;}
+    /**************************************************************************************/
 
     bool request_to(Value &v) const & {return raw::request_to(ind, ptr, v, qualifier());}
     bool request_to(Value &v) & {return raw::request_to(ind, ptr, v, qualifier());}
     bool request_to(Value &v) && {return raw::request_to(ind, ptr, v, qualifier());}
+
+    /**************************************************************************************/
+
+    template <class ...Args>
+    Value call_value(Args &&...args) const;
+
+    template <class ...Args>
+    Ref call_ref(Args &&...args) const;
+
+    bool call_to(Value &, Caller, Arguments) const;
+
+    bool call_to(Ref &, Caller, Arguments) const;
 };
 
 /******************************************************************************************/
@@ -136,13 +134,36 @@ struct is_trivially_relocatable<Ref> : std::true_type {};
 
 /******************************************************************************************/
 
-using Arguments = Vector<Ref>;
+template <class T, class SFINAE=void>
+struct is_like_arguments : std::false_type {};
+
+template <class T>
+struct is_like_arguments<T, std::enable_if_t<
+    std::is_convertible_v<decltype(std::data(std::declval<T &>())), Ref *>
+>> : std::true_type {};
+
+struct Arguments {
+    Ref *ptr;
+    std::size_t count;
+
+    constexpr Arguments() : ptr(nullptr), count(0) {}
+    constexpr Arguments(Ref *r, std::size_t c) : ptr(r), count(c) {}
+
+    template <class V, std::enable_if_t<is_like_arguments<V>::value, int> = 0>
+    constexpr Arguments(V &&v) : ptr(std::data(v)), count(std::size(v)) {}
+
+    auto begin() const {return ptr;}
+    auto end() const {return ptr + count;}
+    auto size() const {return count;}
+
+    Ref &operator[](std::size_t i) const {return ptr[i];}
+};
 
 /******************************************************************************************/
 
 template <class ...Ts>
-Arguments to_arguments(Ts &&...ts) {
-    Arguments out;
+Vector<Ref> to_arguments(Ts &&...ts) {
+    Vector<Ref> out;
     out.reserve(sizeof...(Ts));
     (out.emplace_back(std::addressof(ts), qualifier_of<Ts &&>), ...);
     return out;

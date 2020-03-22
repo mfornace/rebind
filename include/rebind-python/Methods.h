@@ -113,8 +113,9 @@ PyObject * c_call_method(PyObject *s, PyObject *args, PyObject *kws) noexcept {
         refs[0] = Ref(self);
 
         if (auto t = self.index()) {
-            if (auto it = t->methods.find(name); it != t->methods.end()) {
-                return function_call_impl(out, it->second, std::move(refs), is_value, gil, tag);
+            if (auto it = t->properties.find(name); it != t->properties.end()) {
+                return type_error("not impl");
+                // return function_call_impl(out, it->second, std::move(refs), is_value, gil, tag);
             } else {
                 return type_error("method not found");
             }

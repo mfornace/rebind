@@ -191,6 +191,18 @@ struct Value : protected rebind_value {
     bool request_to(Value &v) const & {return raw::request_to(ind, ptr, v, Const);}
     bool request_to(Value &v) & {return raw::request_to(ind, ptr, v, Lvalue);}
     bool request_to(Value &v) && {return raw::request_to(ind, ptr, v, Rvalue);}
+
+    /**************************************************************************/
+
+    template <class ...Args>
+    Value call_value(Args &&...args) const;
+
+    template <class ...Args>
+    Ref call_ref(Args &&...args) const;
+
+    bool call_to(Value &, Caller, Arguments) const;
+
+    bool call_to(Ref &, Caller, Arguments) const;
 };
 
 /******************************************************************************/

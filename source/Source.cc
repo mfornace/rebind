@@ -1,4 +1,4 @@
-#include <rebind/Document.h>
+#include <rebind/Schema.h>
 #include <stdexcept>
 #include <string_view>
 
@@ -74,12 +74,12 @@ bool debug() noexcept {return Debug;}
 
 /******************************************************************************/
 
-Document & document() noexcept {
-    static Document static_document;
-    return static_document;
+Schema & schema() noexcept {
+    static Schema schema;
+    return schema;
 }
 
-void render_default(Document &, std::type_info const &t) {
+void render_default(Schema &, std::type_info const &t) {
     if (debug()) std::cout << "Not rendering type " << t.name() << std::endl;
 }
 
@@ -195,7 +195,7 @@ void set_source(WrongType &err, std::type_info const &t, Value &&v) {
 
 /******************************************************************************/
 
-void Document::type(Index t, std::string_view s, Value &&data, Index table) {
+void Schema::type(Index t, std::string_view s, Value &&data, Index table) {
     DUMP("type ", t, s);
     auto it = contents.try_emplace(std::string(s), Type<Vector<Index>>()).first;
     if (auto p = it->second.target<Vector<Index>>()) {
@@ -205,24 +205,22 @@ void Document::type(Index t, std::string_view s, Value &&data, Index table) {
     throw std::runtime_error(cat("tried to declare a type on a non-type key (key=", s, ", type=", t, ")"));
 }
 
-template <class T>
-T & remove_const(T const &t) {return const_cast<T &>(t);}
-
-Function & Document::find_method(Index t, std::string_view name) {
+Value & Schema::find_property(Index t, std::string_view name) {
     DUMP("find_method ", t, name);
-    return remove_const(t->methods)[std::string(name)];
+    return const_cast<Table &>(*t).properties.emplace(name, nullptr).first->second;
 }
 
-Function & Document::find_function(std::string_view s) {
+Value & Schema::find_global(std::string_view s) {
     DUMP("function ", s);
-    auto it = contents.emplace(s, Type<Function>()).first;
+    auto it = contents.emplace(s, nullptr).first;
     DUMP("emplaced ", s);
     DUMP(it->second.name(), bool(it->second));
-    if (auto f = it->second.target<Function>()) return *f;
-    DUMP("bad", s);
-    throw std::runtime_error(cat(
-        "tried to declare a function on a non-function key (key=",
-        it->first, ", type=", it->second.name(), ")"));
+    return it->second;
+    // if (auto f = it->second.target<Function>()) return *f;
+    // DUMP("bad", s);
+    // throw std::runtime_error(cat(
+    //     "tried to declare a function on a non-function key (key=",
+    //     it->first, ", type=", it->second.name(), ")"));
 }
 
 /******************************************************************************/

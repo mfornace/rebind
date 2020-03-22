@@ -15,8 +15,8 @@ using unqualified = std::remove_cv_t<std::remove_reference_t<T>>;
 
 enum Qualifier : unsigned char {Const, Lvalue, Rvalue};
 
-static std::string_view QualifierNames[3] = {"const", "lvalue", "rvalue"};
-static std::string_view QualifierSuffixes[3] = {" const &", " &", " &&"};
+static char const * QualifierNames[3] = {"const", "lvalue", "rvalue"};
+static char const * QualifierSuffixes[3] = {" const &", " &", " &&"};
 
 inline std::ostream & operator<<(std::ostream &os, Qualifier q) {
     return os << QualifierNames[static_cast<unsigned char>(q)];

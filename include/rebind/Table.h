@@ -10,11 +10,14 @@ namespace rebind {
 
 /******************************************************************************/
 
-class Function;
-class Overload;
+// class Function;
+// class Overload;
 class Ref;
 class Value;
 class Scope;
+struct Arguments;
+
+enum class Flag : unsigned char {ref, value};
 
 template <class T>
 static constexpr bool is_usable = true
@@ -47,48 +50,56 @@ constexpr void assert_usable() {
 
 /******************************************************************************************/
 
-struct Table {
+struct CTable {
     using destroy_t = void (*)(void*) noexcept;
     using copy_t = void* (*)(void const *);
     using to_value_t = bool (*)(Value &, void *, Qualifier);
     using to_ref_t = bool (*)(Ref &, void *, Qualifier);
     using assign_if_t = bool (*)(void *, Ref const &);
     using from_ref_t = bool (*)(Value &, Ref const &, Scope &);
+    using call_t = bool(*)(void const *, void *, Caller &&, Arguments, Flag);
 
-    /**************************************************************************************/
-
-    std::type_info const *info;
     // Destructor function pointer
-    destroy_t m_destroy = nullptr;
-    // Relocate function pointer
-    bool (*m_relocate)(void *, void *, unsigned short, unsigned short) noexcept = nullptr; // either relocate the object to the void*, or ...
+    destroy_t destroy = nullptr;
     // Copy function pointer
-    copy_t m_copy = nullptr;
+    copy_t copy = nullptr;
+    // Callable function pointer
+    call_t call = nullptr;
     // ToValue function pointer
-    to_value_t m_to_value = nullptr;
+    to_value_t to_value = nullptr;
     // ToValue function pointer
-    to_ref_t m_to_ref = nullptr;
+    to_ref_t to_ref = nullptr;
     // FromRef function pointer
-    from_ref_t m_from_ref = nullptr;
+    from_ref_t from_ref = nullptr;
     // FromRef function pointer
-    assign_if_t m_assign_if = nullptr;
-    // Output name
-    std::string m_name;
-    std::array<std::string, 3> qualified_names;
+    assign_if_t assign_if = nullptr;
+    // Optional C++ type_info
+    std::type_info const *info = nullptr;
+};
+
+/******************************************************************************************/
+
+struct Table {
+    CTable c;
+
     // List of base classes that this type can be cast into
     Vector<Index> bases;
-    // List of methods on this class
-    std::map<std::string, Function, std::less<>> methods;
+
+    // Output name
+    std::array<std::string, 4> names;
+
+    // List of properties on this class
+    std::map<std::string, Value, std::less<>> properties;
 
     /**************************************************************************************/
 
-    std::string const& name() const noexcept {return m_name;}
+    std::string const& name() const noexcept {return names[0];}
 
-    std::string const& name(Qualifier q) const noexcept {return qualified_names[q];}
+    std::string const& name(Qualifier q) const noexcept {return names[1 + q];}
 
     void destroy(void*p) const noexcept {
-        if (!m_destroy) std::terminate();
-        m_destroy(p);
+        if (!c.destroy) std::terminate();
+        c.destroy(p);
     }
 
     bool has_base(Index const &idx) const noexcept {
@@ -97,7 +108,7 @@ struct Table {
     }
 
     void* copy(void const* p) const {
-        if (m_copy) return m_copy(p);
+        if (c.copy) return c.copy(p);
         throw std::runtime_error("held type is not copyable: " + name());
     }
 };
@@ -114,20 +125,6 @@ void* default_copy(void const* p) {
 /// Destroy the object
 template <class T>
 void default_destroy(void* p) noexcept {delete static_cast<T *>(p);}
-
-/// Not sure yet
-template <class T>
-bool default_relocate(void*out, void*p, unsigned short size, unsigned short align) noexcept {
-    if (sizeof(T) <= size && alignof(T) <= align) {
-        new(out) T(std::move(*static_cast<T *>(p)));
-        static_cast<T *>(p)->~T();
-        return true;
-    } else {
-        *static_cast<T**>(out) = new T(std::move(*static_cast<T *>(p)));
-        static_cast<T*>(p)->~T();
-        return false;
-    }
-}
 
 template <class T>
 bool default_to_value(Value &, void *, Qualifier const);
@@ -146,28 +143,30 @@ bool default_assign_if(void *, Ref const &);
 template <class T>
 Table default_table() {
     Table t;
-    t.info = &typeid(T);
-    t.m_name = typeid(T).name();
-    t.qualified_names = {
-        t.m_name + QualifierSuffixes[Const].data(),
-        t.m_name + QualifierSuffixes[Lvalue].data(),
-        t.m_name + QualifierSuffixes[Rvalue].data()
+    t.c.info = &typeid(T);
+    std::string name = typeid(T).name();
+    t.names = {
+        name,
+        name + QualifierSuffixes[Const],
+        name + QualifierSuffixes[Lvalue],
+        name + QualifierSuffixes[Rvalue]
     };
 
     if constexpr(is_usable<T>) {
-        t.m_copy = default_copy<T>;
-        t.m_destroy = default_destroy<T>;
-        t.m_relocate = default_relocate<T>;
-        t.m_to_value = default_to_value<T>;
-        t.m_to_ref = default_to_ref<T>;
-        t.m_from_ref = default_from_ref<T>;
-        t.m_assign_if = default_assign_if<T>;
+        t.c.copy = default_copy<T>;
+        t.c.destroy = default_destroy<T>;
+        t.c.to_value = default_to_value<T>;
+        t.c.to_ref = default_to_ref<T>;
+        t.c.from_ref = default_from_ref<T>;
+        if constexpr(std::is_move_assignable_v<T>) {
+            t.c.assign_if = default_assign_if<T>;
+        }
     } else {
-        t.m_copy = [](void const *) -> void * {throw std::runtime_error("bad");};
-        t.m_to_value = [](Value &, void *, Qualifier const) -> bool {throw std::runtime_error("bad");};
-        t.m_to_ref = [](Ref &, void *, Qualifier const) -> bool {throw std::runtime_error("bad");};
-        t.m_from_ref = [](Value &, Ref const &, Scope &) -> bool {throw std::runtime_error("bad");};
-        t.m_assign_if = [](void *, Ref const &) -> bool {throw std::runtime_error("bad");};
+        t.c.copy = [](void const *) -> void * {throw std::runtime_error("bad");};
+        t.c.to_value = [](Value &, void *, Qualifier const) -> bool {throw std::runtime_error("bad");};
+        t.c.to_ref = [](Ref &, void *, Qualifier const) -> bool {throw std::runtime_error("bad");};
+        t.c.from_ref = [](Value &, Ref const &, Scope &) -> bool {throw std::runtime_error("bad");};
+        t.c.assign_if = [](void *, Ref const &) -> bool {throw std::runtime_error("bad");};
     }
 
     return t;

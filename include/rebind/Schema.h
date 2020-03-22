@@ -7,24 +7,24 @@ namespace rebind {
 
 /******************************************************************************/
 
-struct Document;
+struct Schema;
 
-struct NoRender {void operator()(Document &) const {}};
+struct NoRender {void operator()(Schema &) const {}};
 
-void render_default(Document &, std::type_info const &);
+void render_default(Schema &, std::type_info const &);
 
 template <class T, class=void>
 struct Renderer {
-    void operator()(Document &doc) const {render_default(doc, typeid(T));}
+    void operator()(Schema &s) const {render_default(s, typeid(T));}
 };
 
 /******************************************************************************/
 
-struct Document {
+struct Schema {
     // Global variables, types, and functions
-    std::map<std::string, Value> contents;
+    std::map<std::string, Value, std::less<>> contents;
 
-    // Map from type index to the associated table of C++ type data
+    // Set of all type definitions
     std::set<Index> types;
 
     /**************************************************************************/
@@ -47,16 +47,16 @@ struct Document {
 
     /// Export function and its signature. N may be given as the number of mandatory arguments
     template <int N=-1, class F>
-    void function(std::string name, F functor) {
+    void function(std::string_view name, F functor) {
         render(typename Signature<F>::unqualified());
-        find_function(std::move(name)).emplace(Overload::from<N>(std::move(functor)));
+        find_global(name) = declare_function<N>(std::move(functor));
     }
 
     /// Always a function - no vagueness here
     template <int N=-1, class F, class ...Ts>
-    void method(Index t, std::string name, F f) {
+    void method(Index t, std::string_view name, F functor) {
         Signature<F>::unqualified::for_each([&](auto r) {if (t != +r) render(+r);});
-        find_method(t, std::move(name)).emplace(Overload::from<N>(std::move(f)));
+        find_property(t, name) = declare_function<N>(std::move(functor));
     }
 
     /**************************************************************************/
@@ -65,10 +65,10 @@ struct Document {
     void type(Index t, std::string_view s, Value &&data, Index);
 
     // Find or create a function for a given type and method name
-    Function & find_method(Index t, std::string_view name);
+    Value & find_property(Index t, std::string_view name);
 
     // Find or create a function
-    Function & find_function(std::string_view s);
+    Value & find_global(std::string_view s);
 
     // Render a given type
     template <class T>
@@ -86,20 +86,22 @@ struct Document {
 
 /******************************************************************************/
 
-Document & document() noexcept;
+Schema & schema() noexcept;
+
+/******************************************************************************/
 
 /// Specialization for a Pack: renders each Type in the Pack
 template <class ...Ts>
 struct Renderer<Pack<Ts...>> {
-    void operator()(Document &doc) {(doc.render(Type<Ts>()), ...);}
+    void operator()(Schema &s) {(s.render(Type<Ts>()), ...);}
 };
 
 void render(int, int); // undefined; provided so identifier is accepted by compiler.
 
-/// The default implementation is to call render(Document &, Type<T>) via ADL
+/// The default implementation is to call render(Schema &, Type<T>) via ADL
 template <class T>
-struct Renderer<T, std::void_t<decltype(render(std::declval<Document &>(), Type<T>()))>> {
-    void operator()(Document &doc) const {render(doc, Type<T>());}
+struct Renderer<T, std::void_t<decltype(render(std::declval<Schema &>(), Type<T>()))>> {
+    void operator()(Schema &s) const {render(s, Type<T>());}
 };
 
 /******************************************************************************/

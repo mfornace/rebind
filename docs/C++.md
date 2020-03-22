@@ -34,12 +34,12 @@ struct ToValue {
 
 ### Renderer
 
-`Renderer` modifies a `Document`.
+`Renderer` modifies a `Schema`.
 
 ```c++
 template <class T, class SFINAE=void>
 struct Renderer {
-    void operator()(Document &doc);
+    void operator()(Schema &schema);
 };
 ```
 
@@ -139,13 +139,13 @@ template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
 std::remove_reference_t<T> *target(Type<T> t={}) &;
 ```
 
-## Document
+## Schema
 
-In C++, without necessary python inclusion, we define a document which more or less represents a module.
+In C++, without necessary python inclusion, we define a schema which more or less represents a module.
 
 It is a map from names to free functions and classes.
 
-- Document:
+- Schema:
     - map of `String` to (`Function` or `Class`)
 - Function: a simple immutable callable object
     - `Value(ArgPack)`

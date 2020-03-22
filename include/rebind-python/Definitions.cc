@@ -69,6 +69,7 @@ PyTypeObject Wrap<PyValue>::type = []{
     auto o = type_definition<Value>("rebind.Value", "Object representing a C++ value");
     o.tp_as_number = &ValueNumberMethods;
     o.tp_methods = ValueMethods;
+    o.tp_call = function_call;
     // no init (just use default constructor)
     // tp_traverse, tp_clear
     // PyMemberDef, tp_members
@@ -121,6 +122,7 @@ PyTypeObject Wrap<PyRef>::type = []{
     auto o = type_definition<Ref>("rebind.Ref", "Object representing a C++ reference");
     o.tp_as_number = &RefNumberMethods;
     o.tp_methods = RefMethods;
+    o.tp_call = function_call;
     // no init (just use default constructor)
     // tp_traverse, tp_clear
     // PyMemberDef, tp_members
@@ -129,31 +131,31 @@ PyTypeObject Wrap<PyRef>::type = []{
 
 /******************************************************************************/
 
-PyMethodDef FunctionTypeMethods[] = {
-    {"move_from", c_function(c_move_from<Overload>),
-        METH_VARARGS, "move it"},
-    {"copy_from",   c_function(c_copy_from<Overload>),
-        METH_O,       "copy from another Overload"},
-    // {"signatures",  c_function(function_signatures),
-    // METH_NOARGS,  "get signatures"},
-    // {"delegating",  c_function(DelegatingFunction::make),
-    // METH_O,  "delegating(self, other): return an equivalent of partial(other, _fun_=self)"},
-    // {"annotated",   c_function(function_annotated),
-    // METH_VARARGS, "annotated(self, annotations): return a function wrapping self which casts inputs and output to the given type annotations"},
-    {nullptr, nullptr, 0, nullptr}
-};
+// PyMethodDef FunctionTypeMethods[] = {
+//     {"move_from", c_function(c_move_from<Overload>),
+//         METH_VARARGS, "move it"},
+//     {"copy_from",   c_function(c_copy_from<Overload>),
+//         METH_O,       "copy from another Overload"},
+//     // {"signatures",  c_function(function_signatures),
+//     // METH_NOARGS,  "get signatures"},
+//     // {"delegating",  c_function(DelegatingFunction::make),
+//     // METH_O,  "delegating(self, other): return an equivalent of partial(other, _fun_=self)"},
+//     // {"annotated",   c_function(function_annotated),
+//     // METH_VARARGS, "annotated(self, annotations): return a function wrapping self which casts inputs and output to the given type annotations"},
+//     {nullptr, nullptr, 0, nullptr}
+// };
 
 /******************************************************************************/
 
-template <>
-PyTypeObject Wrap<Function>::type = []{
-    auto o = type_definition<Function>("rebind.Overload", "C++function object");
-    o.tp_init = function_init;
-    o.tp_call = function_call;
-    o.tp_methods = FunctionTypeMethods;
-    // o.tp_descr_get = Method::make;
-    return o;
-}();
+// template <>
+// PyTypeObject Wrap<Function>::type = []{
+//     auto o = type_definition<Function>("rebind.Overload", "C++function object");
+//     o.tp_init = function_init;
+//     o.tp_call = function_call;
+//     o.tp_methods = FunctionTypeMethods;
+//     // o.tp_descr_get = Method::make;
+//     return o;
+// }();
 
     // offsetof(PyCFunctionObject, vectorcall),    /* tp_vectorcall_offset */
     // // (reprfunc)meth_repr,                        /* tp_repr */
