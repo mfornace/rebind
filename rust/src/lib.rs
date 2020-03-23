@@ -12,10 +12,15 @@ pub use variable::Value;
 // pub use function::Function;
 
 // #[repr(C)]
-// pub struct Value {
-//     pub many: ::std::os::raw::c_int,
-//     pub wow: ::std::os::raw::c_char,
-// }
+pub struct Goo {
+    base: Value
+    // pub many: ::std::os::raw::c_int,
+    // pub wow: ::std::os::raw::c_char,
+}
+
+impl Goo {
+    pub fn x(&self) -> i32 { self.base.method(".x", ()).cast::<i32>().unwrap() }
+}
 
 /******************************************************************************/
 

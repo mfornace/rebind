@@ -131,47 +131,6 @@ PyTypeObject Wrap<PyRef>::type = []{
 
 /******************************************************************************/
 
-// PyMethodDef FunctionTypeMethods[] = {
-//     {"move_from", c_function(c_move_from<Overload>),
-//         METH_VARARGS, "move it"},
-//     {"copy_from",   c_function(c_copy_from<Overload>),
-//         METH_O,       "copy from another Overload"},
-//     // {"signatures",  c_function(function_signatures),
-//     // METH_NOARGS,  "get signatures"},
-//     // {"delegating",  c_function(DelegatingFunction::make),
-//     // METH_O,  "delegating(self, other): return an equivalent of partial(other, _fun_=self)"},
-//     // {"annotated",   c_function(function_annotated),
-//     // METH_VARARGS, "annotated(self, annotations): return a function wrapping self which casts inputs and output to the given type annotations"},
-//     {nullptr, nullptr, 0, nullptr}
-// };
-
-/******************************************************************************/
-
-// template <>
-// PyTypeObject Wrap<Function>::type = []{
-//     auto o = type_definition<Function>("rebind.Overload", "C++function object");
-//     o.tp_init = function_init;
-//     o.tp_call = function_call;
-//     o.tp_methods = FunctionTypeMethods;
-//     // o.tp_descr_get = Method::make;
-//     return o;
-// }();
-
-    // offsetof(PyCFunctionObject, vectorcall),    /* tp_vectorcall_offset */
-    // // (reprfunc)meth_repr,                        /* tp_repr */
-    // (hashfunc)meth_hash,                        /* tp_hash */
-    // PyCFunction_Call,                           /* tp_call */
-    // PyObject_GenericGetAttr,                    /* tp_getattro */
-    // Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC | _Py_TPFLAGS_HAVE_VECTORCALL,                /* tp_flags */
-    // (traverseproc)meth_traverse,                /* tp_traverse */
-    // meth_richcompare,                           /* tp_richcompare */
-    // offsetof(PyCFunctionObject, m_weakreflist), /* tp_weaklistoffset */
-    // meth_methods,                               /* tp_methods */
-    // meth_members,                               /* tp_members */
-    // meth_getsets,                               /* tp_getset */
-
-/******************************************************************************/
-
 PyObject *index_new(PyTypeObject *subtype, PyObject *, PyObject *) noexcept {
     PyObject* o = subtype->tp_alloc(subtype, 0); // 0 unused
     if (o) new (&cast_object<Index>(o)) Index(); // noexcept

@@ -1,11 +1,16 @@
 // use std::os::raw::{c_void, c_uchar, c_int};
+use std::collections::HashMap;
+use std::any::TypeId;
+use std::marker::PhantomData;
 
 /******************************************************************************/
 
 pub type Bool = std::os::raw::c_int;
+pub type Uint = std::os::raw::c_uint;
 pub type Void = std::os::raw::c_void;
 pub type Qual = std::os::raw::c_uchar;
 pub type Char = std::os::raw::c_char;
+use std::ffi::{CString, CStr};
 
 /******************************************************************************/
 
@@ -13,7 +18,7 @@ pub type Char = std::os::raw::c_char;
 pub struct Table { _private: [u8; 0] }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct Index { ptr: *const Table }
 
 impl Index {
@@ -29,7 +34,7 @@ pub enum Qualifier { Const, Lvalue, Rvalue }
 pub struct Ref {
     ptr: *mut Void,
     ind: Index,
-    qual: Qual
+    qual: Qual,
 }
 
 impl Ref {
@@ -65,14 +70,6 @@ pub struct Value {
     ind: Index,
 }
 
-impl Value {
-    pub fn new() -> Value { Value{ptr: std::ptr::null_mut(), ind: Index::new()} }
-
-    pub fn address(&self) -> *mut Void { self.ptr }
-
-    pub fn index(&self) -> Index { self.ind }
-}
-
 /******************************************************************************/
 
 type DestroyT = extern fn(*mut Void) -> ();
@@ -102,29 +99,142 @@ extern "C" {
 
     /**************************************************************************/
 
-    /**************************************************************************/
-
     pub fn rebind_value_destruct(v: &mut Value);
 
     pub fn rebind_value_copy(v: &mut Value, o: &Value) -> Bool;
 
-    pub fn rebind_value_move(v: &mut Value, o: &mut Value);
+    pub fn rebind_value_method_to_value(out: &mut Value, v: &Value, name: *const u8, argv: *mut Ref, argn: Uint) -> Value;
 
     /**************************************************************************/
 
     pub fn rebind_index_name(v: Index) -> *const Char;
 
     /**************************************************************************/
-
-    pub fn rebind_function_new() -> *mut CFunction;
-
-    pub fn rebind_function_copy(f: *mut CFunction) -> *mut CFunction;
-
-    pub fn rebind_function_call(f: *mut CFunction, v: *mut Value, n: Qual) -> *mut Value;
-
-    pub fn rebind_function_destruct(f: *mut CFunction);
 }
 
 /******************************************************************************/
 
+pub trait FromValue {
+    fn from_matching_value(v: Value) -> Self;
+}
 
+impl FromValue for i32 {
+    fn from_matching_value(v: Value) -> Self { v.get::<i32>() }
+}
+
+// struct Handle<'a> {
+//     ptr: *const u8,
+//     marker: PhantomData<&'a ()>,
+// }
+
+pub fn create_table<T>() -> Index {
+    unsafe{ rebind_table_insert() }
+}
+
+
+pub fn fetch<T: 'static>() -> Index {
+    let mut tables: HashMap<TypeId, Index> = HashMap::new();
+
+    *tables.entry(TypeId::of::<T>()).or_insert_with(|| create_table::<T>())
+}
+
+/******************************************************************************/
+
+pub trait IntoRef {
+    fn into_ref(self) -> Ref;
+}
+
+impl<T> IntoRef for T {
+    fn into_ref(self: T) -> Ref { Ref::new() }
+}
+
+pub trait IntoArguments {
+    fn into_arguments(self) -> Vec<Ref>;
+}
+
+impl IntoArguments for () {
+    fn into_arguments(self) -> Vec<Ref> { vec![] }
+}
+
+impl<T1> IntoArguments for (T1,) {
+    fn into_arguments(self) -> Vec<Ref> { vec![self.0.into_ref()] }
+}
+
+impl<T1, T2> IntoArguments for (T1, T2,) {
+    fn into_arguments(self) -> Vec<Ref> { vec![self.0.into_ref(), self.1.into_ref()] }
+}
+
+/******************************************************************************/
+
+impl Value {
+    pub fn new() -> Value { Value{ptr: std::ptr::null_mut(), ind: Index::new()} }
+
+    pub fn address(&self) -> *mut Void { self.ptr }
+
+    pub fn index(&self) -> Index { self.ind }
+
+    pub fn method<T: IntoArguments>(&self, name: &str, args: T) -> Value {
+        let mut v = Value::new();
+        // let mut argv =
+        unsafe {rebind_value_method_to_value(&mut v, self, name.as_ptr(), std::ptr::null_mut(), 0);}
+        v
+    }
+
+    pub fn holds<T: 'static>(&self) -> bool {
+        self.ind == fetch::<T>()
+    }
+
+    pub fn get<T>(self) -> T {
+        panic!("ok")
+    }
+
+    pub fn cast<T: 'static + FromValue>(self) -> Option<T> {
+        // Option::<T>::new()
+        if let v = self.holds::<T>() {
+            return Some(self.get::<T>())
+        }
+
+        panic!("bad");
+    }
+
+    pub fn cast_ref<'a, T: FromValue>(&'a self) -> Option<&'a T> {
+        None
+    }
+}
+
+
+impl Index {
+    pub fn name(&self) -> &str {
+        unsafe{std::ffi::CStr::from_ptr(rebind_index_name(*self))}.to_str().unwrap()
+    }
+}
+
+/******************************************************************************/
+
+impl Drop for Value {
+    fn drop(&mut self) {
+        unsafe{rebind_value_destruct(self);}
+    }
+}
+
+/******************************************************************************/
+
+impl Clone for Value {
+    fn clone(&self) -> Value {
+        let mut v = Value::new();
+        if unsafe{rebind_value_copy(&mut v, self) == 0} { panic!("copy failed!"); }
+        v
+    }
+}
+
+// impl<T: FromValue> std::convert::TryFrom<Value> for T {
+//     fn try_from(self) -> Result<T, Self::Error> {
+//         T::from_matching_value(self)
+//     }
+// }
+
+/******************************************************************************/
+
+// struct TypedValue<T> {
+//     base : Value
+// }
