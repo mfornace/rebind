@@ -11,32 +11,68 @@ pub mod capi;
 pub use variable::Value;
 // pub use function::Function;
 
-// #[repr(C)]
+/******************************************************************************/
+
 pub struct Goo {
     base: Value
-    // pub many: ::std::os::raw::c_int,
-    // pub wow: ::std::os::raw::c_char,
+}
+
+impl AsRef<Value> for Goo {
+    fn as_ref(&self) -> &Value { &self.base }
+}
+
+impl std::ops::Deref for Goo {
+    type Target = Value;
+    fn deref(&self) -> &Value { &self.base }
+}
+
+impl std::ops::DerefMut for Goo {
+    fn deref_mut(&mut self) -> &mut Value { &mut self.base }
+}
+
+impl AsMut<Value> for Goo {
+    fn as_mut(&mut self) -> &mut Value { &mut self.base }
+}
+
+impl Goo {
+    pub fn x(&self) -> i32 { self.method(".x", ()).cast::<i32>() }
 }
 
 /******************************************************************************/
 
-static mut blah2: Value = Value::new();
+// this is pretty bad, global variables plus an init that needs to be called
+static mut static_solution: Value = Value::new();
 
 pub unsafe fn init() {
-    blah2 = Value::new();
+    static_solution = Value::new();
 }
 
-pub fn fun(x: i32, y: f64) -> f64 {
+pub fn static_fun(x: i32, y: f64) -> f64 {
     // static blah: i32 = 1;
     // static mut blah: Value = Value::new();
     // static blah: String = "aaa".to_string();
-    unsafe {blah2.call(())}.cast::<f64>().unwrap()
+    unsafe {static_solution.call(())}.cast::<f64>()
 }
 
 /******************************************************************************/
 
-impl Goo {
-    pub fn x(&self) -> i32 { self.base.method(".x", ()).cast::<i32>().unwrap() }
+// this is...sort of annoying...need to pass around state, only good in getting rid of hash lookup really...
+pub struct StateSolution {
+    bases: [Value; 2]
+}
+
+impl StateSolution {
+    pub fn new() -> StateSolution { StateSolution{bases: [Value::new(), Value::new()]} }
+    pub fn method1(&self) -> f64 { self.bases[0].call(()).cast::<f64>() }
+    pub fn method2(&self) -> f64 { self.bases[1].call(()).cast::<f64>() }
+}
+
+/******************************************************************************/
+
+// this could be easily macroed away, I think. Only downside I think is the lookup
+// ...that's not that big a deal compared to other lookups though...
+pub fn lookup_solution() -> f64 {
+    capi::invoke("myfun", ()).cast::<f64>()
 }
 
 /******************************************************************************/

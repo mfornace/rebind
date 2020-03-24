@@ -113,11 +113,17 @@ extern "C" {
 
     pub fn rebind_value_call_ref(v: &Value, argv: *mut Ref, argn: Uint) -> Ref;
 
+    pub fn rebind_lookup(name: *const u8) -> &'static Value;
+
     /**************************************************************************/
 
     pub fn rebind_index_name(v: Index) -> *const Char;
 
     /**************************************************************************/
+}
+
+pub fn lookup(name: &str) -> &'static Value {
+    unsafe { rebind_lookup(name.as_ptr()) }
 }
 
 /******************************************************************************/
@@ -206,10 +212,10 @@ impl Value {
         unsafe {rebind_value_call_ref(self, std::ptr::null_mut(), 0)}
     }
 
-    pub fn cast<T: 'static + FromValue>(self) -> Option<T> {
+    pub fn cast<T: 'static + FromValue>(self) -> T {
         // Option::<T>::new()
         if let v = self.holds::<T>() {
-            return Some(self.get::<T>())
+            return self.get::<T>()
         }
 
         panic!("bad");
@@ -218,6 +224,10 @@ impl Value {
     pub fn cast_ref<'a, T: FromValue>(&'a self) -> Option<&'a T> {
         None
     }
+}
+
+pub fn invoke<T: IntoArguments>(name: &str, args: T) -> Value {
+    lookup(name).call(args)
 }
 
 
