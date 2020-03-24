@@ -22,7 +22,7 @@ pub struct Table { _private: [u8; 0] }
 pub struct Index { ptr: *const Table }
 
 impl Index {
-    pub fn new() -> Index { Index{ptr: std::ptr::null()} }
+    pub const fn new() -> Index { Index{ptr: std::ptr::null()} }
 }
 
 /******************************************************************************/
@@ -70,6 +70,10 @@ pub struct Value {
     ind: Index,
 }
 
+unsafe impl Sync for Value {
+
+}
+
 /******************************************************************************/
 
 type DestroyT = extern fn(*mut Void) -> ();
@@ -103,7 +107,11 @@ extern "C" {
 
     pub fn rebind_value_copy(v: &mut Value, o: &Value) -> Bool;
 
-    pub fn rebind_value_method_to_value(out: &mut Value, v: &Value, name: *const u8, argv: *mut Ref, argn: Uint) -> Value;
+    pub fn rebind_value_method_to_value(v: &Value, name: *const u8, argv: *mut Ref, argn: Uint) -> Value;
+
+    pub fn rebind_value_call_value(v: &Value, argv: *mut Ref, argn: Uint) -> Value;
+
+    pub fn rebind_value_call_ref(v: &Value, argv: *mut Ref, argn: Uint) -> Ref;
 
     /**************************************************************************/
 
@@ -120,6 +128,10 @@ pub trait FromValue {
 
 impl FromValue for i32 {
     fn from_matching_value(v: Value) -> Self { v.get::<i32>() }
+}
+
+impl FromValue for f64 {
+    fn from_matching_value(v: Value) -> Self { v.get::<f64>() }
 }
 
 // struct Handle<'a> {
@@ -167,17 +179,15 @@ impl<T1, T2> IntoArguments for (T1, T2,) {
 /******************************************************************************/
 
 impl Value {
-    pub fn new() -> Value { Value{ptr: std::ptr::null_mut(), ind: Index::new()} }
+    pub const fn new() -> Value { Value{ptr: std::ptr::null_mut(), ind: Index::new()} }
 
-    pub fn address(&self) -> *mut Void { self.ptr }
+    pub const fn address(&self) -> *mut Void { self.ptr }
 
-    pub fn index(&self) -> Index { self.ind }
+    pub const fn index(&self) -> Index { self.ind }
 
     pub fn method<T: IntoArguments>(&self, name: &str, args: T) -> Value {
-        let mut v = Value::new();
         // let mut argv =
-        unsafe {rebind_value_method_to_value(&mut v, self, name.as_ptr(), std::ptr::null_mut(), 0);}
-        v
+        unsafe {rebind_value_method_to_value(self, name.as_ptr(), std::ptr::null_mut(), 0)}
     }
 
     pub fn holds<T: 'static>(&self) -> bool {
@@ -186,6 +196,14 @@ impl Value {
 
     pub fn get<T>(self) -> T {
         panic!("ok")
+    }
+
+    pub fn call<T: IntoArguments>(&self, args: T) -> Value {
+        unsafe {rebind_value_call_value(self, std::ptr::null_mut(), 0)}
+    }
+
+    pub fn call_ref<T: IntoArguments>(&self, args: T) -> Ref {
+        unsafe {rebind_value_call_ref(self, std::ptr::null_mut(), 0)}
     }
 
     pub fn cast<T: 'static + FromValue>(self) -> Option<T> {

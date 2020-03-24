@@ -18,6 +18,23 @@ pub struct Goo {
     // pub wow: ::std::os::raw::c_char,
 }
 
+/******************************************************************************/
+
+static mut blah2: Value = Value::new();
+
+pub unsafe fn init() {
+    blah2 = Value::new();
+}
+
+pub fn fun(x: i32, y: f64) -> f64 {
+    // static blah: i32 = 1;
+    // static mut blah: Value = Value::new();
+    // static blah: String = "aaa".to_string();
+    unsafe {blah2.call(())}.cast::<f64>().unwrap()
+}
+
+/******************************************************************************/
+
 impl Goo {
     pub fn x(&self) -> i32 { self.base.method(".x", ()).cast::<i32>().unwrap() }
 }
