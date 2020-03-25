@@ -31,11 +31,9 @@ class Goo:
     def __str__(self) -> str:
         pass
 
-    # @schema.method
-
-    # @schema.method
-    # def add(self) -> 'Goo':
-    #     pass
+    @schema.method
+    def add(self) -> 'Goo':
+        pass
 
 global_value = schema.object('global_value', int)
 

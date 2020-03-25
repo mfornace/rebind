@@ -109,12 +109,10 @@ class Schema:
 
         key = common.translations.get(key, key)
 
-        def impl(self, *args, **kwargs):
-            print(repr(key))
-            return self.call_method(key, *args, **kwargs)
+        return render_cast_method(obj, key, {})
 
-        return functools.update_wrapper(impl, obj)
-
+    # def property(self, obj, key=None):
+    #     return property(render_cast_method(fun, obj, namespace))
 
     def function(self, obj, key=None):
         if isinstance(obj, str):
@@ -128,7 +126,7 @@ class Schema:
         except KeyError:
             log.warning('undefined function %r', key)
             return obj
-        return render_function(impl, obj, {})
+        return render_cast_function(obj, impl, {})
 
 
     def object(self, key, cast=None):
@@ -157,73 +155,107 @@ def copy(self):
 
 ################################################################################
 
-def render_function(fun, old, namespace):
-    '''
-    Replace a declared function's contents with the one from the schema
-    - Otherwise if the declared function takes 'function', call the declared function
-    with the schema function passed as 'function' and the other arguments filled appropiately
-    - Otherwise, call the schema function
-    '''
-    if old is None:
-        def bound(*args, _orig=fun):
-            return _orig(*args)
-        return functools.update_wrapper(bound, common.opaque_signature)
+def cast_return_type(obj, namespace):
+    sig = inspect.signature(obj)
+    ret = sig.return_annotation
 
-    if isinstance(old, property):
-        return property(render_function(fun, old.fget, namespace))
+    if isinstance(ret, str):
+        try:
+            ret = eval(ret, {}, namespace)
+        except NameError:
+            log.info('return annotation %r cannot be resolved yet', ret)
 
-    sig = inspect.signature(old)
+    for k, p in sig.parameters.items():
+        if p.kind == p.VAR_KEYWORD or p.kind == p.VAR_POSITIONAL:
+            raise TypeError('Parameter {} cannot be variadic (e.g. like *args or **kwargs)'.format(k))
 
-    has_fun = '_fun_' in sig.parameters
-    if has_fun:
-        sig = common.discard_parameter(sig, '_fun_')
+    return sig, ret
 
-    types = tuple(p.annotation.__args__ if is_callable_type(p.annotation) else None for p in sig.parameters.values())
-    empty = inspect.Parameter.empty
+################################################################################
 
-    if '_old' in sig.parameters:
-        raise ValueError('Function {} was already wrapped'.format(old))
+def render_cast_function(obj, impl, namespace):
+    sig, ret = cast_return_type(obj, namespace)
+    log.info('defining cast function %r: %r -> %r', obj, impl, ret)
 
-    # Eventually all of the computation in wrap() could be moved into C++
-    # (1) binding of args and kwargs with default arguments
-    # (2) for each arg that is annotated with Callback, make a callback out of it
-    # (3) either cast the return type or invoke the fun that is given
-    # (4) ...
-    if has_fun:
-        def wrap(*args, _orig=fun, _bind=sig.bind, _old=old, gil=None, signature=None, **kwargs):
-            bound = _bind(*args, **kwargs)
+    if ret is inspect.Parameter.empty:
+        def wrap(*args, _F=impl, _B=sig.bind, gil=None, **kwargs):
+            bound = _B(*args, **kwargs)
             bound.apply_defaults()
-            # Convert args and kwargs separately
-            args = (a if t is None or a is None else make_callback(a, t) for a, t in zip(bound.args, types))
-            kwargs = {k: (v if t is None or v is None else make_callback(v, t)) for (k, v), t in zip(bound.kwargs.items(), types[len(bound.args):])}
-            return _old(*args, _fun_=_orig, **kwargs)
-    else:
-        ret = sig.return_annotation
+            return _F(*bound.arguments.values())
 
-        if isinstance(ret, str):
-            try:
-                ret = eval(ret, {}, namespace)
-            except NameError:
-                raise NameError('Return annotation %s could not be resolved on function %r' % (ret, old))
-
-        for k, p in sig.parameters.items():
-            if p.kind == p.VAR_KEYWORD or p.kind == p.VAR_POSITIONAL:
-                raise TypeError('Parameter {} cannot be variadic (e.g. like *args or **kwargs)'.format(k))
-
-        def wrap(*args, _orig=fun, _bind=sig.bind, _return=ret, gil=None, signature=None, **kwargs):
-            bound = _bind(*args, **kwargs)
+    elif ret is None or ret is type(None):
+        def wrap(*args, _F=impl, _B=sig.bind, gil=None, **kwargs):
+            bound = _B(*args, **kwargs)
             bound.apply_defaults()
-            # Convert any keyword arguments into positional arguments
-            out = _orig(*(make_callback(a, t) if t is not None else a for a, t in zip(bound.arguments.values(), types)))
-            if _return is empty:
-                return out # no cast
-            if _return is None or _return is type(None):
-                return # return None regardless of output
+            _F(*bound.arguments.values())
+
+    elif isinstance(ret, str):
+        def wrap(*args, _F=impl, _B=sig.bind, _R=ret, _N=namespace, gil=None, **kwargs):
+            return_type = eval(_R, {}, _N)
+            bound = _B(*args, **kwargs)
+            bound.apply_defaults()
+            out = _F(*bound.arguments.values())
             if out is None:
-                raise TypeError('Expected {} but was returned object None'.format(_return))
-            return out.cast(_return)
+                raise TypeError('Expected {} but was returned object None'.format(_R))
+            return out.cast(return_type)
 
-    return functools.update_wrapper(wrap, old)
+    else:
+        def wrap(*args, _F=impl, _B=sig.bind, _R=ret, gil=None, **kwargs):
+            bound = _B(*args, **kwargs)
+            bound.apply_defaults()
+            out = _F(*bound.arguments.values())
+            if out is None:
+                raise TypeError('Expected {} but was returned object None'.format(_R))
+            return out.cast(_R)
+
+    return functools.update_wrapper(wrap, obj)
+
+################################################################################
+
+def render_cast_method(obj, key, namespace):
+    sig, ret = cast_return_type(obj, namespace)
+    log.info('defining cast method %r: %r -> %r', obj, key, ret)
+
+    if ret is inspect.Parameter.empty:
+        def wrap(self, *args, _K=key, _B=sig.bind, gil=None, **kwargs):
+            bound = _B(*args, **kwargs)
+            bound.apply_defaults()
+            return self.call_method(_K, *bound.arguments.values())
+
+    elif ret is None or ret is type(None):
+        def wrap(self, *args, _K=key, _B=sig.bind, gil=None, **kwargs):
+            bound = _B(*args, **kwargs)
+            bound.apply_defaults()
+            self.call_method(_K, *bound.arguments.values())
+
+    elif isinstance(ret, str):
+        def wrap(self, *args, _K=key, _B=sig.bind, _R=ret, _N=namespace, gil=None, **kwargs):
+            return_type = eval(_R, {}, _N)
+            bound = _B(*args, **kwargs)
+            bound.apply_defaults()
+            out = self.call_method(_K, *bound.arguments.values())
+            if out is None:
+                raise TypeError('Expected {} but was returned object None'.format(_R))
+            return out.cast(return_type)
+
+    else:
+        def wrap(self, *args, _K=key, _B=sig.bind, _R=ret, gil=None, **kwargs):
+            bound = _B(*args, **kwargs)
+            bound.apply_defaults()
+            out = self.call_method(_K, *bound.arguments.values())
+            if out is None:
+                raise TypeError('Expected {} but was returned object None'.format(_R))
+            return out.cast(_R)
+
+    return functools.update_wrapper(wrap, obj)
+
+################################################################################
+
+def render_delegating_function(obj, impl, namespace):
+    def wrap(*args, _F=obj, **kwargs):
+        return _F(*args, **kwargs, _fun_=_F)
+
+    return functools.update_wrapper(wrap, obj)
 
 ################################################################################
 
@@ -295,57 +327,3 @@ def is_callable_type(t):
     return t is typing.Callable or t is collections.abc.Callable
 
 ################################################################################
-
-# def _render_module(record, schema):
-    # config, out = Config(schema), schema.copy()
-    # log.info('setting type error')
-    # config.set_type_error(ConversionError)
-
-    # log.info('rendering classes and methods')
-    # out['types'] = {k: v for k, v in schema['contents'] if isinstance(v, tuple)}
-    # log.info(str(out['types']))
-
-    # for name, overloads in out['types'].items():
-    #     mod, cls = render_type(record, name, overloads)
-    #     record.modules.add(mod)
-    #     record.classes.add(cls)
-        # cls._metadata_ = {k: v or None for k, v in data}
-    # for index, _ in overloads:
-    #     config.set_type(index, cls, cls.Reference)
-
-    # render global objects (including free functions)
-    # out['objects'] = {k: render_object(record, k, v)
-    #     for k, v in schema['contents'] if not isinstance(v, tuple)}
-    # return out, config
-
-################################################################################
-
-# def monkey_patch(record, config):
-#     # Monkey-patch modules based on redefined types (takes care of simple cases at least)
-#     mod = importlib.import_module(record.module_name)
-
-#     for mod in tuple(record.modules):
-#         parts = mod.__name__.split('.')
-#         for i in range(1, len(parts)):
-#             try:
-#                 record.modules.add(importlib.import_module('.'.join(parts[:i])))
-#             except ImportError:
-#                 pass
-
-#     for mod in record.modules.union(record.classes):
-#         log.info('rendering monkey-patching namespace {}'.format(mod))
-#         for k in dir(mod):
-#             try:
-#                 setattr(mod, k, record.translations[getattr(mod, k)])
-#                 log.info('monkey-patching namespace {} attribute {}'.format(mod, k))
-#             except (TypeError, KeyError):
-#                 pass
-
-#     for k, v in record.translations.items():
-#         if isinstance(k, type) and isinstance(v, type):
-#             config.set_translation(k, v)
-
-#     for k in _declared_objects.difference(record.translations):
-#         log.warning('Placeholder {} was declared but not defined'.format(k))
-
-#     log.info('finished rendering schema into module %r', record.module_name)
