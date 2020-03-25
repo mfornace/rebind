@@ -22,4 +22,19 @@ endforeach()
 
 ################################################################################
 
+add_library(example_rust SHARED
+    Example.cc
+    ../source/Rust.cc
+)
+
+# if(${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
+#     set_target_properties(example_rust PROPERTIES LINK_FLAGS "-Wl,-flat_namespace,-undefined,dynamic_lookup")
+# else()
+#     set_target_properties(example_rust PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
+# endif()
+
+target_link_libraries(example_rust PUBLIC librebind)
+
+################################################################################
+
 add_custom_target(example_python ALL DEPENDS ${link_outputs} example_module)

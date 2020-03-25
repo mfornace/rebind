@@ -99,7 +99,7 @@ PyObject * c_set_ward(PyObject *self, PyObject *arg) noexcept {
 /******************************************************************************/
 
 template <class Self>
-PyObject * c_call_method(PyObject *s, PyObject *args, PyObject *kws) noexcept {
+PyObject * c_method(PyObject *s, PyObject *args, PyObject *kws) noexcept {
     return raw_object([=]() -> Object {
         auto objects = objects_from_argument_tuple(args);
         auto const [tag, out, is_value, gil] = function_call_keywords(kws);
@@ -114,8 +114,7 @@ PyObject * c_call_method(PyObject *s, PyObject *args, PyObject *kws) noexcept {
 
         if (auto t = self.index()) {
             if (auto it = t->properties.find(name); it != t->properties.end()) {
-                return type_error("not impl");
-                // return function_call_impl(out, it->second, std::move(refs), is_value, gil, tag);
+                return function_call_impl(out, Ref(std::as_const(it->second)), std::move(refs), is_value, gil, tag);
             } else {
                 return type_error("method not found");
             }

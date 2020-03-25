@@ -35,17 +35,17 @@ PyMethodDef ValueMethods[] = {
     {"move_from", c_function(c_move_from<Value>),
         METH_O, "assign from other using C++ move assignment"},
 
-    {"call_method", c_function(c_call_method<Value>),
+    {"method", c_function(c_method<Value>),
         METH_VARARGS | METH_KEYWORDS, "call a method given a name and arguments"},
 
-    {"address",       c_function(c_address<Value>),
+    {"address", c_function(c_address<Value>),
         METH_NOARGS, "get C++ pointer address"},
 
     {"_ward", c_function(c_get_ward<PyValue>),
         METH_NOARGS, "get ward object"},
 
     {"_set_ward", c_function(c_set_ward<PyValue>),
-        METH_O,       "set ward object and return self"},
+        METH_O, "set ward object and return self"},
 
     // {"is_stack_type", c_function(var_is_stack_type),
     // METH_NOARGS, "return if object is held in stack storage"},
@@ -89,7 +89,7 @@ PyMethodDef RefMethods[] = {
     {"move_from", c_function(c_move_from<Ref>),
         METH_O, "assign from other using C++ move assignment"},
 
-    {"call_method", c_function(c_call_method<Ref>),
+    {"method", c_function(c_method<Ref>),
         METH_VARARGS | METH_KEYWORDS, "call a method given a name and arguments"},
 
     {"address", c_function(c_address<Ref>),

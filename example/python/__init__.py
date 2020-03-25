@@ -5,11 +5,13 @@ from .rebind import Schema, set_logger
 
 ################################################################################
 
-log = logging.getLogger(__name__ + '.init')
+log = logging.getLogger(__name__ + '.render')
 logging.basicConfig(level=logging.INFO)
 set_logger(log)
 
 schema = Schema('example', schema)
+
+################################################################################
 
 from . import submodule
 

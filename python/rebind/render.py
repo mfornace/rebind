@@ -109,7 +109,7 @@ class Schema:
 
         key = common.translations.get(key, key)
 
-        return render_cast_method(obj, key, {})
+        return render_cast_method(obj, key, deduced_namespace(obj))
 
     # def property(self, obj, key=None):
     #     return property(render_cast_method(fun, obj, namespace))
@@ -126,7 +126,7 @@ class Schema:
         except KeyError:
             log.warning('undefined function %r', key)
             return obj
-        return render_cast_function(obj, impl, {})
+        return render_cast_function(obj, impl, deduced_namespace(obj))
 
 
     def object(self, key, cast=None):
@@ -144,6 +144,11 @@ class Schema:
 
 def no_init(self):
     raise TypeError('No __init__ is possible since no constructor was declared')
+
+################################################################################
+
+def deduced_namespace(obj):
+    return importlib.import_module(obj.__module__).__dict__
 
 ################################################################################
 
@@ -214,26 +219,30 @@ def render_cast_function(obj, impl, namespace):
 
 def render_cast_method(obj, key, namespace):
     sig, ret = cast_return_type(obj, namespace)
+    if tuple(sig.parameters)[0] != 'self':
+        log.warning('discarding first parameter even though it is not called self: %r', sig)
+    sig = common.discard_self(sig)
+
     log.info('defining cast method %r: %r -> %r', obj, key, ret)
 
     if ret is inspect.Parameter.empty:
         def wrap(self, *args, _K=key, _B=sig.bind, gil=None, **kwargs):
             bound = _B(*args, **kwargs)
             bound.apply_defaults()
-            return self.call_method(_K, *bound.arguments.values())
+            return self.method(_K, *bound.arguments.values())
 
     elif ret is None or ret is type(None):
         def wrap(self, *args, _K=key, _B=sig.bind, gil=None, **kwargs):
             bound = _B(*args, **kwargs)
             bound.apply_defaults()
-            self.call_method(_K, *bound.arguments.values())
+            self.method(_K, *bound.arguments.values())
 
     elif isinstance(ret, str):
         def wrap(self, *args, _K=key, _B=sig.bind, _R=ret, _N=namespace, gil=None, **kwargs):
             return_type = eval(_R, {}, _N)
             bound = _B(*args, **kwargs)
             bound.apply_defaults()
-            out = self.call_method(_K, *bound.arguments.values())
+            out = self.method(_K, *bound.arguments.values())
             if out is None:
                 raise TypeError('Expected {} but was returned object None'.format(_R))
             return out.cast(return_type)
@@ -242,7 +251,7 @@ def render_cast_method(obj, key, namespace):
         def wrap(self, *args, _K=key, _B=sig.bind, _R=ret, gil=None, **kwargs):
             bound = _B(*args, **kwargs)
             bound.apply_defaults()
-            out = self.call_method(_K, *bound.arguments.values())
+            out = self.method(_K, *bound.arguments.values())
             if out is None:
                 raise TypeError('Expected {} but was returned object None'.format(_R))
             return out.cast(_R)
@@ -265,19 +274,19 @@ def render_member(cls, key, cast):
     if cast is None:
         def fget(self, _K=key, _P=cls):
             ptr = _P()
-            self.call_method(_K, output=ptr)
+            self.method(_K, output=ptr)
             ptr._set_ward(self)
             return ptr
     else:
         def fget(self, _K=key, _R=cast, _P=cls):
             ptr = _P()
-            self.call_method(_K, output=ptr)
+            self.method(_K, output=ptr)
             ptr._set_ward(self) # not sure if needed...?
             return ptr.cast(_R)
 
     def fset(self, other, _K=key, _P=cls):
         ptr = _P()
-        self.call_method(_K, output=ptr)
+        self.method(_K, output=ptr)
         ptr.copy_from(other)
 
     name = getattr(cast, '__name__', cast)

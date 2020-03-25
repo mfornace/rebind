@@ -117,6 +117,10 @@ def discard_parameter(sig, key):
     return inspect.Signature([v for v in sig.parameters.values() if v.name != key],
             return_annotation=sig.return_annotation)
 
+def discard_self(sig):
+    params = tuple(sig.parameters.values())
+    return inspect.Signature(params[1:], return_annotation=sig.return_annotation)
+
 ################################################################################
 
 def update_module(dest, source, pattern):

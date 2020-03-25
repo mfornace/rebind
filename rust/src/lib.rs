@@ -1,103 +1,319 @@
-// #[macro_use]
-// mod macros;
-// mod submod;
-
-mod submod;
-
-pub mod variable;
-// pub mod function;
-pub mod capi;
-
-pub use variable::Value;
-// pub use function::Function;
+// use std::os::raw::{c_void, c_uchar, c_int};
+use std::collections::HashMap;
+use std::any::TypeId;
+use std::marker::PhantomData;
 
 /******************************************************************************/
 
-pub struct Goo {
-    base: Value
-}
+pub type Bool = std::os::raw::c_int;
+pub type Uint = std::os::raw::c_uint;
+pub type Size = std::os::raw::c_ulonglong;
+pub type Void = std::os::raw::c_void;
+pub type Qual = std::os::raw::c_uchar;
+pub type Char = std::os::raw::c_char;
 
-impl AsRef<Value> for Goo {
-    fn as_ref(&self) -> &Value { &self.base }
-}
+// use std::ffi::{CString, CStr};
 
-impl std::ops::Deref for Goo {
-    type Target = Value;
-    fn deref(&self) -> &Value { &self.base }
-}
+/******************************************************************************/
 
-impl std::ops::DerefMut for Goo {
-    fn deref_mut(&mut self) -> &mut Value { &mut self.base }
-}
+#[repr(C)]
+pub struct Table { _private: [u8; 0] }
 
-impl AsMut<Value> for Goo {
-    fn as_mut(&mut self) -> &mut Value { &mut self.base }
-}
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq)]
+pub struct Index { ptr: *const Table }
 
-impl Goo {
-    pub fn x(&self) -> i32 { self.method(".x", ()).cast::<i32>() }
+impl Index {
+    pub const fn new() -> Index { Index{ptr: std::ptr::null()} }
 }
 
 /******************************************************************************/
 
-// this is pretty bad, global variables plus an init that needs to be called
-static mut static_solution: Value = Value::new();
+pub enum Qualifier { Const, Lvalue, Rvalue }
 
-pub unsafe fn init() {
-    static_solution = Value::new();
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct Ref {
+    ptr: *mut Void,
+    ind: Index,
+    qual: Qual,
 }
 
-pub fn static_fun(x: i32, y: f64) -> f64 {
-    // static blah: i32 = 1;
-    // static mut blah: Value = Value::new();
-    // static blah: String = "aaa".to_string();
-    unsafe {static_solution.call(())}.cast::<f64>()
-}
+impl Ref {
+    pub fn new() -> Ref { Ref{ptr: std::ptr::null_mut(), ind: Index::new(), qual: 0} }
 
-/******************************************************************************/
+    pub fn address(&self) -> *mut Void { self.ptr }
 
-// this is...sort of annoying...need to pass around state, only good in getting rid of hash lookup really...
-pub struct StateSolution {
-    bases: [Value; 2]
-}
+    pub fn index(&self) -> Index { self.ind }
 
-impl StateSolution {
-    pub fn new() -> StateSolution { StateSolution{bases: [Value::new(), Value::new()]} }
-    pub fn method1(&self) -> f64 { self.bases[0].call(()).cast::<f64>() }
-    pub fn method2(&self) -> f64 { self.bases[1].call(()).cast::<f64>() }
-}
+    pub fn has_value(&self) -> bool { self.ptr != std::ptr::null_mut() }
 
-/******************************************************************************/
-
-// this could be easily macroed away, I think. Only downside I think is the lookup
-// ...that's not that big a deal compared to other lookups though...
-pub fn lookup_solution() -> f64 {
-    capi::invoke("myfun", ()).cast::<f64>()
+    pub fn qualifier(&self) -> Qualifier {
+        match self.qual {
+            0 => Qualifier::Const,
+            1 => Qualifier::Lvalue,
+            2 => Qualifier::Rvalue,
+            _ => panic!("Invalid qualifier")
+        }
+    }
 }
 
 /******************************************************************************/
 
-pub fn foo1() {
+// #[repr(C)]
+// pub struct CFunction { pub data: [u8; 0] }
 
-    use submod::foo;
-    //   let _ = fmt!("...");
-    foo();
-    // let x = unsafe {
-    //     capi::rebind_add()
-    // };
-    // println!("Hello {}", x);
+#[repr(C)]
+pub struct Scope { pub data: [u8; 0] }
 
-    let v = Value::new();
-    let _v2 = v.clone();
-    let v3 = v;
-
-    let t = v3.index();
-    println!("OK {}", t.name());
-    // println!("Hello {}", v.many);
-
-    // unsafe {
-    //     rebind_destruct(&mut v as *mut Value);
-    // }
-
-    // println!("Hello {}", v.many);
+#[repr(C)]
+pub struct Value {
+    ptr: *mut Void,
+    ind: Index,
 }
+
+unsafe impl Sync for Value {
+
+}
+
+/******************************************************************************/
+
+#[repr(C)]
+pub struct StrView (*const u8, Size);
+
+impl From<&str> for StrView {
+    fn from(s: &str) -> StrView { StrView{0: s.as_ptr(), 1: s.len() as Size} }
+}
+
+#[repr(C)]
+pub struct Args (*mut Ref, Size);
+
+impl Args {
+    fn new() -> Args {Args{0: std::ptr::null_mut(), 1: 0 as Size}}
+}
+
+/******************************************************************************/
+
+type DestroyT = extern fn(*mut Void) -> ();
+type CopyT = extern fn(*const Void) -> *mut Void;
+type ToValueT = extern fn(&mut Value, *mut Void, Qual) -> Bool;
+type ToRefT = extern fn(&mut Ref, *mut Void, Qual) -> Bool;
+type AssignIfT = extern fn(*mut Void, &Ref) -> ();
+type FromRefT = extern fn(&Ref, &Scope) -> Value;
+
+// #[link(name = "librustrebind")]
+extern "C" {
+    pub fn rebind_table_insert() -> Index;
+
+    pub fn rebind_table_set(
+        index: Index,
+        destroy: DestroyT,
+        copy: CopyT,
+        to_value: ToValueT,
+        to_ref: ToRefT,
+        assign_if: AssignIfT,
+        from_ref: FromRefT
+    );
+
+    // pub fn rebind_table_add_method(index: Index, name: *const Char, method: &CFunction);
+
+    pub fn rebind_table_add_base(index: Index, base: Index);
+
+    /**************************************************************************/
+
+    pub fn rebind_init() -> Bool;
+
+    /**************************************************************************/
+
+    pub fn rebind_value_destruct(v: *mut Value);
+
+    pub fn rebind_value_copy(v: *mut Value, o: *const Value) -> Bool;
+
+    pub fn rebind_value_method_to_value(v: *const Value, name: StrView, argv: Args) -> Value;
+
+    pub fn rebind_value_call_value(o: *mut Value, v: *const Value, argv: Args) -> Bool;
+
+    pub fn rebind_value_call_ref(v: *const Value, argv: Args) -> Ref;
+
+    pub fn rebind_lookup(name: StrView) -> *const Value;
+
+    /**************************************************************************/
+
+    pub fn rebind_index_name(v: Index) -> *const Char;
+
+    /**************************************************************************/
+}
+
+pub fn initialize() {
+    println!("initializing...");
+    let ok = unsafe {rebind_init()};
+    if ok == 0 {
+        panic!("rebind initialization failed");
+    }
+    println!("initialized...");
+}
+
+pub fn lookup(name: &str) -> &'static Value {
+    println!("looking up...: {}", name);
+    unsafe {
+        println!("wait what");
+        println!("ok...: {}", name);
+        let ptr = rebind_lookup(StrView::from(name));
+        println!("ok...: {} {}", name, ptr as u64);
+        if ptr != std::ptr::null() {return &(*ptr)}
+    }
+    panic!("bad lookup")
+}
+
+/******************************************************************************/
+
+pub trait FromValue {
+    fn from_matching_value(v: Value) -> Self;
+}
+
+impl FromValue for i32 {
+    fn from_matching_value(v: Value) -> Self { v.get::<i32>() }
+}
+
+impl FromValue for f64 {
+    fn from_matching_value(v: Value) -> Self { v.get::<f64>() }
+}
+
+// struct Handle<'a> {
+//     ptr: *const u8,
+//     marker: PhantomData<&'a ()>,
+// }
+
+pub fn create_table<T>() -> Index {
+    unsafe{ rebind_table_insert() }
+}
+
+
+pub fn fetch<T: 'static>() -> Index {
+    let mut tables: HashMap<TypeId, Index> = HashMap::new();
+
+    *tables.entry(TypeId::of::<T>()).or_insert_with(|| create_table::<T>())
+}
+
+/******************************************************************************/
+
+pub trait IntoRef {
+    fn into_ref(self) -> Ref;
+}
+
+impl<T> IntoRef for T {
+    fn into_ref(self: T) -> Ref { Ref::new() }
+}
+
+pub trait IntoArguments {
+    fn into_arguments(self) -> Vec<Ref>;
+}
+
+impl IntoArguments for () {
+    fn into_arguments(self) -> Vec<Ref> { vec![] }
+}
+
+impl<T1> IntoArguments for (T1,) {
+    fn into_arguments(self) -> Vec<Ref> { vec![self.0.into_ref()] }
+}
+
+impl<T1, T2> IntoArguments for (T1, T2,) {
+    fn into_arguments(self) -> Vec<Ref> { vec![self.0.into_ref(), self.1.into_ref()] }
+}
+
+/******************************************************************************/
+
+impl Value {
+    pub const fn new() -> Value { Value{ptr: std::ptr::null_mut(), ind: Index::new()} }
+
+    pub const fn address(&self) -> *mut Void { self.ptr }
+
+    pub const fn index(&self) -> Index { self.ind }
+
+    pub fn method<T: IntoArguments>(&self, name: &str, args: T) -> Value {
+        // let mut argv =
+        unsafe {rebind_value_method_to_value(self, StrView::from(name), Args::new())}
+    }
+
+    pub fn holds<T: 'static>(&self) -> bool {
+        self.ind == fetch::<T>()
+    }
+
+    pub fn get<T>(self) -> T {
+        panic!("get not implemented")
+    }
+
+    pub fn call<T: IntoArguments>(&self, args: T) -> Value {
+        let mut o = Value::new();
+        let ok = unsafe { rebind_value_call_value(&mut o, self, Args::new()) };
+        if ok == 0 {
+            panic!("function failed");
+        }
+        return o;
+    }
+
+    pub fn call_ref<T: IntoArguments>(&self, args: T) -> Ref {
+        unsafe {rebind_value_call_ref(self, Args::new())}
+    }
+
+    pub fn cast<T: 'static + FromValue>(self) -> T {
+        // Option::<T>::new()
+        if self.holds::<T>() {
+            return self.get::<T>()
+        }
+
+        panic!("bad");
+    }
+
+    pub fn cast_ref<'a, T: FromValue>(&'a self) -> Option<&'a T> {
+        None
+    }
+}
+
+/******************************************************************************/
+
+impl Drop for Value {
+    fn drop(&mut self) {
+        println!("dropping value");
+        unsafe{rebind_value_destruct(self);}
+        println!("dropped value");
+    }
+}
+
+/******************************************************************************/
+
+impl Clone for Value {
+    fn clone(&self) -> Value {
+        let mut v = Value::new();
+        if unsafe{rebind_value_copy(&mut v, self) == 0} { panic!("copy failed!"); }
+        v
+    }
+}
+
+/******************************************************************************/
+
+impl Index {
+    pub fn name(&self) -> &str {
+        unsafe{std::ffi::CStr::from_ptr(rebind_index_name(*self))}.to_str().unwrap()
+    }
+}
+
+/******************************************************************************/
+
+pub fn invoke<T: IntoArguments>(name: &str, args: T) -> Value {
+    let v: &Value = lookup(name);
+    println!("got the lookup!");
+    v.call(args)
+}
+
+// impl<T: FromValue> std::convert::TryFrom<Value> for T {
+//     fn try_from(self) -> Result<T, Self::Error> {
+//         T::from_matching_value(self)
+//     }
+// }
+
+/******************************************************************************/
+
+// struct TypedValue<T> {
+//     base : Value
+// }

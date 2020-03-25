@@ -81,6 +81,7 @@ void render(Schema &s, Type<Goo> t) {
 // could make this return a schema
 void write_schema(rebind::Schema &s) {
     s.object("global_value", 123);
+    s.function("easy", [] {return 1.2;});
     s.function("fun", [](int i, double d) {
         return i + d;
     });
