@@ -1,7 +1,15 @@
+from types import FunctionType
+
 import inspect, importlib, functools, logging, typing, atexit, collections
-from . import Config, common, ConversionError
+from . import common, ConversionError
+
+################################################################################
 
 log = logging.getLogger(__name__)
+
+DUMMY = False
+
+################################################################################
 
 def set_logger(logger):
     global log
@@ -9,137 +17,135 @@ def set_logger(logger):
 
 ################################################################################
 
-def render_module(pkg: str, schema: dict):
-    clear = schema['clear_global_objects']
-    try:
-        record = Record(pkg, schema['Value'], schema['Ref'])
-        out, config = _render_module(record, schema)
-        monkey_patch(record, config)
-    except BaseException:
-        clear()
-        raise
-    finally:
-        atexit.register(common.finalize, clear, log)
+class Config:
+    def __init__(self, methods):
+        self._set_debug = methods['set_debug']
+        self._get_debug = methods['debug']
+        self.set_type_error = methods['set_type_error']
+        self.set_type = methods['set_type']
+        self.set_output_conversion = methods['set_output_conversion']
+        self.set_input_conversion = methods['set_input_conversion']
+        self.set_translation = methods['set_translation']
+
+    @property
+    def debug(self):
+        return self._get_debug().cast(bool)
+
+    @debug.setter
+    def debug(self, value):
+        self._set_debug(bool(value))
 
 ################################################################################
 
-_declared_objects = set()
+class Schema:
 
-def forward(x):
-    _declared_objects.add(x)
-    return x
+    def __init__(self, module_name, obj):
+        self.clear = obj['clear_global_objects']
+        atexit.register(common.finalize, self.clear, log)
 
-################################################################################
+        self.config = Config(obj)
+        self.config.set_type_error(ConversionError)
 
-class Record:
-    def __init__(self, module_name, Value, Ref):
         self.module_name = str(module_name)
-        self.classes = set()
-        self.modules = set()
-        self.translations = {}
-        self.Value = Value
-        self.Ref = Ref
+        self.Value = obj['Value']
+        self.Ref = obj['Ref']
+        self.contents = dict(obj['contents'])
+        self.scalars = common.find_scalars(obj['scalars'])
+        # self.classes = set()
+        # self.modules = set()
 
-    def translate(self, old, new):
-        if old is not None:
-            self.translations[old] = new
-        return new
+
+    def __getitem__(self, key):
+        return self.contents[key]
+
+
+    def type(self, cls):
+        mod, name = cls.__module__, cls.__name__
+        source = self.contents[name]
+        # mod, name = common.split_module(self.module_name, name)
+        log.info("rendering class '%s.%s'", mod, name)
+
+        props = class_properties(cls)
+
+        assert '__new__' not in props
+        props.setdefault('__init__', no_init)
+        props.setdefault('indices', tuple(d for d, _ in source))
+
+        for k, v in props['__annotations__'].items():
+            log.info("deriving member '%s.%s.%s' from %r", mod, name, k, v)
+            props[k] = render_member(self.Ref, key=k, cast=v)
+
+        ref_props = props.copy()
+        props.setdefault('copy', copy)
+        props['Ref'] = type('Ref', (self.Ref,), ref_props)
+
+        cls = type(name, (self.Value,), props)
+
+        log.info("rendered class '%s.%s'", mod, name)
+        return cls
+
+
+    def init(self, obj, key=None):
+        if isinstance(obj, str):
+            return lambda o: self.init(o, obj)
+        if key is None:
+            key = obj.__qualname__
+        log.info('rendering init %r: %r', key, obj)
+
+        key = '.'.join(key.split('.')[:-1] + ['new'])
+        impl = self.contents[key]
+        def __init__(self, *args, _impl=impl, return_type=None, signature=None):
+            _impl(*args, output=self)
+
+        return __init__
+
+
+    def method(self, obj, key=None):
+        if isinstance(obj, str):
+            return lambda o: self.method(o, obj)
+        if key is None:
+            key = obj.__name__
+        log.info('rendering method %r: %r', key, obj)
+
+        key = common.translations.get(key, key)
+
+        def impl(self, *args, **kwargs):
+            print(repr(key))
+            return self.call_method(key, *args, **kwargs)
+
+        return functools.update_wrapper(impl, obj)
+
+
+    def function(self, obj, key=None):
+        if isinstance(obj, str):
+            return lambda o: self.function(o, obj)
+        if key is None:
+            key = obj.__name__
+        log.info('rendering function %r: %r', key, obj)
+
+        try:
+            impl = self.contents[key]
+        except KeyError:
+            log.warning('undefined function %r', key)
+            return obj
+        return render_function(impl, obj, {})
+
+
+    def object(self, key, cast=None):
+        log.info('rendering init %r: %r', key, cast)
+
+        try:
+            impl = self.contents[key]
+        except KeyError:
+            log.warning('undefined object %r', key)
+            return None
+
+        return render_object(impl, cast)
 
 ################################################################################
 
-def _render_module(record, schema):
-    log.info('rendering schema into module %s', repr(record.module_name))
-    config, out = Config(schema), schema.copy()
-    log.info('setting type error')
-    config.set_type_error(ConversionError)
-
-    log.info('rendering classes and methods')
-    out['types'] = {k: v for k, v in schema['contents'] if isinstance(v, tuple)}
-    log.info(str(out['types']))
-
-    for name, overloads in out['types'].items():
-        mod, cls = render_type(record, name, overloads)
-        record.modules.add(mod)
-        record.classes.add(cls)
-        # cls._metadata_ = {k: v or None for k, v in data}
-        for index, _ in overloads:
-            config.set_type(index, cls, cls.Reference)
-
-    # render global objects (including free functions)
-    out['objects'] = {k: render_object(record, k, v)
-        for k, v in schema['contents'] if not isinstance(v, tuple)}
-
-    out['scalars'] = common.find_scalars(schema['scalars'])
-    return out, config
-
-################################################################################
-
-def monkey_patch(record, config):
-    # Monkey-patch modules based on redefined types (takes care of simple cases at least)
-    mod = importlib.import_module(record.module_name)
-
-    for mod in tuple(record.modules):
-        parts = mod.__name__.split('.')
-        for i in range(1, len(parts)):
-            try:
-                record.modules.add(importlib.import_module('.'.join(parts[:i])))
-            except ImportError:
-                pass
-
-    for mod in record.modules.union(record.classes):
-        log.info('rendering monkey-patching namespace {}'.format(mod))
-        for k in dir(mod):
-            try:
-                setattr(mod, k, record.translations[getattr(mod, k)])
-                log.info('monkey-patching namespace {} attribute {}'.format(mod, k))
-            except (TypeError, KeyError):
-                pass
-
-    for k, v in record.translations.items():
-        if isinstance(k, type) and isinstance(v, type):
-            config.set_translation(k, v)
-
-    for k in _declared_objects.difference(record.translations):
-        log.warning('Placeholder {} was declared but not defined'.format(k))
-
-    log.info('finished rendering schema into module %r', record.module_name)
-
-################################################################################
-
-def render_init(init):
-    if init is None:
-        def __init__(self):
-            raise TypeError('No __init__ is possible since no C++ constructors were declared')
-    else:
-        def __init__(self, *args, _new=init, return_type=None, signature=None):
-            _new(*args, output=self)
-    return __init__
-
-################################################################################
-
-def render_member(record, key, value, old):
-    if old is None:
-        def fget(self, _impl=value, _P=record.Ref):
-            ptr = _P()
-            _impl(self, output=ptr)
-            ptr._set_ward(self)
-            return ptr
-    else:
-        def fget(self, _impl=value, _R=old, _P=record.Ref):
-            ptr = _P()
-            _impl(self, output=ptr)
-            ptr._set_ward(self) # not sure if needed...?
-            return ptr.cast(_R)
-
-    def fset(self, other, _impl=value, _P=record.Ref):
-        ptr = _P()
-        _impl(self, output=ptr)
-        ptr.copy_from(other)
-
-    name = getattr(old, '__name__', old)
-
-    doc = 'C++ member variable' if name is None else 'Member of type `{}`'.format(name)
-    return property(fget=fget, fset=fset, doc=doc)
+def no_init(self):
+    raise TypeError('No __init__ is possible since no constructor was declared')
 
 ################################################################################
 
@@ -148,107 +154,6 @@ def copy(self):
     other = self.__new__(type(self))
     other.copy_from(self)
     return other
-
-################################################################################
-
-def find_class(mod, name):
-    '''Find an already declared class and return its deduced properties'''
-    old = common.unwrap(getattr(mod, name, None))
-    annotations = {}
-    props = {'__module__': mod.__name__}
-
-    if old is not None:
-        for c in reversed(old.mro()[:-1]): # skip base class 'object'
-            props.update(c.__dict__)
-            annotations.update(getattr(c, '__annotations__', {}))
-    props['__annotations__'] = annotations
-    return old, props
-
-################################################################################
-
-def render_type(record, name: str, overloads):
-    '''Define a new type in pkg'''
-    mod, name = common.split_module(record.module_name, name)
-    old_cls, props = find_class(mod, name)
-    old_props = props.copy()
-
-    new = props.pop('__new__', None)
-    if callable(new):
-        log.warning('{}.{}.__new__ will not be rendered'.format(record.module_name, name))
-
-    data, methods = overloads[0]
-    methods = dict(methods)
-    methods['__init__'] = render_init(methods.pop('new', None))
-
-    for k, v in methods.items():
-        k = common.translations.get(k, k)
-        if k.startswith('.'):
-            k = k[1:]
-            old = common.unwrap(props['__annotations__'].get(k))
-            log.info("deriving member '%s.%s%s' from %r", mod.__name__, name, k, old)
-            props[k] = render_member(record, k, v, old)
-            record.translate('%s.%s' % (name, old), props[k])
-        else:
-            old = common.unwrap(props.get(k, common.default_methods.get(k)))
-            log.info("deriving method '%s.%s.%s' from %r", mod.__name__, name, k, old)
-            props[k] = render_function(v, old, namespace=mod.__dict__)
-            record.translate(old, props[k])
-
-    props.setdefault('copy', copy)
-    props.setdefault('__old__', old_props)
-
-    ref_props = props.copy()
-    props['Reference'] = type('Reference', (record.Ref,), ref_props)
-
-    cls = type(name, (record.Value,), props)
-    record.translate(old_cls, cls)
-
-    log.info("rendering class '%s.%s'", mod.__name__, name)
-    setattr(mod, name, cls)
-
-    return mod, cls
-
-################################################################################
-
-def render_object(record, key, value):
-    '''put in the module level functions and objects'''
-    mod, key = common.split_module(record.module_name, key)
-    log.info("rendering object '%s.%s'", mod.__name__, key)
-
-    old = common.unwrap(getattr(mod, key, None))
-    if old is None:
-        pass
-    elif callable(value):
-        log.info("deriving function '%s.%s' from %r", mod.__name__, key, old)
-        assert callable(old), 'expected annotation to be a function'
-        value = render_function(value, old, namespace=mod.__dict__)
-    else:
-        log.info("deriving object '%s.%s' from %r", mod.__name__, key, old)
-        if not isinstance(old, type):
-            print(value.type())
-            raise TypeError('expected placeholder {} to be a type'.format(old))
-        value = value.cast(old)
-
-    setattr(mod, key, value)
-    record.translate(old, value)
-    return value
-
-################################################################################
-
-def make_callback(origin, types):
-    '''Make a callback that calls the wrapped one with arguments casted to the given types'''
-    if not callable(origin):
-        return origin
-    def callback(*args):
-        return origin(*(a.cast(t) for a, t in zip(args, types)))
-    return callback
-
-def is_callable_type(t):
-    '''Detect whether a parameter to a C++ function is a callback'''
-    t = getattr(t, '__origin__', None)
-    return t is typing.Callable or t is collections.abc.Callable
-# if not hasattr(typing, 'CallableMeta'):
-#     raise ImportError('Python 3.7 has a bug where typing.CallableMeta is missing')
 
 ################################################################################
 
@@ -320,3 +225,127 @@ def render_function(fun, old, namespace):
 
     return functools.update_wrapper(wrap, old)
 
+################################################################################
+
+def render_member(cls, key, cast):
+    key = '.' + key
+
+    if cast is None:
+        def fget(self, _K=key, _P=cls):
+            ptr = _P()
+            self.call_method(_K, output=ptr)
+            ptr._set_ward(self)
+            return ptr
+    else:
+        def fget(self, _K=key, _R=cast, _P=cls):
+            ptr = _P()
+            self.call_method(_K, output=ptr)
+            ptr._set_ward(self) # not sure if needed...?
+            return ptr.cast(_R)
+
+    def fset(self, other, _K=key, _P=cls):
+        ptr = _P()
+        self.call_method(_K, output=ptr)
+        ptr.copy_from(other)
+
+    name = getattr(cast, '__name__', cast)
+
+    doc = 'Member variable' if name is None else 'Member of type `{}`'.format(name)
+    return property(fget=fget, fset=fset, doc=doc)
+
+################################################################################
+
+def class_properties(cls):
+    '''Find an already declared class and return its deduced properties'''
+    annotations = {}
+    props = {'__annotations__': annotations}
+
+    for c in reversed(cls.mro()[:-1]): # skip base class 'object'
+        props.update(c.__dict__)
+        annotations.update(getattr(c, '__annotations__', {}))
+
+    return props
+
+################################################################################
+
+def render_object(impl, decltype=None):
+    '''put in the module level functions and objects'''
+    if decltype is None:
+        return impl
+    elif not isinstance(decltype, type):
+        raise TypeError('expected placeholder %r to be a type (original=%r)' % (decltype, impl.type()))
+    else:
+        return impl.cast(decltype)
+
+################################################################################
+
+def make_callback(origin, types):
+    '''Make a callback that calls the wrapped one with arguments casted to the given types'''
+    if not callable(origin):
+        return origin
+    def callback(*args):
+        return origin(*(a.cast(t) for a, t in zip(args, types)))
+    return callback
+
+################################################################################
+
+def is_callable_type(t):
+    '''Detect whether a parameter to a C++ function is a callback'''
+    t = getattr(t, '__origin__', None)
+    return t is typing.Callable or t is collections.abc.Callable
+
+################################################################################
+
+# def _render_module(record, schema):
+    # config, out = Config(schema), schema.copy()
+    # log.info('setting type error')
+    # config.set_type_error(ConversionError)
+
+    # log.info('rendering classes and methods')
+    # out['types'] = {k: v for k, v in schema['contents'] if isinstance(v, tuple)}
+    # log.info(str(out['types']))
+
+    # for name, overloads in out['types'].items():
+    #     mod, cls = render_type(record, name, overloads)
+    #     record.modules.add(mod)
+    #     record.classes.add(cls)
+        # cls._metadata_ = {k: v or None for k, v in data}
+    # for index, _ in overloads:
+    #     config.set_type(index, cls, cls.Reference)
+
+    # render global objects (including free functions)
+    # out['objects'] = {k: render_object(record, k, v)
+    #     for k, v in schema['contents'] if not isinstance(v, tuple)}
+    # return out, config
+
+################################################################################
+
+# def monkey_patch(record, config):
+#     # Monkey-patch modules based on redefined types (takes care of simple cases at least)
+#     mod = importlib.import_module(record.module_name)
+
+#     for mod in tuple(record.modules):
+#         parts = mod.__name__.split('.')
+#         for i in range(1, len(parts)):
+#             try:
+#                 record.modules.add(importlib.import_module('.'.join(parts[:i])))
+#             except ImportError:
+#                 pass
+
+#     for mod in record.modules.union(record.classes):
+#         log.info('rendering monkey-patching namespace {}'.format(mod))
+#         for k in dir(mod):
+#             try:
+#                 setattr(mod, k, record.translations[getattr(mod, k)])
+#                 log.info('monkey-patching namespace {} attribute {}'.format(mod, k))
+#             except (TypeError, KeyError):
+#                 pass
+
+#     for k, v in record.translations.items():
+#         if isinstance(k, type) and isinstance(v, type):
+#             config.set_translation(k, v)
+
+#     for k in _declared_objects.difference(record.translations):
+#         log.warning('Placeholder {} was declared but not defined'.format(k))
+
+#     log.info('finished rendering schema into module %r', record.module_name)

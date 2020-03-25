@@ -61,14 +61,14 @@ struct Goo {
 
 void render(Schema &s, Type<Blah> t) {
     s.type(t, "submodule.Blah");
-    s.method(t, "new", rebind::construct<std::string>(t));
+    s.function("submodule.Blah.new", rebind::construct<std::string>(t));
     s.method(t, "dump", &Blah::dump);
 }
 
 void render(Schema &s, Type<Goo> t) {
     s.type(t, "Goo");
     s.render(Type<Blah>());
-    s.method(t, "new", [](double x) -> Goo {return x;});
+    s.function("Goo.new", [](double x) -> Goo {return x;});
     s.method(t, "add", [](Goo x) {
         x.x += 4;
         DUMP(x.x);
@@ -80,6 +80,7 @@ void render(Schema &s, Type<Goo> t) {
 
 // could make this return a schema
 void write_schema(rebind::Schema &s) {
+    s.object("global_value", 123);
     s.function("fun", [](int i, double d) {
         return i + d;
     });
