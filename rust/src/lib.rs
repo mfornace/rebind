@@ -1,7 +1,6 @@
 // use std::os::raw::{c_void, c_uchar, c_int};
 use std::collections::HashMap;
 use std::any::TypeId;
-use std::marker::PhantomData;
 
 /******************************************************************************/
 
@@ -94,12 +93,12 @@ impl Args {
 
 /******************************************************************************/
 
-type DropT = extern fn(*mut Void) -> ();
-type CopyT = extern fn(*const Void) -> *mut Void;
-type ToValueT = extern fn(&mut Value, *mut Void, Qual) -> Bool;
-type ToRefT = extern fn(&mut Ref, *mut Void, Qual) -> Bool;
-type AssignIfT = extern fn(*mut Void, &Ref) -> Bool;
-type FromRefT = extern fn(&mut Value, &Ref, &Scope) -> Bool;
+pub type DropT = extern fn(*mut Void) -> ();
+pub type CopyT = Option<extern fn(*const Void) -> *mut Void>;
+pub type ToValueT = Option<extern fn(&mut Value, *mut Void, Qual) -> Bool>;
+pub type ToRefT = Option<extern fn(&mut Ref, *mut Void, Qual) -> Bool>;
+pub type AssignIfT = Option<extern fn(*mut Void, &Ref) -> Bool>;
+pub type FromRefT = Option<extern fn(&mut Value, &Ref, &Scope) -> Bool>;
 
 // #[link(name = "librustrebind")]
 extern "C" {
@@ -216,11 +215,11 @@ pub fn create_table<T: 'static>(name: &str) -> Index {
         StrView::from(name),
         std::mem::transmute::<TypeId, *const Void>(TypeId::of::<T>()),
         drop::<T>,
-        copy::<T>,
-        to_value::<T>,
-        to_ref::<T>,
-        assign_if::<T>,
-        from_ref::<T>,
+        Some(copy::<T>),
+        Some(to_value::<T>),
+        Some(to_ref::<T>),
+        Some(assign_if::<T>),
+        Some(from_ref::<T>),
     ) }
 }
 

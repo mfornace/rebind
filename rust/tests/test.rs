@@ -82,6 +82,91 @@ pub fn test_fun() {
     lookup_solution();
 }
 
+use rebind::*;
+
+pub struct Type<T> {
+    marker: std::marker::PhantomData::<T>
+}
+
+impl<T> Type::<T> {
+    fn new() -> Type::<T> {
+        Type::<T>{ marker: std::marker::PhantomData }
+    }
+}
+
+/******************************************************************************/
+
+trait CopyC {
+    fn copy_fn(&self) -> CopyT;
+}
+
+trait NoCopyC {
+    fn copy_fn(&self) -> CopyT;
+}
+
+/******************************************************************************/
+
+trait ToValueC {
+    fn to_value_fn(&self) -> ToValueT;
+}
+
+trait NoToValueC {
+    fn to_value_fn(&self) -> ToValueT;
+}
+
+/******************************************************************************/
+
+trait ToRefC {
+    fn to_ref_fn(&self) -> ToRefT;
+}
+
+trait NoToRefC {
+    fn to_ref_fn(&self) -> ToRefT; // { std::ptr::null() as ToRefT }
+}
+
+/******************************************************************************/
+
+trait AssignIfC {
+    fn work(&self) -> AssignIfT;
+    fn assign_if_fn(&self) -> AssignIfT { self.work() }
+}
+
+trait NoAssignIfC {
+    fn assign_if_fn(&self) -> AssignIfT;
+}
+
+/******************************************************************************/
+
+// extern "C" fn no_copy<T>(s: *const Void) -> *mut Void {
+//     println!("no_copy {}", std::any::type_name::<T>());
+//     std::ptr::null_mut()
+// }
+
+extern "C" fn yes_copy<T: Clone>(s: *const Void) -> *mut Void {
+    println!("yes_copy {}", std::any::type_name::<T>());
+    let copy = unsafe { (*(s as *const T)).clone() };
+    let x = Box::<T>::new(copy);
+    Box::into_raw(x) as *mut Void
+}
+
+impl<T> NoCopyC for &Type::<T> {
+    fn copy_fn(&self) -> CopyT { None }
+}
+
+impl<T: Clone> CopyC for Type::<T> {
+    fn copy_fn(&self) -> CopyT { Some(yes_copy::<T>) }
+}
+
+/******************************************************************************/
+
+struct Blah {}
+
+#[test]
+pub fn test_fun3() {
+    let t = Type::<i32>::new();
+    // let blah: () = (&t).copyc();
+}
+
 /******************************************************************************/
 
 pub fn foo1() {
