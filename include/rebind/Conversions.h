@@ -112,43 +112,56 @@ using response_method = typename ResponseMethod<T>::type;
 /******************************************************************************/
 
 template <class T>
-bool default_from_ref(Value &v, Ref const &p, Scope &s) {
-    if (auto o = FromRef<T>()(p, s)) return v.place<T>(std::move(*o)), true;
+bool default_from_ref(Value &v, Ref const &p, Scope &s) noexcept {
+    try {
+        if (auto o = FromRef<T>()(p, s)) return v.place<T>(std::move(*o)), true;
+    } catch (...) {}
+#warning "from_ref exception not implemented"
     return false;
 }
 
 /******************************************************************************/
 
 template <class T>
-bool default_to_value(Value &v, void *p, Qualifier const q) {
+bool default_to_value(Value &v, void *p, Qualifier const q) noexcept {
     assert_usable<T>();
-    if (q == Lvalue) {
-        return ToValue<T>()(v, *static_cast<T *>(p));
-    } else if (q == Rvalue) {
-        return ToValue<T>()(v, std::move(*static_cast<T *>(p)));
-    } else {
-        return ToValue<T>()(v, *static_cast<T const *>(p));
+    try {
+        if (q == Lvalue) {
+            return ToValue<T>()(v, *static_cast<T *>(p));
+        } else if (q == Rvalue) {
+            return ToValue<T>()(v, std::move(*static_cast<T *>(p)));
+        } else {
+            return ToValue<T>()(v, *static_cast<T const *>(p));
+        }
+    } catch (...) {
+#warning "to_value exception not implemented"
+        return false;
     }
 }
 
 /******************************************************************************/
 
 template <class T>
-bool default_to_ref(Ref &v, void *p, Qualifier const q) {
+bool default_to_ref(Ref &v, void *p, Qualifier const q) noexcept {
     assert_usable<T>();
-    if (q == Lvalue) {
-        return ToRef<T>()(v, *static_cast<T *>(p));
-    } else if (q == Rvalue) {
-        return ToRef<T>()(v, std::move(*static_cast<T *>(p)));
-    } else {
-        return ToRef<T>()(v, *static_cast<T const *>(p));
+    try {
+        if (q == Lvalue) {
+            return ToRef<T>()(v, *static_cast<T *>(p));
+        } else if (q == Rvalue) {
+            return ToRef<T>()(v, std::move(*static_cast<T *>(p)));
+        } else {
+            return ToRef<T>()(v, *static_cast<T const *>(p));
+        }
+    } catch (...) {
+#warning "exception not implemented"
+        return false;
     }
 }
 
 /******************************************************************************/
 
 template <class T>
-bool default_assign_if(void *ptr, Ref const &other) {
+bool default_assign_if(void *ptr, Ref const &other) noexcept {
     assert_usable<T>();
     DUMP("assign_if: ", typeid(T).name());
     auto &self = *static_cast<T *>(ptr);
@@ -164,6 +177,7 @@ bool default_assign_if(void *ptr, Ref const &other) {
             return true;
         }
     }
+#warning "exception not implemented"
     if (auto p = other.request<T>()) {
         DUMP("assign_if: T succeeded, type=", typeid(*p).name());
         self = std::move(*p);
@@ -183,7 +197,7 @@ std::remove_reference_t<T> * request(Index i, void *p, Scope &s, Type<T>, Qualif
 
     if (!p) return nullptr;
 
-    DUMP("raw::request reference ", fetch<U>()->name(qualifier_of<T>), " from ", i->name(), " ", QualifierSuffixes[q]);
+    DUMP("raw::request reference ", fetch<U>()->name(), qualifier_of<T>, " from ", i->name(), " ", QualifierSuffixes[q]);
     if (compatible_qualifier(q, qualifier_of<T>)) {
         if (auto o = target<U>(i, p)) return o;
         if (i->has_base(fetch<U>())) return static_cast<std::remove_reference_t<T> *>(p);

@@ -90,10 +90,7 @@ struct Ref : protected rebind_ref {
 
     /**************************************************************************************/
 
-    std::string_view name(bool qualified=true) const noexcept {
-        if (ind) return qualified ? ind->name(qualifier()) : ind->name();
-        else return "null";
-    }
+    std::string_view name() const noexcept {return raw::name(ind);}
 
     /**************************************************************************************/
 

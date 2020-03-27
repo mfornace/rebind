@@ -42,7 +42,6 @@ struct Value : protected rebind_value {
     }
 
     void release() noexcept {ind = nullptr; ptr = nullptr;}
-    bool destroy_if() noexcept {return ptr ? ind->destroy(ptr), true: false;}
 
     Value(Value &&v) noexcept : rebind_value(static_cast<rebind_value &&>(v)) {v.release();}
 
@@ -52,9 +51,9 @@ struct Value : protected rebind_value {
         return *this;
     }
 
-    ~Value() {destroy_if();}
+    ~Value() {if (ptr) ind->drop(ptr);}
 
-    void reset() {destroy_if(); ind = nullptr; ptr = nullptr;}
+    void reset() {if (ptr) {ind->drop(ptr); release();}}
 
     /**************************************************************************/
 
@@ -95,7 +94,7 @@ struct Value : protected rebind_value {
 
     template <class T, class ...Args>
     T & place(Args &&...args) {
-        destroy_if();
+        if (ptr) ind->drop(ptr);
         T *out = raw::alloc<T>(static_cast<Args &&>(args)...);
         ptr = out;
         ind = fetch<T>();

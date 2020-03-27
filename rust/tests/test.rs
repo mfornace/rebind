@@ -41,6 +41,40 @@ pub fn lookup_solution() -> f64 {
 
 /******************************************************************************/
 
+#[derive(Debug)]
+struct A {
+    x: f64
+}
+
+#[derive(Debug)]
+struct B<'a> {
+    b: &'a mut f64
+}
+
+impl A {
+    fn get_x(&mut self) -> &mut f64 { &mut self.x }
+}
+
+fn mutate(f: &mut f64) {
+    *f = 2.0;
+}
+
+fn mutate2(f: &mut f64, g: &mut f64) {
+    *f = 2.0;
+}
+
+#[test]
+pub fn test_ref() {
+    let mut a = A{x: 1.0};
+    a.x = 2.0;
+    println!("{:?}", a);
+    *a.get_x() = 3.0;
+    println!("{:?}", a);
+    // mutate2(&mut a.x, &mut a.x);
+}
+
+/******************************************************************************/
+
 #[test]
 pub fn test_fun() {
     initialize();

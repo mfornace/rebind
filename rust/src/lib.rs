@@ -94,26 +94,25 @@ impl Args {
 
 /******************************************************************************/
 
-type DestroyT = extern fn(*mut Void) -> ();
+type DropT = extern fn(*mut Void) -> ();
 type CopyT = extern fn(*const Void) -> *mut Void;
 type ToValueT = extern fn(&mut Value, *mut Void, Qual) -> Bool;
 type ToRefT = extern fn(&mut Ref, *mut Void, Qual) -> Bool;
-type AssignIfT = extern fn(*mut Void, &Ref) -> ();
-type FromRefT = extern fn(&Ref, &Scope) -> Value;
+type AssignIfT = extern fn(*mut Void, &Ref) -> Bool;
+type FromRefT = extern fn(&mut Value, &Ref, &Scope) -> Bool;
 
 // #[link(name = "librustrebind")]
 extern "C" {
-    pub fn rebind_table_insert() -> Index;
-
-    pub fn rebind_table_set(
-        index: Index,
-        destroy: DestroyT,
+    pub fn rebind_table_emplace(
+        name: StrView,
+        data: *const Void,
+        drop: DropT,
         copy: CopyT,
         to_value: ToValueT,
         to_ref: ToRefT,
         assign_if: AssignIfT,
         from_ref: FromRefT
-    );
+    ) -> Index;
 
     // pub fn rebind_table_add_method(index: Index, name: *const Char, method: &CFunction);
 
@@ -125,7 +124,7 @@ extern "C" {
 
     /**************************************************************************/
 
-    pub fn rebind_value_destruct(v: *mut Value);
+    pub fn rebind_value_drop(v: *mut Value);
 
     pub fn rebind_value_copy(v: *mut Value, o: *const Value) -> Bool;
 
@@ -172,11 +171,11 @@ pub trait FromValue {
 }
 
 impl FromValue for i32 {
-    fn from_matching_value(v: Value) -> Self { v.get::<i32>() }
+    fn from_matching_value(v: Value) -> Self { v.target::<i32>().unwrap() }
 }
 
 impl FromValue for f64 {
-    fn from_matching_value(v: Value) -> Self { v.get::<f64>() }
+    fn from_matching_value(v: Value) -> Self { v.target::<f64>().unwrap() }
 }
 
 // struct Handle<'a> {
@@ -184,15 +183,51 @@ impl FromValue for f64 {
 //     marker: PhantomData<&'a ()>,
 // }
 
-pub fn create_table<T>() -> Index {
-    unsafe{ rebind_table_insert() }
+/******************************************************************************/
+
+extern "C" fn drop<T>(s: *mut Void) {
+    unsafe {Box::<T>::from_raw(s as *mut T);}
 }
 
+extern "C" fn copy<T>(s: *const Void) -> *mut Void {
+    std::ptr::null_mut()
+}
+
+extern "C" fn to_value<T>(v: &mut Value, s: *mut Void, q: u8) -> Bool {
+    false as Bool
+}
+
+extern "C" fn to_ref<T>(r: &mut Ref, s: *mut Void, q: u8) -> Bool {
+    false as Bool
+}
+
+extern "C" fn assign_if<T>(s: *mut Void, r: &Ref) -> Bool {
+    false as Bool
+}
+
+extern "C" fn from_ref<T>(v: &mut Value, r: &Ref, s: &Scope) -> Bool {
+    false as Bool
+}
+
+/******************************************************************************/
+
+pub fn create_table<T: 'static>(name: &str) -> Index {
+    unsafe{ rebind_table_emplace(
+        StrView::from(name),
+        std::mem::transmute::<TypeId, *const Void>(TypeId::of::<T>()),
+        drop::<T>,
+        copy::<T>,
+        to_value::<T>,
+        to_ref::<T>,
+        assign_if::<T>,
+        from_ref::<T>,
+    ) }
+}
 
 pub fn fetch<T: 'static>() -> Index {
     let mut tables: HashMap<TypeId, Index> = HashMap::new();
 
-    *tables.entry(TypeId::of::<T>()).or_insert_with(|| create_table::<T>())
+    *tables.entry(TypeId::of::<T>()).or_insert_with(|| create_table::<T>("dummy"))
 }
 
 /******************************************************************************/
@@ -235,12 +270,13 @@ impl Value {
         unsafe {rebind_value_method_to_value(self, StrView::from(name), Args::new())}
     }
 
-    pub fn holds<T: 'static>(&self) -> bool {
+    pub fn is<T: 'static>(&self) -> bool {
         self.ind == fetch::<T>()
     }
 
-    pub fn get<T>(self) -> T {
-        panic!("get not implemented")
+    pub fn target<T: 'static>(self) -> Option<T> {
+        if self.is::<T>() { unsafe{ Some(*Box::from_raw(self.ptr as *mut T)) } }
+        else { None }
     }
 
     pub fn call<T: IntoArguments>(&self, args: T) -> Value {
@@ -258,11 +294,10 @@ impl Value {
 
     pub fn cast<T: 'static + FromValue>(self) -> T {
         // Option::<T>::new()
-        if self.holds::<T>() {
-            return self.get::<T>()
+        match self.target::<T>() {
+            None => panic!("bad"),
+            Some(t) => t
         }
-
-        panic!("bad");
     }
 
     pub fn cast_ref<'a, T: FromValue>(&'a self) -> Option<&'a T> {
@@ -275,7 +310,7 @@ impl Value {
 impl Drop for Value {
     fn drop(&mut self) {
         println!("dropping value");
-        unsafe{rebind_value_destruct(self);}
+        unsafe{rebind_value_drop(self);}
         println!("dropped value");
     }
 }

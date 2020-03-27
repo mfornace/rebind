@@ -28,16 +28,15 @@ struct rebind_args {
 
 /******************************************************************************/
 
-rebind_table* rebind_table_emplace(rebind_index);
-
-void rebind_table_set(rebind_table*,
-    rebind::CTable::destroy_t,
+rebind_index rebind_table_emplace(
+    rebind_str,
+    void const *,
+    rebind::CTable::drop_t,
     rebind::CTable::copy_t,
     rebind::CTable::to_value_t,
     rebind::CTable::to_ref_t,
     rebind::CTable::assign_if_t,
-    rebind::CTable::from_ref_t,
-    char const *
+    rebind::CTable::from_ref_t
 );
 
 rebind_bool rebind_init() noexcept;
@@ -65,7 +64,7 @@ static_assert(!std::is_trivial_v<rebind::Ref>);
 
 
 // Destructor
-void rebind_ref_destruct(rebind_ref* x) noexcept; // noexcept
+void rebind_ref_drop(rebind_ref* x) noexcept; // noexcept
 
 // Copy constructor
 rebind_bool rebind_value_copy(rebind_value *v, rebind_value const *o) noexcept; // noexcept
@@ -78,7 +77,7 @@ rebind_ref* rebind_ref_method(rebind_ref *v, char const *c, rebind_ref *, int n)
 
 /******************************************************************************/
 
-void rebind_value_destruct(rebind_value *x) noexcept;
+void rebind_value_drop(rebind_value *x) noexcept;
 
 // Default constructor
 // rebind_value* REBINDM(Value, new)();

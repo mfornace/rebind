@@ -1,10 +1,17 @@
 #include <rebind/Schema.h>
 
 #include <rebind-rust/Module.h>
+#include <deque>
 
 /******************************************************************************/
 
-void rebind_value_destruct(rebind_value *x) noexcept {
+namespace rebind {
+    std::deque<Table> rust_tables;
+}
+
+/******************************************************************************/
+
+void rebind_value_drop(rebind_value *x) noexcept {
     using namespace rebind;
     reinterpret_cast<Value *>(x)->~Value();
 }
@@ -69,8 +76,26 @@ rebind_value const * rebind_lookup(rebind_str s) noexcept {
     }
 }
 
-rebind_index rebind_table_insert() noexcept {
-    return {};
+rebind_index rebind_table_emplace(
+    rebind_str name,
+    void const *info,
+    rebind::CTable::drop_t drop,
+    rebind::CTable::copy_t copy,
+    rebind::CTable::to_value_t to_value,
+    rebind::CTable::to_ref_t to_ref,
+    rebind::CTable::assign_if_t assign_if,
+    rebind::CTable::from_ref_t from_ref) {
+
+    auto &t = rebind::rust_tables.emplace_back();
+    t.c.drop = drop;
+    t.c.copy = copy;
+    t.c.to_value = to_value;
+    t.c.to_ref = to_ref;
+    t.c.assign_if = assign_if;
+    t.c.from_ref = from_ref;
+    t.c.info = info;
+    t.m_name = as_view(name);
+    return &t;
 }
 
 rebind_bool rebind_value_call_value(rebind_value *out, rebind_value const *v, rebind_args a) noexcept {
