@@ -1,4 +1,5 @@
 #pragma once
+#include "API.h"
 #include <type_traits>
 #include <utility>
 #include <typeindex>
@@ -38,9 +39,6 @@ inline constexpr bool compatible_qualifier(Qualifier from, Qualifier to) {
 }
 
 /******************************************************************************************/
-
-struct Table;
-using Index = Table const *;
 
 template <class T>
 Index fetch() noexcept;
@@ -84,11 +82,7 @@ struct IndexedType {
 
 /******************************************************************************************/
 
-using Demangler = std::function<std::string(char const *)>;
-
 std::string demangle(char const *);
-
-void set_demangler(Demangler fun) noexcept;
 
 /******************************************************************************************/
 

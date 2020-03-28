@@ -77,7 +77,7 @@ struct ToRef {
     static_assert(std::is_same_v<unqualified<T>, T>);
 
     bool operator()(Ref const &p, T const &) const {
-        DUMP("no conversion found from source ", fetch<T>()->name(), " to reference of type ", p.name());
+        DUMP("no conversion found from source ", raw::name(fetch<T>()), " to reference of type ", p.name());
         return false;
     }
 };
@@ -111,83 +111,6 @@ using response_method = typename ResponseMethod<T>::type;
 
 /******************************************************************************/
 
-template <class T>
-bool default_from_ref(Value &v, Ref const &p, Scope &s) noexcept {
-    try {
-        if (auto o = FromRef<T>()(p, s)) return v.place<T>(std::move(*o)), true;
-    } catch (...) {}
-#warning "from_ref exception not implemented"
-    return false;
-}
-
-/******************************************************************************/
-
-template <class T>
-bool default_to_value(Value &v, void *p, Qualifier const q) noexcept {
-    assert_usable<T>();
-    try {
-        if (q == Lvalue) {
-            return ToValue<T>()(v, *static_cast<T *>(p));
-        } else if (q == Rvalue) {
-            return ToValue<T>()(v, std::move(*static_cast<T *>(p)));
-        } else {
-            return ToValue<T>()(v, *static_cast<T const *>(p));
-        }
-    } catch (...) {
-#warning "to_value exception not implemented"
-        return false;
-    }
-}
-
-/******************************************************************************/
-
-template <class T>
-bool default_to_ref(Ref &v, void *p, Qualifier const q) noexcept {
-    assert_usable<T>();
-    try {
-        if (q == Lvalue) {
-            return ToRef<T>()(v, *static_cast<T *>(p));
-        } else if (q == Rvalue) {
-            return ToRef<T>()(v, std::move(*static_cast<T *>(p)));
-        } else {
-            return ToRef<T>()(v, *static_cast<T const *>(p));
-        }
-    } catch (...) {
-#warning "exception not implemented"
-        return false;
-    }
-}
-
-/******************************************************************************/
-
-template <class T>
-bool default_assign_if(void *ptr, Ref const &other) noexcept {
-    assert_usable<T>();
-    DUMP("assign_if: ", typeid(T).name());
-    auto &self = *static_cast<T *>(ptr);
-    if (auto p = other.request<T &&>()) {
-        DUMP("assign_if: got T &&");
-        self = std::move(*p);
-        return true;
-    }
-    if constexpr (std::is_copy_assignable_v<T>) {
-        if (auto p = other.request<T const &>()) {
-            DUMP("assign_if: got T const &");
-            self = *p;
-            return true;
-        }
-    }
-#warning "exception not implemented"
-    if (auto p = other.request<T>()) {
-        DUMP("assign_if: T succeeded, type=", typeid(*p).name());
-        self = std::move(*p);
-        return true;
-    }
-    return false;
-}
-
-/******************************************************************************/
-
 namespace raw {
 
 template <class T, std::enable_if_t<std::is_reference_v<T>, int>>
@@ -197,14 +120,14 @@ std::remove_reference_t<T> * request(Index i, void *p, Scope &s, Type<T>, Qualif
 
     if (!p) return nullptr;
 
-    DUMP("raw::request reference ", fetch<U>()->name(), qualifier_of<T>, " from ", i->name(), " ", QualifierSuffixes[q]);
+    DUMP("raw::request reference ", raw::name(fetch<U>()), qualifier_of<T>, " from ", raw::name(i), " ", QualifierSuffixes[q]);
     if (compatible_qualifier(q, qualifier_of<T>)) {
         if (auto o = target<U>(i, p)) return o;
-        if (i->has_base(fetch<U>())) return static_cast<std::remove_reference_t<T> *>(p);
+        // if (i->has_base(fetch<U>())) return static_cast<std::remove_reference_t<T> *>(p);
     }
 
     Ref out(fetch<U>(), nullptr, q);
-    i->c.to_ref(out, p, q);
+    raw::request_to(out, i, p, q);
     return out.target<T>();
 }
 
@@ -233,7 +156,7 @@ std::optional<T> request(Index i, void *p, Scope &s, Type<T>, Qualifier q) {
     Value v;
     v.as_raw().ind = fetch<T>();
     DUMP("calling c.to_value ", v.name());
-    if (i->c.to_value(v, p, q)) {
+    if (raw::request_to(v, i, p, q)) {
         if (auto o = v.target<T>()) out.emplace(std::move(*o));
         DUMP("c.to_value succeeded");
         return out;
@@ -247,8 +170,13 @@ std::optional<T> request(Index i, void *p, Scope &s, Type<T>, Qualifier q) {
 
 /******************************************************************************/
 
-inline bool request_to(Index i, void *p, Value &v, Qualifier q) {
-    if (p) return i->c.to_value(v, p, q);
+inline bool request_to(Ref &r, Index i, void *p, Qualifier q) noexcept {
+    if (p) return i(tag::request_to_ref, &r, p, {});
+    return false;
+}
+
+inline bool request_to(Value &v, Index i, void *p, Qualifier q) noexcept {
+    if (p) return i(tag::request_to_value, &v, p, {});
     return false;
 }
 
@@ -256,11 +184,11 @@ inline bool request_to(Index i, void *p, Value &v, Qualifier q) {
 
 // using call_t = bool(*)(void const *, void *, Caller &&, Arguments, Flag);
 inline bool call_to(Value &v, Index i, void const *p, Caller &&c, Arguments args) {
-    return p && i->c.call && i->c.call(p, &v, std::move(c), args, Flag::value);
+    return p && i(tag::call_to_value, &v, const_cast<void *>(p), args);//, std::move(c), args);
 }
 
-inline bool call_to(Ref &v, Index i, void const *p, Caller &&c, Arguments args) {
-    return p && i->c.call && i->c.call(p, &v, std::move(c), args, Flag::ref);
+inline bool call_to(Ref &r, Index i, void const *p, Caller &&c, Arguments args) {
+    return p && i(tag::call_to_ref, &r, const_cast<void *>(p), args);//, std::move(c), args);
 }
 
 template <class ...Args>

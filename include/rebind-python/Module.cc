@@ -53,9 +53,10 @@ Object tables_to_object(Vector<Index> const &v) {
     return map_as_tuple(v, [](auto const &t) {
         return tuple_from(
             as_object(t),
-            map_as_tuple(t->properties, [](auto const &x) {
-                return tuple_from(as_object(x.first), value_to_object(Value(x.second)));
-            })
+            as_object(t)
+            // map_as_tuple(t->properties, [](auto const &x) {
+            //     return tuple_from(as_object(x.first), value_to_object(Value(x.second)));
+            // })
         );
     });
 }

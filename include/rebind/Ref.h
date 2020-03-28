@@ -8,54 +8,52 @@ namespace rebind {
 
 struct Ref : protected rebind_ref {
 
-    constexpr Ref() noexcept : rebind_ref{nullptr, nullptr, 0} {}
+    constexpr Ref() noexcept : rebind_ref{nullptr, nullptr} {}
 
     constexpr Ref(std::nullptr_t) noexcept : Ref() {}
 
-    constexpr Ref(Index i, void *p, Qualifier q) noexcept
-        : rebind_ref{i, p, static_cast<unsigned char>(q)} {}
+    Ref(Index i, void *p, Qualifier q) noexcept
+        : rebind_ref{i, raw::make_ptr(p, q)} {}
 
     template <class T, std::enable_if_t<is_usable<T>, int> = 0>
-    explicit constexpr Ref(T &t) noexcept
-        : rebind_ref{fetch<T>(), std::addressof(t), Lvalue} {}
+    explicit Ref(T &t) noexcept
+        : rebind_ref{fetch<T>(), raw::make_ptr(std::addressof(t), Lvalue)} {}
 
     template <class T, std::enable_if_t<is_usable<T>, int> = 0>
-    explicit constexpr Ref(T const &t) noexcept
-        : rebind_ref{fetch<T>(), std::addressof(const_cast<T &>(t)), Const} {}
+    explicit Ref(T const &t) noexcept
+        : rebind_ref{fetch<T>(), raw::make_ptr(std::addressof(const_cast<T &>(t)), Const)} {}
 
     template <class T, std::enable_if_t<is_usable<T>, int> = 0>
-    explicit constexpr Ref(T &&t) noexcept
-        : rebind_ref{fetch<T>(), std::addressof(t), Rvalue} {}
+    explicit Ref(T &&t) noexcept
+        : rebind_ref{fetch<T>(), raw::make_ptr(std::addressof(t), Rvalue)} {}
 
-    explicit constexpr Ref(Value const &);
-    explicit constexpr Ref(Value &);
-    explicit constexpr Ref(Value &&);
+    explicit Ref(Value const &);
+    explicit Ref(Value &);
+    explicit Ref(Value &&);
 
-    Qualifier qualifier() const noexcept {return static_cast<Qualifier>(qual);}
+    Qualifier qualifier() const noexcept {return raw::qualifier(tagged_ptr);}
 
     /**********************************************************************************/
-
-    // Index index() const noexcept {return ind ? ind->index : Index();}
 
     rebind_ref const &as_raw() const noexcept {return static_cast<rebind_ref const &>(*this);}
     rebind_ref &as_raw() noexcept {return static_cast<rebind_ref &>(*this);}
 
-    constexpr bool has_value() const noexcept {return ptr;}
+    constexpr bool has_value() const noexcept {return tagged_ptr;}
 
-    explicit constexpr operator bool() const noexcept {return ptr;}
+    explicit constexpr operator bool() const noexcept {return has_value();}
 
     constexpr Index index() const noexcept {return ind;}
 
-    constexpr void * address() const noexcept {return ptr;}
+    void * address() const noexcept {return raw::address(tagged_ptr);}
 
-    void reset() {ind = nullptr; ptr = nullptr; qual = Const;}
+    void reset() {ind = nullptr; tagged_ptr = nullptr;}
 
     /**********************************************************************************/
 
     template <class T>
     bool set_if(T &&t) {
-        if (qualifier_of<T &&> == qual && raw::matches<unqualified<T>>(ind)) {
-            ptr = const_cast<T *>(static_cast<T const *>(std::addressof(t)));
+        if (qualifier_of<T &&> == qualifier() && raw::matches<unqualified<T>>(ind)) {
+            tagged_ptr = make_ptr(const_cast<T *>(static_cast<T const *>(std::addressof(t))), qualifier());
             return true;
         } else return false;
     }
@@ -64,13 +62,13 @@ struct Ref : protected rebind_ref {
 
     template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
     std::remove_reference_t<T> *target() const {
-        return compatible_qualifier(qualifier(), qualifier_of<T>) ? raw::target<unqualified<T>>(ind, ptr) : nullptr;
+        return compatible_qualifier(qualifier(), qualifier_of<T>) ? raw::target<unqualified<T>>(ind, address()) : nullptr;
     }
 
     /**************************************************************************************/
 
     template <class T>
-    auto request(Scope &s, Type<T> t={}) const {return raw::request(ind, ptr, s, t, qualifier());}
+    auto request(Scope &s, Type<T> t={}) const {return raw::request(ind, address(), s, t, qualifier());}
 
     template <class T>
     auto request(Type<T> t={}) const {Scope s; return request(s, t);}
@@ -86,7 +84,7 @@ struct Ref : protected rebind_ref {
     template <class T>
     T cast(Type<T> t={}) const {Scope s; return cast(s, t);}
 
-    bool assign_if(Ref const &p) const {return qual != Const && raw::assign_if(ind, ptr, p);}
+    bool assign_if(Ref const &p) const {return qualifier() != Const && raw::assign_if(ind, address(), p);}
 
     /**************************************************************************************/
 
@@ -105,9 +103,9 @@ struct Ref : protected rebind_ref {
 
     /**************************************************************************************/
 
-    bool request_to(Value &v) const & {return raw::request_to(ind, ptr, v, qualifier());}
-    bool request_to(Value &v) & {return raw::request_to(ind, ptr, v, qualifier());}
-    bool request_to(Value &v) && {return raw::request_to(ind, ptr, v, qualifier());}
+    bool request_to(Value &v) const & {return raw::request_to(v, ind, address(), qualifier());}
+    bool request_to(Value &v) & {return raw::request_to(v, ind, address(), qualifier());}
+    bool request_to(Value &v) && {return raw::request_to(v, ind, address(), qualifier());}
 
     /**************************************************************************************/
 
@@ -139,21 +137,18 @@ struct is_like_arguments<T, std::enable_if_t<
     std::is_convertible_v<decltype(std::data(std::declval<T &>())), Ref *>
 >> : std::true_type {};
 
-struct Arguments {
-    Ref *ptr;
-    std::size_t count;
-
-    constexpr Arguments() : ptr(nullptr), count(0) {}
-    constexpr Arguments(Ref *r, std::size_t c) : ptr(r), count(c) {}
+struct Arguments : rebind_args {
+    constexpr Arguments() : rebind_args{nullptr, 0} {}
+    constexpr Arguments(Ref *r, std::size_t c) : rebind_args{static_cast<rebind_ref *>(static_cast<void *>(r)), c} {}
 
     template <class V, std::enable_if_t<is_like_arguments<V>::value, int> = 0>
-    constexpr Arguments(V &&v) : ptr(std::data(v)), count(std::size(v)) {}
+    constexpr Arguments(V &&v) : rebind_args{static_cast<rebind_ref *>(static_cast<void *>(std::data(v))), std::size(v)} {}
 
-    auto begin() const {return ptr;}
-    auto end() const {return ptr + count;}
-    auto size() const {return count;}
+    auto begin() const noexcept {return static_cast<Ref *>(static_cast<void *>(ptr));}
+    auto size() const noexcept {return len;}
+    auto end() const noexcept {return begin() + len;}
 
-    Ref &operator[](std::size_t i) const {return ptr[i];}
+    Ref &operator[](std::size_t i) const noexcept {return reinterpret_cast<Ref &>(begin()[i]);}
 };
 
 /******************************************************************************************/

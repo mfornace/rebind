@@ -1,48 +1,8 @@
-#ifndef REBIND_RAW_H
-#define REBIND_RAW_H
-
-#ifdef __cplusplus
-
-#include "Table.h"
-
-using rebind_table = rebind::Table;
-
-using rebind_index = rebind::Index;
-
-extern "C" {
-
-#else
-
-typedef struct rebind_table rebind_table;
-
-typedef rebind_table const * rebind_index;
-
-// struct rebind_index {
-//     std::aligned_storage_t<sizeof(rebind::Index), alignof(rebind::Index)> blah;
-// };
-
-
-#endif
-
-/******************************************************************************************/
-
-typedef struct rebind_ref {
-    rebind_index ind;
-    void *ptr;
-    unsigned char qual;
-} rebind_ref;
-
-/******************************************************************************************/
-
-typedef struct rebind_value {
-    rebind_index ind;
-    void *ptr;
-} rebind_value;
-
-/******************************************************************************************/
-
-#ifdef __cplusplus
-}
+#pragma once
+#include "API.h"
+#include "Type.h"
+#include <optional>
+// #include "Scope.h"
 
 /******************************************************************************************/
 
@@ -55,8 +15,61 @@ typedef struct rebind_value {
 
 //     template <class T>
 //     T * reset(T *t) noexcept {ptr = t; ind = fetch<T>(); return t;}
+namespace rebind {
 
-namespace rebind::raw {
+class Ref;
+class Value;
+class Scope;
+class Caller;
+class Arguments;
+
+template <class T>
+static constexpr bool is_usable = true
+    && !std::is_reference_v<T>
+    // && !std::is_function_v<T>
+    // && !std::is_void_v<T>
+    && !std::is_const_v<T>
+    && !std::is_volatile_v<T>
+    && !std::is_void_v<T>
+    && std::is_nothrow_move_constructible_v<T>
+    && !std::is_same_v<T, Ref>
+    && !std::is_same_v<T, Value>
+    // && !std::is_null_pointer_v<T>
+    && !is_type_t<T>::value;
+
+/******************************************************************************/
+
+template <class T>
+constexpr void assert_usable() {
+    static_assert(!std::is_reference_v<T>);
+    static_assert(!std::is_const_v<T>);
+    static_assert(!std::is_volatile_v<T>);
+    static_assert(!std::is_void_v<T>);
+    static_assert(std::is_nothrow_move_constructible_v<T>);
+    static_assert(!std::is_same_v<T, Ref>);
+    static_assert(!std::is_same_v<T, Value>);
+    // static_assert(!std::is_null_pointer_v<T>);
+    static_assert(!is_type_t<T>::value);
+}
+
+/**************************************************************************************/
+
+namespace raw {
+
+using Ptr = rebind_ptr;
+
+/**************************************************************************************/
+
+constexpr Ptr make_ptr(void *v, Qualifier q) {return v;}
+
+inline Qualifier qualifier(Ptr p) noexcept {
+    return static_cast<Qualifier>(
+        reinterpret_cast<std::uintptr_t>(p) & !static_cast<std::uintptr_t>(3));
+}
+
+inline void * address(Ptr p) noexcept {
+    return reinterpret_cast<void *>(reinterpret_cast<std::uintptr_t>(p) & static_cast<std::uintptr_t>(3));
+}
 
 /**************************************************************************************/
 
@@ -72,8 +85,11 @@ T *target(Index i, void *p) noexcept {
 }
 
 inline std::string_view name(Index i) noexcept {
-    if (i) return i->name();
-    else return "null";
+    if (i) {
+        std::string_view out;
+        if (i(tag::name, &out, nullptr, {})) return out;
+    }
+    return "null";
 }
 
 /**************************************************************************************/
@@ -90,9 +106,40 @@ T * alloc(Args &&...args) {
 
 /**************************************************************************************/
 
-inline bool assign_if(Index i, void *p, Ref const &r) {
-    return p && i->c.assign_if(p, r);
+inline bool copy(rebind_value &v, Index i, void const *p) noexcept {
+    if (i) {
+        if (i(tag::copy, &v, const_cast<void *>(p), {})) {
+            v.ind = i;
+            return true;
+        } else {
+            v.ptr = nullptr;
+            v.ind = nullptr;
+            return false;
+        }
+    } else {
+        v.ptr = nullptr;
+        v.ind = nullptr;
+        return true;
+    }
 }
+
+/**************************************************************************************/
+
+inline bool drop(rebind_value &v) noexcept {
+    return v.ind(tag::drop, &v, nullptr, {});
+}
+
+/**************************************************************************************/
+
+inline bool assign_if(Index i, void *p, Ref const &r) noexcept {
+    return p && i(tag::assign_to, p, const_cast<Ref *>(&r), {});
+}
+
+bool request_to(Value &, Index t, void *p, Qualifier q) noexcept;
+
+/**************************************************************************************/
+
+bool request_to(Ref &, Index t, void *p, Qualifier q) noexcept;
 
 /**************************************************************************************/
 
@@ -101,10 +148,6 @@ std::remove_reference_t<T> * request(Index i, void *p, Scope &s, Type<T>, Qualif
 
 template <class T, std::enable_if_t<!std::is_reference_v<T>, int> = 0>
 std::optional<T> request(Index i, void *p, Scope &s, Type<T>, Qualifier q);
-
-bool request_to(Index t, void *p, Value &, Qualifier q);
-
-bool request_to(Index t, void *p, Ref &, Qualifier q);
 
 /**************************************************************************************/
 
@@ -122,6 +165,4 @@ Ref call_ref(Index i, void const *p, Caller &&c, Args &&...args);
 
 }
 
-#endif
-
-#endif
+}

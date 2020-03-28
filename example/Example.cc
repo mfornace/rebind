@@ -59,24 +59,24 @@ struct Goo {
 
 /******************************************************************************/
 
-void render(Schema &s, Type<Blah> t) {
-    s.type(t, "submodule.Blah");
-    s.function("submodule.Blah.new", rebind::construct<std::string>(t));
-    s.method(t, "dump", &Blah::dump);
-}
+// void render(Schema &s, Type<Blah> t) {
+//     s.type(t, "submodule.Blah");
+//     s.function("submodule.Blah.new", rebind::construct<std::string>(t));
+//     s.method(t, "dump", &Blah::dump);
+// }
 
-void render(Schema &s, Type<Goo> t) {
-    s.type(t, "Goo");
-    s.render(Type<Blah>());
-    s.function("Goo.new", [](double x) -> Goo {return x;});
-    s.method(t, "add", [](Goo x) {
-        x.x += 4;
-        DUMP(x.x);
-        return x;
-    });
-    s.method(t, ".x", &Goo::x);
-    s.method(t, "{}", streamable(t));
-}
+// void render(Schema &s, Type<Goo> t) {
+//     s.type(t, "Goo");
+//     s.render(Type<Blah>());
+//     s.function("Goo.new", [](double x) -> Goo {return x;});
+//     s.method(t, "add", [](Goo x) {
+//         x.x += 4;
+//         DUMP(x.x);
+//         return x;
+//     });
+//     s.method(t, ".x", &Goo::x);
+//     s.method(t, "{}", streamable(t));
+// }
 
 // could make this return a schema
 void write_schema(rebind::Schema &s) {
@@ -109,14 +109,14 @@ void write_schema(rebind::Schema &s) {
     s.function("clref", [](double const &i) {});
     s.function("noref", [](double i) {});
     s.function("rref", [](double &&i) {});
-    s.render(Type<Goo>());
+    // s.render(Type<Goo>());
 
-    s.function("buffer", [](std::tuple<rebind::BinaryData, std::type_index, std::vector<std::size_t>> i) {
-        DUMP(std::get<0>(i).size());
-        DUMP(std::get<1>(i).name());
-        DUMP(std::get<2>(i).size());
-        for (auto &c : std::get<0>(i)) c += 4;
-    });
+    // s.function("buffer", [](std::tuple<rebind::BinaryData, std::type_index, std::vector<std::size_t>> i) {
+    //     DUMP(std::get<0>(i).size());
+    //     DUMP(std::get<1>(i).name());
+    //     DUMP(std::get<2>(i).size());
+    //     for (auto &c : std::get<0>(i)) c += 4;
+    // });
     s.function("vec1", [](std::vector<int> const &) {});
     s.function("vec2", [](std::vector<int> &) {});
     s.function("vec3", [](std::vector<int>) {});

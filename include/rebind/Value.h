@@ -15,6 +15,12 @@ Maybe<T> some(Arg &&t) {
 
 /******************************************************************************/
 
+// struct CopyError : std::runtime_error {
+//     using std::runtime_error::runtime_error;
+// };
+
+/******************************************************************************/
+
 struct Value : protected rebind_value {
 
     /**************************************************************************/
@@ -25,19 +31,20 @@ struct Value : protected rebind_value {
     Value(T &&t) noexcept(std::is_nothrow_move_constructible_v<unqualified<T>>)
         : rebind_value{fetch<unqualified<T>>(), raw::alloc<unqualified<T>>(static_cast<T &&>(t))} {}
 
-    template <class T, class ...Args>
+    template <class T, class ...Args, std::enable_if_t<is_usable<unqualified<T>>, int> = 0>
     Value(Type<T> t, Args &&...args)
         : rebind_value{fetch<T>(), raw::alloc<T>(static_cast<Args &&>(args)...)} {}
 
-    Value(Value const &v)
-        : rebind_value{v.ind, v.ptr ? v.ind->copy(v.ptr) : nullptr} {}
+    Value(Value const &v) {
+        if (!raw::copy(*this, v.ind, v.ptr)) throw std::runtime_error("no copy");
+    }
 
-    Value(Ref const &r)
-        : rebind_value{r.index(), r.address() ? r.index()->copy(r.address()) : nullptr} {}
+    Value(Ref const &r) {
+        if (!raw::copy(*this, r.index(), r.address())) throw std::runtime_error("no copy");
+    }
 
     Value &operator=(Value const &v) {
-        ind = v.ind;
-        ptr = v.ptr ? v.ind->copy(v.ptr) : nullptr;
+        if (!raw::copy(*this, v.ind, v.ptr)) throw std::runtime_error("no copy");
         return *this;
     }
 
@@ -51,26 +58,36 @@ struct Value : protected rebind_value {
         return *this;
     }
 
-    ~Value() {if (ptr) ind->drop(ptr);}
+    ~Value() {if (ptr) raw::drop(*this);}
 
-    void reset() {if (ptr) {ind->drop(ptr); release();}}
+    void reset() {if (ptr) {raw::drop(*this); release();}}
 
     /**************************************************************************/
 
     // Index index() const noexcept {return ind ? ind->index : Index();}
 
-    std::string_view name() const noexcept {return raw::name(ind);}
+    std::string_view name() const noexcept {
+        if (ptr) return raw::name(ind);
+        return "null";
+    }
 
     rebind_value const &as_raw() const noexcept {return static_cast<rebind_value const &>(*this);}
     rebind_value &as_raw() noexcept {return static_cast<rebind_value &>(*this);}
 
-    constexpr bool has_value() const noexcept {return ptr;}
+    void check() const {
+        if (bool(ptr) != bool(ind)) {
+            DUMP(bool(ptr), bool(ind));
+            throw std::runtime_error("BAD!");
+        }
+    }
 
-    explicit constexpr operator bool() const noexcept {return ptr;}
+    constexpr bool has_value() const noexcept {check(); return ptr;}
 
-    constexpr Index index() const noexcept {return ind;}
+    explicit constexpr operator bool() const noexcept {check(); return ptr;}
 
-    constexpr void * address() const noexcept {return ptr;}
+    constexpr Index index() const noexcept {check(); return ind;}
+
+    constexpr void * address() const noexcept {check(); return ptr;}
 
     template <class T>
     bool matches() const noexcept {return raw::matches<T>(ind);}
@@ -94,7 +111,7 @@ struct Value : protected rebind_value {
 
     template <class T, class ...Args>
     T & place(Args &&...args) {
-        if (ptr) ind->drop(ptr);
+        if (ptr) raw::drop(*this);
         T *out = raw::alloc<T>(static_cast<Args &&>(args)...);
         ptr = out;
         ind = fetch<T>();
@@ -187,9 +204,9 @@ struct Value : protected rebind_value {
 
     /**************************************************************************/
 
-    bool request_to(Value &v) const & {return raw::request_to(ind, ptr, v, Const);}
-    bool request_to(Value &v) & {return raw::request_to(ind, ptr, v, Lvalue);}
-    bool request_to(Value &v) && {return raw::request_to(ind, ptr, v, Rvalue);}
+    bool request_to(Value &v) const & {return raw::request_to(v, ind, ptr, Const);}
+    bool request_to(Value &v) & {return raw::request_to(v, ind, ptr, Lvalue);}
+    bool request_to(Value &v) && {return raw::request_to(v, ind, ptr, Rvalue);}
 
     /**************************************************************************/
 
@@ -228,10 +245,12 @@ struct is_trivially_relocatable<Value> : std::true_type {};
 
 // };
 
-inline constexpr Ref::Ref(Value const &v) : Ref(v.index(), v.address(), Const) {}
-inline constexpr Ref::Ref(Value &v) : Ref(v.index(), v.address(), Lvalue) {}
-inline constexpr Ref::Ref(Value &&v) : Ref(v.index(), v.address(), Rvalue) {}
+inline Ref::Ref(Value const &v) : Ref(v.index(), v.address(), Const) {}
+inline Ref::Ref(Value &v) : Ref(v.index(), v.address(), Lvalue) {}
+inline Ref::Ref(Value &&v) : Ref(v.index(), v.address(), Rvalue) {}
 
 /******************************************************************************/
 
 }
+
+#include "Default.h"

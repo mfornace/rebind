@@ -4,6 +4,7 @@
  */
 #include "API.h"
 #include "Wrap.h"
+#include <rebind/types/Core.h>
 
 #include <complex>
 #include <any>

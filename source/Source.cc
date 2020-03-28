@@ -17,7 +17,7 @@
 
 #if __has_include(<cxxabi.h>)
 #   include <cxxabi.h>
-    namespace rebind::runtime {
+    namespace rebind {
         using namespace __cxxabiv1;
 
         std::string demangle(char const *s) {
@@ -34,7 +34,7 @@
         }
     }
 #else
-    namespace rebind::runtime {
+    namespace rebind {
         std::string demangle(char const *s) {return s;}
 
         char const *unknown_exception_description() noexcept {return "C++: unknown exception";}
@@ -52,17 +52,6 @@ std::string cat(Ts const &...ts) {
     std::stringstream ss;
     ((ss << ts), ...);
     return ss.str();
-}
-
-/******************************************************************************/
-
-Demangler demangler{&runtime::demangle};
-
-void set_demangler(Demangler fun) noexcept {demangler = std::move(fun);}
-
-std::string demangle(char const *s) {
-    if (demangler) return demangler(s);
-    else return s;
 }
 
 /******************************************************************************/
@@ -195,20 +184,20 @@ void set_source(WrongType &err, std::type_info const &t, Value &&v) {
 
 /******************************************************************************/
 
-void Schema::type(Index t, std::string_view s, Value &&data, Index table) {
-    DUMP("type ", t, s);
-    auto it = contents.try_emplace(std::string(s), Type<Vector<Index>>()).first;
-    if (auto p = it->second.target<Vector<Index>>()) {
-        p->emplace_back(table);
-        return;
-    }
-    throw std::runtime_error(cat("tried to declare a type on a non-type key (key=", s, ", type=", t, ")"));
-}
+// void Schema::type(Index t, std::string_view s, Value &&data, Index table) {
+//     DUMP("type ", t, s);
+//     auto it = contents.try_emplace(std::string(s), Type<Vector<Index>>()).first;
+//     if (auto p = it->second.target<Vector<Index>>()) {
+//         p->emplace_back(table);
+//         return;
+//     }
+//     throw std::runtime_error(cat("tried to declare a type on a non-type key (key=", s, ", type=", t, ")"));
+// }
 
-Value & Schema::find_property(Index t, std::string_view name) {
-    DUMP("find_method ", t, name);
-    return const_cast<Table &>(*t).properties.emplace(name, nullptr).first->second;
-}
+// Value & Schema::find_property(Index t, std::string_view name) {
+//     DUMP("find_method ", t, name);
+//     return const_cast<Table &>(*t).properties.emplace(name, nullptr).first->second;
+// }
 
 Value & Schema::find_global(std::string_view s) {
     DUMP("function ", s);

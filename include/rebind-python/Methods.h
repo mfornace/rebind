@@ -112,12 +112,14 @@ PyObject * c_method(PyObject *s, PyObject *args, PyObject *kws) noexcept {
         auto &self = cast_object<Self>(s);
         refs[0] = Ref(self);
 
+        // Ref(self).method();
         if (auto t = self.index()) {
-            if (auto it = t->properties.find(name); it != t->properties.end()) {
-                return function_call_impl(out, Ref(std::as_const(it->second)), std::move(refs), is_value, gil, tag);
-            } else {
-                return type_error("method not found");
-            }
+            return nullptr;
+            // if (auto it = t->properties.find(name); it != t->properties.end()) {
+            // return function_call_impl(out, Ref(std::as_const(it->second)), std::move(refs), is_value, gil, tag);
+            // } else {
+                // return type_error("method not found");
+            // }
         } else {
             return type_error("cannot lookup method on a null object");
         }

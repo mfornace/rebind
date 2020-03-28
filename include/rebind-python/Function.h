@@ -149,9 +149,9 @@ PyObject * function_call(PyObject *self, PyObject *args, PyObject *kws) noexcept
 
         Object o = function_call_impl(out, ref, arguments_from_objects(objects), is_value, gil, tag);
 
-        if (auto v = cast_if<Value>(o)) {
-            DUMP("returning Value to python ", v->has_value(), " ", v->name());
-        }
+        // if (o) if (auto v = cast_if<Value>(o)) {
+        //     DUMP("returning Value to python ", v->has_value(), " ", v->name());
+        // }
         return o;
     });
 }

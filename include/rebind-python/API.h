@@ -184,7 +184,7 @@ PyObject *raw_object(F &&f) noexcept {
             PyErr_Format(PyExc_RuntimeError, "C++: %s", e.what());
     } catch (...) {
         if (!PyErr_Occurred())
-            PyErr_SetString(PyExc_RuntimeError, runtime::unknown_exception_description());
+            PyErr_SetString(PyExc_RuntimeError, unknown_exception_description());
     }
     return nullptr;
 }

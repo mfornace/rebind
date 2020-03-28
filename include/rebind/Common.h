@@ -21,9 +21,7 @@ extern bool Debug;
 void set_debug(bool debug) noexcept;
 bool debug() noexcept;
 
-namespace runtime {
-    char const * unknown_exception_description() noexcept;
-}
+char const * unknown_exception_description() noexcept;
 
 /******************************************************************************/
 
