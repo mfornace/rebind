@@ -58,7 +58,7 @@ inline std::string_view as_view(rebind_str const &s) {
     return {reinterpret_cast<char const *>(s.data), s.size};
 }
 
-inline rebind::Arguments as_view(rebind_args const &s) {
+inline rebind::ArgView as_view(rebind_args const &s) {
     return {reinterpret_cast<rebind::Ref *>(s.data), s.size};
 }
 

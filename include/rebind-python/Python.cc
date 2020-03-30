@@ -98,18 +98,18 @@ std::string_view from_bytes(PyObject *o) {
 /******************************************************************************/
 
 template <class T>
-bool arithmetic_to_value(Value &v, Object const &o) {
+bool arithmetic_to_value(Output &v, Object const &o) {
     DUMP("cast arithmetic in: ", v.name());
-    if (PyFloat_Check(o)) return v.place_if<T>(PyFloat_AsDouble(+o));
-    if (PyLong_Check(o))  return v.place_if<T>(PyLong_AsLongLong(+o));
-    if (PyBool_Check(o))  return v.place_if<T>(+o == Py_True);
+    if (PyFloat_Check(o)) return v.emplace_if<T>(PyFloat_AsDouble(+o));
+    if (PyLong_Check(o))  return v.emplace_if<T>(PyLong_AsLongLong(+o));
+    if (PyBool_Check(o))  return v.emplace_if<T>(+o == Py_True);
     if (PyNumber_Check(+o)) { // This can be hit for e.g. numpy.int64
         if (std::is_integral_v<T>) {
             if (auto i = Object::from(PyNumber_Long(+o)))
-                return v.place_if<T>(PyLong_AsLongLong(+i));
+                return v.emplace_if<T>(PyLong_AsLongLong(+i));
         } else {
             if (auto i = Object::from(PyNumber_Float(+o)))
-               return v.place_if<T>(PyFloat_AsDouble(+i));
+               return v.emplace_if<T>(PyFloat_AsDouble(+i));
         }
     }
     DUMP("cast arithmetic out: ", v.name());
@@ -118,7 +118,7 @@ bool arithmetic_to_value(Value &v, Object const &o) {
 
 /******************************************************************************/
 
-bool object_to_value(Value &v, Object o) {
+bool object_to_value(Output &v, Object o) {
     if (Debug) {
         auto repr = Object::from(PyObject_Repr(SubClass<PyTypeObject>{(+o)->ob_type}));
         DUMP("input object reference count = ", reference_count(o));
@@ -154,7 +154,7 @@ bool object_to_value(Value &v, Object o) {
 
     // if (v.matches<Overload>()) {
     //     DUMP("requested function");
-    //     if (+o == Py_None) return v.place_if<Overload>();
+    //     if (+o == Py_None) return v.emplace_if<Overload>();
     //     else if (auto p = cast_if<Overload>(o)) v.set_if(*p);
     //     // general python function has no signature associated with it right now.
     //     // we could get them out via function.__annotations__ and process them into a tuple
@@ -165,7 +165,7 @@ bool object_to_value(Value &v, Object o) {
     if (v.matches<Sequence>()) {
         if (PyTuple_Check(o) || PyList_Check(o)) {
             DUMP("making a Sequence");
-            if (auto s = v.place_if<Sequence>()) {
+            if (auto s = v.emplace_if<Sequence>()) {
                 s->reserve(PyObject_Length(o));
                 map_iterable(o, [&](Object o) {s->emplace_back(std::move(o));});
             }
@@ -187,14 +187,14 @@ bool object_to_value(Value &v, Object o) {
     }
 
     if (v.matches<std::string_view>()) {
-        if (PyUnicode_Check(+o)) return v.place_if<std::string_view>(from_unicode(+o));
-        if (PyBytes_Check(+o)) return v.place_if<std::string_view>(from_bytes(+o));
+        if (PyUnicode_Check(+o)) return v.emplace_if<std::string_view>(from_unicode(+o));
+        if (PyBytes_Check(+o)) return v.emplace_if<std::string_view>(from_bytes(+o));
         return false;
     }
 
     if (v.matches<std::string>()) {
-        if (PyUnicode_Check(+o)) return v.place_if<std::string>(from_unicode(+o));
-        if (PyBytes_Check(+o)) return v.place_if<std::string>(from_bytes(+o));
+        if (PyUnicode_Check(+o)) return v.emplace_if<std::string>(from_unicode(+o));
+        if (PyBytes_Check(+o)) return v.emplace_if<std::string>(from_bytes(+o));
         return false;
     }
 
@@ -216,13 +216,13 @@ bool object_to_value(Value &v, Object o) {
                 DUMP("layout", lay, reference_count(o));
                 DUMP("depth", lay.depth());
                 Ref data{buff.view.format ? Buffer::format(buff.view.format) : fetch<void>(), buff.view.buf, buff.view.readonly ? Const : Lvalue};
-                return v.place_if<ArrayView>(std::move(data), std::move(lay));
+                return v.emplace_if<ArrayView>(std::move(data), std::move(lay));
             } else throw python_error(type_error("C++: could not get buffer from Python obhect"));
         } else return false;
     }
 
     if (v.matches<std::complex<double>>()) {
-        if (PyComplex_Check(+o)) return v.place_if<std::complex<double>>(PyComplex_RealAsDouble(+o), PyComplex_ImagAsDouble(+o));
+        if (PyComplex_Check(+o)) return v.emplace_if<std::complex<double>>(PyComplex_RealAsDouble(+o), PyComplex_ImagAsDouble(+o));
         return false;
     }
 

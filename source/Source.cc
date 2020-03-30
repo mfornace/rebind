@@ -63,8 +63,8 @@ bool debug() noexcept {return Debug;}
 
 /******************************************************************************/
 
-Schema & schema() noexcept {
-    static Schema schema;
+RawSchema & global_schema() noexcept {
+    static RawSchema schema;
     return schema;
 }
 
@@ -198,19 +198,6 @@ void set_source(WrongType &err, std::type_info const &t, Value &&v) {
 //     DUMP("find_method ", t, name);
 //     return const_cast<Table &>(*t).properties.emplace(name, nullptr).first->second;
 // }
-
-Value & Schema::find_global(std::string_view s) {
-    DUMP("function ", s);
-    auto it = contents.emplace(s, nullptr).first;
-    DUMP("emplaced ", s);
-    DUMP(it->second.name(), bool(it->second));
-    return it->second;
-    // if (auto f = it->second.target<Function>()) return *f;
-    // DUMP("bad", s);
-    // throw std::runtime_error(cat(
-    //     "tried to declare a function on a non-function key (key=",
-    //     it->first, ", type=", it->second.name(), ")"));
-}
 
 /******************************************************************************/
 

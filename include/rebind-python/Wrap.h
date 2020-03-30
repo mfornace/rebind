@@ -95,12 +95,15 @@ PyTypeObject type_definition(char const *name, char const *doc) {
 
 /******************************************************************************/
 
-bool object_to_value(Value &v, Object o);
+bool object_to_value(Output &v, Object o);
 
 bool object_to_ref(Ref &v, Object o);
 
 /******************************************************************************/
 
+// Python function object for use in C++
+// It is only invokable by passing in a Caller containing a PythonFrame
+// That lets the function acquire the GIL safely from a multithreaded scenario
 struct PythonFunction {
     Object function, signature;
 
@@ -115,16 +118,18 @@ struct PythonFunction {
     }
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
-    bool operator()(Caller *c, Value *v, Ref *r, Arguments const &args) const {
+    bool operator()(Caller *c, Value *v, Ref *r, ArgView const &args) const {
         DUMP("calling python function");
         auto p = c->target<PythonFrame>();
         if (!p) throw DispatchError("Python context is expired or invalid");
-        ActivePython lk(*p);
+        PythonGuard lk(*p);
         Object o = args_to_python(args, signature);
         if (!o) throw python_error();
         auto output = Object::from(PyObject_CallObject(function, o));
-        if (v) return object_to_value(*v, std::move(output));
-        else return object_to_ref(*r, std::move(output));
+        return false;
+#warning "cehck here"
+        // if (v) return object_to_value(*v, std::move(output));
+        // else return object_to_ref(*r, std::move(output));
     }
 };
 
@@ -136,7 +141,7 @@ namespace rebind {
 
 template <>
 struct ToValue<py::Object> {
-    bool operator()(Value &v, py::Object o) const {return py::object_to_value(v, std::move(o));}
+    bool operator()(Output &v, py::Object o) const {return py::object_to_value(v, std::move(o));}
 };
 
 template <>

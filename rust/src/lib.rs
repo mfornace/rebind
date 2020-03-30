@@ -239,19 +239,19 @@ impl<T> IntoRef for T {
     fn into_ref(self: T) -> Ref { Ref::new() }
 }
 
-pub trait IntoArguments {
+pub trait IntoArgView {
     fn into_arguments(self) -> Vec<Ref>;
 }
 
-impl IntoArguments for () {
+impl IntoArgView for () {
     fn into_arguments(self) -> Vec<Ref> { vec![] }
 }
 
-impl<T1> IntoArguments for (T1,) {
+impl<T1> IntoArgView for (T1,) {
     fn into_arguments(self) -> Vec<Ref> { vec![self.0.into_ref()] }
 }
 
-impl<T1, T2> IntoArguments for (T1, T2,) {
+impl<T1, T2> IntoArgView for (T1, T2,) {
     fn into_arguments(self) -> Vec<Ref> { vec![self.0.into_ref(), self.1.into_ref()] }
 }
 
@@ -264,7 +264,7 @@ impl Value {
 
     pub const fn index(&self) -> Index { self.ind }
 
-    pub fn method<T: IntoArguments>(&self, name: &str, args: T) -> Value {
+    pub fn method<T: IntoArgView>(&self, name: &str, args: T) -> Value {
         // let mut argv =
         unsafe {rebind_value_method_to_value(self, StrView::from(name), Args::new())}
     }
@@ -278,7 +278,7 @@ impl Value {
         else { None }
     }
 
-    pub fn call<T: IntoArguments>(&self, args: T) -> Value {
+    pub fn call<T: IntoArgView>(&self, args: T) -> Value {
         let mut o = Value::new();
         let ok = unsafe { rebind_value_call_value(&mut o, self, Args::new()) };
         if ok == 0 {
@@ -287,7 +287,7 @@ impl Value {
         return o;
     }
 
-    pub fn call_ref<T: IntoArguments>(&self, args: T) -> Ref {
+    pub fn call_ref<T: IntoArgView>(&self, args: T) -> Ref {
         unsafe {rebind_value_call_ref(self, Args::new())}
     }
 
@@ -334,7 +334,7 @@ impl Index {
 
 /******************************************************************************/
 
-pub fn invoke<T: IntoArguments>(name: &str, args: T) -> Value {
+pub fn invoke<T: IntoArgView>(name: &str, args: T) -> Value {
     let v: &Value = lookup(name);
     println!("got the lookup!");
     v.call(args)

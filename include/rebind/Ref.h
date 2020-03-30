@@ -1,6 +1,7 @@
 #pragma once
 #include "Raw.h"
 #include "Scope.h"
+#include "Common.h"
 
 namespace rebind {
 
@@ -13,7 +14,7 @@ struct Ref : protected rebind_ref {
     constexpr Ref(std::nullptr_t) noexcept : Ref() {}
 
     Ref(Index i, void *p, Qualifier q) noexcept
-        : rebind_ref{i, raw::make_ptr(p, q)} {}
+        : rebind_ref{i, raw::make_ptr(p, q)} {DUMP(p, " ", tagged_ptr, " ", address());}
 
     template <class T, std::enable_if_t<is_usable<T>, int> = 0>
     explicit Ref(T &t) noexcept
@@ -34,9 +35,6 @@ struct Ref : protected rebind_ref {
     Qualifier qualifier() const noexcept {return raw::qualifier(tagged_ptr);}
 
     /**********************************************************************************/
-
-    rebind_ref const &as_raw() const noexcept {return static_cast<rebind_ref const &>(*this);}
-    rebind_ref &as_raw() noexcept {return static_cast<rebind_ref &>(*this);}
 
     constexpr bool has_value() const noexcept {return tagged_ptr;}
 
@@ -103,9 +101,9 @@ struct Ref : protected rebind_ref {
 
     /**************************************************************************************/
 
-    bool request_to(Value &v) const & {return raw::request_to(v, ind, address(), qualifier());}
-    bool request_to(Value &v) & {return raw::request_to(v, ind, address(), qualifier());}
-    bool request_to(Value &v) && {return raw::request_to(v, ind, address(), qualifier());}
+    bool request_to(Output &v) const & {return raw::request_to(v, ind, address(), qualifier());}
+    bool request_to(Output &v) & {return raw::request_to(v, ind, address(), qualifier());}
+    bool request_to(Output &v) && {return raw::request_to(v, ind, address(), qualifier());}
 
     /**************************************************************************************/
 
@@ -115,9 +113,9 @@ struct Ref : protected rebind_ref {
     template <class ...Args>
     Ref call_ref(Args &&...args) const;
 
-    bool call_to(Value &, Caller, Arguments) const;
+    bool call_to(Value &, ArgView) const noexcept;
 
-    bool call_to(Ref &, Caller, Arguments) const;
+    bool call_to(Ref &, ArgView) const noexcept;
 };
 
 /******************************************************************************************/
@@ -129,26 +127,27 @@ struct is_trivially_relocatable<Ref> : std::true_type {};
 
 /******************************************************************************************/
 
-template <class T, class SFINAE=void>
-struct is_like_arguments : std::false_type {};
+struct ArgView : rebind_args {
+    constexpr ArgView(Ref *r, std::size_t c) : rebind_args{static_cast<rebind_ref *>(static_cast<void *>(r)), c} {}
 
-template <class T>
-struct is_like_arguments<T, std::enable_if_t<
-    std::is_convertible_v<decltype(std::data(std::declval<T &>())), Ref *>
->> : std::true_type {};
+    Caller &caller() const {return *reinterpret(ptr)->target<Caller &>();}
 
-struct Arguments : rebind_args {
-    constexpr Arguments() : rebind_args{nullptr, 0} {}
-    constexpr Arguments(Ref *r, std::size_t c) : rebind_args{static_cast<rebind_ref *>(static_cast<void *>(r)), c} {}
+    std::string_view name() const {
+        auto const &s = reinterpret_cast<rebind_str const &>(ptr[1]);
+        return std::string_view(s.data, s.size);
+    }
 
-    template <class V, std::enable_if_t<is_like_arguments<V>::value, int> = 0>
-    constexpr Arguments(V &&v) : rebind_args{static_cast<rebind_ref *>(static_cast<void *>(std::data(v))), std::size(v)} {}
+    Ref tag() const {return *reinterpret(ptr + 2);}
 
-    auto begin() const noexcept {return static_cast<Ref *>(static_cast<void *>(ptr));}
+    Ref * begin() const noexcept {return reinterpret(ptr) + 3;}
+
     auto size() const noexcept {return len;}
-    auto end() const noexcept {return begin() + len;}
 
-    Ref &operator[](std::size_t i) const noexcept {return reinterpret_cast<Ref &>(begin()[i]);}
+    Ref * end() const noexcept {return begin() + size();}
+
+    Ref &operator[](std::size_t i) const noexcept {return begin()[i];}
+
+    static Ref * reinterpret(rebind_ref *r) {return static_cast<Ref *>(static_cast<void *>(r));}
 };
 
 /******************************************************************************************/

@@ -51,7 +51,7 @@ struct ToValue {
     using method = Default;
     static_assert(std::is_same_v<unqualified<T>, T>);
 
-    bool operator()(Value &v, T const &) const {
+    bool operator()(Output &v, T const &) const {
         DUMP("no conversion found from source ", fetch<T>(), " to value of type ", v.name());
         return false;
     }
@@ -60,13 +60,13 @@ struct ToValue {
 /******************************************************************************/
 
 template <class T>
-struct ToValue<T, std::void_t<decltype(to_value(std::declval<Value &>(), std::declval<T>()))>> {
+struct ToValue<T, std::void_t<decltype(to_value(std::declval<Output &>(), std::declval<T>()))>> {
     static_assert(std::is_same_v<unqualified<T>, T>);
     using method = ADL;
 
-    bool operator()(Value &v, T &t) const {return to_value(v, t);}
-    bool operator()(Value &v, T const &t) const {return to_value(v, t);}
-    bool operator()(Value &v, T &&t) const {return to_value(v, std::move(t));}
+    bool operator()(Output &v, T &t) const {return to_value(v, t);}
+    bool operator()(Output &v, T const &t) const {return to_value(v, t);}
+    bool operator()(Output &v, T &&t) const {return to_value(v, std::move(t));}
 };
 
 /******************************************************************************/
@@ -120,7 +120,7 @@ std::remove_reference_t<T> * request(Index i, void *p, Scope &s, Type<T>, Qualif
 
     if (!p) return nullptr;
 
-    DUMP("raw::request reference ", raw::name(fetch<U>()), qualifier_of<T>, " from ", raw::name(i), " ", QualifierSuffixes[q]);
+    DUMP("raw::request reference ", raw::name(fetch<U>()), " ", qualifier_of<T>, " from ", raw::name(i), " ", q);
     if (compatible_qualifier(q, qualifier_of<T>)) {
         if (auto o = target<U>(i, p)) return o;
         // if (i->has_base(fetch<U>())) return static_cast<std::remove_reference_t<T> *>(p);
@@ -153,12 +153,12 @@ std::optional<T> request(Index i, void *p, Scope &s, Type<T>, Qualifier q) {
     }
 
     // ToValue
-    Value v;
-    v.as_raw().ind = fetch<T>();
-    DUMP("calling c.to_value ", v.name());
+    Output v{Type<T>()};
+    DUMP("requesting via to_value ", v.name());
     if (raw::request_to(v, i, p, q)) {
-        if (auto o = v.target<T>()) out.emplace(std::move(*o));
-        DUMP("c.to_value succeeded");
+        if (v.index() == fetch<T>()) // target not supported, so just use raw version
+            out.emplace(std::move(*static_cast<T *>(v.address())));
+        DUMP("request via to_value succeeded");
         return out;
     }
 
@@ -170,31 +170,23 @@ std::optional<T> request(Index i, void *p, Scope &s, Type<T>, Qualifier q) {
 
 /******************************************************************************/
 
-inline bool request_to(Ref &r, Index i, void *p, Qualifier q) noexcept {
-    if (p) return i(tag::request_to_ref, &r, p, {});
-    return false;
-}
-
-inline bool request_to(Value &v, Index i, void *p, Qualifier q) noexcept {
-    if (p) return i(tag::request_to_value, &v, p, {});
-    return false;
-}
-
-/******************************************************************************/
-
-// using call_t = bool(*)(void const *, void *, Caller &&, Arguments, Flag);
-inline bool call_to(Value &v, Index i, void const *p, Caller &&c, Arguments args) {
+inline bool call_to(Value &v, Index i, void const *p, ArgView args) noexcept {
+    DUMP("raw::call_to value: ptr=", p, " name=", raw::name(i), " size=", args.size());
     return p && i(tag::call_to_value, &v, const_cast<void *>(p), args);//, std::move(c), args);
 }
 
-inline bool call_to(Ref &r, Index i, void const *p, Caller &&c, Arguments args) {
+inline bool call_to(Ref &r, Index i, void const *p, ArgView args) noexcept {
+    DUMP("raw::call_to ref");
+// static_assert(std::array<int, sizeof(Caller)>::aaa);
+// static_assert(std::array<int, sizeof(std::string_view)>::aaa);
+#warning "need to add caller, method name, tag?"
     return p && i(tag::call_to_ref, &r, const_cast<void *>(p), args);//, std::move(c), args);
 }
 
 template <class ...Args>
 inline Value call_value(Index i, void const *p, Caller &&c, Args &&...args) {
     Value v;
-    if (!call_to(v, i, p, std::move(c), to_arguments(static_cast<Args &&>(args)...)))
+    if (!call_to(v, i, p, to_arguments(c, static_cast<Args &&>(args)...)))
         throw std::runtime_error("function could not yield Value");
     return v;
 }
@@ -202,7 +194,7 @@ inline Value call_value(Index i, void const *p, Caller &&c, Args &&...args) {
 template <class ...Args>
 inline Ref call_ref(Index i, void const *p, Caller &&c, Args &&...args) {
     Ref r;
-    if (!call_to(r, i, p, std::move(c), to_arguments(static_cast<Args &&>(args)...)))
+    if (!call_to(r, i, p, to_arguments(c, static_cast<Args &&>(args)...)))
         throw std::runtime_error("function could not yield Ref");
     return r;
 }
@@ -217,8 +209,15 @@ Value Ref::call_value(Args &&...args) const {return raw::call_value(index(), add
 template <class ...Args>
 Ref Ref::call_ref(Args &&...args) const {return raw::call_ref(index(), address(), Caller(), static_cast<Args &&>(args)...);}
 
-inline bool Ref::call_to(Ref &r, Caller c, Arguments args) const {return raw::call_to(r, index(), address(), std::move(c), std::move(args));}
-inline bool Ref::call_to(Value &r, Caller c, Arguments args) const {return raw::call_to(r, index(), address(), std::move(c), std::move(args));}
+inline bool Ref::call_to(Ref &r, ArgView args) const noexcept {
+    DUMP("Ref::call_to ref");
+    return raw::call_to(r, index(), address(), std::move(args));
+}
+
+inline bool Ref::call_to(Value &r, ArgView args) const noexcept {
+    DUMP("Ref::call_to value");
+    return raw::call_to(r, index(), address(), std::move(args));
+}
 
 /******************************************************************************/
 
@@ -228,8 +227,9 @@ Value Value::call_value(Args &&...args) const {return raw::call_value(index(), a
 template <class ...Args>
 Ref Value::call_ref(Args &&...args) const {return raw::call_ref(index(), address(), Caller(), static_cast<Args &&>(args)...);}
 
-inline bool Value::call_to(Ref &r, Caller c, Arguments args) const {return raw::call_to(r, index(), address(), std::move(c), std::move(args));}
-inline bool Value::call_to(Value &r, Caller c, Arguments args) const {return raw::call_to(r, index(), address(), std::move(c), std::move(args));}
+inline bool Value::call_to(Ref &r, ArgView args) const {return raw::call_to(r, index(), address(), std::move(args));}
+
+inline bool Value::call_to(Value &r, ArgView args) const {return raw::call_to(r, index(), address(), std::move(args));}
 
 /******************************************************************************/
 

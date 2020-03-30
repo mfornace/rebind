@@ -3,7 +3,6 @@
 #include <vector>
 #include <iostream>
 #include <sstream>
-#include <memory>
 
 #define DUMP(...) ::rebind::dump(__FILE__, __LINE__, __VA_ARGS__);
 
@@ -52,9 +51,10 @@ struct SameType {using type = T;};
 
 /******************************************************************************/
 
+// Ignore variable to use a parameter when the argument should be ignored
 struct Ignore {
     template <class ...Ts>
-    Ignore(Ts const &...ts) {}
+    constexpr Ignore(Ts const &...ts) {}
 };
 
 /******************************************************************************/
@@ -99,40 +99,6 @@ Vector<T> mapped(V const &v, F &&f) {
     for (auto &&x : v) out.emplace_back(f(x));
     return out;
 }
-
-/******************************************************************************/
-
-/// Interface: return a new frame given a shared_ptr of *this
-struct Frame {
-    virtual std::shared_ptr<Frame> operator()(std::shared_ptr<Frame> &&) = 0;
-    virtual void enter() {};
-    virtual ~Frame() {};
-};
-
-/******************************************************************************/
-
-class Caller {
-    std::weak_ptr<Frame> model;
-public:
-    Caller() = default;
-
-    explicit operator bool() const {return !model.expired();}
-
-    Caller(std::shared_ptr<Frame> const &f): model(f) {}
-
-    void enter() {if (auto p = model.lock()) p->enter();}
-
-    std::shared_ptr<Frame> operator()() const {
-        if (auto p = model.lock()) return p.get()->operator()(std::move(p));
-        return {};
-    }
-
-    template <class T>
-    T * target() {
-        if (auto p = model.lock()) return dynamic_cast<T *>(p.get());
-        return nullptr;
-    }
-};
 
 /******************************************************************************/
 

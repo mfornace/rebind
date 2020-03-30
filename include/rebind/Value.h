@@ -21,96 +21,75 @@ Maybe<T> some(Arg &&t) {
 
 /******************************************************************************/
 
-struct Value : protected rebind_value {
+struct RawValue : protected rebind_value {
 
-    /**************************************************************************/
+    constexpr RawValue() noexcept : rebind_value{nullptr, nullptr} {}
+    constexpr RawValue(Index i, void *p) noexcept : rebind_value{i, p} {}
 
-    constexpr Value() noexcept : rebind_value{nullptr, nullptr} {}
+    ~RawValue() {if (ptr) raw::drop(*this);}
 
-    template <class T, std::enable_if_t<is_usable<unqualified<T>>, int> = 0>
-    Value(T &&t) noexcept(std::is_nothrow_move_constructible_v<unqualified<T>>)
-        : rebind_value{fetch<unqualified<T>>(), raw::alloc<unqualified<T>>(static_cast<T &&>(t))} {}
+    RawValue(RawValue &&v) noexcept : rebind_value(static_cast<rebind_value &&>(v)) {v.release();}
 
-    template <class T, class ...Args, std::enable_if_t<is_usable<unqualified<T>>, int> = 0>
-    Value(Type<T> t, Args &&...args)
-        : rebind_value{fetch<T>(), raw::alloc<T>(static_cast<Args &&>(args)...)} {}
-
-    Value(Value const &v) {
-        if (!raw::copy(*this, v.ind, v.ptr)) throw std::runtime_error("no copy");
-    }
-
-    Value(Ref const &r) {
-        if (!raw::copy(*this, r.index(), r.address())) throw std::runtime_error("no copy");
-    }
-
-    Value &operator=(Value const &v) {
-        if (!raw::copy(*this, v.ind, v.ptr)) throw std::runtime_error("no copy");
-        return *this;
-    }
-
-    void release() noexcept {ind = nullptr; ptr = nullptr;}
-
-    Value(Value &&v) noexcept : rebind_value(static_cast<rebind_value &&>(v)) {v.release();}
-
-    Value &operator=(Value &&v) noexcept {
+    RawValue &operator=(RawValue &&v) noexcept {
         rebind_value::operator=(std::move(v));
         v.release();
         return *this;
     }
 
-    ~Value() {if (ptr) raw::drop(*this);}
+    RawValue(RawValue const &v) {
+        if (!raw::copy(*this, v.ind, v.ptr)) throw std::runtime_error("no copy");
+    }
+
+    RawValue &operator=(RawValue const &v) {
+        if (!raw::copy(*this, v.ind, v.ptr)) throw std::runtime_error("no copy");
+        return *this;
+    }
+
+    /**************************************************************************/
+
+    void release() noexcept {ind = nullptr; ptr = nullptr;}
 
     void reset() {if (ptr) {raw::drop(*this); release();}}
 
-    /**************************************************************************/
+    std::string_view name() const noexcept {return raw::name(ind);}
 
-    // Index index() const noexcept {return ind ? ind->index : Index();}
+    constexpr Index index() const noexcept {return ind;}
 
-    std::string_view name() const noexcept {
-        if (ptr) return raw::name(ind);
-        return "null";
-    }
+    constexpr bool has_value() const noexcept {return ptr;}
 
-    rebind_value const &as_raw() const noexcept {return static_cast<rebind_value const &>(*this);}
-    rebind_value &as_raw() noexcept {return static_cast<rebind_value &>(*this);}
+    explicit constexpr operator bool() const noexcept {return ptr;}
 
-    void check() const {
-        if (bool(ptr) != bool(ind)) {
-            DUMP(bool(ptr), bool(ind));
-            throw std::runtime_error("BAD!");
-        }
-    }
-
-    constexpr bool has_value() const noexcept {check(); return ptr;}
-
-    explicit constexpr operator bool() const noexcept {check(); return ptr;}
-
-    constexpr Index index() const noexcept {check(); return ind;}
-
-    constexpr void * address() const noexcept {check(); return ptr;}
+    constexpr void * address() const noexcept {return ptr;}
 
     template <class T>
     bool matches() const noexcept {return raw::matches<T>(ind);}
+};
+
+/******************************************************************************/
+
+struct Value : public RawValue {
+    constexpr Value() noexcept = default;
+
+    constexpr Value(std::nullptr_t) noexcept : Value() {}
+
+    template <class T, std::enable_if_t<is_usable<unqualified<T>>, int> = 0>
+    Value(T &&t) noexcept(std::is_nothrow_move_constructible_v<unqualified<T>>)
+        : RawValue{Type<unqualified<T>>(), raw::alloc<unqualified<T>>(static_cast<T &&>(t))} {}
+
+    template <class T, class ...Args, std::enable_if_t<is_usable<T>, int> = 0>
+    Value(Type<T> t, Args &&...args)
+        : RawValue{t, raw::alloc<T>(static_cast<Args &&>(args)...)} {}
+
+
+    Value(Ref const &r) {
+        if (!raw::copy(*this, r.index(), r.address())) throw std::runtime_error("no copy");
+    }
 
     /**************************************************************************/
 
-    template <class T>
-    unqualified<T> * set_if(T &&t) {
-        using U = unqualified<T>;
-        if (!ptr && raw::matches<U>(ind))
-            ptr = raw::alloc<U>(static_cast<T &&>(t));
-        return static_cast<U *>(ptr);
-    }
-
     template <class T, class ...Args>
-    T * place_if(Args &&...args) {
-        if (!ptr && raw::matches<T>(ind))
-            ptr = raw::alloc<T>(static_cast<Args &&>(args)...);
-        return static_cast<unqualified<T> *>(ptr);
-    }
-
-    template <class T, class ...Args>
-    T & place(Args &&...args) {
+    T & emplace(Type<T>, Args &&...args) {
+        assert_usable<T>();
         if (ptr) raw::drop(*this);
         T *out = raw::alloc<T>(static_cast<Args &&>(args)...);
         ptr = out;
@@ -118,16 +97,21 @@ struct Value : protected rebind_value {
         return *out;
     }
 
+    template <class T, std::enable_if_t<!is_type<T>, int> = 0>
+    unqualified<T> & emplace(T &&t) {
+        return emplace(Type<unqualified<T>>(), static_cast<T &&>(t));
+    }
+
     /**************************************************************************/
 
     template <class T>
-    T *target() & {return raw::target<T>(ind, ptr);}
+    T *target() & {return raw::target<T>(index(), address());}
 
     template <class T>
-    T *target() && {return raw::target<T>(ind, ptr);}
+    T *target() && {return raw::target<T>(index(), address());}
 
     template <class T>
-    T const *target() const & {return raw::target<T>(ind, ptr);}
+    T const *target() const & {return raw::target<T>(index(), address());}
 
     // template <class T, class ...Args>
     // static Value from(Args &&...args) {
@@ -204,9 +188,9 @@ struct Value : protected rebind_value {
 
     /**************************************************************************/
 
-    bool request_to(Value &v) const & {return raw::request_to(v, ind, ptr, Const);}
-    bool request_to(Value &v) & {return raw::request_to(v, ind, ptr, Lvalue);}
-    bool request_to(Value &v) && {return raw::request_to(v, ind, ptr, Rvalue);}
+    bool request_to(Output &v) const & {return raw::request_to(v, ind, ptr, Const);}
+    bool request_to(Output &v) & {return raw::request_to(v, ind, ptr, Lvalue);}
+    bool request_to(Output &v) && {return raw::request_to(v, ind, ptr, Rvalue);}
 
     /**************************************************************************/
 
@@ -216,9 +200,9 @@ struct Value : protected rebind_value {
     template <class ...Args>
     Ref call_ref(Args &&...args) const;
 
-    bool call_to(Value &, Caller, Arguments) const;
+    bool call_to(Value &, ArgView) const;
 
-    bool call_to(Ref &, Caller, Arguments) const;
+    bool call_to(Ref &, ArgView) const;
 };
 
 /******************************************************************************/
@@ -228,26 +212,35 @@ static_assert(std::is_standard_layout_v<Value>);
 template <>
 struct is_trivially_relocatable<Value> : std::true_type {};
 
+inline Ref::Ref(Value const &v) : Ref(v.index(), v.address(), Const) {DUMP("ref from value");}
+
+inline Ref::Ref(Value &v) : Ref(v.index(), v.address(), Lvalue) {DUMP("ref from value");}
+
+inline Ref::Ref(Value &&v) : Ref(v.index(), v.address(), Rvalue) {DUMP("ref from value");}
+
 /******************************************************************************/
 
-// class OutputValue : protected Value {
-//     using Value::name;
-//     using Value::index;
-//     using Value::matches;
-//     using Value::has_value;
-//     using Value::as_erased;
-//     using Value::operator bool;
+struct Output : public RawValue {
+    template <class T>
+    explicit Output(Type<T> t) : RawValue{t, nullptr} {}
 
-//     template <class T>
-//     OutputValue(Type<T>) : Value(fetch<T>(), nullptr) {}
+    Output(Output const &) = delete;
 
-//     OutputValue(OutputValue const &) = delete;
+    template <class T>
+    unqualified<T> * set_if(T &&t) {
+        using U = unqualified<T>;
+        if (!ptr && raw::matches<U>(ind))
+            ptr = raw::alloc<U>(static_cast<T &&>(t));
+        return static_cast<U *>(ptr);
+    }
 
-// };
-
-inline Ref::Ref(Value const &v) : Ref(v.index(), v.address(), Const) {}
-inline Ref::Ref(Value &v) : Ref(v.index(), v.address(), Lvalue) {}
-inline Ref::Ref(Value &&v) : Ref(v.index(), v.address(), Rvalue) {}
+    template <class T, class ...Args>
+    T * emplace_if(Args &&...args) {
+        if (!ptr && raw::matches<T>(ind))
+            ptr = raw::alloc<T>(static_cast<Args &&>(args)...);
+        return static_cast<unqualified<T> *>(ptr);
+    }
+};
 
 /******************************************************************************/
 

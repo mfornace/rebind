@@ -1,6 +1,6 @@
 #pragma once
+#include "Frame.h"
 #include "Signature.h"
-#include "Common.h"
 
 #include <stdexcept>
 #include <string_view>
@@ -62,7 +62,7 @@ struct CallingScope {
 
     /// Store a value which will last the lifetime of a conversion from_ref. Return its address
     template <class T>
-    unqualified<T> * emplace(T &&t) {
+    unqualified<T> * extended_reference(T &&t) {
         return std::addressof(storage.emplace_back().emplace<unqualified<T>>(static_cast<T &&>(t)));
     }
 };
@@ -104,7 +104,7 @@ struct Scope {
         return std::nullopt;
     }
 
-    CallingScope * scope() {return std::get_if<CallingScope>(&content);}
+    CallingScope * calling_scope() noexcept {return std::get_if<CallingScope>(&content);}
 };
 
 /******************************************************************************/

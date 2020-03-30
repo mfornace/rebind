@@ -47,11 +47,11 @@ static Function from(F &&f);
 Function(Function const &);
 Function(Function &&) noexcept;
 
-Value operator()(Arguments const &) const;
+Value operator()(ArgView const &) const;
 ```
 
 # `RefFunction`
 
 ```c++
-Pointer operator()(Arguments const &) const;
+Pointer operator()(ArgView const &) const;
 ```

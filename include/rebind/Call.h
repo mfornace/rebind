@@ -9,12 +9,21 @@ namespace rebind {
 
 /******************************************************************************/
 
+/// Cast element i of v to type T
+template <class T>
+decltype(auto) cast_index(ArgView const &v, Scope &s, IndexedType<T> i) {
+    // s.index = i.index;
+    return v[i.index].cast(s, Type<T>());
+}
+
+/******************************************************************************/
+
 /// Invoke a function and arguments, storing output in a Variable if it doesn't return void
 template <class Out, class F, class ...Ts>
 void opaque_invoke(Out &out, F const &f, Ts &&... ts) {
     using O = std::remove_cv_t<std::invoke_result_t<F, Ts...>>;
     static_assert(std::is_same_v<Out, Value> || std::is_reference_v<O>);
-    DUMP("invoking function with output type ", typeid(Type<O>).name());
+    DUMP("invoking function ", type_name<F>(), " with output ", type_name<O>());
     if constexpr(std::is_void_v<O>) {
         std::invoke(f, static_cast<Ts &&>(ts)...);
     } else {
@@ -44,22 +53,22 @@ struct CallToRef : std::false_type {};
 
 /******************************************************************************/
 
-template <std::size_t N, class F, class SFINAE=void>
+template <int N, class F, class SFINAE=void>
 struct Adapter;
 
-/*
-    For a callable type we need to get a function pointer of:
-    bool(void const *self, void *out, Caller &&, Arguments);
-*/
-template <int N=-1, class F>
-auto declare_function(F f) {
-    auto simplified = SimplifyFunction<F, N>()(std::move(f));
-    using S = decltype(simplified);
-    constexpr std::size_t n = N == -1 ? 0 : SimpleSignature<S>::size - 1 - N;
-    // const_cast<CTable &>(fetch<S>()->c).call = &Adapter<n, S>::call;
-    static_assert(CallToValue<S>::value);
-    return simplified;
-}
+template <int N, class F>
+struct Call {
+    F function;
+    Call(F &&f) : function(std::move(f)) {}
+
+    constexpr operator F const &() const noexcept {
+        DUMP("cast into Call ", &function, " ", reinterpret_cast<void const *>(function), " ", type_name<F>());
+        return function;
+    }
+};
+
+template <int N, class F>
+struct CallToValue<Call<N, F>> : Adapter<N, F>, std::true_type {};
 
 /******************************************************************************/
 
@@ -72,36 +81,90 @@ struct Adapter<0, F, SFINAE> {
 
     /*
      Interface implementation for a function with no optional arguments.
-     - Caller is assumed non-null
-     - One of Value and Ref should be non-null--it will be set to the function output
-     - Throws WrongNumber if args is not the right length
-     - Always returns true
+     - Returns WrongNumber if args is not the right length
      */
-    static bool call_to(Value &v, F const &f, Caller &&c, Arguments args) noexcept {
-        DUMP("Adapter ", typeid(F).name());
+    static bool call_to(Value &v, F const &f, ArgView args) noexcept {
+        DUMP("call_to function adapter ", type_name<F>(), " ", std::addressof(f), " ", args.size());
+        DUMP("method name", args.name(), " ", !args.name().empty());
 
         if (args.size() != Args::size) {
             v = WrongNumber(Args::size, args.size());
             return false;
         }
 
-        auto frame = c();
-        Caller handle(frame);
+        auto frame = args.caller().new_frame(); // make a new unentered frame, must be noexcept
+        Caller handle(frame);       // make the Caller with a weak reference to frame
         Scope s(handle);
 
         return Args::indexed([&](auto ...ts) {
             caller_invoke(v, UseCaller(), f, std::move(handle), cast_index(args, s, ts)...);
             return true;
         });
+        // It is planned to be allowed that the invoked function's C++ exception may propagate
+        // in the future, assuming the caller policies allow this.
+        // Therefore, resource destruction must be done via the frame going out of scope.
     }
 };
 
+/******************************************************************************/
 
-template <class R, class ...Ts>
-struct CallToValue<R(*)(Ts...)> : Adapter<0, R(*)(Ts...)>, std::true_type {};
+template <class R, class C>
+struct Adapter<0, R C::*, std::enable_if_t<std::is_member_object_pointer_v<R C::*>>> {
+    using F = R C::*;
 
+    template <class Out>
+    static bool impl(Out &out, F f, Caller &caller, Ref const &self) {
+        auto frame = caller.new_frame();
+        DUMP("Adapter<", fetch<R>(), ", ", fetch<C>(), ">::()");
+        Caller handle(frame);
+        Scope s(handle);
 
-// /******************************************************************************/
+        if (auto p = self.request<C &&>()) {
+            return out.set(std::move(*p).*f), true;
+        } else if (auto p = self.request<C &>()) {
+            return out.set((*p).*f), true;
+        } else if (auto p = self.request<C const &>()) {
+            return out.set((*p).*f), true;
+        }
+        // value conversions not allowed currently
+        // else if (auto p = self.request_value<C>()) { }
+        throw std::move(s.set_error("invalid argument"));
+    }
+
+    static bool call_to(Value &v, F const &f, Caller &&c, ArgView args) noexcept {
+        if (args.size() != 1) {
+            v = WrongNumber(1, args.size());
+            return false;
+        }
+
+        return impl(v, *static_cast<F const *>(f), c, args[0]);
+    }
+};
+
+/******************************************************************************/
+
+/*
+    For a callable type we need to get a function pointer of:
+    bool(void const *self, void *out, Caller &&, ArgView);
+*/
+template <int N=-1, class F>
+auto make_function(F f) {
+    // First we apply lossless simplifications.
+    // i.e. a lambda with specified arguments and no defaults is converted to a function pointer.
+    // This makes the type more readable and might reduce the compile time a bit.
+    auto simplified = SimplifyFunction<F, N>()(std::move(f));
+
+    using S = decltype(simplified);
+
+    // Now get the number of optional arguments
+    constexpr int n = N == -1 ? 0 : SimpleSignature<S>::size - 1 - N;
+
+    // Return the callable object holding the functor
+    static_assert(is_usable<Call<n, S>>);
+    return Call<n, S>{std::move(simplified)};
+}
+
+/******************************************************************************/
 
 // // N is the number of trailing optional arguments
 // template <std::size_t N, class F, class SFINAE>
@@ -113,7 +176,7 @@ struct CallToValue<R(*)(Ts...)> : Adapter<0, R(*)(Ts...)>, std::true_type {};
 //     using Args = decltype(without_first_types<1 + int(UsesCaller::value)>(Signature()));
 
 //     template <class P, class Out>
-//     static bool call_one(P, F const &f, Out &out, Caller &c, Scope &s, Arguments const &args) {
+//     static bool call_one(P, F const &f, Out &out, Caller &c, Scope &s, ArgView const &args) {
 //         return P::indexed([&](auto ...ts) {
 //             caller_invoke(out, UsesCaller(), f, std::move(c), cast_index(args, s, simplify_argument(ts))...);
 //             return true;
@@ -121,14 +184,14 @@ struct CallToValue<R(*)(Ts...)> : Adapter<0, R(*)(Ts...)>, std::true_type {};
 //     }
 
 //     template <class Out, std::size_t ...Is>
-//     static bool call_indexed(F const &f, Out &out, Caller &c, Arguments const &args, Scope &s, std::index_sequence<Is...>) {
+//     static bool call_indexed(F const &f, Out &out, Caller &c, ArgView const &args, Scope &s, std::index_sequence<Is...>) {
 //         constexpr std::size_t const M = Args::size - 1; // number of total arguments minus 1
 //         // check the number of arguments given and call with the under-specified arguments
 //         return ((args.size() == M - Is ? call_one(Args::template slice<0, M - Is>(), f, out, c, s, args) : false) || ...);
 //     }
 
 //     template <class Out>
-//     static bool impl(F const &f, Out &out, Caller &c, Arguments const &args) {
+//     static bool impl(F const &f, Out &out, Caller &c, ArgView const &args) {
 //         auto frame = c();
 //         Caller handle(frame);
 //         Scope s(handle);
@@ -147,7 +210,7 @@ struct CallToValue<R(*)(Ts...)> : Adapter<0, R(*)(Ts...)>, std::true_type {};
 //         }
 //     }
 
-//     static bool call(void const *self, void *out, Caller &&c, Arguments args, Flag flag) {
+//     static bool call(void const *self, void *out, Caller &&c, ArgView args, Flag flag) {
 //         auto const &f = *static_cast<F const *>(self);
 
 //         if (flag == Flag::ref) {
@@ -160,40 +223,6 @@ struct CallToValue<R(*)(Ts...)> : Adapter<0, R(*)(Ts...)>, std::true_type {};
 // };
 
 // /******************************************************************************/
-
-// template <class R, class C>
-// struct Adapter<0, R C::*, std::enable_if_t<std::is_member_object_pointer_v<R C::*>>> {
-//     using F = R C::*;
-
-//     template <class Out>
-//     static bool impl(F f, Out &out, Caller &caller, Ref const &self) {
-//         auto frame = caller();
-//         DUMP("Adapter<", fetch<R>(), ", ", fetch<C>(), ">::()");
-//         Caller handle(frame);
-//         Scope s(handle);
-
-//         if (auto p = self.request<C &&>()) {
-//             return out.set(std::move(*p).*f), true;
-//         } else if (auto p = self.request<C &>()) {
-//             return out.set((*p).*f), true;
-//         } else if (auto p = self.request<C const &>()) {
-//             return out.set((*p).*f), true;
-//         }
-//         // value conversions not allowed currently
-//         // else if (auto p = self.request_value<C>()) { }
-//         throw std::move(s.set_error("invalid argument"));
-//     }
-
-//     static bool call(void const *f, void *out, Caller &&c, Arguments args, Flag flag) {
-//         if (args.size() != 1) throw WrongNumber(1, args.size());
-
-//         if (flag == Flag::ref) {
-//             return impl(*static_cast<F const *>(f), *static_cast<Ref *>(out), c, args[0]);
-//         } else {
-//             return impl(*static_cast<F const *>(f), *static_cast<Value *>(out), c, args[0]);
-//         }
-//     }
-// };
 
 /******************************************************************************/
 

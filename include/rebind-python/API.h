@@ -7,6 +7,8 @@
 #include "Object.h"
 
 #include <rebind/Schema.h>
+#include <rebind/types/Core.h>
+// #include <rebind/types/Standard.h>
 #include <rebind/types/Arrays.h>
 
 #include <mutex>
@@ -50,7 +52,7 @@ struct ArrayBuffer {
 
 Ref ref_from_object(Object &o, bool move=false);
 
-void args_from_python(Arguments &s, Object const &pypack);
+void args_from_python(ArgView &s, Object const &pypack);
 
 bool object_response(Value &v, Index t, Object o);
 
@@ -81,7 +83,7 @@ Object value_to_object(Value &&v, Object const &t={});
 
 Object ref_to_object(Ref const &v, Object const &t={});
 
-inline Object args_to_python(Arguments const &s, Object const &sig={}) {
+inline Object args_to_python(ArgView const &s, Object const &sig={}) {
     if (sig && !PyTuple_Check(+sig))
         throw python_error(type_error("expected tuple but got %R", (+sig)->ob_type));
     std::size_t len = sig ? PyTuple_GET_SIZE(+sig) : 0;
@@ -124,35 +126,40 @@ struct PythonFrame final : Frame {
     PyThreadState *state = nullptr;
     bool no_gil;
 
-    PythonFrame(bool no_gil) : no_gil(no_gil) {}
+    explicit PythonFrame(bool no_gil) : no_gil(no_gil) {}
 
-    void enter() override {
+    void enter() override { // noexcept
         DUMP("running with nogil=", no_gil);
-        if (no_gil && !state) state = PyEval_SaveThread(); // release GIL
+        // release GIL and save the thread
+        if (no_gil && !state) state = PyEval_SaveThread();
     }
 
-    std::shared_ptr<Frame> operator()(std::shared_ptr<Frame> &&t) override {
-        DUMP("suspended Python ", bool(t));
-        if (no_gil || state) return std::move(t); // return this
-        else return std::make_shared<PythonFrame>(no_gil); // return a new frame
-    }
+    // std::shared_ptr<Frame> new_frame(std::shared_ptr<Frame> t) noexcept override {
+    //     DUMP("suspended Python ", bool(t));
+    //     // if we already saved the python thread state, return this
+    //     if (no_gil || state) return std::move(t);
+    //     // return a new frame that can be entered
+    //     else return std::make_shared<PythonFrame>(no_gil);
+    // }
 
     // acquire GIL; lock mutex to prevent multiple threads trying to get the thread going
     void acquire() noexcept {if (state) {mutex.lock(); PyEval_RestoreThread(state);}}
+
     // release GIL; unlock mutex
     void release() noexcept {if (state) {state = PyEval_SaveThread(); mutex.unlock();}}
 
+    // reacquire the GIL and restart the thread, if required
     ~PythonFrame() {if (state) PyEval_RestoreThread(state);}
 };
 
 /******************************************************************************/
 
-/// RAII reacquisition of Python GIL
-struct ActivePython {
+/// RAII acquisition/release of Python GIL
+struct PythonGuard {
     PythonFrame &lock;
 
-    ActivePython(PythonFrame &u) : lock(u) {lock.acquire();}
-    ~ActivePython() {lock.release();}
+    PythonGuard(PythonFrame &u) : lock(u) {lock.acquire();}
+    ~PythonGuard() {lock.release();}
 };
 
 /******************************************************************************/

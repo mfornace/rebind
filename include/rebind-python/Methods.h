@@ -101,28 +101,23 @@ PyObject * c_set_ward(PyObject *self, PyObject *arg) noexcept {
 template <class Self>
 PyObject * c_method(PyObject *s, PyObject *args, PyObject *kws) noexcept {
     return raw_object([=]() -> Object {
-        auto objects = objects_from_argument_tuple(args);
+        auto argv = objects_from_argument_tuple(args);
         auto const [tag, out, is_value, gil] = function_call_keywords(kws);
 
-        auto refs = arguments_from_objects(objects);
-
-        if (!PyUnicode_Check(objects[0])) return type_error("expected instance of str for method name");
-        std::string_view name = from_unicode(objects[0]);
+        if (!PyUnicode_Check(argv[0])) return type_error("expected instance of str for method name");
+        std::string_view name = from_unicode(argv[0]);
 
         auto &self = cast_object<Self>(s);
-        refs[0] = Ref(self);
+        if (!self) return type_error("cannot lookup method on a null object");
 
-        // Ref(self).method();
-        if (auto t = self.index()) {
-            return nullptr;
-            // if (auto it = t->properties.find(name); it != t->properties.end()) {
-            // return function_call_impl(out, Ref(std::as_const(it->second)), std::move(refs), is_value, gil, tag);
-            // } else {
-                // return type_error("method not found");
-            // }
-        } else {
-            return type_error("cannot lookup method on a null object");
-        }
+        auto lk = std::make_shared<PythonFrame>(!gil);
+        Caller c(lk);
+
+        auto v = arguments_from_objects(c, name, Ref(tag), argv.begin()+1, argv.end());
+        return function_call_impl(out, Ref(self), ArgView(v.data(), argv.size()-1), is_value);
+
+        // return function_call_impl(out, Ref(std::as_const(it->second)), std::move(refs), is_value, gil, tag);
+        // return type_error("not implemented");
     });
 }
 

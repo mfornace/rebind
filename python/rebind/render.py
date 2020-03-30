@@ -61,7 +61,7 @@ class Schema:
 
     def type(self, cls):
         mod, name = cls.__module__, cls.__name__
-        source = self.contents[name]
+        # source = self.contents[name]
         # mod, name = common.split_module(self.module_name, name)
         log.info("rendering class '%s.%s'", mod, name)
 
@@ -69,7 +69,7 @@ class Schema:
 
         assert '__new__' not in props
         props.setdefault('__init__', no_init)
-        props.setdefault('indices', tuple(d for d, _ in source))
+        # props.setdefault('indices', tuple(d for d, _ in source))
 
         for k, v in props['__annotations__'].items():
             log.info("deriving member '%s.%s.%s' from %r", mod, name, k, v)

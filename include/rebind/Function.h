@@ -8,21 +8,21 @@
 namespace rebind {
 
 /*
-1. bool operator()(Value &, Arguments const &)
-2. bool operator()(Ref &, Arguments const &)
-3. bool match(Arguments const &v, Ref const &tag)
+1. bool operator()(Value &, ArgView const &)
+2. bool operator()(Ref &, ArgView const &)
+3. bool match(ArgView const &v, Ref const &tag)
 4.
 */
 
 // struct Overload {
-//     bool operator()(Value *, Ref *, Arguments const &, Tag) const;
+//     bool operator()(Value *, Ref *, ArgView const &, Tag) const;
 
-//     // Value operator()(Arguments const &v) const noexcept;
-//     // Ref ref(Arguments const &v) const; // optional
-//     // bool match(Arguments const &v, Ref const &tag) const; //optional
+//     // Value operator()(ArgView const &v) const noexcept;
+//     // Ref ref(ArgView const &v) const; // optional
+//     // bool match(ArgView const &v, Ref const &tag) const; //optional
 
 //     // Ref target() const;
-//     // Ref operator()(Arguments const &v, Ref const &dispatch) const;
+//     // Ref operator()(ArgView const &v, Ref const &dispatch) const;
 
 // };
 //exceptions?
@@ -54,23 +54,23 @@ namespace rebind {
 //         return call_value(std::move(c), static_cast<Ts &&>(ts)...);
 //     }
 
-//     bool call(Caller &c, Value *v, Ref *p, Arguments const &args) const {
+//     bool call(Caller &c, Value *v, Ref *p, ArgView const &args) const {
 //         DUMP("call function: n=", args.size(), ", v=", bool(v), ", p=", bool(p));
 //         for (auto &&p: args) {DUMP("argument ", p.name(), " ", p.qualifier());}
 //         return impl(&c, v, p, args);
 //     }
 
-//     void call_in_place(Value &out, Caller c, Arguments const &v) const {call(c, &out, nullptr, v);}
+//     void call_in_place(Value &out, Caller c, ArgView const &v) const {call(c, &out, nullptr, v);}
 
-//     void call_in_place(Ref &out, Caller c, Arguments const &v) const {call(c, nullptr, &out, v);}
+//     void call_in_place(Ref &out, Caller c, ArgView const &v) const {call(c, nullptr, &out, v);}
 
-//     Value call_value(Caller c, Arguments const &v) const {
+//     Value call_value(Caller c, ArgView const &v) const {
 //         Value out;
 //         call(c, &out, nullptr, v);
 //         return out;
 //     }
 
-//     Ref call_reference(Caller c, Arguments const &v) const {
+//     Ref call_reference(Caller c, ArgView const &v) const {
 //         Ref out;
 //         call(c, nullptr, &out, v);
 //         return out;
@@ -138,15 +138,6 @@ struct Callback {
     //     return function(caller, to_arguments(static_cast<Ts &&>(ts)...)).cast(Type<R>());
     // }
 };
-
-/******************************************************************************/
-
-/// Cast element i of v to type T
-template <class T>
-decltype(auto) cast_index(Arguments const &v, Scope &s, IndexedType<T> i) {
-    // s.index = i.index;
-    return v[i.index].cast(s, Type<T>());
-}
 
 /******************************************************************************/
 

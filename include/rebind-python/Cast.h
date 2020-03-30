@@ -83,7 +83,7 @@ inline Object as_deduced_object(Ref const &ref) {
     if (auto v = ref.request<Index>())            return as_object(std::move(*v));
     if (auto v = ref.request<Binary>())           return as_object(std::move(*v));
     if (auto v = ref.request<BinaryView>())       return as_object(std::move(*v));
-    // if (auto v = ref.request<Arguments>()) return map_as_tuple(*v, [](Ref const &x) {return as_deduced_object(x);});
+    // if (auto v = ref.request<ArgView>()) return map_as_tuple(*v, [](Ref const &x) {return as_deduced_object(x);});
     if (auto v = ref.request<Sequence>())  return map_as_tuple(*v, [](Value &&x) {return as_deduced_object(Ref(std::move(x)));});
     return {};
 }

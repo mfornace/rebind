@@ -128,15 +128,15 @@ public:
 
 template <>
 struct ToValue<BinaryData> {
-    bool operator()(Value &v, BinaryData const &t) const {
-        if (v.matches<BinaryView>()) return v.place_if<BinaryView>(t.begin(), t.size());
+    bool operator()(Output &v, BinaryData const &t) const {
+        if (v.matches<BinaryView>()) return v.emplace_if<BinaryView>(t.begin(), t.size());
         return false;
     }
 };
 
 template <>
 struct ToValue<BinaryView> {
-    bool operator()(Value &, BinaryView const &v) const {return false;}
+    bool operator()(Output &, BinaryView const &v) const {return false;}
 };
 
 template <>

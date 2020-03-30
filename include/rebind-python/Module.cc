@@ -88,12 +88,12 @@ Object initialize(Schema const &schema) {
     }));
 
     // Tuple[Tuple[Index, Tuple[Tuple[str, function], ...]], ...]
-    s = s && attach(m, "contents", map_as_tuple(schema.contents, [](auto const &x) {
+    s = s && attach(m, "contents", map_as_tuple(schema.raw.contents, [](auto const &x) {
         Object o;
         if (auto p = x.second.template target<Index>()) { // a type index
             o = as_object(*p);
-        } else if (auto p = x.second.template target<Vector<Index>>()) { // a type table
-            o = tables_to_object(*p);
+        // } else if (auto p = x.second.template target<Vector<Index>>()) { // a type table
+            // o = tables_to_object(*p);
         // } else if (auto p = x.second.template target<Ref>()) {
         //     o = ref_to_object(*p);
         } else { // anything else
@@ -103,29 +103,31 @@ Object initialize(Schema const &schema) {
     }));
 
     // Configuration functions
-    s = s && attach(m, "set_output_conversion", value_to_object(declare_function([](Object t, Object o) {
+    s = s && attach(m, "set_output_conversion", value_to_object(make_function([](Object t, Object o) {
         output_conversions.insert_or_assign(std::move(t), std::move(o));
     })));
-    s = s && attach(m, "set_input_conversion", value_to_object(declare_function([](Object t, Object o) {
+    s = s && attach(m, "set_input_conversion", value_to_object(make_function([](Object t, Object o) {
         input_conversions.insert_or_assign(std::move(t), std::move(o));
     })));
-    s = s && attach(m, "set_translation", value_to_object(declare_function([](Object t, Object o) {
+    s = s && attach(m, "set_translation", value_to_object(make_function([](Object t, Object o) {
         DUMP("set_translation ", repr(t), " -> ", repr(o));
         type_translations.insert_or_assign(std::move(t), std::move(o));
     })));
 
-    s = s && attach(m, "clear_global_objects", value_to_object(declare_function(&clear_global_objects)));
+    s = s && attach(m, "clear_global_objects", value_to_object(make_function(&clear_global_objects)));
 
-    s = s && attach(m, "set_debug", value_to_object(declare_function([](bool b) {return std::exchange(Debug, b);})));
+    s = s && attach(m, "set_debug", value_to_object(make_function([](bool b) {
+        DUMP("set_debug", b);
+        return std::exchange(Debug, b);})));
 
-    s = s && attach(m, "debug", value_to_object(declare_function([] {return Debug;})));
+    s = s && attach(m, "debug", value_to_object(make_function([] {return Debug;})));
 
-    s = s && attach(m, "set_type_error", value_to_object(declare_function([](Object o) {
+    s = s && attach(m, "set_type_error", value_to_object(make_function([](Object o) {
         DUMP("setting type error");
         TypeError = std::move(o);
     })));
 
-    s = s && attach(m, "set_type", value_to_object(declare_function([](Index idx, Object cls, Object ref) {
+    s = s && attach(m, "set_type", value_to_object(make_function([](Index idx, Object cls, Object ref) {
         DUMP("set_type in");
         python_types[idx] = {std::move(cls), std::move(ref)};
         DUMP("set_type out");
@@ -158,8 +160,9 @@ extern "C" {
         return rebind::py::raw_object([&]() -> rebind::py::Object {
             rebind::py::Object mod {PyModule_Create(&rebind_definition), true};
             if (!mod) return {};
-            rebind::init(rebind::schema());
-            rebind::py::Object dict = rebind::py::initialize(rebind::schema());
+            rebind::Schema schema{rebind::global_schema()};
+            rebind::init(schema);
+            rebind::py::Object dict = rebind::py::initialize(schema);
             if (!dict) return {};
             rebind::py::incref(+dict);
             if (PyModule_AddObject(+mod, "schema", +dict) < 0) return {};

@@ -109,7 +109,8 @@ void write_schema(rebind::Schema &s) {
     s.function("clref", [](double const &i) {});
     s.function("noref", [](double i) {});
     s.function("rref", [](double &&i) {});
-    // s.render(Type<Goo>());
+
+    s.function("Goo.new", [](double x) -> Goo {return x;});
 
     // s.function("buffer", [](std::tuple<rebind::BinaryData, std::type_index, std::vector<std::size_t>> i) {
     //     DUMP(std::get<0>(i).size());
@@ -120,7 +121,7 @@ void write_schema(rebind::Schema &s) {
     s.function("vec1", [](std::vector<int> const &) {});
     s.function("vec2", [](std::vector<int> &) {});
     s.function("vec3", [](std::vector<int>) {});
-    s.function<1>("vec4", [](int, int i=2) {});
+    // s.function<1>("vec4", [](int, int i=2) {});
 
     DUMP("made schema");
 }

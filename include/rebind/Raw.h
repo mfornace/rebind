@@ -1,6 +1,7 @@
 #pragma once
 #include "API.h"
 #include "Type.h"
+// #include "Common.h"
 #include <optional>
 // #include "Scope.h"
 
@@ -19,9 +20,10 @@ namespace rebind {
 
 class Ref;
 class Value;
+class Output;
 class Scope;
 class Caller;
-class Arguments;
+class ArgView;
 
 template <class T>
 static constexpr bool is_usable = true
@@ -57,18 +59,23 @@ constexpr void assert_usable() {
 namespace raw {
 
 using Ptr = rebind_ptr;
+static constexpr std::uintptr_t const qualifier_bits = 3; // i.e. binary 11
 
 /**************************************************************************************/
 
-constexpr Ptr make_ptr(void *v, Qualifier q) {return v;}
-
-inline Qualifier qualifier(Ptr p) noexcept {
-    return static_cast<Qualifier>(
-        reinterpret_cast<std::uintptr_t>(p) & !static_cast<std::uintptr_t>(3));
+// Tag the pointer's last 2 bits with the qualifier
+inline Ptr make_ptr(void *v, Qualifier q) {
+    return reinterpret_cast<Ptr>(reinterpret_cast<std::uintptr_t>(v) | static_cast<std::uintptr_t>(q));
 }
 
+// Get out the last 2 bits as the qualifier
+inline Qualifier qualifier(Ptr p) noexcept {
+    return static_cast<Qualifier>(reinterpret_cast<std::uintptr_t>(p) & qualifier_bits);
+}
+
+// Get out the pointer minus the qualifier
 inline void * address(Ptr p) noexcept {
-    return reinterpret_cast<void *>(reinterpret_cast<std::uintptr_t>(p) & static_cast<std::uintptr_t>(3));
+    return reinterpret_cast<void *>(reinterpret_cast<std::uintptr_t>(p) & ~qualifier_bits);
 }
 
 /**************************************************************************************/
@@ -135,11 +142,17 @@ inline bool assign_if(Index i, void *p, Ref const &r) noexcept {
     return p && i(tag::assign_to, p, const_cast<Ref *>(&r), {});
 }
 
-bool request_to(Value &, Index t, void *p, Qualifier q) noexcept;
+/******************************************************************************/
 
-/**************************************************************************************/
+inline bool request_to(Output &v, Index i, void *p, Qualifier q) noexcept {
+    if (p) return i(tag::request_to_value, &v, p, {});
+    return false;
+}
 
-bool request_to(Ref &, Index t, void *p, Qualifier q) noexcept;
+inline bool request_to(Ref &r, Index i, void *p, Qualifier q) noexcept {
+    if (p) return i(tag::request_to_ref, &r, p, {});
+    return false;
+}
 
 /**************************************************************************************/
 
@@ -151,9 +164,9 @@ std::optional<T> request(Index i, void *p, Scope &s, Type<T>, Qualifier q);
 
 /**************************************************************************************/
 
-bool call_to(Value &v, Index i, void const *p, Caller &&c, Arguments args);
+bool call_to(Value &v, Index i, void const *p, Caller &&c, ArgView args) noexcept;
 
-bool call_to(Ref &v, Index i, void const *p, Caller &&c, Arguments args);
+bool call_to(Ref &v, Index i, void const *p, Caller &&c, ArgView args) noexcept;
 
 template <class ...Args>
 Value call_value(Index i, void const *p, Caller &&c, Args &&...args);
