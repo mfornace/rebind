@@ -155,7 +155,7 @@ std::optional<T> request(Index i, void *p, Scope &s, Type<T>, Qualifier q) {
     // ToValue
     Output v{Type<T>()};
     DUMP("requesting via to_value ", v.name());
-    if (raw::request_to(v, i, p, q)) {
+    if (stat::request::ok == raw::request_to(v, i, p, q)) {
         if (v.index() == fetch<T>()) // target not supported, so just use raw version
             out.emplace(std::move(*static_cast<T *>(v.address())));
         DUMP("request via to_value succeeded");
@@ -172,15 +172,12 @@ std::optional<T> request(Index i, void *p, Scope &s, Type<T>, Qualifier q) {
 
 inline bool call_to(Value &v, Index i, void const *p, ArgView args) noexcept {
     DUMP("raw::call_to value: ptr=", p, " name=", raw::name(i), " size=", args.size());
-    return p && i(tag::call_to_value, &v, const_cast<void *>(p), args);//, std::move(c), args);
+    return p && stat::call::ok == stat::call(i(tag::call_to_value, &v, const_cast<void *>(p), args));
 }
 
 inline bool call_to(Ref &r, Index i, void const *p, ArgView args) noexcept {
     DUMP("raw::call_to ref");
-// static_assert(std::array<int, sizeof(Caller)>::aaa);
-// static_assert(std::array<int, sizeof(std::string_view)>::aaa);
-#warning "need to add caller, method name, tag?"
-    return p && i(tag::call_to_ref, &r, const_cast<void *>(p), args);//, std::move(c), args);
+    return p && stat::call::ok == stat::call(i(tag::call_to_ref, &r, const_cast<void *>(p), args));
 }
 
 template <class ...Args>

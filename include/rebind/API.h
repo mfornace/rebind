@@ -8,7 +8,7 @@ extern "C" {
 
 #endif
 
-typedef int rebind_bool;
+typedef int rebind_stat;
 
 typedef unsigned int rebind_tag;
 
@@ -18,7 +18,7 @@ typedef struct rebind_args rebind_args;
 
 /******************************************************************************************/
 
-typedef rebind_bool (*rebind_index)(rebind_tag t, void *a, void *b, rebind_args);
+typedef rebind_stat (*rebind_index)(rebind_tag t, void *a, void *b, rebind_args);
 
 /******************************************************************************************/
 
@@ -55,27 +55,47 @@ typedef struct rebind_args {
 #ifdef __cplusplus
 }
 
+#include <type_traits>
+
 namespace rebind {
 
 using Index = rebind_index;
 using Tag = rebind_tag;
+using Stat = rebind_stat;
 
 namespace tag {
-
-static constexpr rebind_tag
-    check = 0,
-    drop = 1,
-    copy = 2,
-    name = 3,
-    info = 4,
-    method_to_value = 5,
-    method_to_ref = 6,
-    call_to_value = 7,
-    call_to_ref = 8,
-    request_to_value = 9,
-    request_to_ref = 10,
-    assign_to = 11;
+    static constexpr Tag const
+        check = 0,
+        drop = 1,
+        copy = 2,
+        name = 3,
+        info = 4,
+        method_to_value = 5,
+        method_to_ref = 6,
+        call_to_value = 7,
+        call_to_ref = 8,
+        request_to_value = 9,
+        request_to_ref = 10,
+        assign_to = 11;
 }
+
+namespace stat {
+    enum class copy : Stat {ok, unavailable, exception};
+    enum class drop : Stat {ok, unavailable};
+    enum class info : Stat {ok, unavailable};
+    enum class from_ref : Stat {ok, none, exception, unavailable};
+    enum class request : Stat {ok, none, null, exception, unavailable};
+    enum class assign_if : Stat {ok, none, null, exception, unavailable};
+    enum class call : Stat {ok, exception, unavailable, wrong_number, wrong_type};
+
+    template <class T>
+    Stat put(T t) {
+        static_assert(std::is_enum_v<T>);
+        return static_cast<Stat>(t);
+    }
+    // enum class assign_if {error};
+}
+
 
 inline char const * tag_name(rebind_tag t) {
     switch (t) {

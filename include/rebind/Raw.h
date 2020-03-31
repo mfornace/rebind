@@ -28,16 +28,15 @@ class ArgView;
 template <class T>
 static constexpr bool is_usable = true
     && !std::is_reference_v<T>
-    // && !std::is_function_v<T>
-    // && !std::is_void_v<T>
     && !std::is_const_v<T>
     && !std::is_volatile_v<T>
     && !std::is_void_v<T>
-    && std::is_nothrow_move_constructible_v<T>
+    && std::is_nothrow_destructible_v<T>
     && !std::is_same_v<T, Ref>
     && !std::is_same_v<T, Value>
-    // && !std::is_null_pointer_v<T>
     && !is_type_t<T>::value;
+    // && !std::is_null_pointer_v<T>
+    // && !std::is_function_v<T>
 
 /******************************************************************************/
 
@@ -47,11 +46,13 @@ constexpr void assert_usable() {
     static_assert(!std::is_const_v<T>);
     static_assert(!std::is_volatile_v<T>);
     static_assert(!std::is_void_v<T>);
-    static_assert(std::is_nothrow_move_constructible_v<T>);
+    static_assert(std::is_nothrow_destructible_v<T>);
+
     static_assert(!std::is_same_v<T, Ref>);
     static_assert(!std::is_same_v<T, Value>);
-    // static_assert(!std::is_null_pointer_v<T>);
     static_assert(!is_type_t<T>::value);
+
+    // static_assert(!std::is_null_pointer_v<T>);
 }
 
 /**************************************************************************************/
@@ -113,45 +114,44 @@ T * alloc(Args &&...args) {
 
 /**************************************************************************************/
 
-inline bool copy(rebind_value &v, Index i, void const *p) noexcept {
+inline stat::copy copy(rebind_value &v, Index i, void const *p) noexcept {
     if (i) {
-        if (i(tag::copy, &v, const_cast<void *>(p), {})) {
+        stat::copy err{i(tag::copy, &v, const_cast<void *>(p), {})};
+        if (stat::copy::ok == err) {
             v.ind = i;
-            return true;
         } else {
             v.ptr = nullptr;
             v.ind = nullptr;
-            return false;
         }
+        return err;
     } else {
         v.ptr = nullptr;
         v.ind = nullptr;
-        return true;
+        return stat::copy::ok;
     }
 }
 
 /**************************************************************************************/
 
-inline bool drop(rebind_value &v) noexcept {
-    return v.ind(tag::drop, &v, nullptr, {});
-}
+inline stat::drop drop(rebind_value &v) noexcept {return stat::drop(v.ind(tag::drop, &v, nullptr, {}));}
 
 /**************************************************************************************/
 
-inline bool assign_if(Index i, void *p, Ref const &r) noexcept {
-    return p && i(tag::assign_to, p, const_cast<Ref *>(&r), {});
+inline stat::assign_if assign_if(Index i, void *p, Ref const &r) noexcept {
+    if (!p) return stat::assign_if::null;
+    return stat::assign_if(i(tag::assign_to, p, const_cast<Ref *>(&r), {}));
 }
 
 /******************************************************************************/
 
-inline bool request_to(Output &v, Index i, void *p, Qualifier q) noexcept {
-    if (p) return i(tag::request_to_value, &v, p, {});
-    return false;
+inline stat::request request_to(Output &v, Index i, void *p, Qualifier q) noexcept {
+    if (!p) return stat::request::null;
+    return stat::request(i(tag::request_to_value, &v, p, {}));
 }
 
-inline bool request_to(Ref &r, Index i, void *p, Qualifier q) noexcept {
-    if (p) return i(tag::request_to_ref, &r, p, {});
-    return false;
+inline stat::request request_to(Ref &r, Index i, void *p, Qualifier q) noexcept {
+    if (!p) return stat::request::null;
+    return stat::request(i(tag::request_to_ref, &r, p, {}));
 }
 
 /**************************************************************************************/

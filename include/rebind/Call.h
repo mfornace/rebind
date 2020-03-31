@@ -83,13 +83,13 @@ struct Adapter<0, F, SFINAE> {
      Interface implementation for a function with no optional arguments.
      - Returns WrongNumber if args is not the right length
      */
-    static bool call_to(Value &v, F const &f, ArgView args) noexcept {
+    static stat::call call_to(Value &v, F const &f, ArgView args) noexcept {
         DUMP("call_to function adapter ", type_name<F>(), " ", std::addressof(f), " ", args.size());
         DUMP("method name", args.name(), " ", !args.name().empty());
 
         if (args.size() != Args::size) {
             v = WrongNumber(Args::size, args.size());
-            return false;
+            return stat::call::wrong_number;
         }
 
         auto frame = args.caller().new_frame(); // make a new unentered frame, must be noexcept
@@ -98,7 +98,7 @@ struct Adapter<0, F, SFINAE> {
 
         return Args::indexed([&](auto ...ts) {
             caller_invoke(v, UseCaller(), f, std::move(handle), cast_index(args, s, ts)...);
-            return true;
+            return stat::call::ok;
         });
         // It is planned to be allowed that the invoked function's C++ exception may propagate
         // in the future, assuming the caller policies allow this.
@@ -113,28 +113,28 @@ struct Adapter<0, R C::*, std::enable_if_t<std::is_member_object_pointer_v<R C::
     using F = R C::*;
 
     template <class Out>
-    static bool impl(Out &out, F f, Caller &caller, Ref const &self) {
+    static stat::call impl(Out &out, F f, Caller &caller, Ref const &self) {
         auto frame = caller.new_frame();
         DUMP("Adapter<", fetch<R>(), ", ", fetch<C>(), ">::()");
         Caller handle(frame);
         Scope s(handle);
 
         if (auto p = self.request<C &&>()) {
-            return out.set(std::move(*p).*f), true;
+            return out.set(std::move(*p).*f), stat::call::ok;
         } else if (auto p = self.request<C &>()) {
-            return out.set((*p).*f), true;
+            return out.set((*p).*f), stat::call::ok;
         } else if (auto p = self.request<C const &>()) {
-            return out.set((*p).*f), true;
+            return out.set((*p).*f), stat::call::ok;
         }
         // value conversions not allowed currently
         // else if (auto p = self.request_value<C>()) { }
         throw std::move(s.set_error("invalid argument"));
     }
 
-    static bool call_to(Value &v, F const &f, Caller &&c, ArgView args) noexcept {
+    static stat::call call_to(Value &v, F const &f, Caller &&c, ArgView args) noexcept {
         if (args.size() != 1) {
             v = WrongNumber(1, args.size());
-            return false;
+            return stat::call::wrong_number;
         }
 
         return impl(v, *static_cast<F const *>(f), c, args[0]);

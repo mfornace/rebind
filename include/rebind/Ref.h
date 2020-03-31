@@ -82,7 +82,9 @@ struct Ref : protected rebind_ref {
     template <class T>
     T cast(Type<T> t={}) const {Scope s; return cast(s, t);}
 
-    bool assign_if(Ref const &p) const {return qualifier() != Const && raw::assign_if(ind, address(), p);}
+    bool assign_if(Ref const &p) const {
+        return qualifier() != Const && stat::assign_if::ok == raw::assign_if(ind, address(), p);
+    }
 
     /**************************************************************************************/
 
@@ -101,9 +103,9 @@ struct Ref : protected rebind_ref {
 
     /**************************************************************************************/
 
-    bool request_to(Output &v) const & {return raw::request_to(v, ind, address(), qualifier());}
-    bool request_to(Output &v) & {return raw::request_to(v, ind, address(), qualifier());}
-    bool request_to(Output &v) && {return raw::request_to(v, ind, address(), qualifier());}
+    bool request_to(Output &v) const & {return stat::request::ok == raw::request_to(v, ind, address(), qualifier());}
+    bool request_to(Output &v) & {return stat::request::ok == raw::request_to(v, ind, address(), qualifier());}
+    bool request_to(Output &v) && {return stat::request::ok == raw::request_to(v, ind, address(), qualifier());}
 
     /**************************************************************************************/
 

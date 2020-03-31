@@ -37,11 +37,11 @@ struct RawValue : protected rebind_value {
     }
 
     RawValue(RawValue const &v) {
-        if (!raw::copy(*this, v.ind, v.ptr)) throw std::runtime_error("no copy");
+        if (stat::copy::ok != raw::copy(*this, v.ind, v.ptr)) throw std::runtime_error("no copy");
     }
 
     RawValue &operator=(RawValue const &v) {
-        if (!raw::copy(*this, v.ind, v.ptr)) throw std::runtime_error("no copy");
+        if (stat::copy::ok != raw::copy(*this, v.ind, v.ptr)) throw std::runtime_error("no copy");
         return *this;
     }
 
@@ -82,7 +82,7 @@ struct Value : public RawValue {
 
 
     Value(Ref const &r) {
-        if (!raw::copy(*this, r.index(), r.address())) throw std::runtime_error("no copy");
+        if (stat::copy::ok != raw::copy(*this, r.index(), r.address())) throw std::runtime_error("no copy");
     }
 
     /**************************************************************************/
@@ -173,7 +173,7 @@ struct Value : public RawValue {
         throw std::move(s.set_error("invalid cast (rebind::Value &&)"));
     }
 
-    bool assign_if(Ref const &p) {return raw::assign_if(ind, ptr, p);}
+    bool assign_if(Ref const &p) {return stat::assign_if::ok == raw::assign_if(ind, ptr, p);}
 
     /**************************************************************************/
 
@@ -188,9 +188,9 @@ struct Value : public RawValue {
 
     /**************************************************************************/
 
-    bool request_to(Output &v) const & {return raw::request_to(v, ind, ptr, Const);}
-    bool request_to(Output &v) & {return raw::request_to(v, ind, ptr, Lvalue);}
-    bool request_to(Output &v) && {return raw::request_to(v, ind, ptr, Rvalue);}
+    bool request_to(Output &v) const & {return stat::request::ok == raw::request_to(v, ind, ptr, Const);}
+    bool request_to(Output &v) & {return stat::request::ok == raw::request_to(v, ind, ptr, Lvalue);}
+    bool request_to(Output &v) && {return stat::request::ok == raw::request_to(v, ind, ptr, Rvalue);}
 
     /**************************************************************************/
 
