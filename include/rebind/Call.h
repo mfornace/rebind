@@ -7,6 +7,40 @@
 
 namespace rebind {
 
+// call_none: no return
+// call_value: return Value or exception
+// call_ref:
+
+struct FnOutput : rebind_value {
+    stat::call none() {
+        return stat::call::none;
+    }
+
+    stat::call value() {
+        return stat::call::ok;
+    }
+
+    stat::call ref() {
+        return stat::call::ok;
+    }
+
+    stat::call exception() {
+        return stat::call::exception;
+    }
+
+    stat::call invalid_return() {
+        return stat::call::invalid_return;
+    }
+
+    stat::call wrong_number(int expect, int got) {
+        return stat::call::wrong_number;
+    }
+
+    stat::call wrong_type() {
+        return stat::call::wrong_type;
+    }
+};
+
 /******************************************************************************/
 
 /// Cast element i of v to type T
@@ -19,28 +53,43 @@ decltype(auto) cast_index(ArgView const &v, Scope &s, IndexedType<T> i) {
 /******************************************************************************/
 
 /// Invoke a function and arguments, storing output in a Variable if it doesn't return void
-template <class Out, class F, class ...Ts>
-void opaque_invoke(Out &out, F const &f, Ts &&... ts) {
+template <class F, class ...Ts>
+stat::call invoke_to(FnOutput &out, F const &f, Ts &&... ts) {
     using O = std::remove_cv_t<std::invoke_result_t<F, Ts...>>;
-    static_assert(std::is_same_v<Out, Value> || std::is_reference_v<O>);
     DUMP("invoking function ", type_name<F>(), " with output ", type_name<O>());
     if constexpr(std::is_void_v<O>) {
-        std::invoke(f, static_cast<Ts &&>(ts)...);
+        if (code == call_type::return_none) {
+            std::invoke(f, static_cast<Ts &&>(ts)...);
+            return out.none();
+        } else return out.invalid_return();
+    } else if constexpr(std::is_reference_v<O>) {
+        if (code == call_type::return_none) {
+            std::invoke(f, static_cast<Ts &&>(ts)...);
+            return out.none();
+        }
+        if (code == call_type::return_ref) {
+            return out.ref(std::invoke(f, static_cast<Ts &&>(ts)...));
+        }
+        if (code == call_type::return_value) {
+            if constexpr(std::is_convertible_v<O, unqualified<O>>) {
+                return out.value(std::invoke(f, static_cast<Ts &&>(ts)...));
+            } else return out.invalid_return();
+        }
     } else {
-        out.set(std::invoke(f, static_cast<Ts &&>(ts)...));
+        if (code == call_type::return_value) {
+            return out.value(std::invoke(f, static_cast<Ts &&>(ts)...));
+        } else return out.invalid_return();
     }
 }
 
-template <class Out, class F, class ...Ts>
-void caller_invoke(Out &out, std::true_type, F const &f, Caller &&c, Ts &&...ts) {
+template <bool UseCaller, class F, class ...Ts>
+stat::call caller_invoke(FnOutput &out, F const &f, Caller &&c, Ts &&...ts) {
     c.enter();
-    opaque_invoke(out, f, std::move(c), static_cast<Ts &&>(ts)...);
-}
-
-template <class Out, class F, class ...Ts>
-void caller_invoke(Out &out, std::false_type, F const &f, Caller &&c, Ts &&...ts) {
-    c.enter();
-    opaque_invoke(out, f, static_cast<Ts &&>(ts)...);
+    if constexpr(UseCaller) {
+        invoke_to(out, f, std::move(c), static_cast<Ts &&>(ts)...);
+    } else {
+        invoke_to(out, f, static_cast<Ts &&>(ts)...);
+    }
 }
 
 /******************************************************************************************/
@@ -72,6 +121,7 @@ struct CallToValue<Call<N, F>> : Adapter<N, F>, std::true_type {};
 
 /******************************************************************************/
 
+
 template <class F, class SFINAE>
 struct Adapter<0, F, SFINAE> {
     using Signature = SimpleSignature<F>;
@@ -83,22 +133,18 @@ struct Adapter<0, F, SFINAE> {
      Interface implementation for a function with no optional arguments.
      - Returns WrongNumber if args is not the right length
      */
-    static stat::call call_to(Value &v, F const &f, ArgView args) noexcept {
+    static stat::call call_to(FnOutput &v, F const &f, ArgView args) noexcept {
         DUMP("call_to function adapter ", type_name<F>(), " ", std::addressof(f), " ", args.size());
         DUMP("method name", args.name(), " ", !args.name().empty());
 
-        if (args.size() != Args::size) {
-            v = WrongNumber(Args::size, args.size());
-            return stat::call::wrong_number;
-        }
+        if (args.size() != Args::size) return v.wrong_number(Args::size, args.size());
 
         auto frame = args.caller().new_frame(); // make a new unentered frame, must be noexcept
-        Caller handle(frame);       // make the Caller with a weak reference to frame
+        Caller handle(frame); // make the Caller with a weak reference to frame
         Scope s(handle);
 
         return Args::indexed([&](auto ...ts) {
-            caller_invoke(v, UseCaller(), f, std::move(handle), cast_index(args, s, ts)...);
-            return stat::call::ok;
+            return caller_invoke<UseCaller::value>(v, f, std::move(handle), cast_index(args, s, ts)...);
         });
         // It is planned to be allowed that the invoked function's C++ exception may propagate
         // in the future, assuming the caller policies allow this.
@@ -108,38 +154,30 @@ struct Adapter<0, F, SFINAE> {
 
 /******************************************************************************/
 
-template <class R, class C>
-struct Adapter<0, R C::*, std::enable_if_t<std::is_member_object_pointer_v<R C::*>>> {
-    using F = R C::*;
+// template <class R, class C>
+// struct Adapter<0, R C::*, std::enable_if_t<std::is_member_object_pointer_v<R C::*>>> {
+//     using F = R C::*;
 
-    template <class Out>
-    static stat::call impl(Out &out, F f, Caller &caller, Ref const &self) {
-        auto frame = caller.new_frame();
-        DUMP("Adapter<", fetch<R>(), ", ", fetch<C>(), ">::()");
-        Caller handle(frame);
-        Scope s(handle);
+//     static stat::call call_to(FnOutput &v, F const &f, Caller &&c, ArgView args) noexcept {
+//         if (args.size() != 1) return v.wrong_number(1, args.size());
 
-        if (auto p = self.request<C &&>()) {
-            return out.set(std::move(*p).*f), stat::call::ok;
-        } else if (auto p = self.request<C &>()) {
-            return out.set((*p).*f), stat::call::ok;
-        } else if (auto p = self.request<C const &>()) {
-            return out.set((*p).*f), stat::call::ok;
-        }
-        // value conversions not allowed currently
-        // else if (auto p = self.request_value<C>()) { }
-        throw std::move(s.set_error("invalid argument"));
-    }
+//         auto frame = caller.new_frame();
+//         DUMP("Adapter<", fetch<R>(), ", ", fetch<C>(), ">::()");
+//         Caller handle(frame);
+//         Scope s(handle);
 
-    static stat::call call_to(Value &v, F const &f, Caller &&c, ArgView args) noexcept {
-        if (args.size() != 1) {
-            v = WrongNumber(1, args.size());
-            return stat::call::wrong_number;
-        }
-
-        return impl(v, *static_cast<F const *>(f), c, args[0]);
-    }
-};
+//         if (auto p = self.request<C &&>()) {
+//             return out.set(std::move(*p).*f), stat::call::ok;
+//         } else if (auto p = self.request<C &>()) {
+//             return out.set((*p).*f), stat::call::ok;
+//         } else if (auto p = self.request<C const &>()) {
+//             return out.set((*p).*f), stat::call::ok;
+//         }
+//         // value conversions not allowed currently
+//         // else if (auto p = self.request_value<C>()) { }
+//         throw std::move(s.set_error("invalid argument"));
+//     }
+// };
 
 /******************************************************************************/
 

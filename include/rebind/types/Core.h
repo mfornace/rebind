@@ -41,7 +41,11 @@ struct FromRef<T *> {
 
 template <>
 struct FromRef<void *> {
-    std::optional<void *> operator()(Ref const &v, Scope &s) const {return v.address();}
+    std::optional<void *> operator()(Ref const &v, Scope &s) const {
+        std::optional<void *> out;
+        if (v.qualifier() != Const) out.emplace(v.address());
+        return out;
+    }
 };
 
 template <>

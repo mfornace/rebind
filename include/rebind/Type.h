@@ -1,5 +1,5 @@
 #pragma once
-#include "API.h"
+
 #include <type_traits>
 #include <utility>
 #include <typeindex>
@@ -14,7 +14,7 @@ using unqualified = std::remove_cv_t<std::remove_reference_t<T>>;
 
 /******************************************************************************************/
 
-enum Qualifier : unsigned char {Const, Lvalue, Rvalue};
+enum Qualifier : rebind_qualifier {Const, Lvalue, Rvalue};
 
 static char const * QualifierNames[3] = {"const", "lvalue", "rvalue"};
 static char const * QualifierSuffixes[3] = {" const &", " &", " &&"};
@@ -40,19 +40,12 @@ inline constexpr bool compatible_qualifier(Qualifier from, Qualifier to) {
 
 /******************************************************************************************/
 
-template <class T>
-Index fetch() noexcept;
-
-/******************************************************************************************/
-
 /// Compile-time type a la boost::hana
 template <class T>
 struct Type  {
     using type = T;
     T operator*() const; // undefined
     constexpr Type<unqualified<T>> operator+() const {return {};}
-
-    operator Index() const {return fetch<T>();}
 };
 
 template <class T, class U>
@@ -79,8 +72,6 @@ struct IndexedType {
     std::size_t index;
     T operator*() const; // undefined
     constexpr Type<unqualified<T>> operator+() const {return {};}
-
-    operator Index() const {return fetch<T>();}
 };
 
 /******************************************************************************************/

@@ -167,6 +167,25 @@ pub fn test_fun3() {
     // let blah: () = (&t).copyc();
 }
 
+
+struct TestMut {
+    i: i32,
+    f: f32
+}
+
+// fn hmm(i: )
+
+#[test]
+pub fn test_mut() {
+    let mut m = TestMut{i: 1, f: 2.0};
+    m.i = 2;
+    let a: &mut i32 = &mut m.i;
+    *a = 5;
+    m.i = 3;
+    // let t = Type::<i32>::new();
+    // let blah: () = (&t).copyc();
+}
+
 /******************************************************************************/
 
 pub fn foo1() {

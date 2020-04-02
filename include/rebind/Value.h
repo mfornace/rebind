@@ -37,11 +37,11 @@ struct RawValue : protected rebind_value {
     }
 
     RawValue(RawValue const &v) {
-        if (stat::copy::ok != raw::copy(*this, v.ind, v.ptr)) throw std::runtime_error("no copy");
+        if (stat::copy::ok != raw::copy(*this, v.index(), v.address())) throw std::runtime_error("no copy");
     }
 
     RawValue &operator=(RawValue const &v) {
-        if (stat::copy::ok != raw::copy(*this, v.ind, v.ptr)) throw std::runtime_error("no copy");
+        if (stat::copy::ok != raw::copy(*this, v.index(), v.address())) throw std::runtime_error("no copy");
         return *this;
     }
 
@@ -49,20 +49,20 @@ struct RawValue : protected rebind_value {
 
     void release() noexcept {ind = nullptr; ptr = nullptr;}
 
-    void reset() {if (ptr) {raw::drop(*this); release();}}
+    void reset() {if (has_value()) {raw::drop(*this); release();}}
 
-    std::string_view name() const noexcept {return raw::name(ind);}
+    constexpr Index index() const noexcept {return {ind};}
 
-    constexpr Index index() const noexcept {return ind;}
-
-    constexpr bool has_value() const noexcept {return ptr;}
-
-    explicit constexpr operator bool() const noexcept {return ptr;}
+    std::string_view name() const noexcept {return index().name();}
 
     constexpr void * address() const noexcept {return ptr;}
 
+    constexpr bool has_value() const noexcept {return address();}
+    explicit constexpr operator bool() const noexcept {return has_value();}
+
+
     template <class T>
-    bool matches() const noexcept {return raw::matches<T>(ind);}
+    bool matches() const noexcept {return index() == fetch<T>();}
 };
 
 /******************************************************************************/
@@ -127,19 +127,19 @@ struct Value : public RawValue {
     template <class T>
     Maybe<T> request(Scope &s, Type<T> t={}) const & {
         if constexpr(std::is_convertible_v<Value const &, T>) return some<T>(*this);
-        else return raw::request(ind, ptr, s, t, Const);
+        else return raw::request(index(), address(), s, t, Const);
     }
 
     template <class T>
     Maybe<T> request(Scope &s, Type<T> t={}) & {
         if constexpr(std::is_convertible_v<Value &, T>) return some<T>(*this);
-        else return raw::request(ind, ptr, s, t, Lvalue);
+        else return raw::request(index(), address(), s, t, Lvalue);
     }
 
     template <class T>
     Maybe<T> request(Scope &s, Type<T> t={}) && {
         if constexpr(std::is_convertible_v<Value &&, T>) return some<T>(std::move(*this));
-        else return raw::request(ind, ptr, s, t, Rvalue);
+        else return raw::request(index(), address(), s, t, Rvalue);
     }
 
     /**************************************************************************/
@@ -173,7 +173,7 @@ struct Value : public RawValue {
         throw std::move(s.set_error("invalid cast (rebind::Value &&)"));
     }
 
-    bool assign_if(Ref const &p) {return stat::assign_if::ok == raw::assign_if(ind, ptr, p);}
+    bool assign_if(Ref const &p) {return stat::assign_if::ok == raw::assign_if(index(), address(), p);}
 
     /**************************************************************************/
 
@@ -188,9 +188,9 @@ struct Value : public RawValue {
 
     /**************************************************************************/
 
-    bool request_to(Output &v) const & {return stat::request::ok == raw::request_to(v, ind, ptr, Const);}
-    bool request_to(Output &v) & {return stat::request::ok == raw::request_to(v, ind, ptr, Lvalue);}
-    bool request_to(Output &v) && {return stat::request::ok == raw::request_to(v, ind, ptr, Rvalue);}
+    bool request_to(Output &v) const & {return stat::request::ok == raw::request_to(v, index(), address(), Const);}
+    bool request_to(Output &v) & {return stat::request::ok == raw::request_to(v, index(), address(), Lvalue);}
+    bool request_to(Output &v) && {return stat::request::ok == raw::request_to(v, index(), address(), Rvalue);}
 
     /**************************************************************************/
 
@@ -229,14 +229,14 @@ struct Output : public RawValue {
     template <class T>
     unqualified<T> * set_if(T &&t) {
         using U = unqualified<T>;
-        if (!ptr && raw::matches<U>(ind))
+        if (!ptr && this->matches<U>())
             ptr = raw::alloc<U>(static_cast<T &&>(t));
         return static_cast<U *>(ptr);
     }
 
     template <class T, class ...Args>
     T * emplace_if(Args &&...args) {
-        if (!ptr && raw::matches<T>(ind))
+        if (!ptr && this->matches<T>())
             ptr = raw::alloc<T>(static_cast<Args &&>(args)...);
         return static_cast<unqualified<T> *>(ptr);
     }

@@ -12,71 +12,69 @@ using rebind::Schema;
 
 /******************************************************************************/
 
-struct Blah {
-    std::string name;
-    Blah(std::string s) : name(s) {}
-    void dump() const {DUMP(name);}
+struct GooBase {
+
 };
 
-Value response(std::type_index t, Blah b) {
-    if (t == typeid(std::string)) return std::move(b.name);
-    return {};
-}
-
-template <class T>
-std::optional<Blah> from_ref(Type<Blah>, T &&, Scope &s) {
-    if constexpr(std::is_same_v<rebind::unqualified<T>, std::string>)
-        return Blah("haha");
-    return s.error("bad blah", rebind::fetch<Blah>());
-}
-
 //remove iostream
-struct Goo {
+struct Goo : GooBase {
     double x=1000;
+    std::string name = "goo";
 
     Goo(double xx) : x(xx) {}
     Goo(Goo const &g) : x(g.x) {DUMP("copy");}
     Goo(Goo &&g) noexcept : x(g.x) {DUMP("move"); g.x = -1;}
+
     Goo & operator=(Goo g) {
         x = g.x;
         DUMP("assign");
         return *this;
     }
+
     void test_throw(double xx) {
         if (xx < 0) throw std::runtime_error("cannot be negative");
         else x += xx;
     }
+
     friend std::ostream &operator<<(std::ostream &os, Goo const &g) {
         return os << "Goo(" << g.x << ", " << &g.x << ")";
     }
 };
 
-// template <Qualifier Q>
-// auto response(Index t, qualified<Goo, Q> b) {
-//     DUMP("casting Blah to double const &");
-//     return (t == typeid(double)) ? &b.x : nullptr;
+// bool members(Self<Goo> &s) {
+//     return s("x", &Goo::x);
 // }
+
+bool method(Input<Goo> &self) {
+    return self("x", &Goo::x)
+        || self("test_throw", &Goo::test_throw)
+        || self("get_x", [](Goo const &g) {return g.x;})
+        || self("add", [](double x) {g.x += x;})
+        || self.derive<GooBase>();
+}
+
+// to reference pretty much the same...
+bool to_value(Output &o, Goo const &g) {
+    if (o.matches<double>()) return o.emplace_if(g.x);
+    if (o.matches<std::string_view>()) return o.emplace_if("hmmmmmm");
+    // needs to be annotated somehow whether the return type is valid after "g" is destructed.
+    if (o.matches<std::string_view>() && !o.leaks()) return o.emplace_if(g.name);
+    return false;
+}
+
+
+std::optional<Goo> from_ref(Ref r, Type<Goo>) {
+    std::optional<Goo> out;
+    if (auto t = r.request<double>()) out.emplace(*t);
+    return out;
+}
 
 /******************************************************************************/
 
-// void render(Schema &s, Type<Blah> t) {
-//     s.type(t, "submodule.Blah");
-//     s.function("submodule.Blah.new", rebind::construct<std::string>(t));
-//     s.method(t, "dump", &Blah::dump);
+// bool members(Self<Example> &s) {
+//     return s("global_value", 123);
 // }
 
-// void render(Schema &s, Type<Goo> t) {
-//     s.type(t, "Goo");
-//     s.render(Type<Blah>());
-//     s.function("Goo.new", [](double x) -> Goo {return x;});
-//     s.method(t, "add", [](Goo x) {
-//         x.x += 4;
-//         DUMP(x.x);
-//         return x;
-//     });
-//     s.method(t, ".x", &Goo::x);
-//     s.method(t, "{}", streamable(t));
-// }
 
 // could make this return a schema
 void write_schema(rebind::Schema &s) {

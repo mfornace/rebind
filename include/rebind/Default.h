@@ -26,10 +26,10 @@ bool assign_if (void *,       [],           Ref const)
 
 /******************************************************************************************/
 
-/// Return new-allocated copy of the object
+/// Insert new-allocated copy of the object
 template <class T>
 stat::copy default_copy(rebind_value &v, T const &t) noexcept {
-    if constexpr(std::is_nothrow_constructible_v<T>) {
+    if constexpr(std::is_nothrow_copy_constructible_v<T>) {
         v.ptr = new T(t);
         return stat::copy::ok;
     } else if constexpr(std::is_copy_constructible_v<T>) {
@@ -44,17 +44,25 @@ stat::copy default_copy(rebind_value &v, T const &t) noexcept {
 
 /******************************************************************************/
 
-/// Delete the object pointer
+/// Delete the held object
 template <class T>
-stat::drop default_drop(rebind_value &t) noexcept {delete static_cast<T *>(t.ptr); return stat::drop::ok;}
+stat::drop default_drop(rebind_value &t) noexcept {
+    delete static_cast<T *>(t.ptr);
+    return stat::drop::ok;
+}
 
 /******************************************************************************/
 
+/// Return a handle to std::type_info or some language-specific equivalent
 template <class T>
-stat::info default_info(void const *&o) noexcept {o = &typeid(T); return stat::info::ok;}
+stat::info default_info(void const *&o) noexcept {
+    o = &typeid(T);
+    return stat::info::ok;
+}
 
 /******************************************************************************/
 
+/// Insert type T in a Value using data from a Ref
 template <class T>
 stat::from_ref default_from_ref(Value &v, Ref const &p, Scope &s) noexcept {
     try {
@@ -72,22 +80,22 @@ stat::from_ref default_from_ref(Value &v, Ref const &p, Scope &s) noexcept {
 
 /******************************************************************************/
 
+/// Use T to create a Value
 template <class T>
 stat::request default_to_value(Output &v, T &t, Qualifier const q) noexcept {
     DUMP("to_value ", type_name<T>(), " ", v.name());
     assert_usable<T>();
-    try {
-        if (q == Lvalue) {
+    try { switch {
+        case Lvalue:
             return ToValue<T>()(v, t) ? stat::request::ok : stat::request::none;
-        } else if (q == Rvalue) {
+        case Rvalue:
             return ToValue<T>()(v, std::move(t)) ? stat::request::ok : stat::request::none;
-        } else {
+        case Const:
             return ToValue<T>()(v, static_cast<T const &>(t)) ? stat::request::ok : stat::request::none;
-        }
-    } catch (...) {
+    } } catch (...) {
 #warning "to_value exception not implemented"
-        return stat::request::exception;
     }
+    return stat::request::exception;
 }
 
 /******************************************************************************/
@@ -95,15 +103,14 @@ stat::request default_to_value(Output &v, T &t, Qualifier const q) noexcept {
 template <class T>
 stat::request default_to_ref(Ref &v, T &t, Qualifier const q) noexcept {
     assert_usable<T>();
-    try {
-        if (q == Lvalue) {
+    try { switch {
+        case Lvalue:
             return ToRef<T>()(v, t) ? stat::request::ok : stat::request::none;
-        } else if (q == Rvalue) {
+        case Rvalue:
             return ToRef<T>()(v, std::move(t)) ? stat::request::ok : stat::request::none;
-        } else {
+        case Const:
             return ToRef<T>()(v, static_cast<T const &>(t)) ? stat::request::ok : stat::request::none;
-        }
-    } catch (...) {
+    } } catch (...) {
 #warning "exception not implemented"
         return stat::request::exception;
     }
@@ -111,29 +118,36 @@ stat::request default_to_ref(Ref &v, T &t, Qualifier const q) noexcept {
 
 /******************************************************************************/
 
+/// Assign to self from another Ref
 template <class T>
 stat::assign_if default_assign_to(T &self, Ref const &other) noexcept {
     assert_usable<T>();
     DUMP("assign_if: ", type_name<T>());
-    if (auto p = other.request<T &&>()) {
-        DUMP("assign_if: got T &&");
-        self = std::move(*p);
-        return stat::assign_if::ok;
-    }
-    if constexpr (std::is_copy_assignable_v<T>) {
-        if (auto p = other.request<T const &>()) {
-            DUMP("assign_if: got T const &");
-            self = *p;
+    try {
+        if (auto p = other.request<T &&>()) {
+            DUMP("assign_if: got T &&");
+            self = std::move(*p);
             return stat::assign_if::ok;
         }
+
+        if constexpr (std::is_copy_assignable_v<T>) {
+            if (auto p = other.request<T const &>()) {
+                DUMP("assign_if: got T const &");
+                self = *p;
+                return stat::assign_if::ok;
+            }
+        }
+
+        if (auto p = other.request<T>()) {
+            DUMP("assign_if: T succeeded, type=", typeid(*p).name());
+            self = std::move(*p);
+            return stat::assign_if::ok;
+        }
+
+        return stat::assign_if::none;
+    } catch (...) {
+        return stat::assign_if::none;
     }
-#warning "exception not implemented"
-    if (auto p = other.request<T>()) {
-        DUMP("assign_if: T succeeded, type=", typeid(*p).name());
-        self = std::move(*p);
-        return stat::assign_if::ok;
-    }
-    return stat::assign_if::none;
 }
 
 /******************************************************************************************/
@@ -180,10 +194,10 @@ struct Impl {
                 return stat::put(default_info<T>(*static_cast<void const **>(o)));
             }
             case tag::check: {
-                return reinterpret_cast<std::uintptr_t>(o) < 12;
+                return reinterpret_cast<std::uintptr_t>(o) < 12; // legal cast
             }
         }
-        return false;
+        return -1; // ?
     }
 };
 
