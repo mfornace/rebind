@@ -11,35 +11,72 @@ namespace rebind {
 // call_value: return Value or exception
 // call_ref:
 
-struct FnOutput : rebind_value {
-    stat::call none() {
-        return stat::call::none;
+// struct FnOutput : rebind_value {
+//     stat::call none() {
+//         return stat::call::none;
+//     }
+
+//     stat::call value() {
+//         return stat::call::ok;
+//     }
+
+//     stat::call ref() {
+//         return stat::call::ok;
+//     }
+
+//     stat::call exception() {
+//         return stat::call::exception;
+//     }
+
+//     stat::call invalid_return() {
+//         return stat::call::invalid_return;
+//     }
+
+//     stat::call wrong_number(int expect, int got) {
+//         return stat::call::wrong_number;
+//     }
+
+//     stat::call wrong_type() {
+//         return stat::call::wrong_type;
+//     }
+// };
+
+
+/******************************************************************************************/
+
+struct ArgView : rebind_args {
+    // constexpr
+    ArgView(Value *r, std::size_t c);// : rebind_args{static_cast<rebind_ref *>(static_cast<void *>(r)), c} {}
+
+    Caller &caller() const;// {return *reinterpret(ptr)->target<Caller &>();}
+
+    std::string_view name() const {
+        auto const &s = reinterpret_cast<rebind_str const &>(ptr[1]);
+        return std::string_view(s.data, s.size);
     }
 
-    stat::call value() {
-        return stat::call::ok;
-    }
+    Value tag() const;// {return *reinterpret(ptr + 2);}
 
-    stat::call ref() {
-        return stat::call::ok;
-    }
+    Value * begin() const noexcept {return reinterpret(ptr) + 3;}
 
-    stat::call exception() {
-        return stat::call::exception;
-    }
+    auto size() const noexcept {return len;}
 
-    stat::call invalid_return() {
-        return stat::call::invalid_return;
-    }
+    Value * end() const noexcept {return begin() + size();}
 
-    stat::call wrong_number(int expect, int got) {
-        return stat::call::wrong_number;
-    }
+    Value &operator[](std::size_t i) const noexcept {return begin()[i];}
 
-    stat::call wrong_type() {
-        return stat::call::wrong_type;
-    }
+    static Value * reinterpret(rebind_value *r) {return static_cast<Value *>(static_cast<void *>(r));}
 };
+
+/******************************************************************************************/
+
+template <class ...Ts>
+Vector<Value> to_arguments(Ts &&...ts) {
+    Vector<Value> out;
+    out.reserve(sizeof...(Ts));
+    // (out.emplace_back(std::addressof(ts), qualifier_of<Ts &&>), ...);
+    return out;
+}
 
 /******************************************************************************/
 
@@ -54,36 +91,20 @@ decltype(auto) cast_index(ArgView const &v, Scope &s, IndexedType<T> i) {
 
 /// Invoke a function and arguments, storing output in a Variable if it doesn't return void
 template <class F, class ...Ts>
-stat::call invoke_to(FnOutput &out, F const &f, Ts &&... ts) {
+stat::call invoke_to(Value &out, F const &f, Ts &&... ts) {
     using O = std::remove_cv_t<std::invoke_result_t<F, Ts...>>;
     DUMP("invoking function ", type_name<F>(), " with output ", type_name<O>());
     if constexpr(std::is_void_v<O>) {
-        if (code == call_type::return_none) {
-            std::invoke(f, static_cast<Ts &&>(ts)...);
-            return out.none();
-        } else return out.invalid_return();
-    } else if constexpr(std::is_reference_v<O>) {
-        if (code == call_type::return_none) {
-            std::invoke(f, static_cast<Ts &&>(ts)...);
-            return out.none();
-        }
-        if (code == call_type::return_ref) {
-            return out.ref(std::invoke(f, static_cast<Ts &&>(ts)...));
-        }
-        if (code == call_type::return_value) {
-            if constexpr(std::is_convertible_v<O, unqualified<O>>) {
-                return out.value(std::invoke(f, static_cast<Ts &&>(ts)...));
-            } else return out.invalid_return();
-        }
+        std::invoke(f, static_cast<Ts &&>(ts)...);
+        return stat::call::ok;
     } else {
-        if (code == call_type::return_value) {
-            return out.value(std::invoke(f, static_cast<Ts &&>(ts)...));
-        } else return out.invalid_return();
+        out.emplace(Type<O>(), std::invoke(f, static_cast<Ts &&>(ts)...));
+        return stat::call::ok;
     }
 }
 
 template <bool UseCaller, class F, class ...Ts>
-stat::call caller_invoke(FnOutput &out, F const &f, Caller &&c, Ts &&...ts) {
+stat::call caller_invoke(Value &out, F const &f, Caller &&c, Ts &&...ts) {
     c.enter();
     if constexpr(UseCaller) {
         invoke_to(out, f, std::move(c), static_cast<Ts &&>(ts)...);
@@ -95,10 +116,7 @@ stat::call caller_invoke(FnOutput &out, F const &f, Caller &&c, Ts &&...ts) {
 /******************************************************************************************/
 
 template <class T, class SFINAE=void>
-struct CallToValue : std::false_type {};
-
-template <class T, class SFINAE=void>
-struct CallToRef : std::false_type {};
+struct Call : std::false_type {};
 
 /******************************************************************************/
 
@@ -106,18 +124,18 @@ template <int N, class F, class SFINAE=void>
 struct Adapter;
 
 template <int N, class F>
-struct Call {
+struct Callable {
     F function;
-    Call(F &&f) : function(std::move(f)) {}
+    Callable(F &&f) : function(std::move(f)) {}
 
     constexpr operator F const &() const noexcept {
-        DUMP("cast into Call ", &function, " ", reinterpret_cast<void const *>(function), " ", type_name<F>());
+        DUMP("cast into Callable ", &function, " ", reinterpret_cast<void const *>(function), " ", type_name<F>());
         return function;
     }
 };
 
 template <int N, class F>
-struct CallToValue<Call<N, F>> : Adapter<N, F>, std::true_type {};
+struct Call<Callable<N, F>> : Adapter<N, F>, std::true_type {};
 
 /******************************************************************************/
 
@@ -133,11 +151,14 @@ struct Adapter<0, F, SFINAE> {
      Interface implementation for a function with no optional arguments.
      - Returns WrongNumber if args is not the right length
      */
-    static stat::call call_to(FnOutput &v, F const &f, ArgView args) noexcept {
+    static stat::call call_to(Value &v, F const &f, ArgView args) noexcept {
         DUMP("call_to function adapter ", type_name<F>(), " ", std::addressof(f), " ", args.size());
         DUMP("method name", args.name(), " ", !args.name().empty());
 
-        if (args.size() != Args::size) return v.wrong_number(Args::size, args.size());
+        if (args.size() != Args::size) {
+            // return v.wrong_number(Args::size, args.size());
+            return stat::call::wrong_number;
+        }
 
         auto frame = args.caller().new_frame(); // make a new unentered frame, must be noexcept
         Caller handle(frame); // make the Caller with a weak reference to frame
@@ -162,7 +183,7 @@ struct Adapter<0, F, SFINAE> {
 //         if (args.size() != 1) return v.wrong_number(1, args.size());
 
 //         auto frame = caller.new_frame();
-//         DUMP("Adapter<", fetch<R>(), ", ", fetch<C>(), ">::()");
+//         DUMP("Adapter<", Index::of<R>(), ", ", Index::of<C>(), ">::()");
 //         Caller handle(frame);
 //         Scope s(handle);
 
@@ -198,8 +219,8 @@ auto make_function(F f) {
     constexpr int n = N == -1 ? 0 : SimpleSignature<S>::size - 1 - N;
 
     // Return the callable object holding the functor
-    static_assert(is_usable<Call<n, S>>);
-    return Call<n, S>{std::move(simplified)};
+    static_assert(is_manageable<Callable<n, S>>);
+    return Callable<n, S>{std::move(simplified)};
 }
 
 /******************************************************************************/

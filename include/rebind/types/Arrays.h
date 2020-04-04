@@ -143,14 +143,14 @@ template <>
 struct FromRef<BinaryView> {
     std::optional<BinaryView> operator()(Ref const &v, Scope &s) const {
         if (auto p = v.request<BinaryData>()) return BinaryView(p->data(), p->size());
-        return s.error("not convertible to binary view", fetch<BinaryView>());
+        return s.error("not convertible to binary view", Index::of<BinaryView>());
     }
 };
 
 template <>
 struct FromRef<BinaryData> {
     std::optional<BinaryData> operator()(Ref const &v, Scope &s) const {
-        return s.error("not convertible to binary data", fetch<BinaryData>());
+        return s.error("not convertible to binary data", Index::of<BinaryData>());
     }
 };
 

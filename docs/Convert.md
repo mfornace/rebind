@@ -1,15 +1,15 @@
 
-## `FromRef` for defining how to make your object from an opaque `Pointer`
+## `FromRef` for defining how to make your object from an opaque `Ref`
 
 ```c++
 template <class T, class SFINAE=void> // T is qualified
 struct FromRef {
     /// Convert variable `r` into type `T`, log failures in Scope
     /// OUT is either T *, T const *, or std::optional<T>
-    std::optional<T> operator()(Pointer const &, Scope &) const;
+    std::optional<T> operator()(Ref const &, Scope &) const;
 
     /// Return if conversion MAY BE possible
-    bool operator()(Pointer const &) const;
+    bool operator()(Ref const &) const;
 };
 ```
 
@@ -31,16 +31,16 @@ struct ToValue {
 
 ### Reference variant
 
-Names: Pointer, Reference, Handle
+Names: Ref, Reference, Handle
 
 ```c++
 template <class T, class SFINAE=void> // T is unqualified
 struct ToRef {
 
     /// Convert `t` into type `(idx, Q)`, put it in the Value, and return if conversion took place
-    bool operator()(Pointer &, T &) const;
-    bool operator()(Pointer &, T const &) const;
-    bool operator()(Pointer &, T &&) const;
+    bool operator()(Ref &, T &) const;
+    bool operator()(Ref &, T const &) const;
+    bool operator()(Ref &, T &&) const;
 
     // cheap, no need
     // bool operator()(Index const &idx, T const &t, Qualifier q) const;

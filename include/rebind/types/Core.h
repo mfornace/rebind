@@ -73,7 +73,7 @@ struct FromRef<T, std::enable_if_t<std::is_floating_point_v<T>>> {
     std::optional<T> operator()(Ref const &v, Scope &s) const {
         DUMP("convert to floating");
         if (!std::is_same_v<Real, T>) if (auto p = v.request<Real>()) return static_cast<T>(*p);
-        return s.error("not convertible to floating point", fetch<T>());
+        return s.error("not convertible to floating point", Index::of<T>());
     }
 };
 
@@ -84,10 +84,10 @@ Default FromRef for integer type tries to go through Integer
 template <class T>
 struct FromRef<T, std::enable_if_t<std::is_integral_v<T>>> {
     std::optional<T> operator()(Ref const &v, Scope &s) const {
-        DUMP("trying convert to arithmetic", v.name(), fetch<T>());
+        DUMP("trying convert to arithmetic", v.name(), Index::of<T>());
         if (!std::is_same_v<Integer, T>) if (auto p = v.request<Integer>()) return static_cast<T>(*p);
-        DUMP("failed to convert to arithmetic", v.name(), fetch<T>());
-        return s.error("not convertible to integer", fetch<T>());
+        DUMP("failed to convert to arithmetic", v.name(), Index::of<T>());
+        return s.error("not convertible to integer", Index::of<T>());
     }
 };
 
@@ -97,9 +97,9 @@ Default FromRef for enum permits conversion from integer types
 template <class T>
 struct FromRef<T, std::enable_if_t<std::is_enum_v<T>>> {
     std::optional<T> operator()(Ref const &v, Scope &s) const {
-        DUMP("trying convert to enum", v.name(), fetch<T>());
+        DUMP("trying convert to enum", v.name(), Index::of<T>());
         if (auto p = v.request<std::underlying_type_t<T>>()) return static_cast<T>(*p);
-        return s.error("not convertible to enum", fetch<T>());
+        return s.error("not convertible to enum", Index::of<T>());
     }
 };
 
@@ -115,14 +115,14 @@ struct FromRef<std::basic_string<T, Traits, Alloc>> {
         if (!std::is_same_v<std::basic_string<T, Traits, Alloc>, std::basic_string<T, Traits>>)
             if (auto p = v.request<std::basic_string<T, Traits>>())
                 return std::move(*p);
-        return s.error("not convertible to string", fetch<T>());
+        return s.error("not convertible to string", Index::of<T>());
     }
 };
 
 template <class T, class Traits>
 struct FromRef<std::basic_string_view<T, Traits>> {
     std::optional<std::basic_string_view<T, Traits>> operator()(Ref const &v, Scope &s) const {
-        return s.error("not convertible to string view", fetch<T>());
+        return s.error("not convertible to string view", Index::of<T>());
     }
 };
 
@@ -151,7 +151,7 @@ struct VectorFromRef {
         // if (auto p = v.request<Vector<T>>()) return get(*p, s);
         if constexpr (!std::is_same_v<V, Sequence> && !std::is_same_v<T, Ref>)
             if (auto p = v.request<Sequence>()) return get(*p, s);
-        return s.error("expected sequence", fetch<V>());
+        return s.error("expected sequence", Index::of<V>());
     }
 };
 
@@ -180,7 +180,7 @@ struct CompiledSequenceFromRef {
     static void request(std::optional<V> &out, T &&t, Scope &s) {
         DUMP("trying CompiledSequenceFromRef request");
         if (std::size(t) != std::tuple_size_v<V>) {
-            s.error("wrong sequence length", fetch<V>(), std::tuple_size_v<V>, std::size(t));
+            s.error("wrong sequence length", Index::of<V>(), std::tuple_size_v<V>, std::size(t));
         } else {
             s.indices.emplace_back(0);
             request_each(out, std::move(t), s, std::make_index_sequence<std::tuple_size_v<V>>());
@@ -203,7 +203,7 @@ struct CompiledSequenceFromRef {
             request(out, std::move(*p), s);
         } else {
             DUMP("trying CompiledSequenceRequest3", r.name());
-            s.error("expected sequence to make compiled sequence", fetch<V>());
+            s.error("expected sequence to make compiled sequence", Index::of<V>());
         }
         return out;
     }
@@ -232,7 +232,7 @@ struct ToValue<char const *> {
 template <class T>
 struct ToValue<T, std::enable_if_t<(std::is_integral_v<T>)>> {
     bool operator()(Output &v, T t) const {
-        DUMP("response from integer", fetch<T>(), v.name());
+        DUMP("response from integer", Index::of<T>(), v.name());
         if (v.matches<Integer>()) return v.emplace_if<Integer>(t);
         if (v.matches<Real>()) return v.emplace_if<Real>(t);
         DUMP("no response from integer");

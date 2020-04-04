@@ -3,6 +3,23 @@
 #include <rebind/types/Arrays.h>
 #include <iostream>
 
+
+#include <string_view>
+#include <vector>
+#include <string>
+#include <any>
+
+static_assert(16 == sizeof(std::shared_ptr));
+static_assert(16 == sizeof(std::string_view));
+static_assert(24 == sizeof(std::string));
+static_assert(32 == sizeof(std::any));
+static_assert(24 == sizeof(std::vector<int>));
+static_assert(16 == sizeof(std::unique_ptr<int>));
+static_assert(16 == sizeof(std::shared_ptr<int>));
+static_assert(16 == sizeof(std::optional<int>));
+
+static_assert(std::is_trivially_copyable<std::optional<int>>);
+
 namespace example {
 
 using rebind::Type;
@@ -53,19 +70,111 @@ bool method(Input<Goo> &self) {
         || self.derive<GooBase>();
 }
 
-// to reference pretty much the same...
-bool to_value(Output &o, Goo const &g) {
-    if (o.matches<double>()) return o.emplace_if(g.x);
-    if (o.matches<std::string_view>()) return o.emplace_if("hmmmmmm");
-    // needs to be annotated somehow whether the return type is valid after "g" is destructed.
-    if (o.matches<std::string_view>() && !o.leaks()) return o.emplace_if(g.name);
-    return false;
+// template <class T>
+// struct Temporary {
+//     T &&t;
+//     T *operator->() const {return &t;}
+//     T &&operator*() const {return t;}
+// };
+
+// String
+// --> Ref holding <String &&>
+// now we want String back
+// ...mm not really possible
+// in this case we need Value to be possible as an argument
+// what about excluding && possibility?
+// i.e. in c++ if we want to move in we instead allocate a moved version of the input
+// obvious problem is the allocation, first of all. not really necessary.
+// ok so then we have all 4 possibilties again I guess.
+// request<T> is still fairly easy I think
+// &T, &mut T, T
+// T&, T const &, T &&
+// response is fairly wordy
+bool to_value(Object &o, Index i, Thing t) {
+    if (i.equals<std::string>()) {
+        if (auto r = t.rvalue()) return o.emplace<std::string>((*r).name);
+        return o.emplace<std::string>((*r).name);
+    }
+
+    if (i.equals<GooBase>()) {
+        if (auto r = t.rvalue()) o.emplace(*r);
+        else o.emplace(*t);
+    }
+
+    if (t.in_scope()) {
+        return t.member(&M::name)
+            || t.derive<GooBase>()
+            || (i.equals<std::string_view>() && o.emplace(r->name));
+            || (i.equals<mutable_string_view>()) && o.visit<mutable_string_view>() {
+            if (auto r = t.lvalue()) return (*r).name;
+            if (auto r = t.rvalue()) return (*r).name; // very rarely useful
+        }
+
+        // if (i.equals<std::string const &>())
+        //     return o.emplace<std::string>(r->name);
+
+        // if (i.equals<std::string &&>())
+        //     if (auto r = t.rvalue()) return o.emplace<std::string>((*r).name);
+
+        // if (i.equals<std::string &>())
+        //     if (auto r = t.lvalue()) return o.emplace<std::string>((*r).name);
+
+
+        // if (i.equals<GooBase &>())
+        //     if (auto r = t.lvalue()) return o.emplace(*r);
+        // if (i.equals<GooBase const &>())
+        //     if (auto r = t.lvalue()) return o.emplace(*r);
+        // if (i.equals<GooBase &&>())
+        //     if (auto r = t.lvalue()) return o.emplace(*r);
+    }
 }
 
 
-std::optional<Goo> from_ref(Ref r, Type<Goo>) {
+// // maybe better to just use this in the non-reference case:
+// // these are safe conversions even if g is destructed later
+// bool to_value(Object &o, Index i, Temporary<Goo const> g) {
+//     // inserts copy
+//     if (i.equals<std::string>()) return o.emplace<std::string>(t->x), true; // safe
+// }
+
+// // this safe too, yep
+// bool to_value(Object &o, Index i, Temporary<Goo> g) {
+//     if (i.equals<std::string>()) return o.emplace<std::string>(std::move(g->name)); // safe
+//     return to_value<Temporary<Goo const>>();
+// }
+
+// // almost same as Temporary<Goo>...but can bind to a const & too I guess.
+// bool to_value(Object &o, Index i, Goo &&) {
+//     // if (i.equals<std::string>()) return o.emplace<std::string>(std::move(g->name)); // safe
+//     return to_value<Temporary<Goo>>() || to_value<Goo const &>();
+// }
+
+// bool to_value(Object &o, Index i, Goo &) {
+//     // not particularly safe...but allowable in the function call context
+//     if (i.equals<mutable_view>()) return o.emplace<mutable_view>(g->name); // bad
+//     return to_value<Goo const &>(); // what about a temporary &? not sure any use
+// }
+
+
+// bool to_value(Object &o, Index i, Goo const &g) {
+//     if (i.equals<std::string_view>()) return o.emplace<std::string_view>(g.name), true; // safe
+//     return to_value<Temporary<Goo const>>();
+// }
+
+
+// we'll probably take out "guaranteed" copy constructibility
+std::optional<Goo> from_ref(Object &r, Type<Goo>) {
     std::optional<Goo> out;
-    if (auto t = r.request<double>()) out.emplace(*t);
+    // move_as does the request and destroys itself in event of success
+    // some of these would not need to destroy themselves though
+    // (i.e.) if request is for a reference or a trivially_copyable type
+    // maybe it is better to just say double *...?
+    if (auto t = r.move_as<double>()) out.emplace(std::move(*t));
+    if (auto t = r.move_as<double &>()) out.emplace(*t);
+    if (auto t = r.move_as<double const &>()) out.emplace(*t);
+    // not entirely sure what point of this one is...
+    // well, I guess it is useful for C++ code.
+    if (auto t = r.move_as<double &&>()) out.emplace(std::move(*t));
     return out;
 }
 

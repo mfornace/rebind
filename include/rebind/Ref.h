@@ -18,15 +18,15 @@ struct Ref : protected rebind_ref {
 
     template <class T>
     explicit Ref(T &t) noexcept
-        : rebind_ref{fetch<T>(), rebind_make_ptr(std::addressof(t), Lvalue)} {}
+        : rebind_ref{Index::of<T>(), rebind_make_ptr(std::addressof(t), Lvalue)} {}
 
     template <class T>
     explicit Ref(T const &t) noexcept
-        : rebind_ref{fetch<T>(), rebind_make_ptr(std::addressof(const_cast<T &>(t)), Const)} {}
+        : rebind_ref{Index::of<T>(), rebind_make_ptr(std::addressof(const_cast<T &>(t)), Const)} {}
 
     template <class T>
     explicit Ref(T &&t) noexcept
-        : rebind_ref{fetch<T>(), rebind_make_ptr(std::addressof(t), Rvalue)} {}
+        : rebind_ref{Index::of<T>(), rebind_make_ptr(std::addressof(t), Rvalue)} {}
 
     explicit Ref(Value const &);
     explicit Ref(Value &);
@@ -50,7 +50,7 @@ struct Ref : protected rebind_ref {
 
     template <class T>
     bool set_if(T &&t) {
-        if (qualifier_of<T &&> == qualifier() && index() == fetch<unqualified<T>>()) {
+        if (qualifier_of<T &&> == qualifier() && index() == Index::of<unqualified<T>>()) {
             tagged_ptr = rebind_make_ptr(const_cast<T *>(static_cast<T const *>(std::addressof(t))), qualifier());
             return true;
         } else return false;
@@ -126,41 +126,6 @@ static_assert(std::is_standard_layout_v<Ref>);
 
 template <>
 struct is_trivially_relocatable<Ref> : std::true_type {};
-
-/******************************************************************************************/
-
-struct ArgView : rebind_args {
-    constexpr ArgView(Ref *r, std::size_t c) : rebind_args{static_cast<rebind_ref *>(static_cast<void *>(r)), c} {}
-
-    Caller &caller() const {return *reinterpret(ptr)->target<Caller &>();}
-
-    std::string_view name() const {
-        auto const &s = reinterpret_cast<rebind_str const &>(ptr[1]);
-        return std::string_view(s.data, s.size);
-    }
-
-    Ref tag() const {return *reinterpret(ptr + 2);}
-
-    Ref * begin() const noexcept {return reinterpret(ptr) + 3;}
-
-    auto size() const noexcept {return len;}
-
-    Ref * end() const noexcept {return begin() + size();}
-
-    Ref &operator[](std::size_t i) const noexcept {return begin()[i];}
-
-    static Ref * reinterpret(rebind_ref *r) {return static_cast<Ref *>(static_cast<void *>(r));}
-};
-
-/******************************************************************************************/
-
-template <class ...Ts>
-Vector<Ref> to_arguments(Ts &&...ts) {
-    Vector<Ref> out;
-    out.reserve(sizeof...(Ts));
-    (out.emplace_back(std::addressof(ts), qualifier_of<Ts &&>), ...);
-    return out;
-}
 
 /******************************************************************************************/
 

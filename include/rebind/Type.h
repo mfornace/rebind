@@ -14,29 +14,24 @@ using unqualified = std::remove_cv_t<std::remove_reference_t<T>>;
 
 /******************************************************************************************/
 
-enum Qualifier : rebind_qualifier {Const, Lvalue, Rvalue};
-
-static char const * QualifierNames[3] = {"const", "lvalue", "rvalue"};
-static char const * QualifierSuffixes[3] = {" const &", " &", " &&"};
-
 inline std::ostream & operator<<(std::ostream &os, Qualifier q) {
     return os << QualifierNames[static_cast<unsigned char>(q)];
 }
 
-template <class T, Qualifier Q>
-using qualified = std::conditional_t<Q == Const, T const &,
-    std::conditional_t<Q == Lvalue, T &, T &&>>;
+// template <class T, Qualifier Q>
+// using qualified = std::conditional_t<Q == Const, T const &,
+//     std::conditional_t<Q == Lvalue, T &, T &&>>;
 
-template <class T>
-static constexpr Qualifier qualifier_of =
-    std::is_rvalue_reference_v<T> ? Rvalue : (std::is_const_v<std::remove_reference_t<T>> ? Const : Lvalue);
+// template <class T>
+// static constexpr Qualifier qualifier_of =
+//     std::is_rvalue_reference_v<T> ? Rvalue : (std::is_const_v<std::remove_reference_t<T>> ? Const : Lvalue);
 
-inline constexpr bool compatible_qualifier(Qualifier from, Qualifier to) {
-    // from = const: {const yes, rvalue no, lvalue no}
-    // from = rvalue: {const yes, rvalue yes, lvalue no}
-    // from = lvalue: {const yes, rvalue no, lvalue yes}
-    return to == Const || from == to;
-}
+// inline constexpr bool compatible_qualifier(Qualifier from, Qualifier to) {
+//     // from = const: {const yes, rvalue no, lvalue no}
+//     // from = rvalue: {const yes, rvalue yes, lvalue no}
+//     // from = lvalue: {const yes, rvalue no, lvalue yes}
+//     return to == Const || from == to;
+// }
 
 /******************************************************************************************/
 
@@ -82,12 +77,12 @@ std::string demangle(char const *);
 
 template <class T, class SFINAE=void>
 struct TypeName {
-    static std::string const value;
-    static bool impl(std::string_view &s) noexcept {s = value; return true;}
+    static std::string const name;
+    static bool impl(std::string_view &s) noexcept {s = name; return true;}
 };
 
 template <class T, class SFINAE>
-std::string const TypeName<T, SFINAE>::value = demangle(typeid(T).name());
+std::string const TypeName<T, SFINAE>::name = demangle(typeid(T).name());
 
 template <class T>
 auto const & type_name() noexcept {return TypeName<T>::value;}

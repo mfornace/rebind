@@ -159,35 +159,35 @@ struct SimplifyFunction<F, -1, std::void_t<decltype(false ? nullptr : std::declv
 };
 
 
-/******************************************************************************/
+// /******************************************************************************/
 
-template <class R, class ...Ts>
-static Index const signature_types[] = {fetch<R>(), fetch<Ts>()...};
+// template <class R, class ...Ts>
+// static Index const signature_types[] = {Index::of<R>(), Index::of<Ts>()...};
 
-/******************************************************************************/
+// /******************************************************************************/
 
-struct ErasedSignature {
-    Index const *b = nullptr;
-    Index const *e = nullptr;
-public:
-    ErasedSignature() = default;
+// struct ErasedSignature {
+//     Index const *b = nullptr;
+//     Index const *e = nullptr;
+// public:
+//     ErasedSignature() = default;
 
-    template <class ...Ts>
-    ErasedSignature(Pack<Ts...>) : b(std::begin(signature_types<Ts...>)), e(std::end(signature_types<Ts...>)) {}
+//     template <class ...Ts>
+//     ErasedSignature(Pack<Ts...>) : b(std::begin(signature_types<Ts...>)), e(std::end(signature_types<Ts...>)) {}
 
-    bool operator==(ErasedSignature const &o) const {return std::equal(b, e, o.b, o.e);}
-    bool operator!=(ErasedSignature const &o) const {return !(*this == o);}
-    bool operator<(ErasedSignature const &o) const {return std::lexicographical_compare(b, e, o.b, o.e);}
-    bool operator>(ErasedSignature const &o) const {return o < *this;}
-    bool operator<=(ErasedSignature const &o) const {return !(o < *this);}
-    bool operator>=(ErasedSignature const &o) const {return !(*this < o);}
+//     bool operator==(ErasedSignature const &o) const {return std::equal(b, e, o.b, o.e);}
+//     bool operator!=(ErasedSignature const &o) const {return !(*this == o);}
+//     bool operator<(ErasedSignature const &o) const {return std::lexicographical_compare(b, e, o.b, o.e);}
+//     bool operator>(ErasedSignature const &o) const {return o < *this;}
+//     bool operator<=(ErasedSignature const &o) const {return !(o < *this);}
+//     bool operator>=(ErasedSignature const &o) const {return !(*this < o);}
 
-    explicit operator bool() const {return b;}
-    auto begin() const {return b;}
-    auto end() const {return e;}
-    Index operator[](std::size_t i) const {return b[i];}
-    std::size_t size() const {return e - b;}
-};
+//     explicit operator bool() const {return b;}
+//     auto begin() const {return b;}
+//     auto end() const {return e;}
+//     Index operator[](std::size_t i) const {return b[i];}
+//     std::size_t size() const {return e - b;}
+// };
 
 /******************************************************************************/
 
