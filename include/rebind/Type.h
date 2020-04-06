@@ -14,10 +14,6 @@ using unqualified = std::remove_cv_t<std::remove_reference_t<T>>;
 
 /******************************************************************************************/
 
-inline std::ostream & operator<<(std::ostream &os, Qualifier q) {
-    return os << QualifierNames[static_cast<unsigned char>(q)];
-}
-
 // template <class T, Qualifier Q>
 // using qualified = std::conditional_t<Q == Const, T const &,
 //     std::conditional_t<Q == Lvalue, T &, T &&>>;

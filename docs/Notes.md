@@ -13,10 +13,10 @@ well actually in rust we could do the following:
 ```rust
 // stack version:
 fn(..., T t) {
-    let t = ManualDrop::new(t); // t will not be destructed manually now.
-    let v = Value{ ptr: &t, type: (T, stack) }
-    ... work with v ...
-    v is destructed, so the destructor for "t" is run, but *not* the deleter
+    let t = ManualDrop::new(t); // t will not be destructed automatically now.
+    let v = Value{ ptr: &t, type: (T, Temporary) }
+    // ... work with v ... possibly call its destructor early
+    // v is destructed, so the destructor for "t" is run, but *not* the deleter
 }
 fn(..., T t) {
     let t = Box::new(t);
@@ -34,9 +34,8 @@ union ManualDestructor {T value;}
 void f(..., T &&t) {
     ManualDrop<T> t0;
     new(&t0.value) T(std::move(t));
-    Value v{p, (T, stack)};
-    ... work with v ...
-    v is destructed, but not deleted!
+    Value v{p, (T, Temporary)};
+    ... work with v ... possibly call its destructor early
 }
 // heap version
 void f(..., T t) {
@@ -51,3 +50,210 @@ there's no sense taking a T&& which is not move constructible so that should be 
 the only overhead is in the move construction at the beginning, which might be
 optimized and should be assumed pretty negligible anyway.
 in this case, there are no rvalue references needed!
+
+## Load, Dump
+
+`Load` takes a reference and returns a `std::optional<T>`. The reference could be
+- `Mutable`
+- `Const`
+- `Temporary`
+- `None`
+
+Example:
+`Mutable<string>` could convert to `string &`, `string const &`, `string_view`, `mutable_string_view`.
+`Const<string>` could convert to `string const &`, `string_view`.
+`Temporary<string>` could convert to `std::vector<char>`
+
+
+
+`Dump` takes an object of type `T` and emplaces a value:
+- `optional<string> &` could convert to `string &` or `string const &` or `string`
+- `optional<string> const &` could convert to `string const &` or `string`
+- `optional<string> &&` could convert to `string`
+
+Note that allocation is avoided in `Dump` because `Dump` is called by `Load` which can allocate space on the stack ahead of time.
+
+Function call
+`Call` takes sequence of references which are `Mutable`, `Const`, or `Temporary`.
+
+It has to be able to return
+- `Mutable`: a mutable reference
+- `Const`: a const reference
+- `None`: nothing
+- `Exception`: an exception
+- `Value`: a value
+
+The first three are easy.
+In C++ `Exception` is easy via `exception_ptr` (same size as pointer).
+In Rust I think we'd have to return `Result<T>` which is either T or `Box<dyn ...>`, latter is 16 bytes.
+
+It is possible we could allocate space in advance. that would indicate we're doing basically
+```c++
+stat f(storage &, index, function) {
+    return index.request(storage, Ref::temporary(function()));
+}
+```
+
+One issue in the above is the exception thing, we don't necessarily have space for it...although I guess we can heap allocate in that case. Then storage just needs to be at least ... 16 ... for destructor plus pointer.
+
+Or we can accept we don't know what comes out, which may put on heap:
+```c++
+stat f(value &, function) {
+    value.emplace(function());
+}
+```
+
+here we'd be fine for reference, exception (I think), none, just value is a little suboptimal if it doesn't fit.
+
+we could put in a runtime type deal:
+
+```c++
+stat f(index &, void *storage, size, function) { // I think alignment we just assume void * and otherwise allocate.
+    if (O fits in storage) {
+        new(storage) O(function());
+    } else {
+        new (storage) (void *)(new O(function()));
+    }
+    index = O;
+}
+```
+
+then we don't deal with Value as a cross-language concept.
+
+```c++
+// Call function, cast to out index, storing the result in storage
+template <class F>
+stat call(Index out, void *storage, void const *self, ArgView args) {
+    Out return_value = invoke(static_cast<F const *>(self), args);
+    // Response<decltype(return_value)>()(return_value);
+    // auto &storage = static_cast<aligned_storage<Out>>()
+    // return out.load(return_value, storage)
+    // or
+    return dump_to(return_value, storage)
+}
+
+
+bool dump(Output &o, std::string &&s) {
+    if (o.equals<string>()) return o.emplace(std::move(s));
+    if (o.equals<cstring>()) return o.emplace(std::move(s));
+    return o.load(std::move(s));
+}
+
+bool load(std::optional<string> &s, Ref &r) {
+    if (auto o = r.target<string_view>()) s.emplace(*o);
+}
+```
+
+## Function call types
+
+1. The function returns `void`.
+
+```c++
+template <class F>
+stat call(Index &out, void *r, F const &self, ArgView args) {
+    try {
+        invoke(self, *args);
+        return stat::none;
+    } catch (std::bad_alloc) {
+        return stat::out_of_memory;
+    } catch (...) {
+        // exception_ptr is size 8 and nothrow move constructible
+        // rust equivalent is size 16 and nothrow move constructible
+        // I suppose in python ... it could be size 24 if using PyErr_Fetch ... would be nothrow move constructible though
+        new (r) std::exception_ptr(std::current_exception());
+        out = std::exception_ptr;
+        return stat::exception;
+    }
+```
+
+So basically the `void *` needs to be at least 24 bytes to cover Python...well, we could keep a variable static perhaps? Meh...
+
+2. The function returns a reference and may throw.
+
+```c++
+template <class F>
+stat call(Index &out, void *r, F const &self, ArgView args) {
+    try {
+        new(r) Out(invoke(self, *args));
+        out = Index::of<Out>();
+        return stat::const_ref;
+    } catch (...) { /* same as for void */ }
+```
+
+3. The function returns a non-trivial value and may throw.
+
+```c++
+template <class F>
+stat call(Index &out, void *r, unsigned size, F const &self, ArgView args) {
+    try {
+        out = Index::of<Out>();
+        if (size <= sizeof(Out)) {
+            new(r) Out(invoke(self, *args));
+            return stat::stack;
+        } else {
+            *static_cast<void **r> = new Out(invoke(self, *args));
+            return stat::heap;
+        }
+    } catch (...) { /* same as for void */ }
+```
+
+The last signature is a superset of the others, and the `size` is guaranteed to be at least 24; The next wrinkle is that we'd like to be able to perform requests in the body. That way we can assert we know the output type, so we can reserve the `size` in advance. If the function returns `void` it seems improbable that we could request anything useful. It is possible we'd want to do the requests on references and values though. This means we augment the above:
+
+```c++
+template <class F>
+stat call(Index &out, void *r, unsigned size, F const &self, ArgView args) {
+    try {
+        if (out && out != Index::of<Out>()) {
+            return dump(Output(out, r, size), invoke(self, *args)); // not sure size is necessary, seems like the caller would normally know it is enough for out.
+        } else {
+            new(r) Out(invoke(self, *args));
+            out = Index::of<Out>();
+            return stat::const_ref;
+        }
+    } catch (...) { /* same as for void */ }
+```
+
+The main overhead here is in:
+- the IO parameter `out`, which originally was just out. We could split it, then the return type would be 16 wide.
+- the size, which previously was a compile time constant.
+-
+
+So the raw type would imply, for request call:
+
+```c++
+stat (*)(void* output, Index requested_index, Len size_of_output, F const &self, ArgView args)
+```
+
+For any call...
+```c++
+stat (*)(IndexOutput &, Len size_of_output, F const &self, ArgView args)
+```
+
+where `IndexOutput` is basically like (not sure about order)
+
+```c++
+struct IndexOutput {
+    Index output_index;
+    char output_buffer[size_of_output];
+};
+```
+
+status codes...
+- `Exception`: an exception
+- `Value`: a value
+
+would also like to return index
+
+
+## dump and load prototypes
+```c++
+stat::dump dump(Index, void *, size, T &&t);
+
+// stat::load load(Index, void *, size, T &&t);
+
+```
+
+
+
+
+

@@ -8,6 +8,10 @@
 
 namespace rebind {
 
+inline std::ostream & operator<<(std::ostream &os, Qualifier q) {
+    return os << QualifierNames[static_cast<unsigned char>(q)];
+}
+
 /******************************************************************************/
 
 extern bool Debug;

@@ -227,11 +227,15 @@ auto simplify_argument(IndexedType<T> t) {
 }
 
 template <class ...Ts>
-Pack<decltype(*simplify_argument(Type<Ts>()))...> simplify_signature(Pack<Ts...>) {return {};}
+Pack<decltype(*simplify_argument(Type<Ts>()))...> simplify_signature_f(Pack<Ts...>) {return {};}
 
 template <class F>
-using SimpleSignature = decltype(simplify_signature(Signature<F>()));
+using simplify_signature = decltype(simplify_signature_f(Signature<F>()));
 
 /******************************************************************************/
+
+template <class T>
+using simplify_result = std::remove_cv_t<
+    std::conditional_t<std::is_rvalue_reference_v<T>, std::remove_reference_t<T>, T>>;
 
 }

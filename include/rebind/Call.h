@@ -1,6 +1,6 @@
 #pragma once
 #include "Signature.h"
-#include "Value.h"
+#include "Ref.h"
 // #include "types/Core.h"
 #include <functional>
 #include <stdexcept>
@@ -46,70 +46,81 @@ namespace rebind {
 
 struct ArgView : rebind_args {
     // constexpr
-    ArgView(Value *r, std::size_t c);// : rebind_args{static_cast<rebind_ref *>(static_cast<void *>(r)), c} {}
+    ArgView(Ref *r, std::size_t c);// : rebind_args{static_cast<rebind_ref *>(static_cast<void *>(r)), c} {}
 
     Caller &caller() const;// {return *reinterpret(ptr)->target<Caller &>();}
 
     std::string_view name() const {
-        auto const &s = reinterpret_cast<rebind_str const &>(ptr[1]);
-        return std::string_view(s.data, s.size);
+        auto const &s = reinterpret_cast<rebind_str const &>(pointer[1]);
+        return std::string_view(s.pointer, s.len);
     }
 
-    Value tag() const;// {return *reinterpret(ptr + 2);}
+    Ref tag() const;// {return *reinterpret(ptr + 2);}
 
-    Value * begin() const noexcept {return reinterpret(ptr) + 3;}
+    Ref * begin() const noexcept {return reinterpret(pointer) + 3;}
 
     auto size() const noexcept {return len;}
 
-    Value * end() const noexcept {return begin() + size();}
+    Ref * end() const noexcept {return begin() + size();}
 
-    Value &operator[](std::size_t i) const noexcept {return begin()[i];}
+    Ref &operator[](std::size_t i) const noexcept {return begin()[i];}
 
-    static Value * reinterpret(rebind_value *r) {return static_cast<Value *>(static_cast<void *>(r));}
+    static constexpr Ref * reinterpret(rebind_ref *r) {return static_cast<Ref *>(static_cast<void *>(r));}
 };
 
 /******************************************************************************************/
 
-template <class ...Ts>
-Vector<Value> to_arguments(Ts &&...ts) {
-    Vector<Value> out;
-    out.reserve(sizeof...(Ts));
-    // (out.emplace_back(std::addressof(ts), qualifier_of<Ts &&>), ...);
-    return out;
-}
+// template <class ...Ts>
+// std::array<Ref, sizeof...(Ts)> to_arguments(Ts &&...ts) {
+//     return {Ref(static_cast<Ts &&>(ts))...};
+// }
 
 /******************************************************************************/
 
 /// Cast element i of v to type T
 template <class T>
-decltype(auto) cast_index(ArgView const &v, Scope &s, IndexedType<T> i) {
-    // s.index = i.index;
-    return v[i.index].cast(s, Type<T>());
-}
+Maybe<T> cast_index(ArgView &v, Scope &s, IndexedType<T> i);
+//  {
+//     // s.index = i.index;
+//     return v[i.index].cast(s, Type<T>());
+// }
 
 /******************************************************************************/
 
-/// Invoke a function and arguments, storing output in a Variable if it doesn't return void
+/// Invoke a function and arguments, storing output if it doesn't return void
 template <class F, class ...Ts>
-stat::call invoke_to(Value &out, F const &f, Ts &&... ts) {
-    using O = std::remove_cv_t<std::invoke_result_t<F, Ts...>>;
+stat::call invoke_to(void *o, Len n, Index i, F const &f, Ts &&... ts) {
+    using O = simplify_result<std::invoke_result_t<F, Ts...>>;
     DUMP("invoking function ", type_name<F>(), " with output ", type_name<O>());
-    if constexpr(std::is_void_v<O>) {
+
+    if (!i) {
         std::invoke(f, static_cast<Ts &&>(ts)...);
         return stat::call::ok;
+    }
+    if constexpr(std::is_void_v<O>) {
+        return stat::call::exception;
+        // std::invoke(f, static_cast<Ts &&>(ts)...);
+        // return stat::call::none;
     } else {
-        out.emplace(Type<O>(), std::invoke(f, static_cast<Ts &&>(ts)...));
-        return stat::call::ok;
+        if constexpr(!std::is_reference_v<O>) {
+            if (i.equals<O>()) {
+                new(o) O(std::invoke(f, static_cast<Ts &&>(ts)...));
+                return stat::call::ok;
+            }
+        }
+        return stat::call::exception;
+        // return dump(o, n, i, std::invoke(f, static_cast<Ts &&>(ts)...));
     }
 }
 
 template <bool UseCaller, class F, class ...Ts>
-stat::call caller_invoke(Value &out, F const &f, Caller &&c, Ts &&...ts) {
+stat::call caller_invoke(void *o, Len n, Index i, F const &f, Caller &&c, Maybe<Ts> &&...ts) {
+    if (!(ts && ...)) return stat::call::exception;
     c.enter();
     if constexpr(UseCaller) {
-        invoke_to(out, f, std::move(c), static_cast<Ts &&>(ts)...);
+        invoke_to(o, n, i, f, std::move(c), static_cast<Ts &&>(*ts)...);
     } else {
-        invoke_to(out, f, static_cast<Ts &&>(ts)...);
+        invoke_to(o, n, i, f, static_cast<Ts &&>(*ts)...);
     }
 }
 
@@ -142,7 +153,7 @@ struct Call<Callable<N, F>> : Adapter<N, F>, std::true_type {};
 
 template <class F, class SFINAE>
 struct Adapter<0, F, SFINAE> {
-    using Signature = SimpleSignature<F>;
+    using Signature = simplify_signature<F>;
     using Return = decltype(first_type(Signature()));
     using UseCaller = decltype(second_is_convertible<Caller>(Signature()));
     using Args = decltype(without_first_types<1 + int(UseCaller::value)>(Signature()));
@@ -151,7 +162,7 @@ struct Adapter<0, F, SFINAE> {
      Interface implementation for a function with no optional arguments.
      - Returns WrongNumber if args is not the right length
      */
-    static stat::call call_to(Value &v, F const &f, ArgView args) noexcept {
+    static stat::call call_to(void* o, Len n, Index i, F const &f, ArgView &args) noexcept {
         DUMP("call_to function adapter ", type_name<F>(), " ", std::addressof(f), " ", args.size());
         DUMP("method name", args.name(), " ", !args.name().empty());
 
@@ -165,7 +176,7 @@ struct Adapter<0, F, SFINAE> {
         Scope s(handle);
 
         return Args::indexed([&](auto ...ts) {
-            return caller_invoke<UseCaller::value>(v, f, std::move(handle), cast_index(args, s, ts)...);
+            return caller_invoke<UseCaller::value, F, decltype(*ts)...>(o, n, i, f, std::move(handle), cast_index(args, s, ts)...);
         });
         // It is planned to be allowed that the invoked function's C++ exception may propagate
         // in the future, assuming the caller policies allow this.
@@ -216,10 +227,10 @@ auto make_function(F f) {
     using S = decltype(simplified);
 
     // Now get the number of optional arguments
-    constexpr int n = N == -1 ? 0 : SimpleSignature<S>::size - 1 - N;
+    constexpr int n = N == -1 ? 0 : simplify_signature<S>::size - 1 - N;
 
     // Return the callable object holding the functor
-    static_assert(is_manageable<Callable<n, S>>);
+    static_assert(is_usable<Callable<n, S>>);
     return Callable<n, S>{std::move(simplified)};
 }
 
@@ -229,7 +240,7 @@ auto make_function(F f) {
 // template <std::size_t N, class F, class SFINAE>
 // struct Adapter {
 //     F function;
-//     using Signature = SimpleSignature<F>;
+//     using Signature = simplify_signature<F>;
 //     using Return = decltype(first_type(Signature()));
 //     using UsesCaller = decltype(second_is_convertible<Caller>(Signature()));
 //     using Args = decltype(without_first_types<1 + int(UsesCaller::value)>(Signature()));

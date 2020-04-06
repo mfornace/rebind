@@ -38,7 +38,7 @@ T *target(Index i, void *p) noexcept {
 
 template <class T, class ...Args>
 T * alloc(Args &&...args) {
-    assert_manageable<T>();
+    assert_usable<T>();
     if constexpr(std::is_constructible_v<T, Args &&...>) {
         return new T(static_cast<Args &&>(args)...);
     } else {
@@ -60,40 +60,40 @@ T * alloc(Args &&...args) {
 
 /**************************************************************************************/
 
-inline stat::drop drop(Storage &data, Index i, Qualifier q) noexcept {
-    if (q == Managed) return stat::drop{i.call(tag::dealloc, &data, nullptr, {})};
-    if (q == External) return stat::drop{i.call(tag::destruct, data.pointer, nullptr, {})};
-    return stat::drop::ok;
-}
+// inline stat::drop drop(Storage &data, Index i, Qualifier q) noexcept {
+//     if (q == Heap) return stat::drop{i.call(tag::dealloc, &data, nullptr, {})};
+//     if (q == Stack) return stat::drop{i.call(tag::destruct, data.pointer, nullptr, {})};
+//     return stat::drop::ok;
+// }
 
 /**************************************************************************************/
 
-inline stat::assign assign(Index i, void *p, Value const &r) noexcept {
-    if (!p) return stat::assign::null;
-    return stat::assign{i.call(tag::assign, p, const_cast<Value *>(&r), {})};
-}
+// inline stat::assign assign(Index i, void *p, Value const &r) noexcept {
+//     if (!p) return stat::assign::null;
+//     return stat::assign{i.call(tag::assign, p, const_cast<Value *>(&r), {})};
+// }
 
 /******************************************************************************/
 
-inline stat::dump dump(Value &v, Index i, void *p, Qualifier q) noexcept {
-    if (!p) return stat::dump::null;
-    return stat::dump{i.call(tag::dump, &v, p, {})};
-}
+// inline stat::dump dump(Value &v, Index i, void *p, Qualifier q) noexcept {
+//     if (!p) return stat::dump::null;
+//     return stat::dump{i.call(tag::dump, &v, p, {})};
+// }
 
 /**************************************************************************************/
 
-template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
-std::remove_reference_t<T> * request(Index i, void *p, Scope &s, Type<T>, Qualifier q);
+// template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
+// std::remove_reference_t<T> * load(Index i, void *p, Scope &s, Type<T>, Qualifier q);
 
-template <class T, std::enable_if_t<!std::is_reference_v<T>, int> = 0>
-std::optional<T> request(Index i, void *p, Scope &s, Type<T>, Qualifier q);
+// template <class T, std::enable_if_t<!std::is_reference_v<T>, int> = 0>
+// std::optional<T> load(Index i, void *p, Scope &s, Type<T>, Qualifier q);
 
 /**************************************************************************************/
 
-bool call_to(Value &v, Index i, void const *p, Caller &&c, ArgView args) noexcept;
+// bool call_to(Value &v, Index i, void const *p, Caller &&c, ArgView args) noexcept;
 
-template <class ...Args>
-Value call(Index i, void const *p, Caller &&c, Args &&...args);
+// template <class ...Args>
+// Value call(Index i, void const *p, Caller &&c, Args &&...args);
 
 /**************************************************************************************/
 

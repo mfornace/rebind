@@ -9,7 +9,7 @@
 #include <array>
 #include <type_traits>
 
-namespace rebind {
+namespace rebind::impl {
 
 /******************************************************************************/
 
@@ -42,29 +42,37 @@ bool assign_if (void *,       [],           Ref const)
 //     } else return stat::copy::unavailable;
 // }
 
+// typedef rebind_stat (*rebind_index)(rebind_tag, uint32_t size, Index, void* output, void const *self, rebind_args args);
+
 /******************************************************************************/
 
-/// Delete the held object
+/// Delete the held object on heap
 template <class T>
-stat::drop default_dealloc(Storage &s) noexcept {
-    if (is_stack_type<T>) static_cast<T *>(&s)->~T();
-    else delete static_cast<T *>(s.pointer);
-    return stat::drop::ok;
+stat::drop dealloc(T *t) noexcept {
+    if constexpr(std::is_destructible_v<T>) {
+        delete static_cast<T *>(t);
+        return stat::drop::ok;
+    } else {
+        return stat::drop::unavailable;
+    }
 }
 
-/******************************************************************************/
-
+/// Delete the held object on heap
 template <class T>
-stat::drop default_destruct(void *t) noexcept {
-    static_cast<T *>(t)->~T();
-    return stat::drop::ok;
+stat::drop destruct(T *t) noexcept {
+    if constexpr(std::is_destructible_v<T>) {
+        static_cast<T *>(t)->~T();
+        return stat::drop::ok;
+    } else {
+        return stat::drop::unavailable;
+    }
 }
 
 /******************************************************************************/
 
 /// Return a handle to std::type_info or some language-specific equivalent
 template <class T>
-stat::info default_info(void const *&o) noexcept {
+stat::info info(void const *&o) noexcept {
     o = &typeid(T);
     return stat::info::ok;
 }
@@ -91,7 +99,7 @@ stat::info default_info(void const *&o) noexcept {
 
 /// Use T to create a Value
 template <class T>
-stat::dump default_dump(Value &v, T &t, Qualifier const q) noexcept;
+stat::dump dump(Value &v, T &t, Qualifier const q) noexcept;
 //  {
 //     DUMP("to_value ", type_name<T>(), " ", v.name());
 //     try { switch {
@@ -141,46 +149,58 @@ stat::dump default_dump(Value &v, T &t, Qualifier const q) noexcept;
 //     }
 // }
 
+}
+
 /******************************************************************************************/
+
+namespace rebind {
+
+// rebind_tag uint32_t void* rebind_funptr void* rebind_args
 
 template <class T, class SFINAE=void>
 struct Impl {
-    static Stat impl(Tag t, void *o, void *b, rebind_args args) noexcept {
-        if (t != tag::name) DUMP("impl::", tag_name(t), ": ", type_name<T>());
+    static_assert(!std::is_reference_v<T>);
+
+    static Stat call(Tag t, Len i, void* o, Fptr f, void *s, rebind_args args) noexcept __attribute__((noinline)) {
+        if (t != tag::name) DUMP("Impl::", tag_name(t), ": ", type_name<T>());
 
         switch(t) {
             case tag::dealloc: {
-                if constexpr(!is_manageable<T>) return stat::put(stat::drop::unavailable);
-                else return stat::put(default_dealloc<T>(*static_cast<Storage *>(o)));
+                return stat::put(impl::dealloc<T>(o));
             }
             case tag::destruct: {
-                if constexpr(!is_manageable<T>) return stat::put(stat::drop::unavailable);
-                else return stat::put(default_destruct<T>(o));
+                return stat::put(impl::destruct<T>(o));
             }
             case tag::copy: {
                 // if constexpr(!is_manageable<T>) return stat::put(stat::copy::unavailable);
                 // else return stat::put(default_copy(*static_cast<rebind_value *>(o), *static_cast<T const *>(b)));
             }
             case tag::dump: {
-#warning "fix qualifier"
-                return stat::put(default_dump(*static_cast<Output *>(o), *static_cast<T *>(b), Qualifier()));
+// #warning "fix qualifier"
+                // return stat::put(impl::dump(*static_cast<Output *>(o), *static_cast<T *>(b), Qualifier()));
             }
-            case tag::assign: {
+            // case tag::assign: {
                 // if constexpr(!std::is_move_assignable_v<T>) return stat::put(stat::assign_if::unavailable);
                 // else return stat::put(default_assign(*static_cast<T *>(b), *static_cast<Ref const *>(o)));
-            }
+            // }
             case tag::call: {
-                // if constexpr(!Call<T>::value) return stat::put(stat::call::unavailable);
-                // else return stat::put(Call<T>::call_to(*static_cast<Value *>(o), *static_cast<T const *>(b), static_cast<ArgView &>(args)));
+                if constexpr(!Call<T>::value) return stat::put(stat::call::unavailable);
+                // (void *, uint32, Index, T const &, ArgView &)
+                else return stat::put(Call<T>::call_to(o, i, Index(reinterpret_cast<rebind_index>(f)),
+                                      *static_cast<T const *>(s), static_cast<ArgView &>(args)));
             }
+            // case tag::emplace: {
+            //     if constexpr(!Call<T>::value) return stat::put(stat::call::unavailable);
+
+            // }
             case tag::name: {
-                return TypeName<T>::impl(*static_cast<std::string_view *>(o));
+                return TypeName<T>::impl(*static_cast<rebind_str *>(o));
             }
             case tag::info: {
-                return stat::put(default_info<T>(*static_cast<void const **>(o)));
+                return stat::put(impl::info<T>(*static_cast<void const **>(o)));
             }
             case tag::check: {
-                return reinterpret_cast<std::uintptr_t>(o) < 12; // legal cast
+                return reinterpret_cast<std::uintptr_t>(o) < 12;
             }
         }
         return -1; // ?
@@ -190,7 +210,7 @@ struct Impl {
 /******************************************************************************************/
 
 template <class T>
-Index fetch() noexcept {return &Impl<T>::impl;}
+Index fetch() noexcept {return &Impl<T>::call;}
 
 /******************************************************************************************/
 

@@ -1,6 +1,7 @@
 
-#include <rebind/Schema.h>
-#include <rebind/types/Arrays.h>
+#include <rebind/Call.h>
+// #include <rebind/Schema.h>
+// #include <rebind/types/Arrays.h>
 #include <iostream>
 
 
@@ -9,16 +10,16 @@
 #include <string>
 #include <any>
 
-static_assert(16 == sizeof(std::shared_ptr));
+static_assert(16 == sizeof(std::shared_ptr<int>));
 static_assert(16 == sizeof(std::string_view));
 static_assert(24 == sizeof(std::string));
 static_assert(32 == sizeof(std::any));
 static_assert(24 == sizeof(std::vector<int>));
-static_assert(16 == sizeof(std::unique_ptr<int>));
+static_assert(8 == sizeof(std::unique_ptr<int>));
 static_assert(16 == sizeof(std::shared_ptr<int>));
-static_assert(16 == sizeof(std::optional<int>));
+static_assert(8 == sizeof(std::optional<int>));
 
-static_assert(std::is_trivially_copyable<std::optional<int>>);
+static_assert(std::is_trivially_copyable_v<std::optional<int>>);
 
 namespace example {
 
@@ -107,7 +108,6 @@ bool to_value(Object &o, Index i, Thing t) {
             || (i.equals<std::string_view>() && o.emplace(r->name));
             || (i.equals<mutable_string_view>()) && o.visit<mutable_string_view>() {
             if (auto r = t.lvalue()) return (*r).name;
-            if (auto r = t.rvalue()) return (*r).name; // very rarely useful
         }
 
         // if (i.equals<std::string const &>())
