@@ -12,6 +12,7 @@ struct Index {
     constexpr operator rebind_index() const {return fptr;}
     constexpr bool has_value() const {return fptr;}
     explicit constexpr operator bool() const {return has_value();}
+    void reset() noexcept {fptr = nullptr;}
 
     constexpr bool operator< (Index i) const {return fptr <  i.fptr;}
     constexpr bool operator> (Index i) const {return fptr >  i.fptr;}

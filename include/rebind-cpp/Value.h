@@ -1,99 +1,76 @@
 #pragma once
-#include "Raw.h"
-#include "Common.h"
-#include "Scope.h"
-
-#include <optional>
+#include <rebind/Ref.h>
 
 namespace rebind {
 
-template <class T>
-using Maybe = std::conditional_t<std::is_reference_v<T>, std::remove_reference_t<T> *, std::optional<T>>;
+/******************************************************************************/
 
-template <class T, class Arg>
-Maybe<T> some(Arg &&t) {
-    if constexpr(std::is_reference_v<T>) return std::addressof(t);
-    else return static_cast<Arg &&>(t);
-}
+enum class Loc : rebind_qualifier {Trivial, Relocatable, Stack, Heap};
 
 /******************************************************************************/
 
-// struct CopyError : std::runtime_error {
-//     using std::runtime_error::runtime_error;
-// };
+struct Copyable;
 
-/******************************************************************************/
-
-struct RawValue : protected rebind_value {
-
-    constexpr RawValue() noexcept : rebind_value{nullptr, nullptr} {}
-    constexpr RawValue(Index i, void *p) noexcept : rebind_value{i, p} {}
-
-    ~RawValue() {if (has_value()) raw::drop(storage, index(), qualifier());}
-
-    RawValue(RawValue &&v) noexcept : rebind_value(static_cast<rebind_value &&>(v)) {v.release();}
-
-    RawValue &operator=(RawValue &&v) noexcept {
-        rebind_value::operator=(std::move(v));
-        v.release();
-        return *this;
-    }
-
-    // RawValue(RawValue const &v) {
-    //     if (stat::copy::ok != raw::copy(*this, v.index(), v.address())) throw std::runtime_error("no copy");
-    // }
-
-    // RawValue &operator=(RawValue const &v) {
-    //     if (stat::copy::ok != raw::copy(*this, v.index(), v.address())) throw std::runtime_error("no copy");
-    //     return *this;
-    // }
-
-    /**************************************************************************/
-
-    void release() noexcept {tag_index = nullptr;}
-
-    void reset() {if (has_value()) {raw::drop(storage, index(), qualifier()); release();}}
-
-    Qualifier qualifier() const noexcept {
-        return static_cast<Qualifier>(rebind_get_qualifier(tag_index));
-    }
-
-    Index index() const noexcept {return {rebind_get_index(tag_index)};}
-
-    std::string_view name() const noexcept {return index().name();}
-
-    constexpr bool has_value() const noexcept {return tag_index;}
-    explicit constexpr operator bool() const noexcept {return has_value();}
-
-    template <class T>
-    bool matches() const noexcept {return index() == Index::of<T>();}
+union Storage {
+    void *pointer;
+    char data[24];
 };
 
 /******************************************************************************/
 
-struct Value : public RawValue {
-    constexpr Value() noexcept = default;
+struct Value {
+    rebind_index idx = nullptr;
+    Storage storage;
 
-    constexpr Value(std::nullptr_t) noexcept : Value() {}
+    Value() noexcept = default;
 
-    template <class T, std::enable_if_t<is_manageable<unqualified<T>>, int> = 0>
-    Value(T &&t) noexcept(std::is_nothrow_move_constructible_v<unqualified<T>>)
-        : RawValue{Type<unqualified<T>>(), raw::alloc<unqualified<T>>(static_cast<T &&>(t))} {}
+    Value(std::nullptr_t) noexcept : Value() {}
 
-    template <class T, class ...Args, std::enable_if_t<is_manageable<T>, int> = 0>
-    Value(Type<T> t, Args &&...args)
-        : RawValue{t, raw::alloc<T>(static_cast<Args &&>(args)...)} {}
+    template <class T, class ...Args, std::enable_if_t<is_usable<T>, int> = 0>
+    Value(Type<T> t, Args &&...args);
+
+    template <class T, std::enable_if_t<is_usable<unqualified<T>>, int> = 0>
+    Value(T &&t) : Value{Type<unqualified<T>>(), static_cast<T &&>(t)} {}
+
+    Value(Value &&v) noexcept;
+
+    Value &operator=(Value &&v) noexcept;
+
+    ~Value() {
+        if (has_value()) index().call<stat::drop>(tag::dealloc, {}, storage.pointer);
+    }
+
+    /**************************************************************************/
+
+    void reset() noexcept {
+        if (has_value()) {
+            index().call<stat::drop>(tag::dealloc, {}, storage.pointer);
+            release();
+        }
+    }
+
+    void release() noexcept {idx = nullptr;}
+
+    Loc location() const noexcept {return static_cast<Loc>(rebind_get_tag(idx));}
+
+    Index index() const noexcept {return {rebind_get_index(idx)};}
+
+    std::string_view name() const noexcept {return index().name();}
+
+    constexpr bool has_value() const noexcept {return idx;}
+
+    explicit constexpr operator bool() const noexcept {return has_value();}
 
     /**************************************************************************/
 
     template <class T, class ...Args>
     T & emplace(Type<T>, Args &&...args) {
-        assert_manageable<T>();
-        if (has_value()) raw::drop(storage, index(), qualifier());
+        assert_usable<T>();
+        reset();
 #warning "not done"
         T *out = raw::alloc<T>(static_cast<Args &&>(args)...);
-        // ptr = out;
-        // ind = Index::of<T>();
+        storage.pointer = out;
+        idx = Index::of<T>().fptr;
         return *out;
     }
 
@@ -103,6 +80,8 @@ struct Value : public RawValue {
     }
 
     /**************************************************************************/
+
+    std::optional<Copyable> clone() const;
 
     // template <class T>
     // T *target() & {return raw::target<T>(index(), address());}
@@ -119,27 +98,27 @@ struct Value : public RawValue {
     //     return Value(new T{static_cast<Args &&>(args)...});
     // }
 
-    template <class T>
-    void set(T &&t) {*this = Value(static_cast<T &&>(t));}
+    // template <class T>
+    // void set(T &&t) {*this = Value(static_cast<T &&>(t));}
 
     /**************************************************************************/
 
-    template <class T>
-    Maybe<T> request(Scope &s, Type<T> t={}) const &;
+    // template <class T>
+    // Maybe<T> request(Scope &s, Type<T> t={}) const &;
     //  {
         // if constexpr(std::is_convertible_v<Value const &, T>) return some<T>(*this);
         // else return raw::request(index(), address(), s, t, Const);
     // }
 
-    template <class T>
-    Maybe<T> request(Scope &s, Type<T> t={}) &;
+    // template <class T>
+    // Maybe<T> request(Scope &s, Type<T> t={}) &;
     // {
         // if constexpr(std::is_convertible_v<Value &, T>) return some<T>(*this);
         // else return raw::request(index(), address(), s, t, Lvalue);
     // }
 
-    template <class T>
-    Maybe<T> request(Scope &s, Type<T> t={}) &&;
+    // template <class T>
+    // Maybe<T> request(Scope &s, Type<T> t={}) &&;
     // {
         // if constexpr(std::is_convertible_v<Value &&, T>) return some<T>(std::move(*this));
         // else return raw::request(index(), address(), s, t, Rvalue);
@@ -147,14 +126,14 @@ struct Value : public RawValue {
 
     /**************************************************************************/
 
-    template <class T>
-    Maybe<T> request(Type<T> t={}) const & {Scope s; return request(s, t);}
+    // template <class T>
+    // Maybe<T> request(Type<T> t={}) const & {Scope s; return request(s, t);}
 
-    template <class T>
-    Maybe<T> request(Type<T> t={}) & {Scope s; return request(s, t);}
+    // template <class T>
+    // Maybe<T> request(Type<T> t={}) & {Scope s; return request(s, t);}
 
-    template <class T>
-    Maybe<T> request(Type<T> t={}) && {Scope s; return std::move(*this).request(s, t);}
+    // template <class T>
+    // Maybe<T> request(Type<T> t={}) && {Scope s; return std::move(*this).request(s, t);}
 
     /**************************************************************************/
 
@@ -197,46 +176,81 @@ struct Value : public RawValue {
 
     /**************************************************************************/
 
-    template <class ...Args>
-    Value operator()(Args &&...args) const;
+    // template <class ...Args>
+    // Value operator()(Args &&...args) const;
 
-    bool call_to(Value &, ArgView) const;
+    // bool call_to(Value &, ArgView) const;
 };
 
 /******************************************************************************/
 
-static_assert(std::is_standard_layout_v<Value>);
+template <class T, class ...Args, std::enable_if_t<is_usable<T>, int>>
+Value::Value(Type<T> t, Args&& ...args) {
+    if constexpr((sizeof(T) <= sizeof(Storage)) && (alignof(Storage) % alignof(T) == 0)) {
+        raw::alloc_to<T>(&storage, static_cast<Args &&>(args)...);
+        idx = rebind_tag_index(Index::of<T>().fptr,
+            is_trivially_relocatable_v<T> ? (std::is_trivially_copyable_v<T> ? Loc::Trivial : Loc::Relocatable) : Loc::Stack);
+    } else {
+        storage.pointer = raw::alloc<T>(static_cast<Args &&>(args)...);
+        idx = rebind_tag_index(Index::of<T>().fptr, Loc::Heap);
+    }
+}
 
-template <>
-struct is_trivially_relocatable<Value> : std::true_type {};
+inline Value::Value(Value&& v) noexcept : idx(v.idx), storage(v.storage) {
+    if (location() == Loc::Stack) {
+        index().call<stat::relocate>(tag::relocate, {}, &storage, {}, &v.storage);
+    }
+    v.release();
+}
+
+inline Value& Value::operator=(Value&& v) noexcept {
+    reset();
+    idx = v.idx;
+    if (location() == Loc::Stack) {
+        index().call<stat::relocate>(tag::relocate, {}, &storage, {}, &v.storage);
+    } else {
+        storage = v.storage;
+    }
+    v.release();
+    return *this;
+}
 
 /******************************************************************************/
 
-struct Output : public RawValue {
-    template <class T>
-    explicit Output(Type<T> t) : RawValue{t, nullptr} {}
+struct Copyable : Value {
+    using Value::Value;
+    Copyable(Copyable &&) noexcept = default;
+    Copyable &operator=(Copyable &&v) noexcept = default;
 
-    Output(Output const &) = delete;
+    Copyable(Copyable const &v) {*this = v;}
 
-    template <class T>
-    unqualified<T> * set_if(T &&t);
-    //  {
-    //     using U = unqualified<T>;
-    //     if (!ptr && this->matches<U>())
-    //         ptr = raw::alloc<U>(static_cast<T &&>(t));
-    //     return static_cast<U *>(ptr);
-    // }
+    Copyable &operator=(Copyable const &v) {
+        switch (location()) {
+            case Loc::Trivial: {storage = v.storage; break;}
+            case Loc::Relocatable: {auto t = &storage.data; break;}
+            case Loc::Stack: {auto t = &storage.data; break;}
+            case Loc::Heap: {auto t = storage.pointer; break;}
+        }
+        idx = v.idx;
+        return *this;
+    }
 
-    template <class T, class ...Args>
-    T * emplace_if(Args &&...args);// {}
-    //     if (!ptr && this->matches<T>())
-    //         ptr = raw::alloc<T>(static_cast<Args &&>(args)...);
-    //     return static_cast<unqualified<T> *>(ptr);
-    // }
+    Copyable clone() const {return *this;}
 };
+
+/******************************************************************************/
+
+// struct {
+    // Value(Value const &v) {
+    //     if (stat::copy::ok != raw::copy(*this, v.index(), v.address())) throw std::runtime_error("no copy");
+    // }
+
+    // Value &operator=(Value const &v) {
+    //     if (stat::copy::ok != raw::copy(*this, v.index(), v.address())) throw std::runtime_error("no copy");
+    //     return *this;
+    // }
+// }
 
 /******************************************************************************/
 
 }
-
-#include "Default.h"

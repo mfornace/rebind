@@ -13,6 +13,7 @@ target_include_directories(headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include
 # Maybe change in future to user provided interface library?
 add_library(librebind STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/source/Source.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/Schema.cc
 )
 set_target_properties(librebind PROPERTIES OUTPUT_NAME rebind ${REBIND_STATIC_PROPERTIES})
 target_link_libraries(librebind PUBLIC headers)

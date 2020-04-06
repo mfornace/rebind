@@ -171,6 +171,9 @@ struct Impl {
             case tag::destruct: {
                 return stat::put(impl::destruct<T>(o));
             }
+            case tag::relocate: {
+
+            }
             case tag::copy: {
                 // if constexpr(!is_manageable<T>) return stat::put(stat::copy::unavailable);
                 // else return stat::put(default_copy(*static_cast<rebind_value *>(o), *static_cast<T const *>(b)));

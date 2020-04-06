@@ -46,6 +46,22 @@ T * alloc(Args &&...args) {
     }
 }
 
+template <class T, class ...Args>
+T * alloc_to(void *p, Args &&...args) {
+    assert_usable<T>();
+    if constexpr(std::is_constructible_v<T, Args &&...>) {
+        return new(p) T(static_cast<Args &&>(args)...);
+    } else {
+        return new(p) T{static_cast<Args &&>(args)...};
+    }
+}
+
+
+// inline stat::drop drop(void *data, Index i, bool heap) noexcept {
+//     if (q == Heap) return stat::drop{i.call(tag::dealloc, data, nullptr, {})};
+//     if (q == Stack) return stat::drop{i.call(tag::destruct, data, nullptr, {})};
+// }
+
 /**************************************************************************************/
 
 // inline stat::copy copy(rebind_value &v, Index i, Qualifier q, Storage const &p) noexcept;
@@ -56,14 +72,6 @@ T * alloc(Args &&...args) {
 //         v.tagged_index = nullptr;
 //         return stat::copy::ok;
 //     }
-// }
-
-/**************************************************************************************/
-
-// inline stat::drop drop(Storage &data, Index i, Qualifier q) noexcept {
-//     if (q == Heap) return stat::drop{i.call(tag::dealloc, &data, nullptr, {})};
-//     if (q == Stack) return stat::drop{i.call(tag::destruct, data.pointer, nullptr, {})};
-//     return stat::drop::ok;
 // }
 
 /**************************************************************************************/

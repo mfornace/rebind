@@ -63,17 +63,6 @@ bool debug() noexcept {return Debug;}
 
 /******************************************************************************/
 
-RawSchema & global_schema() noexcept {
-    static RawSchema schema;
-    return schema;
-}
-
-void render_default(Schema &, std::type_info const &t) {
-    if (debug()) std::cout << "Not rendering type " << t.name() << std::endl;
-}
-
-/******************************************************************************/
-
 // void lvalue_fails(Variable const &v, Scope &msg, Index t) {
 //     char const *s = "could not convert to lvalue reference";
 //     if (v.type() == t) {
@@ -170,17 +159,17 @@ void render_default(Schema &, std::type_info const &t) {
 
 /******************************************************************************/
 
-void set_source(WrongType &err, std::type_info const &t, Value &&v) {
-    if (auto p = v.target<std::string>()) {
-        err.source = std::move(*p);
-    } else if (auto p = v.target<std::string_view>()) {
-        err.source = std::move(*p);
-    } else if (auto p = v.target<Index>()) {
-        err.source = raw::name(*p);
-    } else {
-        err.source = t.name();
-    }
-}
+// void set_source(WrongType &err, std::type_info const &t, Value &&v) {
+//     if (auto p = v.target<std::string>()) {
+//         err.source = std::move(*p);
+//     } else if (auto p = v.target<std::string_view>()) {
+//         err.source = std::move(*p);
+//     } else if (auto p = v.target<Index>()) {
+//         err.source = raw::name(*p);
+//     } else {
+//         err.source = t.name();
+//     }
+// }
 
 /******************************************************************************/
 

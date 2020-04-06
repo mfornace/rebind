@@ -101,10 +101,10 @@ typedef union rebind_alloc_sbo {
 
 /******************************************************************************************/
 
-/// A very simple std::string-like class containing a type-erased destructor and SSO
+/// A simple std::string-like class containing a type-erased destructor and SSO
 typedef struct rebind_string {
     rebind_alloc_sbo storage;
-    size_t size_sso; // size = size_sso >> 1, sso == size_sso & 1
+    size_t size; // if size <= sizeof(storage), SSO is used
 } rebind_string;
 
 /******************************************************************************************/
@@ -121,7 +121,7 @@ inline rebind_index rebind_tag_index(rebind_index i, rebind_qualifier q) {
 }
 
 // Get out the last 2 bits as the qualifier
-inline rebind_qualifier rebind_get_qualifier(rebind_index i) {
+inline rebind_qualifier rebind_get_tag(rebind_index i) {
     return (rebind_qualifier)( (uintptr_t)(i) & (uintptr_t)(3) );
 }
 
@@ -160,7 +160,7 @@ namespace tag {
         copy             {3},
         name             {4},
         info             {5},
-        // method           {6},
+        relocate         {6},
         call             {7},
         dump             {8},
         load             {9};
@@ -170,12 +170,13 @@ namespace tag {
 using Stat = rebind_stat;
 
 namespace stat {
-    enum class copy :   Stat {ok, unavailable, exception};
-    enum class drop :   Stat {ok, unavailable};
-    enum class info :   Stat {ok, unavailable};
-    enum class name :   Stat {ok, unavailable};
-    // enum class load :   Stat {ok, unavailable, exception, none};
-    enum class dump :   Stat {ok, unavailable, exception, none, null};
+    enum class copy :     Stat {ok, unavailable, exception};
+    enum class relocate : Stat {ok, unavailable};
+    enum class drop :     Stat {ok, unavailable};
+    enum class info :     Stat {ok, unavailable};
+    enum class name :     Stat {ok, unavailable};
+    // enum class load :  Stat {ok, unavailable, exception, none};
+    enum class dump :     Stat {ok, unavailable, exception, none, null};
     // enum class assign : Stat {ok, unavailable, exception, none, null};
     enum class call :   Stat {ok, unavailable, exception, none, invalid_return, wrong_number, wrong_type};
 

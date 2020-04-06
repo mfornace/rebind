@@ -51,7 +51,7 @@ struct Ref : protected rebind_ref {
 
     /**********************************************************************************/
 
-    Qualifier qualifier() const noexcept {return static_cast<Qualifier>(rebind_get_qualifier(tag_index));}
+    Qualifier qualifier() const noexcept {return static_cast<Qualifier>(rebind_get_tag(tag_index));}
 
     constexpr bool has_value() const noexcept {return tag_index;}
 

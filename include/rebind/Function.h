@@ -1,5 +1,5 @@
 #pragma once
-#include "Value.h"
+#include "Call.h"
 
 #include <typeindex>
 #include <iostream>
@@ -110,34 +110,34 @@ namespace rebind {
 
 /******************************************************************************/
 
-template <class R, class ...Ts>
-struct AnnotatedCallback {
-    Caller caller;
-    Value function;
+// template <class R, class ...Ts>
+// struct AnnotatedCallback {
+//     Caller caller;
+//     Value function;
 
-    AnnotatedCallback() = default;
-    AnnotatedCallback(Value f, Caller c) : function(std::move(f)), caller(std::move(c)) {}
+//     AnnotatedCallback() = default;
+//     AnnotatedCallback(Value f, Caller c) : function(std::move(f)), caller(std::move(c)) {}
 
-    R operator()(Ts ...ts) const;
-    //  {
-    //     return function(caller, to_arguments(static_cast<Ts &&>(ts)...)).cast(Type<R>());
-    // }
-};
+//     R operator()(Ts ...ts) const;
+//     //  {
+//     //     return function(caller, to_arguments(static_cast<Ts &&>(ts)...)).cast(Type<R>());
+//     // }
+// };
 
-template <class R>
-struct Callback {
-    Caller caller;
-    Value function;
+// template <class R>
+// struct Callback {
+//     Caller caller;
+//     Value function;
 
-    Callback() = default;
-    Callback(Value f, Caller c) : function(std::move(f)), caller(std::move(c)) {}
+//     Callback() = default;
+//     Callback(Value f, Caller c) : function(std::move(f)), caller(std::move(c)) {}
 
-    template <class ...Ts>
-    R operator()(Ts &&...ts) const;
-    // {
-    //     return function(caller, to_arguments(static_cast<Ts &&>(ts)...)).cast(Type<R>());
-    // }
-};
+//     template <class ...Ts>
+//     R operator()(Ts &&...ts) const;
+//     // {
+//     //     return function(caller, to_arguments(static_cast<Ts &&>(ts)...)).cast(Type<R>());
+//     // }
+// };
 
 /******************************************************************************/
 

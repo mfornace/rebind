@@ -1,6 +1,6 @@
 
 #include <rebind/Call.h>
-// #include <rebind/Schema.h>
+#include <rebind-cpp/Schema.h>
 // #include <rebind/types/Arrays.h>
 #include <iostream>
 
@@ -63,13 +63,13 @@ struct Goo : GooBase {
 //     return s("x", &Goo::x);
 // }
 
-bool method(Input<Goo> &self) {
-    return self("x", &Goo::x)
-        || self("test_throw", &Goo::test_throw)
-        || self("get_x", [](Goo const &g) {return g.x;})
-        || self("add", [](double x) {g.x += x;})
-        || self.derive<GooBase>();
-}
+// bool method(Input<Goo> &self) {
+//     return self("x", &Goo::x)
+//         || self("test_throw", &Goo::test_throw)
+//         || self("get_x", [](Goo const &g) {return g.x;})
+//         || self("add", [](double x) {g.x += x;})
+//         || self.derive<GooBase>();
+// }
 
 // template <class T>
 // struct Temporary {
@@ -91,24 +91,24 @@ bool method(Input<Goo> &self) {
 // &T, &mut T, T
 // T&, T const &, T &&
 // response is fairly wordy
-bool to_value(Object &o, Index i, Thing t) {
-    if (i.equals<std::string>()) {
-        if (auto r = t.rvalue()) return o.emplace<std::string>((*r).name);
-        return o.emplace<std::string>((*r).name);
-    }
+// bool to_value(Object &o, Index i, Thing t) {
+//     if (i.equals<std::string>()) {
+//         if (auto r = t.rvalue()) return o.emplace<std::string>((*r).name);
+//         return o.emplace<std::string>((*r).name);
+//     }
 
-    if (i.equals<GooBase>()) {
-        if (auto r = t.rvalue()) o.emplace(*r);
-        else o.emplace(*t);
-    }
+//     if (i.equals<GooBase>()) {
+//         if (auto r = t.rvalue()) o.emplace(*r);
+//         else o.emplace(*t);
+//     }
 
-    if (t.in_scope()) {
-        return t.member(&M::name)
-            || t.derive<GooBase>()
-            || (i.equals<std::string_view>() && o.emplace(r->name));
-            || (i.equals<mutable_string_view>()) && o.visit<mutable_string_view>() {
-            if (auto r = t.lvalue()) return (*r).name;
-        }
+//     if (t.in_scope()) {
+//         return t.member(&M::name)
+//             || t.derive<GooBase>()
+//             || (i.equals<std::string_view>() && o.emplace(r->name));
+//             || (i.equals<mutable_string_view>()) && o.visit<mutable_string_view>() {
+//             if (auto r = t.lvalue()) return (*r).name;
+//         }
 
         // if (i.equals<std::string const &>())
         //     return o.emplace<std::string>(r->name);
@@ -126,8 +126,8 @@ bool to_value(Object &o, Index i, Thing t) {
         //     if (auto r = t.lvalue()) return o.emplace(*r);
         // if (i.equals<GooBase &&>())
         //     if (auto r = t.lvalue()) return o.emplace(*r);
-    }
-}
+//     }
+// }
 
 
 // // maybe better to just use this in the non-reference case:
@@ -163,20 +163,20 @@ bool to_value(Object &o, Index i, Thing t) {
 
 
 // we'll probably take out "guaranteed" copy constructibility
-std::optional<Goo> from_ref(Object &r, Type<Goo>) {
-    std::optional<Goo> out;
-    // move_as does the request and destroys itself in event of success
-    // some of these would not need to destroy themselves though
-    // (i.e.) if request is for a reference or a trivially_copyable type
-    // maybe it is better to just say double *...?
-    if (auto t = r.move_as<double>()) out.emplace(std::move(*t));
-    if (auto t = r.move_as<double &>()) out.emplace(*t);
-    if (auto t = r.move_as<double const &>()) out.emplace(*t);
-    // not entirely sure what point of this one is...
-    // well, I guess it is useful for C++ code.
-    if (auto t = r.move_as<double &&>()) out.emplace(std::move(*t));
-    return out;
-}
+// std::optional<Goo> from_ref(Object &r, Type<Goo>) {
+//     std::optional<Goo> out;
+//     // move_as does the request and destroys itself in event of success
+//     // some of these would not need to destroy themselves though
+//     // (i.e.) if request is for a reference or a trivially_copyable type
+//     // maybe it is better to just say double *...?
+//     if (auto t = r.move_as<double>()) out.emplace(std::move(*t));
+//     if (auto t = r.move_as<double &>()) out.emplace(*t);
+//     if (auto t = r.move_as<double const &>()) out.emplace(*t);
+//     // not entirely sure what point of this one is...
+//     // well, I guess it is useful for C++ code.
+//     if (auto t = r.move_as<double &&>()) out.emplace(std::move(*t));
+//     return out;
+// }
 
 /******************************************************************************/
 
