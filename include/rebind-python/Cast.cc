@@ -1,4 +1,5 @@
 #include <rebind-python/Cast.h>
+#include <rebind-python/Variable.h>
 #include <numeric>
 
 namespace rebind::py {
@@ -30,36 +31,41 @@ Object list_cast(Ref &ref, Object const &o, Object const &root) {
     DUMP("Cast to list ", ref.name());
     if (auto args = type_args(o, 1)) {
         DUMP("is list ", PyList_Check(o));
-        auto v = ref.cast<ArgView>();
-        Object vt{PyTuple_GET_ITEM(+args, 0), true};
-        auto list = Object::from(PyList_New(v.size()));
-        for (Py_ssize_t i = 0; i != v.size(); ++i) {
-            DUMP("list index ", i);
-            Object item = cast_to_object(std::move(v[i]), vt, root);
-            if (!item) return {};
-            incref(+item);
-            PyList_SET_ITEM(+list, i, +item);
+        Scope s;
+        if (auto p = ref.load<Sequence>(s)) {
+        //     Object vt{PyTuple_GET_ITEM(+args, 0), true};
+        //     auto list = Object::from(PyList_New(v.size()));
+        //     for (Py_ssize_t i = 0; i != v.size(); ++i) {
+        //         DUMP("list index ", i);
+        //         Object item = cast_to_object(std::move(v[i]), vt, root);
+        //         if (!item) return {};
+        //         incref(+item);
+        //         PyList_SET_ITEM(+list, i, +item);
+        //     }
+        //     return list;
         }
-        return list;
-    } else return {};
+    }
+    return {};
 }
 
 Object tuple_cast(Ref &ref, Object const &o, Object const &root) {
     DUMP("Cast to tuple ", ref.name());
     if (auto args = type_args(o)) {
         Py_ssize_t const len = PyTuple_GET_SIZE(+args);
-        auto v = ref.cast<ArgView>();
-        if (len == 2 && PyTuple_GET_ITEM(+args, 1) == Py_Ellipsis) {
-            Object vt{PyTuple_GET_ITEM(+args, 0), true};
-            auto tup = Object::from(PyTuple_New(v.size()));
-            for (Py_ssize_t i = 0; i != v.size(); ++i)
-                if (!set_tuple_item(tup, i, cast_to_object(std::move(v[i]), vt, root))) return {};
-            return tup;
-        } else if (len == v.size()) {
-            auto tup = Object::from(PyTuple_New(len));
-            for (Py_ssize_t i = 0; i != len; ++i)
-                if (!set_tuple_item(tup, i, cast_to_object(std::move(v[i]), {PyTuple_GET_ITEM(+args, i), true}, root))) return {};
-            return tup;
+        Scope s;
+        if (auto v = ref.load<Sequence>(s)) {
+            // if (len == 2 && PyTuple_GET_ITEM(+args, 1) == Py_Ellipsis) {
+            //     Object vt{PyTuple_GET_ITEM(+args, 0), true};
+            //     auto tup = Object::from(PyTuple_New(v.size()));
+            //     for (Py_ssize_t i = 0; i != v.size(); ++i)
+            //         if (!set_tuple_item(tup, i, cast_to_object(std::move(v[i]), vt, root))) return {};
+            //     return tup;
+            // } else if (len == v.size()) {
+            //     auto tup = Object::from(PyTuple_New(len));
+            //     for (Py_ssize_t i = 0; i != len; ++i)
+            //         if (!set_tuple_item(tup, i, cast_to_object(std::move(v[i]), {PyTuple_GET_ITEM(+args, i), true}, root))) return {};
+            //     return tup;
+            // }
         }
     }
     return {};
@@ -132,6 +138,7 @@ Object ref_to_object(Ref &&v, Object const &t) {
 /******************************************************************************/
 
 Object bool_cast(Ref &ref, Scope &s) {
+    DUMP("bool_cast");
     if (auto p = ref.load<bool>(s)) return as_object(*p);
     return {};//return type_error("could not convert to bool");
 }
@@ -214,11 +221,11 @@ bool is_structured_type(PyObject *type, PyTypeObject *origin) {
     }
 }
 
-Object union_cast(Ref const &v, Object const &t, Object const &root) {
+Object union_cast(Ref &v, Object const &t, Object const &root) {
     if (auto args = type_args(t)) {
         auto const n = PyTuple_GET_SIZE(+args);
         for (Py_ssize_t i = 0; i != n; ++i) {
-            Object o = cast_to_object(v, {PyTuple_GET_ITEM(+args, i), true}, root);
+            Object o = cast_to_object(std::move(v), {PyTuple_GET_ITEM(+args, i), true}, root);
             if (o) return o;
             else PyErr_Clear();
         }
@@ -234,13 +241,13 @@ Object union_cast(Ref const &v, Object const &t, Object const &root) {
 // Then, the output_conversions map is queried for Python function callable with the Value
 Object try_python_cast(Ref &r, Object const &t, Object const &root) {
     DUMP("try_python_cast ", r.name(), " to type ", repr(t), " with root ", repr(root));
-        Scope s;
+    Scope s;
     if (auto it = type_translations.find(t); it != type_translations.end()) {
         DUMP("type_translation found");
         return try_python_cast(r, it->second, root);
     } else if (PyType_CheckExact(+t)) {
         auto type = reinterpret_cast<PyTypeObject *>(+t);
-        DUMP("is Value ", is_subclass(type, type_object<Value>()));
+        DUMP("is Variable ", is_subclass(type, type_object<Variable>()));
         if (+type == Py_None->ob_type || +t == Py_None)       return {Py_None, true};                        // NoneType
         else if (type == &PyBool_Type)                        return bool_cast(r, s);                // bool
         else if (type == &PyLong_Type)                        return int_cast(r, s);                 // int
@@ -249,7 +256,7 @@ Object try_python_cast(Ref &r, Object const &t, Object const &root) {
         else if (type == &PyBytes_Type)                       return bytes_cast(r, s);               // bytes
         else if (type == &PyBaseObject_Type)                  return as_deduced_object(std::move(r));        // object
         // else if (is_subclass(type, type_object<Value>()))     return value_to_object(r, t);       // Value
-        else if (is_subclass(type, type_object<Ref>()))       return ref_to_object(std::move(r), t);         // Ref
+        // else if (is_subclass(type, type_object<Ref>()))       return ref_to_object(std::move(r), t);         // Ref
         else if (type == type_object<Index>())                return type_index_cast(r, s);          // type(Index)
         else if (is_subclass(type, &PyFunction_Type))         return function_cast(r, s);            // Function
         else if (type == &PyMemoryView_Type)                  return memoryview_cast(r, s, root);    // memory_view
@@ -273,18 +280,18 @@ Object try_python_cast(Ref &r, Object const &t, Object const &root) {
     DUMP("custom convert ", output_conversions.size());
     if (auto p = output_conversions.find(t); p != output_conversions.end()) {
         DUMP(" conversion ");
-        Object o = ref_to_object(std::move(r), {});
-        if (!o) return type_error("could not cast Value to Python object");
-        DUMP("calling function");
-        auto &obj = static_cast<PyValue &>(cast_object<Value>(o)).ward;
-        if (!obj) obj = root;
-        return Object::from(PyObject_CallFunctionObjArgs(+p->second, +o, nullptr));
+        // Object o = ref_to_object(std::move(r), {});
+        // if (!o) return type_error("could not cast Value to Python object");
+        // DUMP("calling function");
+        // auto &obj = cast_object<Variable>(o).ward;
+        // if (!obj) obj = root;
+        // return Object::from(PyObject_CallFunctionObjArgs(+p->second, +o, nullptr));
     }
 
     return nullptr;
 }
 
-Object cast_to_object(Ref &v, Object const &t, Object const &root) {
+Object cast_to_object(Ref &&v, Object const &t, Object const &root) {
     Object out = try_python_cast(v, t, root);
     if (!out) return type_error("cannot convert value to type %R from %R", +t, +as_object(v.index()));
     return out;

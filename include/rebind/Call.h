@@ -64,7 +64,7 @@ struct Arg<T const&> {
 
 template <class T>
 struct Arg<T &&> {
-    std::aligned_union_t<0, T> storage;
+    storage_like<T> storage;
 
     Arg(T &&t) {new(&storage) T(std::move(t));}
     Ref ref() {return Ref(TagIndex(Index::of<T>(), Stack), &storage);}

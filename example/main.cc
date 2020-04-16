@@ -1,5 +1,6 @@
 
 #include <rebind-cpp/Schema.h>
+#include <rebind-cpp/Core.h>
 #include <mutex>
 
 
@@ -50,6 +51,13 @@ int main() {
 }
     std::mutex mut;
     auto x = schema["mutex"]->call(Caller(), mut);
+
+{
+    auto v = Value(1);
+    DUMP(bool(v.load<int>()));
+    DUMP(bool(v.load<double>()));
+}
+
     DUMP("done");
     return 0;
 }

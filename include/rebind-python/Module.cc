@@ -3,7 +3,7 @@
  * @file Python.cc
  */
 #include <rebind-python/Cast.h>
-#include <rebind-python/API.h>
+#include <rebind-python/Common.h>
 #include <rebind-cpp/Schema.h>
 #include <any>
 #include <iostream>
@@ -55,7 +55,7 @@ Object tables_to_object(Vector<Index> const &v) {
             as_object(t),
             as_object(t)
             // map_as_tuple(t->properties, [](auto const &x) {
-            //     return tuple_from(as_object(x.first), value_to_object(Value(x.second)));
+            //     return tuple_from(as_object(x.first), Variable::from(Value(x.second)));
             // })
         );
     });
@@ -76,8 +76,8 @@ Object initialize(Schema const &schema) {
     bool s = true;
 
     // Builtin types
-    s = s && attach_type(m, "Value", type_object<Value>());
-    s = s && attach_type(m, "Ref", type_object<Ref>());
+    s = s && attach_type(m, "Variable", type_object<Variable>());
+    // s = s && attach_type(m, "Ref", type_object<Ref>());
     s = s && attach_type(m, "Index", type_object<Index>());
 
     // scalars: exposed as Tuple[Tuple[int, Index, int], ...]
@@ -97,43 +97,43 @@ Object initialize(Schema const &schema) {
         // } else if (auto p = x.second.template target<Ref>()) {
         //     o = ref_to_object(*p);
         } else { // anything else
-            o = value_to_object(Value(x.second));
+            o = Variable::from(x.second.as_ref());
         }
         return tuple_from(as_object(x.first), std::move(o));
     }));
 
     // Configuration functions
-    s = s && attach(m, "set_output_conversion", value_to_object(make_function([](Object t, Object o) {
+    s = s && attach(m, "set_output_conversion", Variable::from(make_function([](Object t, Object o) {
         output_conversions.insert_or_assign(std::move(t), std::move(o));
     })));
-    s = s && attach(m, "set_input_conversion", value_to_object(make_function([](Object t, Object o) {
+    s = s && attach(m, "set_input_conversion", Variable::from(make_function([](Object t, Object o) {
         input_conversions.insert_or_assign(std::move(t), std::move(o));
     })));
-    s = s && attach(m, "set_translation", value_to_object(make_function([](Object t, Object o) {
+    s = s && attach(m, "set_translation", Variable::from(make_function([](Object t, Object o) {
         DUMP("set_translation ", repr(t), " -> ", repr(o));
         type_translations.insert_or_assign(std::move(t), std::move(o));
     })));
 
-    s = s && attach(m, "clear_global_objects", value_to_object(make_function(&clear_global_objects)));
+    s = s && attach(m, "clear_global_objects", Variable::from(make_function(&clear_global_objects)));
 
-    s = s && attach(m, "set_debug", value_to_object(make_function([](bool b) {
-        DUMP("set_debug", b);
+    s = s && attach(m, "set_debug", Variable::from(make_function([](bool b) {
+        DUMP("set_debug ", b);
         return std::exchange(Debug, b);})));
 
-    s = s && attach(m, "debug", value_to_object(make_function([] {return Debug;})));
+    s = s && attach(m, "debug", Variable::from(make_function([] {return Debug;})));
 
-    s = s && attach(m, "set_type_error", value_to_object(make_function([](Object o) {
+    s = s && attach(m, "set_type_error", Variable::from(make_function([](Object o) {
         DUMP("setting type error");
         TypeError = std::move(o);
     })));
 
-    s = s && attach(m, "set_type", value_to_object(make_function([](Index idx, Object cls, Object ref) {
+    s = s && attach(m, "set_type", Variable::from(make_function([](Index idx, Object cls, Object ref) {
         DUMP("set_type in");
         python_types[idx] = {std::move(cls), std::move(ref)};
         DUMP("set_type out");
     })));
 
-    DUMP("attached all module objects, status = ", s);
+    DUMP("attached all module objects, status (1 is good) = ", s);
     return s ? m : Object();
 }
 

@@ -1,7 +1,12 @@
 #pragma once
-// #include <rebind/Convert.h>
+#include <rebind/Ref.h>
+#include <rebind/Scope.h>
+#include <vector>
 
 namespace rebind {
+
+template <class T>
+using Vector = std::vector<T>;
 
 /******************************************************************************/
 
@@ -103,6 +108,10 @@ struct ArrayView {
     Ref data;
     ArrayLayout layout;
 };
+
+static_assert(!std::is_copy_constructible_v<ArrayView>);
+static_assert(!is_copy_constructible_v<ArrayView>);
+static_assert(std::is_nothrow_move_constructible_v<ArrayView>);
 
 /******************************************************************************/
 

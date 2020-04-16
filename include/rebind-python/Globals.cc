@@ -1,4 +1,4 @@
-#include <rebind-python/API.h>
+#include <rebind-python/Common.h>
 
 namespace rebind::py {
 
@@ -25,7 +25,7 @@ void clear_global_objects() {
     TypeError = nullptr;
 }
 
-Zip<std::string_view, Index> Buffer::formats = {
+std::vector<std::pair<std::string_view, Index>> Buffer::formats = {
     {"d", fetch<double>()},
     {"f", fetch<float>()},
     {"c", fetch<char>()},
@@ -49,7 +49,7 @@ Zip<std::string_view, Index> Buffer::formats = {
 
 #define REBIND_TMP(C, T) {Scalar::C, fetch<T>(), sizeof(T) * CHAR_BIT}
 
-Zip<Scalar, Index, unsigned> scalars = {
+std::vector<std::tuple<Scalar, Index, unsigned>> scalars = {
     REBIND_TMP(Bool,         bool),
     REBIND_TMP(Char,         char),
     REBIND_TMP(SignedChar,   signed char),

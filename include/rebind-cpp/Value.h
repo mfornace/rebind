@@ -1,5 +1,6 @@
 #pragma once
 #include <rebind/Ref.h>
+#include <rebind/Call.h>
 
 namespace rebind {
 
@@ -46,7 +47,7 @@ struct Value {
     Value(T &&t) : Value{Type<unqualified<T>>(), static_cast<T &&>(t)} {}
 
     Value(Value &&v) noexcept;
-    Value(Value const &v);// = delete;
+    Value(Value const &v) = delete;
 
     Value &operator=(Value &&v) noexcept;
     Value &operator=(Value const &v);// = delete;
@@ -95,36 +96,20 @@ struct Value {
     template <class T>
     T *target(Type<T> t={}) {return const_cast<T *>(std::as_const(*this).target(t));}
 
-
     // template <class T, class ...Args>
     // static Value from(Args &&...args) {
     //     static_assert(std::is_constructible_v<T, Args &&...>);
     //     return Value(new T{static_cast<Args &&>(args)...});
     // }
 
+    Ref as_ref() const & noexcept {return *this ? Ref() : Ref(TagIndex(index(), Const), storage.pointer);}
+    Ref as_ref() & noexcept {return *this ? Ref() : Ref(TagIndex(index(), Const), storage.pointer);}
+
     template <class T>
-    std::optional<T> load() const {
-        std::optional<T> out;
-        if (auto t = target<T>()) {
-            DUMP("load exact match");
-            out.emplace(*t);
-        } else {
-            DUMP("trying indirect load");
-            Storage s;
-            Target o{&s, Index::of<T>(), sizeof(s), Target::Stack};
-            auto c = Load::call(index(), o, storage.pointer, Const);
-            if (c == Load::heap) {
-                auto &t = *reinterpret_cast<T *>(s.pointer);
-                out.emplace(std::move(t));
-                Destruct::impl<T>::put(t, Destruct::heap);
-            } else if (c == Load::stack) {
-                auto &t = *aligned_pointer<T>(&s.data);
-                out.emplace(std::move(t));
-                Destruct::impl<T>::put(t, Destruct::stack);
-            }
-        }
-        return out;
-    }
+    std::optional<T> load(Scope &s, Type<T> t={}) const {return as_ref().load(s, t);}
+
+    template <class T>
+    std::optional<T> load(Type<T> t={}) const {Scope s; return load(s, t);}
 
     /**************************************************************************/
 
@@ -205,7 +190,11 @@ struct Value {
 
     /**************************************************************************/
 
-    bool load_to(Target &v) const;// const & {return stat::request::ok == parts::request_to(v, index(), address(), Const);}
+    bool load_to(Target &t) const {
+        Scope s;
+        return as_ref().load_to(t, s);
+    }
+    // const & {return stat::request::ok == parts::request_to(v, index(), address(), Const);}
     // bool request_to(Output &v) & {return stat::request::ok == parts::request_to(v, index(), address(), Lvalue);}
     // bool request_to(Output &v) && {return stat::request::ok == parts::request_to(v, index(), address(), Rvalue);}
 
@@ -221,6 +210,7 @@ struct Value {
 
 template <class T, class ...Args, std::enable_if_t<is_manageable<T>, int>>
 Value::Value(Type<T> t, Args&& ...args) {
+    static_assert(std::is_constructible_v<T, Args &&...>);
     if constexpr(loc_of<T> == Loc::Heap) {
         storage.pointer = parts::alloc<T>(static_cast<Args &&>(args)...);
     } else {

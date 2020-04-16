@@ -91,6 +91,8 @@ struct Ref {
     T cast(Type<T> t={}) const;
 
     /**************************************************************************************/
+
+    bool load_to(Target &t, Scope &s) {return false;}
 };
 
 /******************************************************************************************/
@@ -116,12 +118,48 @@ template <class T, std::enable_if_t<!std::is_reference_v<T>, int>>
 std::optional<T> Ref::load(Scope &s, Type<T> t) {
     std::optional<T> out;
     if (index().equals<T>()) {
+        DUMP("load exact match");
         switch (tag()) {
             case Stack:   {if constexpr(std::is_constructible_v<T, T&&>) {out.emplace(ptr.load<T &&>()); reset();} break;}
             case Heap:    {if constexpr(std::is_constructible_v<T, T&&>) {out.emplace(ptr.load<T &&>()); reset();} break;}
-            case Const:   {if constexpr(std::is_constructible_v<T, T const &>) out.emplace(ptr.load<T const &>()); break;}
-            case Mutable: {if constexpr(std::is_constructible_v<T, T &>) out.emplace(ptr.load<T &>()); break;}
+            case Const:   {if constexpr(is_copy_constructible_v<T>) out.emplace(ptr.load<T const &>()); break;}
+            case Mutable: {if constexpr(is_copy_constructible_v<T>) out.emplace(ptr.load<T &>()); break;}
         }
+    } else {
+        storage_like<T> storage;
+        Target target{&storage, Index::of<T>(), sizeof(storage), Target::Stack};
+
+        if (Dump::ok == Dump::call(index(), target, ptr, tag())) {
+            auto &t = storage_cast<T>(storage);
+            out.emplace(std::move(t));
+            t.~T();
+        } else {
+
+            if constexpr(is_complete_v<Loadable<T>>) {
+                DUMP("try compile time load ", type_name<T>());
+                out = Loadable<T>()(*this, s);
+
+            } else {
+
+                DUMP("trying indirect load");
+                switch (Load::call(index(), target, ptr, tag())) {
+                    case Load::stack: {
+                        auto &t = storage_cast<T>(storage);
+                        out.emplace(std::move(t));
+                        Destruct::impl<T>::put(t, Destruct::stack);
+                        break;
+                    }
+                    case Load::heap: {
+                        auto &t = storage_cast<T>(storage);
+                        out.emplace(std::move(t));
+                        Destruct::impl<T>::put(t, Destruct::heap);
+                        break;
+                    }
+                    case Load::none: {break;}
+                }
+            }
+        }
+
     }
     return out;
 }

@@ -4,19 +4,16 @@
  */
 
 #pragma once
-#include "CAPI.h"
-#include "Common.h"
-#include <rebind-cpp/Schema.h>
+#include "Raw.h"
+// #include <rebind-cpp/Schema.h>
 
 namespace rebind::py {
+
+/******************************************************************************/
 
 void initialize_global_objects();
 
 void clear_global_objects();
-
-enum class Scalar {Bool, Char, SignedChar, UnsignedChar, Unsigned, Signed, Float, Pointer};
-
-extern Zip<Scalar, Index, unsigned> scalars;
 
 /******************************************************************************/
 

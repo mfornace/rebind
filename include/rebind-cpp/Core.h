@@ -1,5 +1,6 @@
 #pragma once
 #include "Arrays.h"
+#include "Value.h"
 #include <cstdlib>
 
 namespace rebind {
@@ -15,8 +16,6 @@ namespace rebind {
 
 /// Built-in floating point with the largest domain -- long double is not used though
 using Real = double;
-
-// using ArgVec = Vector<Ref>;
 
 using Sequence = Vector<Value>;
 
@@ -87,9 +86,9 @@ Default Loadable for integer type tries to go through Integer
 template <class T>
 struct Loadable<T, std::enable_if_t<std::is_integral_v<T>>> {
     std::optional<T> operator()(Ref &v, Scope &s) const {
-        DUMP("trying convert to arithmetic", v.name(), Index::of<T>());
+        DUMP("trying convert to integer ", v.name(), " ", Index::of<T>());
         if (!std::is_same_v<Integer, T>) if (auto p = v.load<Integer>(s)) return static_cast<T>(*p);
-        DUMP("failed to convert to arithmetic", v.name(), Index::of<T>());
+        DUMP("failed to convert to integer", v.name(), Index::of<T>());
         return s.error("not convertible to integer", Index::of<T>());
     }
 };
@@ -101,7 +100,7 @@ template <class T>
 struct Loadable<T, std::enable_if_t<std::is_enum_v<T>>> {
     std::optional<T> operator()(Ref &v, Scope &s) const {
         DUMP("trying convert to enum", v.name(), Index::of<T>());
-        if (auto p = v.load<std::underlying_type_t<T>>()) return static_cast<T>(*p);
+        if (auto p = v.load<std::underlying_type_t<T>>(s)) return static_cast<T>(*p);
         return s.error("not convertible to enum", Index::of<T>());
     }
 };
@@ -113,10 +112,10 @@ template <class T, class Traits, class Alloc>
 struct Loadable<std::basic_string<T, Traits, Alloc>> {
     std::optional<std::basic_string<T, Traits, Alloc>> operator()(Ref &v, Scope &s) const {
         DUMP("trying to convert to string");
-        if (auto p = v.load<std::basic_string_view<T, Traits>>())
+        if (auto p = v.load<std::basic_string_view<T, Traits>>(s))
             return std::basic_string<T, Traits, Alloc>(std::move(*p));
         if (!std::is_same_v<std::basic_string<T, Traits, Alloc>, std::basic_string<T, Traits>>)
-            if (auto p = v.load<std::basic_string<T, Traits>>())
+            if (auto p = v.load<std::basic_string<T, Traits>>(s))
                 return std::move(*p);
         return s.error("not convertible to string", Index::of<T>());
     }
@@ -191,17 +190,17 @@ struct LoadCompiledSequence {
         }
     }
 
-    std::optional<V> operator()(Value r, Scope &s) const {
+    std::optional<V> operator()(Ref &r, Scope &s) const {
         std::optional<V> out;
         DUMP("trying LoadCompiledSequence", r.name());
         if constexpr(!std::is_same_v<V, Array>) {
-            if (auto p = r.load<std::array<Value, std::tuple_size_v<V>>>()) {
+            if (auto p = r.load<std::array<Value, std::tuple_size_v<V>>>(s)) {
                 DUMP("trying array CompiledSequenceRequest2", r.name());
                 load(out, std::move(*p), s);
             }
             return out;
         }
-        if (auto p = r.load<Sequence>()) {
+        if (auto p = r.load<Sequence>(s)) {
             DUMP("trying CompiledSequenceRequest2", r.name());
             load(out, std::move(*p), s);
         } else {
@@ -235,10 +234,10 @@ struct Dumpable<char const *> {
 template <class T>
 struct Dumpable<T, std::enable_if_t<(std::is_integral_v<T>)>> {
     bool operator()(Target &v, T t) const {
-        DUMP("response from integer", Index::of<T>(), v.name());
+        DUMP("Dumpable ", type_name<T>(), " to ", v.name());
         if (v.accepts<Integer>()) return v.emplace_if<Integer>(t);
         if (v.accepts<Real>()) return v.emplace_if<Real>(t);
-        DUMP("no response from integer");
+        DUMP("Dumpable ", type_name<T>(), " to ", v.name(), " failed");
         return false;
     }
 };
@@ -273,13 +272,13 @@ template <class T>
 struct DumpCompiledSequence {
     using Array = std::array<Value, std::tuple_size_v<T>>;
 
-    template <std::size_t ...Is>
-    static Sequence sequence(T const &t, std::index_sequence<Is...>) {
-        Sequence o;
-        o.reserve(sizeof...(Is));
-        (o.emplace_back(std::get<Is>(t)), ...);
-        return o;
-    }
+    // template <std::size_t ...Is>
+    // static Sequence sequence(T const &t, std::index_sequence<Is...>) {
+    //     Sequence o;
+    //     o.reserve(sizeof...(Is));
+    //     (o.emplace_back(std::get<Is>(t)), ...);
+    //     return o;
+    // }
 
     template <std::size_t ...Is>
     static Sequence sequence(T &&t, std::index_sequence<Is...>) {
@@ -289,16 +288,16 @@ struct DumpCompiledSequence {
         return o;
     }
 
-    template <std::size_t ...Is>
-    static Array array(T const &t, std::index_sequence<Is...>) {return {std::get<Is>(t)...};}
+    // template <std::size_t ...Is>
+    // static Array array(T const &t, std::index_sequence<Is...>) {return {std::get<Is>(t)...};}
 
     template <std::size_t ...Is>
     static Array array(T &&t, std::index_sequence<Is...>) {return {std::get<Is>(std::move(t))...};}
 
     bool operator()(Target &v, T const &t) const {
         auto idx = std::make_index_sequence<std::tuple_size_v<T>>();
-        if (v.accepts<Sequence>()) return v.set_if(sequence(t, idx));
-        if (v.accepts<Array>()) return v.set_if(array(t, idx));
+        // if (v.accepts<Sequence>()) return v.set_if(sequence(t, idx));
+        // if (v.accepts<Array>()) return v.set_if(array(t, idx));
         return false;
     }
 
@@ -333,18 +332,18 @@ struct HasData<T, std::enable_if_t<(std::is_pointer_v<decltype(std::data(std::de
 
 template <class T, class Iter1, class Iter2>
 bool dump_range(Target &v, Iter1 b, Iter2 e) {
-    if (v.accepts<Sequence>()) {
-        Sequence s;
-        s.reserve(std::distance(b, e));
-        for (; b != e; ++b) {
-            if constexpr(std::is_same_v<T, Value>) s.emplace_back(*b);
-            else if constexpr(!std::is_same_v<T, Ref>) s.emplace_back(Type<T>(), *b);
-        }
-        return v.set_if(std::move(s));
-    }
-    if (v.accepts<Vector<T>>()) {
-        return v.emplace_if<Vector<T>>(b, e);
-    }
+    // if (v.accepts<Sequence>()) {
+    //     Sequence s;
+    //     s.reserve(std::distance(b, e));
+    //     for (; b != e; ++b) {
+    //         if constexpr(std::is_same_v<T, Value>) s.emplace_back(*b);
+    //         else if constexpr(!std::is_same_v<T, Ref>) s.emplace_back(Type<T>(), *b);
+    //     }
+    //     return v.set_if(std::move(s));
+    // }
+    // if (v.accepts<Vector<T>>()) {
+    //     return v.emplace_if<Vector<T>>(b, e);
+    // }
     return false;
 }
 

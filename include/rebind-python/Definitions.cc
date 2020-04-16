@@ -1,5 +1,5 @@
 #include "Methods.h"
-#include "Wrap.h"
+#include "Variable.h"
 
 namespace rebind::py {
 
@@ -10,12 +10,11 @@ PyObject * c_value_from(PyObject *cls, PyObject *obj) noexcept {
             return {obj, true};
 
         // if a Value try .cast
-        if (auto p = cast_if<Value>(obj))
-            return cast_to_object(Ref(*p), Object(cls, true), Object(obj, true));
-
-        // if a Ref try .cast
-        if (auto p = cast_if<Ref>(obj))
-            return cast_to_object(*p, Object(cls, true), Object(obj, true));
+        if (auto p = cast_if<Variable>(obj)) {
+            return {};
+            // Ref r(*p);
+            // return cast_to_object(Ref(*p), Object(cls, true), Object(obj, true));
+        }
 
         // Try cls.__init__(obj)
         return Object::from(PyObject_CallFunctionObjArgs(cls, obj, nullptr));
@@ -24,16 +23,16 @@ PyObject * c_value_from(PyObject *cls, PyObject *obj) noexcept {
 
 /******************************************************************************/
 
-PyNumberMethods ValueNumberMethods = {
-    .nb_bool = static_cast<inquiry>(c_operator_has_value<Ref>),
+PyNumberMethods VariableNumberMethods = {
+    .nb_bool = static_cast<inquiry>(c_operator_has_value<Variable>),
 };
 
-PyMethodDef ValueMethods[] = {
-    {"copy_from", c_function(c_copy_from<Value>),
-        METH_O, "assign from other using C++ copy assignment"},
+PyMethodDef VariableMethods[] = {
+    // {"copy_from", c_function(c_copy_from<Value>),
+    //     METH_O, "assign from other using C++ copy assignment"},
 
-    {"move_from", c_function(c_move_from<Value>),
-        METH_O, "assign from other using C++ move assignment"},
+    // {"move_from", c_function(c_move_from<Value>),
+    //     METH_O, "assign from other using C++ move assignment"},
 
     {"method", c_function(c_method<Value>),
         METH_VARARGS | METH_KEYWORDS, "call a method given a name and arguments"},
@@ -41,22 +40,22 @@ PyMethodDef ValueMethods[] = {
     // {"address", c_function(c_address<Value>),
     //     METH_NOARGS, "get C++ pointer address"},
 
-    {"_ward", c_function(c_get_ward<PyValue>),
+    {"_ward", c_function(c_get_ward<Variable>),
         METH_NOARGS, "get ward object"},
 
-    {"_set_ward", c_function(c_set_ward<PyValue>),
+    {"_set_ward", c_function(c_set_ward<Variable>),
         METH_O, "set ward object and return self"},
 
     // {"is_stack_type", c_function(var_is_stack_type),
     // METH_NOARGS, "return if object is held in stack storage"},
 
-    {"index", c_function(c_get_index<Value>),
+    {"index", c_function(c_get_index<Variable>),
         METH_NOARGS, "return Index of the held C++ object"},
 
-    {"has_value", c_function(c_has_value<Value>),
+    {"has_value", c_function(c_has_value<Variable>),
         METH_NOARGS, "return if a C++ object is being held"},
 
-    {"cast", c_function(c_cast<Value>),
+    {"cast", c_function(c_cast<Variable>),
         METH_O, "cast to a given Python type"},
 
     {"from_object", c_function(c_value_from),
@@ -65,69 +64,74 @@ PyMethodDef ValueMethods[] = {
 };
 
 template <>
-PyTypeObject Wrap<PyValue>::type = []{
-    auto o = type_definition<Value>("rebind.Value", "Object representing a C++ value");
-    o.tp_as_number = &ValueNumberMethods;
-    o.tp_methods = ValueMethods;
+storage_like<PyTypeObject> Wrap<Variable>::type = []{
+    auto out = type_definition<Variable>("rebind.Variable", "Object class");
+    auto &o = storage_cast<PyTypeObject>(out);
+    DUMP("defining Variable");
+    o.tp_as_number = &VariableNumberMethods;
+    DUMP("defining Variable");
+    o.tp_methods = VariableMethods;
+    DUMP("defining Variable");
     o.tp_call = function_call;
+    DUMP("defined Variable");
     // no init (just use default constructor)
     // tp_traverse, tp_clear
     // PyMemberDef, tp_members
-    return o;
+    return out;
 }();
 
 /******************************************************************************/
 
-PyNumberMethods RefNumberMethods = {
-    .nb_bool = static_cast<inquiry>(c_operator_has_value<Ref>),
-};
+// PyNumberMethods RefNumberMethods = {
+//     .nb_bool = static_cast<inquiry>(c_operator_has_value<Ref>),
+// };
 
-PyMethodDef RefMethods[] = {
-    {"copy_from", c_function(c_copy_from<Ref>),
-        METH_O, "assign from other using C++ copy assignment"},
+// PyMethodDef RefMethods[] = {
+//     {"copy_from", c_function(c_copy_from<Ref>),
+//         METH_O, "assign from other using C++ copy assignment"},
 
-    {"move_from", c_function(c_move_from<Ref>),
-        METH_O, "assign from other using C++ move assignment"},
+//     {"move_from", c_function(c_move_from<Ref>),
+//         METH_O, "assign from other using C++ move assignment"},
 
-    {"method", c_function(c_method<Ref>),
-        METH_VARARGS | METH_KEYWORDS, "call a method given a name and arguments"},
+//     {"method", c_function(c_method<Ref>),
+//         METH_VARARGS | METH_KEYWORDS, "call a method given a name and arguments"},
 
-    // {"address", c_function(c_address<Ref>),
-    //     METH_NOARGS,  "get C++ pointer address"},
+//     // {"address", c_function(c_address<Ref>),
+//     //     METH_NOARGS,  "get C++ pointer address"},
 
-    {"_ward", c_function(c_get_ward<PyRef>),
-        METH_NOARGS, "get ward object"},
+//     {"_ward", c_function(c_get_ward<PyRef>),
+//         METH_NOARGS, "get ward object"},
 
-    {"_set_ward", c_function(c_set_ward<PyRef>),
-        METH_O, "set ward object and return self"},
+//     {"_set_ward", c_function(c_set_ward<PyRef>),
+//         METH_O, "set ward object and return self"},
 
-    // {"qualifier", c_function(c_qualifier<Ref>),
-    //     METH_NOARGS, "return qualifier of self"},
-    // {"is_stack_type", c_function(var_is_stack_type),
-    // METH_NOARGS, "return if object is held in stack storage"},
-    {"index", c_function(c_get_index<Ref>),
-        METH_NOARGS, "return Index of the held C++ object"},
+//     // {"qualifier", c_function(c_qualifier<Ref>),
+//     //     METH_NOARGS, "return qualifier of self"},
+//     // {"is_stack_type", c_function(var_is_stack_type),
+//     // METH_NOARGS, "return if object is held in stack storage"},
+//     {"index", c_function(c_get_index<Ref>),
+//         METH_NOARGS, "return Index of the held C++ object"},
 
-    {"has_value", c_function(c_has_value<Ref>),
-        METH_NOARGS, "return if a C++ object is being held"},
+//     {"has_value", c_function(c_has_value<Ref>),
+//         METH_NOARGS, "return if a C++ object is being held"},
 
-    {"cast", c_function(c_cast<Ref>),
-        METH_O, "cast to a given Python type"},
+//     {"cast", c_function(c_cast<Ref>),
+//         METH_O, "cast to a given Python type"},
 
-    {nullptr, nullptr, 0, nullptr}
-};
+//     {nullptr, nullptr, 0, nullptr}
+// };
 
-template <>
-PyTypeObject Wrap<PyRef>::type = []{
-    auto o = type_definition<Ref>("rebind.Ref", "Object representing a C++ reference");
-    o.tp_as_number = &RefNumberMethods;
-    o.tp_methods = RefMethods;
-    o.tp_call = function_call;
-    // no init (just use default constructor)
-    // tp_traverse, tp_clear
-    // PyMemberDef, tp_members
-    return o;
-}();
+// template <>
+// PyTypeObject Wrap<PyRef>::type = []{
+//     auto o = type_definition<Ref>("rebind.Ref", "Object representing a C++ reference");
+//     o.tp_as_number = &RefNumberMethods;
+//     o.tp_methods = RefMethods;
+//     o.tp_call = function_call;
+//     // no init (just use default constructor)
+//     // tp_traverse, tp_clear
+//     // PyMemberDef, tp_members
+//     return o;
+// }();
 
 /******************************************************************************/
 
@@ -160,13 +164,14 @@ PyObject *index_compare(PyObject *self, PyObject *other, int op) {
 }
 
 template <>
-PyTypeObject Wrap<Index>::type = []{
-    auto o = type_definition<Index>("rebind.Index", "C++ type Index");
+storage_like<PyTypeObject> Wrap<Index>::type = []{
+    auto out = type_definition<Index>("rebind.Index", "C++ type Index");
+    auto &o = storage_cast<PyTypeObject>(out);
     o.tp_repr = index_repr;
     o.tp_hash = index_hash;
     o.tp_str = index_str;
     o.tp_richcompare = index_compare;
-    return o;
+    return out;
 }();
 
 /******************************************************************************/
@@ -177,10 +182,10 @@ int array_data_buffer(PyObject *self, Py_buffer *view, int flags) {
 #warning "nope"
     if (p.base) {incref(p.base); view->obj = +p.base;}
     else view->obj = nullptr;
-    view->itemsize = Buffer::itemsize(p.data.index());
-    view->len = p.n_elem;
+    // view->itemsize = Buffer::itemsize(p.data.index());
+    // view->len = p.n_elem;
     // view->readonly = p.data.qualifier() == Const;
-    view->format = const_cast<char *>(Buffer::format(p.data.index()).data());
+    // view->format = const_cast<char *>(Buffer::format(p.data.index()).data());
     view->ndim = p.shape_stride.size() / 2;
     view->shape = p.shape_stride.data();
     view->strides = p.shape_stride.data() + view->ndim;
@@ -191,10 +196,11 @@ int array_data_buffer(PyObject *self, Py_buffer *view, int flags) {
 PyBufferProcs buffer_procs{array_data_buffer, nullptr};
 
 template <>
-PyTypeObject Wrap<ArrayBuffer>::type = []{
-    auto o = type_definition<ArrayBuffer>("rebind.ArrayBuffer", "C++ ArrayBuffer object");
+storage_like<PyTypeObject> Wrap<ArrayBuffer>::type = []{
+    auto out = type_definition<ArrayBuffer>("rebind.ArrayBuffer", "C++ ArrayBuffer object");
+    auto &o = storage_cast<PyTypeObject>(out);
     o.tp_as_buffer = &buffer_procs;
-    return o;
+    return out;
 }();
 
 /******************************************************************************/

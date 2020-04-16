@@ -1,7 +1,7 @@
 #pragma once
 #include "Object.h"
-#include "API.h"
-#include <rebind-cpp/Value.h>
+#include "Common.h"
+// #include "Variable.h"
 // #include <rebind/Convert.h>
 
 namespace rebind::py {
@@ -10,36 +10,36 @@ namespace rebind::py {
 
 template <class T>
 struct Wrap {
-    static PyTypeObject type;
+    static storage_like<PyTypeObject> type;
     PyObject_HEAD // 16 bytes for the ref count and the type object
     T value; // stack is OK because this object is only casted to anyway.
 };
 
 template <class T>
-PyTypeObject Wrap<T>::type;
+storage_like<PyTypeObject> Wrap<T>::type;
 
 template <class T>
-SubClass<PyTypeObject> type_object(Type<T> t={}) {return {&Wrap<T>::type};}
+SubClass<PyTypeObject> type_object(Type<T> t={}) {return {&storage_cast<PyTypeObject>(Wrap<T>::type)};}
 
 /******************************************************************************/
 
 /// Main wrapper type for Value: adds a ward object for lifetime management
-struct PyValue : Value {
-    using Value::Value;
-    Object ward = {};
-};
+// struct PyValue : Value {
+//     using Value::Value;
+//     Object ward = {};
+// };
 
-/// Main wrapper type for Ref: adds a ward object for lifetime management
-struct PyRef : Ref {
-    using Ref::Ref;
-    Object ward = {};
-};
+// /// Main wrapper type for Ref: adds a ward object for lifetime management
+// struct PyRef : Ref {
+//     using Ref::Ref;
+//     Object ward = {};
+// };
 
-template <>
-struct Wrap<Value> : Wrap<PyValue> {};
+// template <>
+// struct Wrap<Value> : Wrap<PyValue> {};
 
-template <>
-struct Wrap<Ref> : Wrap<PyRef> {};
+// template <>
+// struct Wrap<Ref> : Wrap<PyRef> {};
 
 /******************************************************************************/
 
@@ -48,6 +48,9 @@ T * cast_if(PyObject *o) {
     if (!PyObject_TypeCheck(o, type_object<T>())) return nullptr;
     return std::addressof(reinterpret_cast<Wrap<T> *>(o)->value);
 }
+
+template <class T>
+T & cast_object_unsafe(PyObject *o) {return reinterpret_cast<Wrap<T> *>(o)->value;}
 
 template <class T>
 T & cast_object(PyObject *o) {
@@ -76,28 +79,25 @@ void c_delete(PyObject *o) noexcept {
 
 /******************************************************************************/
 
-// #pragma clang diagnostic push
-// #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-
 template <class T>
-PyTypeObject type_definition(char const *name, char const *doc) {
-    PyTypeObject o{PyVarObject_HEAD_INIT(NULL, 0)};
-    o.tp_name = name;
-    o.tp_basicsize = sizeof(Wrap<T>);
-    o.tp_dealloc = c_delete<T>;
-    o.tp_new = c_new<T>;
-    o.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
-    o.tp_doc = doc;
-    return o;
+storage_like<PyTypeObject> type_definition(char const *name, char const *doc) {
+    static_assert(std::is_trivial_v<PyTypeObject>);
+    DUMP("define type ", name);
+    PyTypeObject out{PyVarObject_HEAD_INIT(NULL, 0)};
+    out.tp_name = name;
+    out.tp_basicsize = sizeof(Wrap<T>);
+    out.tp_dealloc = c_delete<T>;
+    out.tp_new = c_new<T>;
+    out.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
+    out.tp_doc = doc;
+    return *std::launder(reinterpret_cast<storage_like<PyTypeObject> *>(&out));
 }
-
-// #pragma clang diagnostic pop
 
 /******************************************************************************/
 
-bool object_to_value(Target &v, Object o);
+bool dump_object(Target &v, Object o);
 
-bool object_to_ref(Ref &v, Object o);
+// bool object_to_ref(Ref &v, Object o);
 
 /******************************************************************************/
 
@@ -118,20 +118,28 @@ struct PythonFunction {
     }
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
-    bool operator()(Caller *c, Value *v, Ref *r, ArgView &args) const {
-        DUMP("calling python function");
-        auto p = c->target<PythonFrame>();
-        if (!p) throw DispatchError("Python context is expired or invalid");
-        PythonGuard lk(*p);
-        Object o = args_to_python(args, signature);
-        if (!o) throw python_error();
-        auto output = Object::from(PyObject_CallObject(function, o));
-        return false;
-#warning "cehck here"
-        // if (v) return object_to_value(*v, std::move(output));
-        // else return object_to_ref(*r, std::move(output));
-    }
+//     bool operator()(Caller *c, Value *v, Ref *r, ArgView &args) const {
+//         DUMP("calling python function");
+//         auto p = c->target<PythonFrame>();
+//         if (!p) throw DispatchError("Python context is expired or invalid");
+//         PythonGuard lk(*p);
+//         Object o = args_to_python(args, signature);
+//         if (!o) throw python_error();
+//         auto output = Object::from(PyObject_CallObject(function, o));
+//         return false;
+// #warning "cehck here"
+//         // if (v) return object_to_value(*v, std::move(output));
+//         // else return object_to_ref(*r, std::move(output));
+//     }
 };
+
+template <int, int>
+struct Obj {
+    Obj() = delete;
+    ~Obj() = delete;
+};
+
+using VersionedObject = Obj<PY_MAJOR_VERSION, PY_MINOR_VERSION>;
 
 }
 
@@ -140,14 +148,19 @@ struct PythonFunction {
 namespace rebind {
 
 template <>
-struct Dumpable<py::Object> {
-    bool operator()(Target &v, py::Object o) const {return py::object_to_value(v, std::move(o));}
+struct Dumpable< py::VersionedObject > {
+    bool operator()(Target &v, py::VersionedObject &o) const {
+        DUMP("hmm");
+        return py::dump_object(v, py::Object(reinterpret_cast<PyObject *>(&o), true));
+    }
+    bool operator()(Target &v, py::VersionedObject const &o) const {DUMP("hmm"); return false;}
+    bool operator()(Target &v, py::VersionedObject &&o) const {DUMP("hmm"); return false;}
 };
 
-template <>
-struct Loadable<py::Object> {
-    bool operator()(Ref &v, py::Object o) const {return py::object_to_ref(v, std::move(o));}
-};
+// template <>
+// struct Loadable<py::Object> {
+//     bool operator()(Ref &v, py::Object o) const {return py::object_to_ref(v, std::move(o));}
+// };
 
 }
 

@@ -40,7 +40,8 @@ int c_operator_has_value(PyObject *self) noexcept {
 
 template <class Self>
 PyObject * c_has_value(PyObject *self, PyObject *) noexcept {
-    return PyLong_FromLong(c_operator_has_value<Self>(self));
+    if (auto v = cast_if<Self>(self)) return as_object(v->has_value());
+    else return as_object(bool(PyObject_IsTrue(self)));
 }
 
 /******************************************************************************/
@@ -102,7 +103,7 @@ template <class Self>
 PyObject * c_method(PyObject *s, PyObject *args, PyObject *kws) noexcept {
     return raw_object([=]() -> Object {
         auto argv = objects_from_argument_tuple(args);
-        auto const [tag, out, is_value, gil] = function_call_keywords(kws);
+        auto const [tag, out, gil] = function_call_keywords(kws);
 
         if (!PyUnicode_Check(argv[0])) return type_error("expected instance of str for method name");
         std::string_view name = from_unicode(argv[0]);
@@ -114,6 +115,7 @@ PyObject * c_method(PyObject *s, PyObject *args, PyObject *kws) noexcept {
         Caller c(lk);
 
         auto v = arguments_from_objects(c, name, Ref(tag), argv.begin()+1, argv.end());
+        return {};
         // return function_call_impl(out, Ref(self), ArgView(v.data(), argv.size()-1), is_value);
 
         // return function_call_impl(out, Ref(std::as_const(it->second)), std::move(refs), is_value, gil, tag);

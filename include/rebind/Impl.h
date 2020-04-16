@@ -13,15 +13,6 @@
 
 namespace rebind {
 
-template <class T, class=void>
-struct is_complete : std::false_type {};
-
-template <class T>
-struct is_complete<T, std::enable_if_t<(sizeof(T) >= 0)>> : std::true_type {};
-
-template <class T>
-static constexpr bool is_complete_v = is_complete<T>::value;
-
 /******************************************************************************/
 
 struct Target {
@@ -104,12 +95,6 @@ bool assign_if (void*,       [],           Ref const)
 
 /******************************************************************************************/
 
-template <class T, class SFINAE=void>
-struct can_copy : std::is_copy_constructible<T> {};
-
-template <class T, class Alloc, class SFINAE>
-struct can_copy<std::vector<T, Alloc>, SFINAE> : std::is_copy_constructible<T> {};
-
 // Insert a new copy of the object into a buffer of size n
 // If the buffer is too small, allocate the object on the heap
 struct Copy {
@@ -118,7 +103,7 @@ struct Copy {
     template <class T>
     struct impl {
         static stat put(void*out, Len n, T const &t) noexcept {
-            if constexpr(std::is_copy_constructible_v<T>) {
+            if constexpr(is_copy_constructible_v<T>) {
                 try {
                     if (is_stackable<T>(n)) {
                         new(aligned_void<T>(out)) T(t);

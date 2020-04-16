@@ -123,6 +123,15 @@ typedef struct rebind_string {
 
 /******************************************************************************************/
 
+typedef struct rebind_array {
+    rebind_index index; // type and qualifier of the held type
+    void *pointer;      // address to the start of the array
+    size_t length;      // length of the array
+    void (*destructor)(size_t, void *);
+} rebind_array;
+
+/******************************************************************************************/
+
 // reinterpret_cast is legal C++ for interconversion of uintptr_t and void *
 // need to check about function pointer though
 // 32-bit (4 bytes): the pointer must be a multiple of 4 (2 bits are guaranteed 0)
@@ -196,17 +205,6 @@ inline char const * input_name(Input t) {
         default:                return "unknown";
     }
 }
-
-/******************************************************************************/
-
-template <class T, class SFINAE=void>
-struct is_trivially_relocatable : std::is_trivially_copyable<T> {};
-
-template <class T>
-static constexpr bool is_trivially_relocatable_v = is_trivially_relocatable<T>::value;
-
-template <class T>
-static constexpr bool is_stack_type = false;
 
 /******************************************************************************/
 

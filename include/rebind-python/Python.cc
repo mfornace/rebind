@@ -2,8 +2,8 @@
  * @brief Python-related C++ source code for rebind
  * @file Python.cc
  */
-#include "API.h"
-#include "Wrap.h"
+#include "Common.h"
+#include "Variable.h"
 #include <rebind-cpp/Core.h>
 
 #include <complex>
@@ -118,7 +118,7 @@ bool arithmetic_to_value(Target &v, Object const &o) {
 
 /******************************************************************************/
 
-bool object_to_value(Target &v, Object o) {
+bool dump_object(Target &v, Object o) {
     if (Debug) {
         auto repr = Object::from(PyObject_Repr(SubClass<PyTypeObject>{(+o)->ob_type}));
         DUMP("input object reference count = ", reference_count(o));
@@ -272,21 +272,20 @@ std::string wrong_type_message(WrongType const &e, std::string_view prefix) {
 
 /******************************************************************************/
 
-Ref ref_from_object(Object &o, bool move);
-// {
-//     if (auto p = cast_if<Index>(o)) {
-//         DUMP("ref_from_object: Index = ", raw::name(*p));
-//         return Ref(*p);
-//     } else if (auto p = cast_if<Value>(o)) {
-//         DUMP("ref_from_object: Value = ", p->name());
-//         return Ref(p->index(), p->address(), move ? Rvalue : Lvalue);
-//     } else if (auto p = cast_if<Ref>(o)) {
-//         DUMP("ref_from_object: Ref = ", p->name());
-//         return *p;
-//     } else {
-//         return Ref(o);
-//     }
-// }
+Ref ref_from_object(Object &o, bool move) {
+    if (auto p = cast_if<Index>(o)) {
+        DUMP("ref_from_object: Index = ", p->name());
+        return Ref(*p);
+    } else if (auto p = cast_if<Variable>(o)) {
+        DUMP("ref_from_object: Value = ", p->name());
+        return Ref();//(p->index(), p->address(), move ? Rvalue : Lvalue);
+    // } else if (auto p = cast_if<Ref>(o)) {
+    //     DUMP("ref_from_object: Ref = ", p->name());
+    //     return *p;
+    } else {
+        return Ref(o);
+    }
+}
 
 /******************************************************************************/
 

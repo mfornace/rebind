@@ -4,7 +4,7 @@
  */
 #pragma once
 #include "Wrap.h"
-#include "API.h"
+#include "Common.h"
 #include <rebind-cpp/Core.h>
 #include <rebind-cpp/Arrays.h>
 #include <rebind/Function.h>
@@ -13,16 +13,14 @@ namespace rebind::py {
 
 /******************************************************************************/
 
-Object cast_to_object(Ref const &v, Object const &t, Object const &root);
+Object cast_to_object(Ref &&v, Object const &t, Object const &root);
 
 
 template <class Self>
 PyObject * c_cast(PyObject *self, PyObject *type) noexcept {
     return raw_object([=] {
-        // Ref ptr(cast_object<Self>(self));
-        Ref ptr;
-        DUMP("c_cast ", typeid(Self).name(), " ", ptr.name());
-        return cast_to_object(ptr, Object(type, true), Object(self, true));
+        DUMP("c_cast ", typeid(Self).name());
+        return cast_to_object(cast_object<Self>(self).as_ref(), Object(type, true), Object(self, true));
     });
 }
 

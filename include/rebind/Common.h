@@ -15,6 +15,15 @@ bool debug() noexcept;
 
 char const * unknown_exception_description() noexcept;
 
+/// For debugging purposes
+template <class ...Ts>
+void dump(char const *s, int n, Ts const &...ts) {
+    if (!Debug) return;
+    std::cout << '[' << s << ':' << n << "] ";
+    int x[] = {(std::cout << ts, 0)...};
+    std::cout << std::endl;
+}
+
 /******************************************************************************/
 
 /// Copy CV and reference qualifier from one type to another
@@ -27,14 +36,36 @@ template <class From, class To> using copy_qualifier = typename copy_qualifier_t
 
 /******************************************************************************/
 
-/// For debugging purposes
-template <class ...Ts>
-void dump(char const *s, int n, Ts const &...ts) {
-    if (!Debug) return;
-    std::cout << '[' << s << ':' << n << "] ";
-    int x[] = {(std::cout << ts, 0)...};
-    std::cout << std::endl;
-}
+template <class T, class SFINAE=void>
+struct is_trivially_relocatable : std::is_trivially_copyable<T> {};
+
+template <class T>
+static constexpr bool is_trivially_relocatable_v = is_trivially_relocatable<T>::value;
+
+template <class T>
+static constexpr bool is_stack_type = false;
+
+/******************************************************************************/
+
+template <class T, class=void>
+struct is_complete : std::false_type {};
+
+template <class T>
+struct is_complete<T, std::enable_if_t<(sizeof(T) >= 0)>> : std::true_type {};
+
+template <class T>
+static constexpr bool is_complete_v = is_complete<T>::value;
+
+/******************************************************************************/
+
+template <class T, class SFINAE=void>
+struct is_copy_constructible : std::is_copy_constructible<T> {};
+
+template <class T, class Alloc, class SFINAE>
+struct is_copy_constructible<std::vector<T, Alloc>, SFINAE> : std::is_copy_constructible<T> {};
+
+template <class T>
+static constexpr bool is_copy_constructible_v = is_copy_constructible<T>::value;
 
 /******************************************************************************/
 
@@ -84,4 +115,15 @@ constexpr T* aligned_void(void *p) {
 }
 
 /******************************************************************************/
+
+template <class T>
+using storage_like = std::aligned_storage_t<sizeof(T), alignof(T)>;
+
+template <class T, class S>
+T & storage_cast(S &storage) {
+    return *std::launder(reinterpret_cast<T *>(&storage));
+}
+
+/******************************************************************************/
+
 }
