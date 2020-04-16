@@ -9,6 +9,7 @@
 #include <vector>
 #include <string>
 #include <any>
+#include <mutex>
 
 static_assert(16 == sizeof(std::shared_ptr<int>));
 static_assert(16 == sizeof(std::string_view));
@@ -190,6 +191,7 @@ void write_schema(rebind::Schema &s) {
     s.object("global_value", 123);
     s.function("easy", [] {return 1.2;});
     s.function("fun", [](int i, double d) {
+        DUMP("fun", " ", i, " ", d);
         return i + d;
     });
     s.function("refthing", [](double const &d) {
@@ -213,6 +215,8 @@ void write_schema(rebind::Schema &s) {
         i.x += 5;
     });
     s.function("lref", [](double &i) {i = 2;});
+    s.function("lref2", [](double &i) -> double & {return i = 2;});
+    s.function("lref3", [](double const &i) -> double const & {return i;});
     s.function("clref", [](double const &i) {});
     s.function("noref", [](double i) {});
     s.function("rref", [](double &&i) {});
@@ -228,6 +232,7 @@ void write_schema(rebind::Schema &s) {
     s.function("vec1", [](std::vector<int> const &) {});
     s.function("vec2", [](std::vector<int> &) {});
     s.function("vec3", [](std::vector<int>) {});
+    s.function("mutex", [] {return std::mutex();});
     // s.function<1>("vec4", [](int, int i=2) {});
 
     DUMP("made schema");

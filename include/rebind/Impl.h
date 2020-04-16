@@ -1,209 +1,383 @@
 #pragma once
-#include "Call.h"
+// #include "Call.h"
+#include "API.h"
 #include "Type.h"
 #include "Common.h"
-#include "Convert.h"
+#include "Parts.h"
+#include "Index.h"
 
 #include <map>
 #include <stdexcept>
 #include <array>
 #include <type_traits>
 
-namespace rebind::impl {
+namespace rebind {
+
+template <class T, class=void>
+struct is_complete : std::false_type {};
+
+template <class T>
+struct is_complete<T, std::enable_if_t<(sizeof(T) >= 0)>> : std::true_type {};
+
+template <class T>
+static constexpr bool is_complete_v = is_complete<T>::value;
+
+/******************************************************************************/
+
+struct Target {
+    // Kinds of return values that can be requested
+    enum Tag : rebind_tag {
+        Mutable,     // Request &
+        Reference,   // Request & or const &
+        Const,       // Request const &
+        Stack,       // Request stack storage as long as type is movable
+        Heap,        // Always request heap allocated value
+        Relocatable, // Request stack storage as long as type is trivially_relocatable
+        Movable,     // Request stack storage as long as type is noexcept movable
+        Trivial      // Request stack storage as long as type is trivial
+    };
+
+    // Output storage address. Must satisfy at least void* alignment and size requirements.
+    void *out;
+    // Requested type index. May be null if no type is requested
+    Index idx;
+    // Output storage capacity in bytes (sizeof)
+    Len len;
+    // Requested qualifier (roughly T, T &, or T const &)
+    Tag tag;
+
+    explicit constexpr operator bool() const noexcept {return out;}
+
+    template <class T>
+    void set_index() noexcept {idx = Index::of<T>();}
+
+    // Return placement new pointer if it is available for type T
+    template <class T>
+    constexpr void* placement() const noexcept {
+        if (tag == Stack       && is_stackable<T>(len)) return out;
+        if (tag == Trivial     && is_stackable<T>(len) && std::is_trivially_copyable_v<T>) return out;
+        if (tag == Movable     && is_stackable<T>(len) && std::is_nothrow_move_constructible_v<T>) return out;
+        if (tag == Relocatable && is_stackable<T>(len) && is_trivially_relocatable_v<T>) return out;
+        return nullptr;
+    }
+
+    bool wants_value() const {return tag > 2;}
+
+    template <class T>
+    bool accepts() const noexcept {return !idx || idx == Index::of<T>();}
+
+    template <class T, class ...Ts>
+    T * emplace_if(Ts &&...ts) {
+        if (accepts<T>()) {
+            if (auto p = placement<T>()) parts::alloc_to<T>(p, static_cast<Ts &&>(ts)...);
+            else out = parts::alloc<T>(static_cast<Ts &&>(ts)...);
+            idx = Index::of<T>();
+        }
+        return static_cast<T *>(out);
+    }
+
+    auto name() const {return idx.name();}
+
+    template <class T>
+    bool set_if(T &&t) {return emplace_if<unqualified<T>>(std::forward<T>(t));}
+
+    // Set pointer to a heap allocation
+    template <class T>
+    void set_reference(T &t) noexcept {out = std::addressof(t); set_index<T>();}
+
+    template <class T>
+    void set_reference(T const &t) noexcept {out = const_cast<T *>(std::addressof(t)); set_index<T>();}
+};
 
 /******************************************************************************/
 
 /*
-void drop      (void *        []            [])
-bool copy      (void *,       void const *  [])
-bool call      (void *,       void const *, ArgView, Caller &&)
-bool method    (void *,       void const *, ArgView, Caller &&, name, tag)
-bool name      (void *,       [],           [])
-bool to_value  (Value &,      void *,       Qualifier)
-bool to_ref    (Ref &,        void *,       Qualifier)
-bool assign_if (void *,       [],           Ref const)
+void drop      (void*        []            [])
+bool copy      (void*,       void const *  [])
+bool call      (void*,       void const *, ArgView, Caller &&)
+bool method    (void*,       void const *, ArgView, Caller &&, name, tag)
+bool name      (void*,       [],           [])
+bool to_value  (Value &,      void*,       Qualifier)
+bool to_ref    (Ref &,        void*,       Qualifier)
+bool assign_if (void*,       [],           Ref const)
 */
 
 /******************************************************************************************/
 
-/// Insert new-allocated copy of the object
-// template <class T>
-// stat::copy default_copy(rebind_value &v, T const &t) noexcept {
-//     if constexpr(std::is_nothrow_copy_constructible_v<T>) {
-//         v.ptr = new T(t);
-//         return stat::copy::ok;
-//     } else if constexpr(std::is_copy_constructible_v<T>) {
-//         try {
-//             v.ptr = new T(t);
-//             return stat::copy::ok;
-//         } catch (...) {
-//             return stat::copy::exception;
-//         }
-//     } else return stat::copy::unavailable;
-// }
+template <class T, class SFINAE=void>
+struct can_copy : std::is_copy_constructible<T> {};
 
-// typedef rebind_stat (*rebind_index)(rebind_tag, uint32_t size, Index, void* output, void const *self, rebind_args args);
+template <class T, class Alloc, class SFINAE>
+struct can_copy<std::vector<T, Alloc>, SFINAE> : std::is_copy_constructible<T> {};
+
+// Insert a new copy of the object into a buffer of size n
+// If the buffer is too small, allocate the object on the heap
+struct Copy {
+    enum stat : Stat {stack, heap, impossible, exception, out_of_memory};
+
+    template <class T>
+    struct impl {
+        static stat put(void*out, Len n, T const &t) noexcept {
+            if constexpr(std::is_copy_constructible_v<T>) {
+                try {
+                    if (is_stackable<T>(n)) {
+                        new(aligned_void<T>(out)) T(t);
+                        return stack;
+                    } else {
+                        *static_cast<void**>(out) = new T(t);
+                        return heap;
+                    }
+                } catch (std::bad_alloc) {
+                    return out_of_memory;
+                } catch (...) {
+                    return exception;
+                }
+            } else {
+                return impossible;
+            }
+        }
+    };
+
+    static stat call(Idx f, void* out, Len n, Pointer source) noexcept {
+        return static_cast<stat>(f(input::copy, n, out, source.base, {}));
+    }
+};
+
+/******************************************************************************************/
+
+// Relocate an object (construct T in new location and destruct the old one)
+// If t was on the heap, it could have been trivially relocated
+// We can assume it was on the stack and that the type is nothrow move constructible
+struct Relocate {
+    enum stat : Stat {ok, impossible};
+
+    template <class T>
+    struct impl {
+        static stat put(void* out, T&& t) noexcept {
+            if constexpr(std::is_nothrow_move_constructible_v<T> && std::is_destructible_v<T>) {
+                new(aligned_void<T>(out)) T(std::move(t));
+                t.~T();
+                return ok;
+            } else {
+                return impossible;
+            }
+        }
+    };
+
+    static stat call(Idx f, void* out, void*t) noexcept {
+        return static_cast<stat>(f(input::relocate, {}, out, t, {}));
+    }
+};
 
 /******************************************************************************/
 
-/// Delete the held object on heap
-template <class T>
-stat::drop dealloc(T *t) noexcept {
-    if constexpr(std::is_destructible_v<T>) {
-        delete static_cast<T *>(t);
-        return stat::drop::ok;
-    } else {
-        return stat::drop::unavailable;
-    }
-}
+/// Delete the held object, on stack or on heap
+struct Destruct {
+    enum storage : Len {stack, heap};
+    enum stat : Stat {ok, impossible};
 
-/// Delete the held object on heap
-template <class T>
-stat::drop destruct(T *t) noexcept {
-    if constexpr(std::is_destructible_v<T>) {
-        static_cast<T *>(t)->~T();
-        return stat::drop::ok;
-    } else {
-        return stat::drop::unavailable;
+    template <class T>
+    struct impl {
+        static stat put(T& t, storage s) noexcept {
+            if constexpr(std::is_destructible_v<T>) {
+                if (s == heap) delete std::addressof(t);
+                else t.~T();
+                return ok;
+            } else {
+                return impossible;
+            }
+        }
+    };
+
+    static stat call(Idx f, Pointer t, storage s) noexcept {
+        return static_cast<stat>(f(input::destruct, s, t.base, {}, {}));
     }
-}
+};
 
 /******************************************************************************/
 
 /// Return a handle to std::type_info or some language-specific equivalent
-template <class T>
-stat::info info(void const *&o) noexcept {
-    o = &typeid(T);
-    return stat::info::ok;
-}
+struct Info {
+    enum stat : Stat {ok};
+
+    template <class T>
+    struct impl {
+        static stat put(Idx& out, void const*& t) noexcept {
+            t = &typeid(T);
+            out = fetch<T>();
+            return ok;
+        }
+    };
+
+    static stat call(Idx f, Idx& out, void const*& t) noexcept {
+        return static_cast<stat>(f(input::info, {}, &out, &t, {}));
+    }
+};
 
 /******************************************************************************/
 
-/// Insert type T in a Value using data from a Ref
-// template <class T>
-// stat::from_ref default_from_ref(Value &v, Ref const &p, Scope &s) noexcept {
-//     try {
-//         if (auto o = FromRef<T>()(p, s)) {
-//             v.emplace(Type<T>(), std::move(*o));
-//             return stat::from_ref::ok;
-//         } else {
-//             return stat::from_ref::none;
-//         }
-//     } catch (...) {
-// #warning "from_ref exception not implemented"
-//         return stat::from_ref::exception;
-//     }
-// }
+struct Name {
+    enum stat : Stat {ok};
+
+    template <class T>
+    struct impl {
+        static stat put(rebind_str &s) noexcept {
+            s.pointer = TypeName<T>::name.data();
+            s.len = TypeName<T>::name.size();
+            return ok;
+        }
+    };
+
+    static stat call(Idx f, rebind_str &s) noexcept {
+        return static_cast<stat>(f(input::name, {}, &s, {}, {}));
+    }
+};
 
 /******************************************************************************/
 
-/// Use T to create a Value
-template <class T>
-stat::dump dump(Value &v, T &t, Qualifier const q) noexcept;
-//  {
-//     DUMP("to_value ", type_name<T>(), " ", v.name());
-//     try { switch {
-//         case Lvalue:
-//             return ToValue<T>()(v, t) ? stat::request::ok : stat::request::none;
-//         case Rvalue:
-//             return ToValue<T>()(v, std::move(t)) ? stat::request::ok : stat::request::none;
-//         case Const:
-//             return ToValue<T>()(v, static_cast<T const &>(t)) ? stat::request::ok : stat::request::none;
-//     } } catch (...) {
-// #warning "to_value exception not implemented"
-//     }
-//     return stat::request::exception;
-// }
+template <class T, class SFINAE=void>
+struct Dumpable;
+
+// Dump goes from T to a less restrictive type, so it shouldn't have much error reporting to do
+struct Dump {
+    enum stat : Stat {none, ok};
+
+    template <class T>
+    struct impl {
+        static stat put(Target &out, Pointer source, Tag qualifier) noexcept {
+            if constexpr(is_complete_v<Dumpable<T>>) {
+                switch (qualifier) {
+                    case Stack:   return static_cast<stat>(Dumpable<T>()(out, source.load<T &&>()));
+                    case Heap:    return static_cast<stat>(Dumpable<T>()(out, source.load<T &&>()));
+                    case Mutable: return static_cast<stat>(Dumpable<T>()(out, source.load<T &>()));
+                    case Const:   return static_cast<stat>(Dumpable<T>()(out, source.load<T const &>()));
+                }
+            }
+            return none;
+        }
+    };
+
+    static stat call(Idx f, Target &out, Pointer source, Tag qualifier) noexcept {
+        return static_cast<stat>(f(input::dump, qualifier, &out, source.base, {}));
+    }
+};
 
 /******************************************************************************/
 
-/// Assign to self from another Ref
-// template <class T>
-// stat::assign_if default_assign_to(T &self, Ref const &other) noexcept {
-//     assert_usable<T>();
-//     DUMP("assign_if: ", type_name<T>());
-//     try {
-//         if (auto p = other.request<T &&>()) {
-//             DUMP("assign_if: got T &&");
-//             self = std::move(*p);
-//             return stat::assign_if::ok;
-//         }
+template <class T, class SFINAE=void>
+struct Loadable;
 
-//         if constexpr (std::is_copy_assignable_v<T>) {
-//             if (auto p = other.request<T const &>()) {
-//                 DUMP("assign_if: got T const &");
-//                 self = *p;
-//                 return stat::assign_if::ok;
-//             }
-//         }
+// Dump goes from a less restrictive type to T, so it could have some errors when compatibility is not achieved
+struct Load {
+    enum stat : Stat {heap, stack, none};
 
-//         if (auto p = other.request<T>()) {
-//             DUMP("assign_if: T succeeded, type=", typeid(*p).name());
-//             self = std::move(*p);
-//             return stat::assign_if::ok;
-//         }
+    template <class T>
+    struct impl {
+        // std::optional<T> operator()(Ref, Scope &) ?
+        // currently not planned that out can be a reference, I think
+        static stat put(Target &out, Pointer source, Tag qualifier) noexcept {
+            /*
+            auto source_index = out.index();
+            out.index = Index::of<std::string_view>();
+            if (ok == dump(source_index, out, source, qualifier)) { ... }
+            */
+            return none;
+        }
+    };
 
-//         return stat::assign_if::none;
-//     } catch (...) {
-//         return stat::assign_if::none;
-//     }
-// }
+    static stat call(Idx f, Target &out, Pointer source, Tag qualifier) noexcept {
+        return static_cast<stat>(f(input::load, qualifier, &out, source.base, {}));
+    }
+};
 
+/******************************************************************************/
+
+template <class T, class SFINAE=void>
+struct Callable;
+
+struct Call {
+    enum stat : Stat {none, in_place, heap,
+                      impossible, wrong_number, invalid_argument,
+                      wrong_type, wrong_qualifier, exception};
+
+    template <class T>
+    struct impl {
+        static stat put(Target *out, Pointer self, ArgView &args, Tag qualifier) noexcept {
+            if constexpr(is_complete_v<Callable<T>>) {
+                switch (qualifier) {
+                    case Stack:   return Callable<T>()(out, self.load<T &&>(), args);
+                    case Heap:    return Callable<T>()(out, self.load<T &&>(), args);
+                    case Mutable: return Callable<T>()(out, self.load<T &>(), args);
+                    case Const:   return Callable<T>()(out, self.load<T const &>(), args);
+                }
+            }
+            return impossible;
+        }
+    };
+
+    static stat call(Idx f, Target *out, Pointer self, Tag qualifier, ArgView &args) noexcept {
+        return static_cast<stat>(f(input::call, qualifier, out, self.base, reinterpret_cast<rebind_args *>(&args)));
+    }
+};
+
+/******************************************************************************************/
+
+template <class Op, class T, class ...Ts>
+Stat impl_put(Ts &&...ts) {
+    typename Op::stat out = Op::template impl<T>::put(static_cast<Ts &&>(ts)...);
+    return static_cast<Stat>(out);
 }
 
 /******************************************************************************************/
 
-namespace rebind {
-
-// rebind_tag uint32_t void* rebind_funptr void* rebind_args
-
-template <class T, class SFINAE=void>
-struct Impl {
+template <class T, class SFINAE>
+struct impl {
+    static_assert(!std::is_void_v<T>);
+    static_assert(!std::is_const_v<T>);
     static_assert(!std::is_reference_v<T>);
+    static_assert(!std::is_volatile_v<T>);
+    static_assert(!std::is_same_v<T, Ref>);
 
-    static Stat call(Tag t, Len i, void* o, Fptr f, void *s, rebind_args args) noexcept __attribute__((noinline)) {
-        if (t != tag::name) DUMP("Impl::", tag_name(t), ": ", type_name<T>());
+    static Stat call(Input t, Len n, void* o, void* s, rebind_args *args) noexcept __attribute__((noinline)) {
+        if (t != input::name) DUMP("Impl::", input_name(t), ": ", type_name<T>());
 
         switch(t) {
-            case tag::dealloc: {
-                return stat::put(impl::dealloc<T>(o));
+            case input::destruct: {
+                return impl_put<Destruct, T>(Pointer(o).load<T &>(), static_cast<Destruct::storage>(n));
             }
-            case tag::destruct: {
-                return stat::put(impl::destruct<T>(o));
+            case input::relocate: {
+                return impl_put<Relocate, T>(o, Pointer(s).load<T &&>());
             }
-            case tag::relocate: {
-
+            case input::copy: {
+                return impl_put<Copy, T>(o, n, Pointer(s).load<T const &>());
             }
-            case tag::copy: {
-                // if constexpr(!is_manageable<T>) return stat::put(stat::copy::unavailable);
-                // else return stat::put(default_copy(*static_cast<rebind_value *>(o), *static_cast<T const *>(b)));
+            case input::load: {
+                return impl_put<Load, T>(*static_cast<Target *>(o), Pointer(s), static_cast<Tag>(n));
             }
-            case tag::dump: {
-// #warning "fix qualifier"
-                // return stat::put(impl::dump(*static_cast<Output *>(o), *static_cast<T *>(b), Qualifier()));
+            case input::dump: {
+                // return impl_put<Dump, T>(o, n, reinterpret_cast<TagIndex &>(f), Pointer(s));
+                return impl_put<Dump, T>(*static_cast<Target *>(o), Pointer(s), static_cast<Tag>(n));
             }
-            // case tag::assign: {
-                // if constexpr(!std::is_move_assignable_v<T>) return stat::put(stat::assign_if::unavailable);
+            case input::assign: {
+                return {};
+                // if constexpr(!std::is_move_assignable_v<T>) return stat::put(stat::assign_if::impossible);
                 // else return stat::put(default_assign(*static_cast<T *>(b), *static_cast<Ref const *>(o)));
-            // }
-            case tag::call: {
-                if constexpr(!Call<T>::value) return stat::put(stat::call::unavailable);
-                // (void *, uint32, Index, T const &, ArgView &)
-                else return stat::put(Call<T>::call_to(o, i, Index(reinterpret_cast<rebind_index>(f)),
-                                      *static_cast<T const *>(s), static_cast<ArgView &>(args)));
             }
-            // case tag::emplace: {
-            //     if constexpr(!Call<T>::value) return stat::put(stat::call::unavailable);
+            case input::call: {
+                return impl_put<Call, T>(static_cast<Target *>(o), Pointer(s), reinterpret_cast<ArgView &>(*args), static_cast<Tag>(n));
+            }
+            // case input::emplace: {
+            //     if constexpr(!Call<T>::value) return stat::put(stat::call::impossible);
 
             // }
-            case tag::name: {
-                return TypeName<T>::impl(*static_cast<rebind_str *>(o));
+            case input::name: {
+                return impl_put<Name, T>(*static_cast<rebind_str *>(o));
             }
-            case tag::info: {
-                return stat::put(impl::info<T>(*static_cast<void const **>(o)));
+            case input::info: {
+                return impl_put<Info, T>(*static_cast<Idx *>(o), *static_cast<void const **>(s));
             }
-            case tag::check: {
-                return reinterpret_cast<std::uintptr_t>(o) < 12;
+            case input::check: {
+                return n < 12;
             }
         }
         return -1; // ?
@@ -212,8 +386,32 @@ struct Impl {
 
 /******************************************************************************************/
 
-template <class T>
-Index fetch() noexcept {return &Impl<T>::call;}
+template <class SFINAE>
+struct impl<void, SFINAE> {
+    static Stat call(Input t, Len n, void* o, void* s, rebind_args *args) {
+        switch (t) {
+            case input::name: {
+                return impl_put<Name, void>(*static_cast<rebind_str *>(o));
+            }
+            case input::info: {
+                return impl_put<Info, void>(*static_cast<Idx *>(o), *static_cast<void const **>(s));
+            }
+            case input::check: {
+                return n == input::info || n == input::name;
+            }
+            default: {return -1;}
+        }
+    }
+};
+
+/******************************************************************************************/
+
+inline std::string_view Index::name() const noexcept {
+    if (!has_value()) return "null";
+    rebind_str out;
+    Name::call(*this, out);
+    return std::string_view(out.pointer, out.len);
+}
 
 /******************************************************************************************/
 

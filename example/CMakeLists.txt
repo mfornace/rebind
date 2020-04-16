@@ -12,6 +12,12 @@ set_target_properties(example_module PROPERTIES PREFIX "" LIBRARY_OUTPUT_DIRECTO
 
 ################################################################################
 
+add_executable(example_exe main.cc)
+target_link_libraries(example_exe PRIVATE example_source librebind)
+set_target_properties(example_exe PROPERTIES OUTPUT_NAME main)
+
+################################################################################
+
 set(link_outputs)
 link_file(python/__init__.py example/__init__.py)
 link_file(python/submodule.py example/submodule.py)

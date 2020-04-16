@@ -17,7 +17,7 @@ struct Frame {
 
 /******************************************************************************/
 
-struct Caller {
+struct Caller { // 16 bytes
     std::weak_ptr<Frame> frame;
 
     Caller() = default;

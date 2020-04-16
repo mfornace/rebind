@@ -36,26 +36,6 @@ T *target(Index i, void *p) noexcept {
 
 /**************************************************************************************/
 
-template <class T, class ...Args>
-T * alloc(Args &&...args) {
-    assert_usable<T>();
-    if constexpr(std::is_constructible_v<T, Args &&...>) {
-        return new T(static_cast<Args &&>(args)...);
-    } else {
-        return new T{static_cast<Args &&>(args)...};
-    }
-}
-
-template <class T, class ...Args>
-T * alloc_to(void *p, Args &&...args) {
-    assert_usable<T>();
-    if constexpr(std::is_constructible_v<T, Args &&...>) {
-        return new(p) T(static_cast<Args &&>(args)...);
-    } else {
-        return new(p) T{static_cast<Args &&>(args)...};
-    }
-}
-
 
 // inline stat::drop drop(void *data, Index i, bool heap) noexcept {
 //     if (q == Heap) return stat::drop{i.call(tag::dealloc, data, nullptr, {})};

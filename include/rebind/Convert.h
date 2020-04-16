@@ -5,7 +5,7 @@
 
 
 namespace rebind {
-
+aaaa
 /******************************************************************************/
 
 /// Tags for method of Dump or Load specialization
@@ -170,18 +170,18 @@ namespace raw {
 
 /******************************************************************************/
 
-inline bool call_to(Value &v, Index i, Qualifier q, Storage const &s, ArgView args) noexcept {
-    DUMP("raw::call_to value: name=", i.name(), " size=", args.size());
-    return stat::call::ok == stat::call(i(tag::call, &v, const_cast<Storage *>(&s), args));
-}
+// inline bool call_to(Value &v, Index i, Qualifier q, Storage const &s, ArgView args) noexcept {
+//     DUMP("raw::call_to value: name=", i.name(), " size=", args.size());
+//     return stat::call::in_place == stat::call(i(tag::call, &v, const_cast<Storage *>(&s), args));
+// }
 
-template <class ...Args>
-inline Value call_value(Index i, Qualifier q, Storage const &s, Caller &&c, Args &&...args) {
-    Value v;
-    if (!call_to(v, i, q, s, to_arguments(c, static_cast<Args &&>(args)...)))
-        throw std::runtime_error("function could not yield Value");
-    return v;
-}
+// template <class ...Args>
+// inline Value call_value(Index i, Qualifier q, Storage const &s, Caller &&c, Args &&...args) {
+//     Value v;
+//     if (!call_to(v, i, q, s, to_arguments(c, static_cast<Args &&>(args)...)))
+//         throw std::runtime_error("function could not yield Value");
+//     return v;
+// }
 
 /******************************************************************************/
 

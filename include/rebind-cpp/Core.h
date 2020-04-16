@@ -25,14 +25,14 @@ using Dictionary = Vector<std::pair<std::string_view, Value>>;
 /******************************************************************************/
 
 template <class T>
-struct FromRef<T *> {
-    std::optional<T *> operator()(Ref const &v, Scope &s) const {
+struct Loadable<T *> {
+    std::optional<T *> operator()(Ref &v, Scope &s) const {
         std::optional<T *> out;
-        if (!v || v.request<std::nullptr_t>(s)) {
+        if (!v || v.load<std::nullptr_t>(s)) {
             out.emplace(nullptr);
         } else {
             if constexpr(!std::is_function_v<T>) {
-                if (auto p = v.request<T &>(s)) out.emplace(std::addressof(*p));
+                if (auto p = v.load<T &>(s)) out.emplace(std::addressof(*p));
             }
         }
         return out;
@@ -40,88 +40,91 @@ struct FromRef<T *> {
 };
 
 template <>
-struct FromRef<void *> {
-    std::optional<void *> operator()(Ref const &v, Scope &s) const {
+struct Loadable<void *> {
+    std::optional<void *> operator()(Ref &v, Scope &s) const {
         std::optional<void *> out;
-        if (v.qualifier() != Const) out.emplace(v.address());
+        // if (v.qualifier() != Const) out.emplace(v.address());
         return out;
     }
 };
 
 template <>
-struct FromRef<void const *> {
-    std::optional<void const *> operator()(Ref const &v, Scope &s) const {return v.address();}
+struct Loadable<void const *> {
+    std::optional<void const *> operator()(Ref &v, Scope &s) const {
+        // return v.address();
+        return {};
+    }
 };
 
 template <>
-struct FromRef<char const *> {
-    std::optional<char const *> operator()(Ref const &v, Scope &s) const {
+struct Loadable<char const *> {
+    std::optional<char const *> operator()(Ref &v, Scope &s) const {
         std::optional<char const *> out;
-        if (!v || v.request<std::nullptr_t>()) out.emplace(nullptr);
-        else if (auto p = v.request<std::string_view>(s)) out.emplace(p->data());
-        else if (auto p = v.request<char const &>(s)) out.emplace(std::addressof(*p));
+        if (!v || v.load<std::nullptr_t>(s)) out.emplace(nullptr);
+        else if (auto p = v.load<std::string_view>(s)) out.emplace(p->data());
+        else if (auto p = v.load<char const &>(s)) out.emplace(std::addressof(*p));
         return out;
     }
 };
 
 /*
-Default FromRef for integer type tries to go through double precision
+Default Loadable for integer type tries to go through double precision
 long double is not expected to be a useful route (it's assumed there are not multiple floating types larger than Real)
 */
 template <class T>
-struct FromRef<T, std::enable_if_t<std::is_floating_point_v<T>>> {
-    std::optional<T> operator()(Ref const &v, Scope &s) const {
+struct Loadable<T, std::enable_if_t<std::is_floating_point_v<T>>> {
+    std::optional<T> operator()(Ref &v, Scope &s) const {
         DUMP("convert to floating");
-        if (!std::is_same_v<Real, T>) if (auto p = v.request<Real>()) return static_cast<T>(*p);
+        if (!std::is_same_v<Real, T>) if (auto p = v.load<Real>(s)) return static_cast<T>(*p);
         return s.error("not convertible to floating point", Index::of<T>());
     }
 };
 
 
 /*
-Default FromRef for integer type tries to go through Integer
+Default Loadable for integer type tries to go through Integer
 */
 template <class T>
-struct FromRef<T, std::enable_if_t<std::is_integral_v<T>>> {
-    std::optional<T> operator()(Ref const &v, Scope &s) const {
+struct Loadable<T, std::enable_if_t<std::is_integral_v<T>>> {
+    std::optional<T> operator()(Ref &v, Scope &s) const {
         DUMP("trying convert to arithmetic", v.name(), Index::of<T>());
-        if (!std::is_same_v<Integer, T>) if (auto p = v.request<Integer>()) return static_cast<T>(*p);
+        if (!std::is_same_v<Integer, T>) if (auto p = v.load<Integer>(s)) return static_cast<T>(*p);
         DUMP("failed to convert to arithmetic", v.name(), Index::of<T>());
         return s.error("not convertible to integer", Index::of<T>());
     }
 };
 
 /*
-Default FromRef for enum permits conversion from integer types
+Default Loadable for enum permits conversion from integer types
 */
 template <class T>
-struct FromRef<T, std::enable_if_t<std::is_enum_v<T>>> {
-    std::optional<T> operator()(Ref const &v, Scope &s) const {
+struct Loadable<T, std::enable_if_t<std::is_enum_v<T>>> {
+    std::optional<T> operator()(Ref &v, Scope &s) const {
         DUMP("trying convert to enum", v.name(), Index::of<T>());
-        if (auto p = v.request<std::underlying_type_t<T>>()) return static_cast<T>(*p);
+        if (auto p = v.load<std::underlying_type_t<T>>()) return static_cast<T>(*p);
         return s.error("not convertible to enum", Index::of<T>());
     }
 };
 
 /*
-Default FromRef for string tries to convert from std::string_view and std::string
+Default Loadable for string tries to convert from std::string_view and std::string
 */
 template <class T, class Traits, class Alloc>
-struct FromRef<std::basic_string<T, Traits, Alloc>> {
-    std::optional<std::basic_string<T, Traits, Alloc>> operator()(Ref const &v, Scope &s) const {
+struct Loadable<std::basic_string<T, Traits, Alloc>> {
+    std::optional<std::basic_string<T, Traits, Alloc>> operator()(Ref &v, Scope &s) const {
         DUMP("trying to convert to string");
-        if (auto p = v.request<std::basic_string_view<T, Traits>>())
+        if (auto p = v.load<std::basic_string_view<T, Traits>>())
             return std::basic_string<T, Traits, Alloc>(std::move(*p));
         if (!std::is_same_v<std::basic_string<T, Traits, Alloc>, std::basic_string<T, Traits>>)
-            if (auto p = v.request<std::basic_string<T, Traits>>())
+            if (auto p = v.load<std::basic_string<T, Traits>>())
                 return std::move(*p);
         return s.error("not convertible to string", Index::of<T>());
     }
 };
 
 template <class T, class Traits>
-struct FromRef<std::basic_string_view<T, Traits>> {
-    std::optional<std::basic_string_view<T, Traits>> operator()(Ref const &v, Scope &s) const {
+struct Loadable<std::basic_string_view<T, Traits>> {
+    std::optional<std::basic_string_view<T, Traits>> operator()(Ref &v, Scope &s) const {
         return s.error("not convertible to string view", Index::of<T>());
     }
 };
@@ -138,7 +141,7 @@ struct VectorFromRef {
         out.reserve(pack.size());
         s.indices.emplace_back(0);
         for (auto &x : pack) {
-            if (auto p = std::move(x).request(s, Type<T>()))
+            if (auto p = std::move(x).load(s, Type<T>()))
                 out.emplace_back(std::move(*p));
             else return s.error();
             ++s.indices.back();
@@ -147,38 +150,38 @@ struct VectorFromRef {
         return out;
     }
 
-    std::optional<V> operator()(Ref const &v, Scope &s) const {
-        // if (auto p = v.request<Vector<T>>()) return get(*p, s);
+    std::optional<V> operator()(Ref &v, Scope &s) const {
+        // if (auto p = v.load<Vector<T>>()) return get(*p, s);
         if constexpr (!std::is_same_v<V, Sequence> && !std::is_same_v<T, Ref>)
-            if (auto p = v.request<Sequence>()) return get(*p, s);
+            if (auto p = v.load<Sequence>(s)) return get(*p, s);
         return s.error("expected sequence", Index::of<V>());
     }
 };
 
 template <class T, class A>
-struct FromRef<std::vector<T, A>> : VectorFromRef<std::vector<T, A>> {};
+struct Loadable<std::vector<T, A>> : VectorFromRef<std::vector<T, A>> {};
 
 /******************************************************************************/
 
 template <class V>
-struct CompiledSequenceFromRef {
+struct LoadCompiledSequence {
     using Array = std::array<Value, std::tuple_size_v<V>>;
 
     template <class ...Ts>
     static void combine(std::optional<V> &out, Ts &&...ts) {
-        DUMP("trying CompiledSequenceFromRef combine", bool(ts)...);
+        DUMP("trying LoadCompiledSequence combine", bool(ts)...);
         if ((bool(ts) && ...)) out = V{*static_cast<Ts &&>(ts)...};
     }
 
     template <class T, std::size_t ...Is>
     static void request_each(std::optional<V> &out, T &&t, Scope &s, std::index_sequence<Is...>) {
-        DUMP("trying CompiledSequenceFromRef request");
-        combine(out, std::move(t[Is]).request(s, Type<std::tuple_element_t<Is, V>>())...);
+        DUMP("trying LoadCompiledSequence load");
+        combine(out, std::move(t[Is]).load(s, Type<std::tuple_element_t<Is, V>>())...);
     }
 
     template <class T>
-    static void request(std::optional<V> &out, T &&t, Scope &s) {
-        DUMP("trying CompiledSequenceFromRef request");
+    static void load(std::optional<V> &out, T &&t, Scope &s) {
+        DUMP("trying LoadCompiledSequence load");
         if (std::size(t) != std::tuple_size_v<V>) {
             s.error("wrong sequence length", Index::of<V>(), std::tuple_size_v<V>, std::size(t));
         } else {
@@ -190,17 +193,17 @@ struct CompiledSequenceFromRef {
 
     std::optional<V> operator()(Value r, Scope &s) const {
         std::optional<V> out;
-        DUMP("trying CompiledSequenceFromRef", r.name());
+        DUMP("trying LoadCompiledSequence", r.name());
         if constexpr(!std::is_same_v<V, Array>) {
-            if (auto p = r.request<std::array<Value, std::tuple_size_v<V>>>()) {
+            if (auto p = r.load<std::array<Value, std::tuple_size_v<V>>>()) {
                 DUMP("trying array CompiledSequenceRequest2", r.name());
-                request(out, std::move(*p), s);
+                load(out, std::move(*p), s);
             }
             return out;
         }
-        if (auto p = r.request<Sequence>()) {
+        if (auto p = r.load<Sequence>()) {
             DUMP("trying CompiledSequenceRequest2", r.name());
-            request(out, std::move(*p), s);
+            load(out, std::move(*p), s);
         } else {
             DUMP("trying CompiledSequenceRequest3", r.name());
             s.error("expected sequence to make compiled sequence", Index::of<V>());
@@ -211,17 +214,17 @@ struct CompiledSequenceFromRef {
 
 /// The default implementation is to accept convertible arguments or Value of the exact typeid match
 template <class T>
-struct FromRef<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : CompiledSequenceFromRef<T> {};
+struct Loadable<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : LoadCompiledSequence<T> {};
 
 /******************************************************************************/
 
 template <>
-struct ToValue<char const *> {
-    bool operator()(Output &v, char const *s) const {
-        if (v.matches<std::string_view>())
+struct Dumpable<char const *> {
+    bool operator()(Target &v, char const *s) const {
+        if (v.accepts<std::string_view>())
             return v.set_if(s ? std::string_view(s) : std::string_view());
 
-        if (v.matches<std::string>()) {
+        if (v.accepts<std::string>()) {
             if (s) return v.emplace_if<std::string>(s);
             return v.emplace_if<std::string>();
         }
@@ -230,34 +233,34 @@ struct ToValue<char const *> {
 };
 
 template <class T>
-struct ToValue<T, std::enable_if_t<(std::is_integral_v<T>)>> {
-    bool operator()(Output &v, T t) const {
+struct Dumpable<T, std::enable_if_t<(std::is_integral_v<T>)>> {
+    bool operator()(Target &v, T t) const {
         DUMP("response from integer", Index::of<T>(), v.name());
-        if (v.matches<Integer>()) return v.emplace_if<Integer>(t);
-        if (v.matches<Real>()) return v.emplace_if<Real>(t);
+        if (v.accepts<Integer>()) return v.emplace_if<Integer>(t);
+        if (v.accepts<Real>()) return v.emplace_if<Real>(t);
         DUMP("no response from integer");
         return false;
     }
 };
 
 
-/// Default ToValue for floating point allows conversion to Real or Integer
+/// Default Dumpable for floating point allows conversion to Real or Integer
 template <class T>
-struct ToValue<T, std::enable_if_t<(std::is_floating_point_v<T>)>> {
-    bool operator()(Output &v, T t) const {
-        if (v.matches<Real>()) return v.emplace_if<Real>(t);
-        if (v.matches<Integer>()) return v.emplace_if<Integer>(t);
+struct Dumpable<T, std::enable_if_t<(std::is_floating_point_v<T>)>> {
+    bool operator()(Target &v, T t) const {
+        if (v.accepts<Real>()) return v.emplace_if<Real>(t);
+        if (v.accepts<Integer>()) return v.emplace_if<Integer>(t);
         return false;
     }
 };
 
-/// Default ToValue for enum permits conversion to integer types
+/// Default Dumpable for enum permits conversion to integer types
 template <class T>
-struct ToValue<T, std::enable_if_t<(std::is_enum_v<T>)>> {
-    bool operator()(Output &v, T t) const {
-        if (v.matches<std::underlying_type_t<T>>())
+struct Dumpable<T, std::enable_if_t<(std::is_enum_v<T>)>> {
+    bool operator()(Target &v, T t) const {
+        if (v.accepts<std::underlying_type_t<T>>())
             return v.emplace_if<std::underlying_type_t<T>>(t);
-        if (v.matches<Integer>())
+        if (v.accepts<Integer>())
             return v.emplace_if<Integer>(t);
         return false;
     }
@@ -265,9 +268,9 @@ struct ToValue<T, std::enable_if_t<(std::is_enum_v<T>)>> {
 
 /******************************************************************************/
 
-/// ToValue for CompileSequence concept -- a sequence of compile time length
+/// Dumpable for CompileSequence concept -- a sequence of compile time length
 template <class T>
-struct CompiledSequenceToValue {
+struct DumpCompiledSequence {
     using Array = std::array<Value, std::tuple_size_v<T>>;
 
     template <std::size_t ...Is>
@@ -292,23 +295,23 @@ struct CompiledSequenceToValue {
     template <std::size_t ...Is>
     static Array array(T &&t, std::index_sequence<Is...>) {return {std::get<Is>(std::move(t))...};}
 
-    bool operator()(Output &v, T const &t) const {
+    bool operator()(Target &v, T const &t) const {
         auto idx = std::make_index_sequence<std::tuple_size_v<T>>();
-        if (v.matches<Sequence>()) return v.set_if(sequence(t, idx));
-        if (v.matches<Array>()) return v.set_if(array(t, idx));
+        if (v.accepts<Sequence>()) return v.set_if(sequence(t, idx));
+        if (v.accepts<Array>()) return v.set_if(array(t, idx));
         return false;
     }
 
-    bool operator()(Output &v, T &&t) const {
+    bool operator()(Target &v, T &&t) const {
         auto idx = std::make_index_sequence<std::tuple_size_v<T>>();
-        if (v.matches<Sequence>()) return v.set_if(sequence(std::move(t), idx));
-        if (v.matches<Array>()) return v.set_if(array(std::move(t), idx));
+        if (v.accepts<Sequence>()) return v.set_if(sequence(std::move(t), idx));
+        if (v.accepts<Array>()) return v.set_if(array(std::move(t), idx));
         return false;
     }
 };
 
 template <class T>
-struct ToValue<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : CompiledSequenceToValue<T> {};
+struct Dumpable<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : DumpCompiledSequence<T> {};
 
 /******************************************************************************/
 
@@ -329,8 +332,8 @@ struct HasData<T, std::enable_if_t<(std::is_pointer_v<decltype(std::data(std::de
 /******************************************************************************/
 
 template <class T, class Iter1, class Iter2>
-bool range_to_value(Output &v, Iter1 b, Iter2 e) {
-    if (v.matches<Sequence>()) {
+bool dump_range(Target &v, Iter1 b, Iter2 e) {
+    if (v.accepts<Sequence>()) {
         Sequence s;
         s.reserve(std::distance(b, e));
         for (; b != e; ++b) {
@@ -339,40 +342,40 @@ bool range_to_value(Output &v, Iter1 b, Iter2 e) {
         }
         return v.set_if(std::move(s));
     }
-    if (v.matches<Vector<T>>()) {
+    if (v.accepts<Vector<T>>()) {
         return v.emplace_if<Vector<T>>(b, e);
     }
     return false;
 }
 
 template <class T>
-struct VectorToValue {
+struct DumpVector {
     using E = std::decay_t<typename T::value_type>;
 
-    bool operator()(Output &v, T const &t) const {
-        if (range_to_value<E>(v, std::begin(t), std::end(t))) {
+    bool operator()(Target &v, T const &t) const {
+        if (dump_range<E>(v, std::begin(t), std::end(t))) {
             return true;
         }
         // if constexpr(HasData<T const &>::value) {
-        //     if (v.matches<ArrayView>()) return v.emplace_if<ArrayView>(std::data(t), std::size(t));
+        //     if (v.accepts<ArrayView>()) return v.emplace_if<ArrayView>(std::data(t), std::size(t));
         // }
         return false;
     }
 
-    bool operator()(Output &v, T &t) const {
-        if (range_to_value<E>(v, std::cbegin(t), std::cend(t))) return true;
+    bool operator()(Target &v, T &t) const {
+        if (dump_range<E>(v, std::cbegin(t), std::cend(t))) return true;
         // if constexpr(HasData<T &>::value)
-        //     if (v.matches<ArrayView>()) return v.emplace_if<ArrayView>(std::data(t), std::size(t));
+        //     if (v.accepts<ArrayView>()) return v.emplace_if<ArrayView>(std::data(t), std::size(t));
         return false;
     }
 
-    bool operator()(Output &v, T &&t) const {
-        return range_to_value<E>(v, std::make_move_iterator(std::begin(t)), std::make_move_iterator(std::end(t)));
+    bool operator()(Target &v, T &&t) const {
+        return dump_range<E>(v, std::make_move_iterator(std::begin(t)), std::make_move_iterator(std::end(t)));
     }
 };
 
 template <class T, class A>
-struct ToValue<std::vector<T, A>, std::enable_if_t<!std::is_same_v<T, Value>>> : VectorToValue<std::vector<T, A>> {};
+struct Dumpable<std::vector<T, A>, std::enable_if_t<!std::is_same_v<T, Value>>> : DumpVector<std::vector<T, A>> {};
 
 
 }

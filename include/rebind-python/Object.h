@@ -5,6 +5,8 @@
 
 #pragma once
 #include "CAPI.h"
+#include "Common.h"
+#include <rebind-cpp/Schema.h>
 
 namespace rebind::py {
 
@@ -18,8 +20,8 @@ extern Zip<Scalar, Index, unsigned> scalars;
 
 /******************************************************************************/
 
-struct PythonError : ClientError {
-    PythonError(char const *s) : ClientError(s) {}
+struct PythonError : std::runtime_error {
+    PythonError(char const *s) : std::runtime_error(s) {}
 };
 
 PythonError python_error(std::nullptr_t=nullptr) noexcept;

@@ -4,7 +4,7 @@
  */
 #include "API.h"
 #include "Wrap.h"
-#include <rebind/types/Core.h>
+#include <rebind-cpp/Core.h>
 
 #include <complex>
 #include <any>
@@ -98,7 +98,7 @@ std::string_view from_bytes(PyObject *o) {
 /******************************************************************************/
 
 template <class T>
-bool arithmetic_to_value(Output &v, Object const &o) {
+bool arithmetic_to_value(Target &v, Object const &o) {
     DUMP("cast arithmetic in: ", v.name());
     if (PyFloat_Check(o)) return v.emplace_if<T>(PyFloat_AsDouble(+o));
     if (PyLong_Check(o))  return v.emplace_if<T>(PyLong_AsLongLong(+o));
@@ -118,7 +118,7 @@ bool arithmetic_to_value(Output &v, Object const &o) {
 
 /******************************************************************************/
 
-bool object_to_value(Output &v, Object o) {
+bool object_to_value(Target &v, Object o) {
     if (Debug) {
         auto repr = Object::from(PyObject_Repr(SubClass<PyTypeObject>{(+o)->ob_type}));
         DUMP("input object reference count = ", reference_count(o));
@@ -139,20 +139,21 @@ bool object_to_value(Output &v, Object o) {
 
     if (auto p = cast_if<Value>(o)) {
         DUMP("object_to_value Value");
-        return p->request_to(v);
+        return p->load_to(v);
     }
 
-    if (v.matches<Index>()) {
+    if (v.accepts<Index>()) {
         if (auto p = cast_if<Index>(o)) return v.set_if(*p);
         else return false;
     }
 
-    if (v.matches<std::nullptr_t>()) {
+    if (v.accepts<std::nullptr_t>()) {
         DUMP("nullptr....");
-        if (+o == Py_None) return v.reset(), true;
+#warning "not sure"
+        if (+o == Py_None) return true;
     }
 
-    // if (v.matches<Overload>()) {
+    // if (v.accepts<Overload>()) {
     //     DUMP("requested function");
     //     if (+o == Py_None) return v.emplace_if<Overload>();
     //     else if (auto p = cast_if<Overload>(o)) v.set_if(*p);
@@ -162,7 +163,7 @@ bool object_to_value(Output &v, Object o) {
     //     return true;
     // }
 
-    if (v.matches<Sequence>()) {
+    if (v.accepts<Sequence>()) {
         if (PyTuple_Check(o) || PyList_Check(o)) {
             DUMP("making a Sequence");
             if (auto s = v.emplace_if<Sequence>()) {
@@ -174,31 +175,31 @@ bool object_to_value(Output &v, Object o) {
         return false;
     }
 
-    if (v.matches<Real>())
+    if (v.accepts<Real>())
         return arithmetic_to_value<Real>(v, o);
 
-    if (v.matches<Integer>())
+    if (v.accepts<Integer>())
         return arithmetic_to_value<Integer>(v, o);
 
-    if (v.matches<bool>()) {
+    if (v.accepts<bool>()) {
         if ((+o)->ob_type == Py_None->ob_type) { // fix, doesnt work with Py_None...
             return v.set_if(false);
         } else return arithmetic_to_value<bool>(v, o);
     }
 
-    if (v.matches<std::string_view>()) {
+    if (v.accepts<std::string_view>()) {
         if (PyUnicode_Check(+o)) return v.emplace_if<std::string_view>(from_unicode(+o));
         if (PyBytes_Check(+o)) return v.emplace_if<std::string_view>(from_bytes(+o));
         return false;
     }
 
-    if (v.matches<std::string>()) {
+    if (v.accepts<std::string>()) {
         if (PyUnicode_Check(+o)) return v.emplace_if<std::string>(from_unicode(+o));
         if (PyBytes_Check(+o)) return v.emplace_if<std::string>(from_bytes(+o));
         return false;
     }
 
-    if (v.matches<ArrayView>()) {
+    if (v.accepts<ArrayView>()) {
         if (PyObject_CheckBuffer(+o)) {
             // Read in the shape but ignore strides, suboffsets
             DUMP("cast buffer", reference_count(o));
@@ -215,13 +216,14 @@ bool object_to_value(Output &v, Object o) {
                     lay.contents.emplace_back(buff.view.shape[i], buff.view.strides[i] / buff.view.itemsize);
                 DUMP("layout", lay, reference_count(o));
                 DUMP("depth", lay.depth());
-                Ref data{buff.view.format ? Buffer::format(buff.view.format) : fetch<void>(), buff.view.buf, buff.view.readonly ? Const : Lvalue};
-                return v.emplace_if<ArrayView>(std::move(data), std::move(lay));
+#warning "fix"
+                // Ref data{buff.view.format ? Buffer::format(buff.view.format) : fetch<void>(), buff.view.buf, buff.view.readonly ? Const : Lvalue};
+                // return v.emplace_if<ArrayView>(std::move(data), std::move(lay));
             } else throw python_error(type_error("C++: could not get buffer from Python obhect"));
         } else return false;
     }
 
-    if (v.matches<std::complex<double>>()) {
+    if (v.accepts<std::complex<double>>()) {
         if (PyComplex_Check(+o)) return v.emplace_if<std::complex<double>>(PyComplex_RealAsDouble(+o), PyComplex_ImagAsDouble(+o));
         return false;
     }
@@ -245,7 +247,7 @@ bool object_to_ref(Ref &v, Object o) {
 
 /******************************************************************************/
 
-std::string_view get_type_name(Index idx) noexcept {return raw::name(idx);}
+std::string_view get_type_name(Index idx) noexcept {return idx.name();}
 
 /******************************************************************************/
 
@@ -270,20 +272,21 @@ std::string wrong_type_message(WrongType const &e, std::string_view prefix) {
 
 /******************************************************************************/
 
-Ref ref_from_object(Object &o, bool move) {
-    if (auto p = cast_if<Index>(o)) {
-        DUMP("ref_from_object: Index = ", raw::name(*p));
-        return Ref(*p);
-    } else if (auto p = cast_if<Value>(o)) {
-        DUMP("ref_from_object: Value = ", p->name());
-        return Ref(p->index(), p->address(), move ? Rvalue : Lvalue);
-    } else if (auto p = cast_if<Ref>(o)) {
-        DUMP("ref_from_object: Ref = ", p->name());
-        return *p;
-    } else {
-        return Ref(o);
-    }
-}
+Ref ref_from_object(Object &o, bool move);
+// {
+//     if (auto p = cast_if<Index>(o)) {
+//         DUMP("ref_from_object: Index = ", raw::name(*p));
+//         return Ref(*p);
+//     } else if (auto p = cast_if<Value>(o)) {
+//         DUMP("ref_from_object: Value = ", p->name());
+//         return Ref(p->index(), p->address(), move ? Rvalue : Lvalue);
+//     } else if (auto p = cast_if<Ref>(o)) {
+//         DUMP("ref_from_object: Ref = ", p->name());
+//         return *p;
+//     } else {
+//         return Ref(o);
+//     }
+// }
 
 /******************************************************************************/
 

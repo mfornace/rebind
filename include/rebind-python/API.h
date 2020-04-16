@@ -6,10 +6,10 @@
 #pragma once
 #include "Object.h"
 
-#include <rebind/Schema.h>
-#include <rebind/types/Core.h>
+#include <rebind-cpp/Schema.h>
+#include <rebind-cpp/Core.h>
 // #include <rebind/types/Standard.h>
-#include <rebind/types/Arrays.h>
+#include <rebind-cpp/Arrays.h>
 
 #include <mutex>
 #include <unordered_map>
@@ -38,14 +38,15 @@ struct ArrayBuffer {
 
     ArrayBuffer() noexcept = default;
 
-    ArrayBuffer(ArrayView const &a, Object const &b) : n_elem(a.layout.n_elem()),
-        base(b), data(a.data) {
-        for (std::size_t i = 0; i != a.layout.depth(); ++i)
-            shape_stride.emplace_back(a.layout.shape(i));
-        auto const item = Buffer::itemsize(data.index());
-        for (std::size_t i = 0; i != a.layout.depth(); ++i)
-            shape_stride.emplace_back(a.layout.stride(i) * item);
-    }
+    ArrayBuffer(ArrayView const &a, Object const &b);
+    // : n_elem(a.layout.n_elem()),
+    //     base(b), data(a.data) {
+    //     for (std::size_t i = 0; i != a.layout.depth(); ++i)
+    //         shape_stride.emplace_back(a.layout.shape(i));
+    //     auto const item = Buffer::itemsize(data.index());
+    //     for (std::size_t i = 0; i != a.layout.depth(); ++i)
+    //         shape_stride.emplace_back(a.layout.stride(i) * item);
+    // }
 };
 
 /******************************************************************************/
@@ -81,9 +82,9 @@ Object tuple_from(Ts &&...ts) {
 
 Object value_to_object(Value &&v, Object const &t={});
 
-Object ref_to_object(Ref const &v, Object const &t={});
+Object ref_to_object(Ref &&v, Object const &t={});
 
-inline Object args_to_python(ArgView const &s, Object const &sig={}) {
+inline Object args_to_python(ArgView &s, Object const &sig={}) {
     if (sig && !PyTuple_Check(+sig))
         throw python_error(type_error("expected tuple but got %R", (+sig)->ob_type));
     std::size_t len = sig ? PyTuple_GET_SIZE(+sig) : 0;
@@ -96,11 +97,11 @@ inline Object args_to_python(ArgView const &s, Object const &sig={}) {
             throw python_error(type_error("conversion to python signature not implemented yet"));
         } else {
             // special case: if given an rvalue reference, make it into a value (not sure if really desirable or not)
-            if (r.qualifier() == Rvalue) {
-                if (!set_tuple_item(out, i, value_to_object(r))) return {};
-            } else {
-                if (!set_tuple_item(out, i, ref_to_object(r))) return {};
-            }
+            // if (r.qualifier() == Rvalue) {
+            //     if (!set_tuple_item(out, i, value_to_object(r))) return {};
+            // } else {
+            //     if (!set_tuple_item(out, i, ref_to_object(r))) return {};
+            // }
         }
         ++i;
     }

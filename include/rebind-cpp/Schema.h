@@ -50,6 +50,15 @@ struct Schema {
     void function(std::string name, F functor) {
         raw.emplace(std::move(name)).emplace(make_function<N>(std::move(functor)));
     }
+
+    Value const * operator[](std::string_view s) const {
+        if (auto it = raw.contents.find(s); it != raw.contents.end()) {
+            DUMP("contains value ", s);
+            DUMP("contains value ", it->second.name());
+            return &it->second;
+        }
+        return nullptr;
+    }
 };
 
 /******************************************************************************/

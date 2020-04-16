@@ -1,5 +1,5 @@
 #pragma once
-#include "../Convert.h"
+// #include <rebind/Convert.h>
 
 namespace rebind {
 
@@ -127,29 +127,29 @@ public:
 /******************************************************************************/
 
 template <>
-struct ToValue<BinaryData> {
-    bool operator()(Output &v, BinaryData const &t) const {
-        if (v.matches<BinaryView>()) return v.emplace_if<BinaryView>(t.begin(), t.size());
+struct Dumpable<BinaryData> {
+    bool operator()(Target &v, BinaryData const &t) const {
+        if (v.accepts<BinaryView>()) return v.emplace_if<BinaryView>(t.begin(), t.size());
         return false;
     }
 };
 
 template <>
-struct ToValue<BinaryView> {
-    bool operator()(Output &, BinaryView const &v) const {return false;}
+struct Dumpable<BinaryView> {
+    bool operator()(Target &, BinaryView const &v) const {return false;}
 };
 
 template <>
-struct FromRef<BinaryView> {
-    std::optional<BinaryView> operator()(Ref const &v, Scope &s) const {
-        if (auto p = v.request<BinaryData>()) return BinaryView(p->data(), p->size());
+struct Loadable<BinaryView> {
+    std::optional<BinaryView> operator()(Ref &v, Scope &s) const {
+        if (auto p = v.load<BinaryData>(s)) return BinaryView(p->data(), p->size());
         return s.error("not convertible to binary view", Index::of<BinaryView>());
     }
 };
 
 template <>
-struct FromRef<BinaryData> {
-    std::optional<BinaryData> operator()(Ref const &v, Scope &s) const {
+struct Loadable<BinaryData> {
+    std::optional<BinaryData> operator()(Ref &v, Scope &s) const {
         return s.error("not convertible to binary data", Index::of<BinaryData>());
     }
 };

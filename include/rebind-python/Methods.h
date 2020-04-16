@@ -11,10 +11,10 @@ namespace rebind::py {
 template <class Self>
 PyObject * c_copy_from(PyObject *self, PyObject *value) noexcept {
     return raw_object([=]() -> Object {
-        DUMP("- copy_from ", typeid(Self).name());
-        Object val(value, true);
-        bool ok = Ref(cast_object<Self>(self)).assign_if(ref_from_object(val, false));
-        if (!ok) return type_error("could not assign");
+        // DUMP("- copy_from ", typeid(Self).name());
+        // Object val(value, true);
+        // bool ok = Ref(cast_object<Self>(self)).assign_if(ref_from_object(val, false));
+        // if (!ok) return type_error("could not assign");
         return Object(self, true);
     });
 }
@@ -22,9 +22,9 @@ PyObject * c_copy_from(PyObject *self, PyObject *value) noexcept {
 template <class Self>
 PyObject * c_move_from(PyObject *self, PyObject *value) noexcept {
     return raw_object([=] {
-        DUMP("- move_from");
-        Object val(value, true);
-        Ref(cast_object<Self>(self)).assign_if(ref_from_object(val, false));
+        // DUMP("- move_from");
+        // Object val(value, true);
+        // Ref(cast_object<Self>(self)).assign_if(ref_from_object(val, false));
         // if (auto p = cast_if<Value>(value)) p->reset();
         return Object(self, true);
     });
@@ -54,12 +54,12 @@ PyObject * c_get_index(PyObject *self, PyObject *) noexcept {
     });
 }
 
-template <class Self>
-PyObject * c_qualifier(PyObject *self, PyObject *) noexcept {
-    return raw_object([=] {
-        return as_object(static_cast<Integer>(cast_object<Self>(self).qualifier()));
-    });
-}
+// template <class Self>
+// PyObject * c_qualifier(PyObject *self, PyObject *) noexcept {
+//     return raw_object([=] {
+//         return as_object(static_cast<Integer>(cast_object<Self>(self).qualifier()));
+//     });
+// }
 
 // PyObject * var_is_stack_type(PyObject *self, PyObject *) noexcept {
 //     return raw_object([=] {
@@ -67,12 +67,12 @@ PyObject * c_qualifier(PyObject *self, PyObject *) noexcept {
 //     });
 // }
 
-template <class Self>
-PyObject * c_address(PyObject *self, PyObject *) noexcept {
-    return raw_object([=] {
-        return as_object(Integer(reinterpret_cast<std::uintptr_t>(cast_object<Self>(self).address())));
-    });
-}
+// template <class Self>
+// PyObject * c_address(PyObject *self, PyObject *) noexcept {
+//     return raw_object([=] {
+//         return as_object(Integer(reinterpret_cast<std::uintptr_t>(cast_object<Self>(self).address())));
+//     });
+// }
 
 template <class Self>
 PyObject * c_get_ward(PyObject *self, PyObject *) noexcept {
@@ -114,7 +114,7 @@ PyObject * c_method(PyObject *s, PyObject *args, PyObject *kws) noexcept {
         Caller c(lk);
 
         auto v = arguments_from_objects(c, name, Ref(tag), argv.begin()+1, argv.end());
-        return function_call_impl(out, Ref(self), ArgView(v.data(), argv.size()-1), is_value);
+        // return function_call_impl(out, Ref(self), ArgView(v.data(), argv.size()-1), is_value);
 
         // return function_call_impl(out, Ref(std::as_const(it->second)), std::move(refs), is_value, gil, tag);
         // return type_error("not implemented");

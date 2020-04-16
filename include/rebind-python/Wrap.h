@@ -1,8 +1,8 @@
 #pragma once
 #include "Object.h"
 #include "API.h"
-#include <rebind/Value.h>
-#include <rebind/Convert.h>
+#include <rebind-cpp/Value.h>
+// #include <rebind/Convert.h>
 
 namespace rebind::py {
 
@@ -95,7 +95,7 @@ PyTypeObject type_definition(char const *name, char const *doc) {
 
 /******************************************************************************/
 
-bool object_to_value(Output &v, Object o);
+bool object_to_value(Target &v, Object o);
 
 bool object_to_ref(Ref &v, Object o);
 
@@ -118,7 +118,7 @@ struct PythonFunction {
     }
 
     /// Run C++ functor; logs non-ClientError and rethrows all exceptions
-    bool operator()(Caller *c, Value *v, Ref *r, ArgView const &args) const {
+    bool operator()(Caller *c, Value *v, Ref *r, ArgView &args) const {
         DUMP("calling python function");
         auto p = c->target<PythonFrame>();
         if (!p) throw DispatchError("Python context is expired or invalid");
@@ -140,12 +140,12 @@ struct PythonFunction {
 namespace rebind {
 
 template <>
-struct ToValue<py::Object> {
-    bool operator()(Output &v, py::Object o) const {return py::object_to_value(v, std::move(o));}
+struct Dumpable<py::Object> {
+    bool operator()(Target &v, py::Object o) const {return py::object_to_value(v, std::move(o));}
 };
 
 template <>
-struct ToRef<py::Object> {
+struct Loadable<py::Object> {
     bool operator()(Ref &v, py::Object o) const {return py::object_to_ref(v, std::move(o));}
 };
 

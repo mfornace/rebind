@@ -238,6 +238,8 @@ struct IndexOutput {
 };
 ```
 
+We could combine these pretty easily (make requested_index optional).
+
 status codes...
 - `Exception`: an exception
 - `Value`: a value
@@ -246,14 +248,36 @@ would also like to return index
 
 
 ## dump and load prototypes
+
+Here are the "blind" approaches.
+- The output may be constructed in place if it fits in the buffer
+- The output may be allocated if it doesn't fit
+- Also, the exception may be constructed in place if it fits.
+
 ```c++
-stat::dump dump(Index, void *, size, T &&t);
+// given T&&, try to insert type of index at location void * with allotted buffer size
+Dump::stat dump(void *, size, Index, T &&t);
 
-// stat::load load(Index, void *, size, T &&t);
-
+// try to insert type T at void * and given buffer size, given reference
+Load::stat load(void *, size, Index, void *);
 ```
 
+We could also use the "semi-blind" approach. Same as above except the buffer is guaranteed to be big enough. That way the output is never allocated. (This can be selected above at runtime though, not much cost).
 
+We could also use the totally silent, "non-blind" approach. In this case we guarantee that the buffer can fit a `T`. Because we don't have any other guarantee, it seems unlikely that we could return exceptions, so they'd be silent.
 
+```c++
+Dump::stat dump(void *, Index, T &&t);
+```
 
+Finally we could use a compromise approach. We could guarantee that the buffer can fit both a `T` and a pointer. In the case of an exception, we accept that we might need to allocate the exception. bad_alloc could be handled specifically.
 
+Seems like easiest to always use size.
+
+For call it's different
+
+## Call argument payload
+- `Caller` - caller is not easy.
+- `rebind_str` for method name
+- extra `Ref` for tag
+- `Ref` for each argument

@@ -4,7 +4,7 @@
  */
 #include <rebind-python/Cast.h>
 #include <rebind-python/API.h>
-#include <rebind/Schema.h>
+#include <rebind-cpp/Schema.h>
 #include <any>
 #include <iostream>
 #include <numeric>

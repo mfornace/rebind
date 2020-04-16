@@ -217,7 +217,7 @@ auto simplify_argument(Type<T>) {
     static_assert(!std::is_volatile_v<U> || !std::is_reference_v<T>, "volatile references are not supported");
     using V = std::conditional_t<std::is_lvalue_reference_v<T>, U &, std::remove_cv_t<U>>;
     using Out = std::conditional_t<std::is_rvalue_reference_v<T>, V &&, V>;
-    static_assert(std::is_convertible_v<Out, T>, "simplified type should be compatible with original");
+    static_assert(std::is_same_v<Out, T> || std::is_convertible_v<Out, T>, "simplified type should be compatible with original");
     return Type<Out>();
 }
 

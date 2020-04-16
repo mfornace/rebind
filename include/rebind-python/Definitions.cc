@@ -38,8 +38,8 @@ PyMethodDef ValueMethods[] = {
     {"method", c_function(c_method<Value>),
         METH_VARARGS | METH_KEYWORDS, "call a method given a name and arguments"},
 
-    {"address", c_function(c_address<Value>),
-        METH_NOARGS, "get C++ pointer address"},
+    // {"address", c_function(c_address<Value>),
+    //     METH_NOARGS, "get C++ pointer address"},
 
     {"_ward", c_function(c_get_ward<PyValue>),
         METH_NOARGS, "get ward object"},
@@ -92,8 +92,8 @@ PyMethodDef RefMethods[] = {
     {"method", c_function(c_method<Ref>),
         METH_VARARGS | METH_KEYWORDS, "call a method given a name and arguments"},
 
-    {"address", c_function(c_address<Ref>),
-        METH_NOARGS,  "get C++ pointer address"},
+    // {"address", c_function(c_address<Ref>),
+    //     METH_NOARGS,  "get C++ pointer address"},
 
     {"_ward", c_function(c_get_ward<PyRef>),
         METH_NOARGS, "get ward object"},
@@ -101,8 +101,8 @@ PyMethodDef RefMethods[] = {
     {"_set_ward", c_function(c_set_ward<PyRef>),
         METH_O, "set ward object and return self"},
 
-    {"qualifier", c_function(c_qualifier<Ref>),
-        METH_NOARGS, "return qualifier of self"},
+    // {"qualifier", c_function(c_qualifier<Ref>),
+    //     METH_NOARGS, "return qualifier of self"},
     // {"is_stack_type", c_function(var_is_stack_type),
     // METH_NOARGS, "return if object is held in stack storage"},
     {"index", c_function(c_get_index<Ref>),
@@ -173,12 +173,13 @@ PyTypeObject Wrap<Index>::type = []{
 
 int array_data_buffer(PyObject *self, Py_buffer *view, int flags) {
     auto &p = cast_object<ArrayBuffer>(self);
-    view->buf = p.data.address();
+    // view->buf = p.data.address();
+#warning "nope"
     if (p.base) {incref(p.base); view->obj = +p.base;}
     else view->obj = nullptr;
     view->itemsize = Buffer::itemsize(p.data.index());
     view->len = p.n_elem;
-    view->readonly = p.data.qualifier() == Const;
+    // view->readonly = p.data.qualifier() == Const;
     view->format = const_cast<char *>(Buffer::format(p.data.index()).data());
     view->ndim = p.shape_stride.size() / 2;
     view->shape = p.shape_stride.data();

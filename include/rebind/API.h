@@ -18,19 +18,19 @@ extern "C" {
 typedef int32_t rebind_stat;
 
 /// Input tag for raw operations
-typedef uint32_t rebind_tag;
+typedef uint32_t rebind_input;
 
 /// Input tag for raw operations
 typedef uint32_t rebind_len;
 
 /// Qualifier
-enum rebind_qualifiers {rebind_const=0, rebind_mutable=1, rebind_stack=2, rebind_heap=3};
-typedef uint_fast8_t rebind_qualifier;
+enum rebind_tags {rebind_stack=0, rebind_heap=1, rebind_const=2, rebind_mutable=3};
+typedef uint_fast8_t rebind_tag;
 
 /// List of arguments
 typedef struct rebind_args rebind_args;
 
-typedef void (*rebind_fptr)(void);
+// typedef void (*rebind_fptr)(void);
 // typedef union rebind_storage {
 //     void *pointer;
 //     char storage[16];
@@ -39,16 +39,16 @@ typedef void (*rebind_fptr)(void);
 /******************************************************************************************/
 
 /// rebind_index is a function pointer of the following type
-// typedef rebind_stat (*rebind_index)(rebind_tag t, void *a, void *b, rebind_args);
+// typedef rebind_stat (*rebind_index)(rebind_input t, void *a, void *b, rebind_args);
 
 typedef rebind_stat (*rebind_index)(
-    rebind_tag tag,       // slot for dispatching the operation
+    rebind_input tag,       // slot for dispatching the operation
     rebind_len size,     // slot for additional integer input
     void* output,         // slot for output location of any type
-    rebind_fptr function, // slot for function pointer of any type
     void* self,           // slot for source reference
-    rebind_args args);    // slot for function arguments
+    rebind_args *args);   // slot for function arguments
 
+    // rebind_fptr function, // slot for function pointer of any type
 /******************************************************************************************/
 
 /*
@@ -73,9 +73,16 @@ typedef struct rebind_ref {
 
 /// span of a contiguous array of arguments
 typedef struct rebind_args {
-    rebind_ref *pointer;
-    size_t len;
+    void *caller_ptr;
+    uint32_t args;
 } rebind_args;
+
+/// span of a contiguous array of arguments
+typedef struct rebind_name_args {
+    char const *name_ptr;
+    void *caller_ptr;
+    uint32_t name_len, args;
+} rebind_name_args;
 
 /******************************************************************************************/
 
@@ -84,6 +91,13 @@ typedef struct rebind_str {
     char const *pointer;
     uintptr_t len;
 } rebind_str;
+
+/******************************************************************************************/
+
+typedef struct rebind_exception {
+    rebind_index index;
+    void *pointer;
+} rebind_exception;
 
 /******************************************************************************************/
 
@@ -115,19 +129,19 @@ typedef struct rebind_string {
 // 64-bit (8 bytes): the pointer must be a multiple of 8 (3 bits are guaranteed 0)
 // We have 4 qualifiers, so we use the last 2 bits for the qualifier tagging, i.e. 11 = 3
 
-// Tag the pointer's last 2 bits with the qualifier
-inline rebind_index rebind_tag_index(rebind_index i, rebind_qualifier q) {
-    return (rebind_index)( (uintptr_t)(i) & (uintptr_t)(q) );
+// Input the pointer's last 2 bits with the qualifier
+inline rebind_index rebind_tag_index(rebind_index i, rebind_tag q) {
+    return (rebind_index)( (uintptr_t)(i) | (uintptr_t)(q) );
 }
 
-// Get out the last 2 bits as the qualifier
-inline rebind_qualifier rebind_get_tag(rebind_index i) {
-    return (rebind_qualifier)( (uintptr_t)(i) & (uintptr_t)(3) );
+// Get out the last 2 bits as the tag
+inline rebind_tag rebind_get_tag(rebind_index i) {
+    return (rebind_tag)( (uintptr_t)(i) & (uintptr_t)(3) );
 }
 
-// Get out the pointer minus the qualifier
+// Get out the pointer minus the tag
 inline rebind_index rebind_get_index(rebind_index i) {
-    return (rebind_index)( (uintptr_t)(i) & !(uintptr_t)(3) );
+    return (rebind_index)( (uintptr_t)(i) & ~((uintptr_t)(3)) );
 }
 
 /******************************************************************************************/
@@ -139,66 +153,47 @@ inline rebind_index rebind_get_index(rebind_index i) {
 
 namespace rebind {
 
-// C++ version of rebind_qualifiers enum
-enum Qualifier : rebind_qualifier {Const=rebind_const, Mutable=rebind_mutable, Stack=rebind_stack, Heap=rebind_heap};
+// C++ version of rebind_tags enum
+enum Tag : rebind_tag {Stack=rebind_stack, Heap=rebind_heap, Const=rebind_const, Mutable=rebind_mutable};
 
-static char const * QualifierNames[4] = {"const", "mutable", "stack", "heap"};
+static char const * TagNames[4] = {"stack", "heap", "const", "mutable"};
 
-// Some opaque function pointer
-using Fptr = rebind_fptr;
-
-// C++ alias of rebind_tag
-using Tag = rebind_tag;
+// C++ alias of rebind_input
+using Input = rebind_input;
 
 using Len = rebind_len;
 
-namespace tag {
-    static constexpr Tag const
-        check            {0},
-        dealloc          {1},
-        destruct         {2},
-        copy             {3},
-        name             {4},
-        info             {5},
-        relocate         {6},
-        call             {7},
-        dump             {8},
-        load             {9};
-        // assign           {9};
-}
-
 using Stat = rebind_stat;
 
-namespace stat {
-    enum class copy :     Stat {ok, unavailable, exception};
-    enum class relocate : Stat {ok, unavailable};
-    enum class drop :     Stat {ok, unavailable};
-    enum class info :     Stat {ok, unavailable};
-    enum class name :     Stat {ok, unavailable};
-    // enum class load :  Stat {ok, unavailable, exception, none};
-    enum class dump :     Stat {ok, unavailable, exception, none, null};
-    // enum class assign : Stat {ok, unavailable, exception, none, null};
-    enum class call :   Stat {ok, unavailable, exception, none, invalid_return, wrong_number, wrong_type};
+using Idx = rebind_index;
 
-    template <class T>
-    Stat put(T t) {static_assert(std::is_enum_v<T>); return static_cast<Stat>(t);}
-
+namespace input {
+    static constexpr Input const
+        check            {0},
+        destruct         {1},
+        copy             {2},
+        name             {3},
+        info             {4},
+        relocate         {5},
+        call             {6},
+        dump             {7},
+        load             {8},
+        assign           {9};
 }
 
-
-inline char const * tag_name(Tag t) {
+inline char const * input_name(Input t) {
     switch (t) {
-        case tag::check:      return "check";
-        case tag::dealloc:    return "dealloc";
-        case tag::destruct:   return "destruct";
-        // case tag::copy:       return "copy";
-        case tag::name:       return "name";
-        case tag::info:       return "info";
-        // case tag::method:     return "method";
-        case tag::call:       return "call";
-        case tag::dump:       return "dump";
-        // case tag::assign:     return "assign";
-        default:              return "unknown";
+        case input::check:      return "check";
+        case input::destruct:   return "destruct";
+        case input::copy:       return "copy";
+        case input::name:       return "name";
+        case input::info:       return "info";
+        case input::relocate:   return "relocate";
+        case input::call:       return "call";
+        case input::dump:       return "dump";
+        case input::load:       return "load";
+        case input::assign:     return "assign";
+        default:                return "unknown";
     }
 }
 
@@ -215,7 +210,6 @@ static constexpr bool is_stack_type = false;
 
 /******************************************************************************/
 
-class Output;
 class Scope;
 class Caller;
 class ArgView;
@@ -223,12 +217,11 @@ class Ref;
 
 template <class T>
 static constexpr bool is_usable = true
-    &&  std::is_nothrow_destructible_v<T>
     && !std::is_void_v<T>
     && !std::is_const_v<T>
     && !std::is_reference_v<T>
-    && !std::is_volatile_v<T>;
-    // && !std::is_same_v<T, Value>;
+    && !std::is_volatile_v<T>
+    && !std::is_same_v<T, Ref>;
     // && !is_type_t<T>::value;
     // && !std::is_null_pointer_v<T>
     // && !std::is_function_v<T>
@@ -237,11 +230,12 @@ static constexpr bool is_usable = true
 
 template <class T>
 constexpr void assert_usable() {
-    static_assert(std::is_nothrow_destructible_v<T>);
+    // static_assert(std::is_nothrow_destructible_v<T>);
     static_assert(!std::is_void_v<T>);
     static_assert(!std::is_const_v<T>);
     static_assert(!std::is_reference_v<T>);
     static_assert(!std::is_volatile_v<T>);
+    static_assert(!std::is_same_v<T, Ref>);
     // static_assert(!std::is_same_v<T, Value>);
     // static_assert(!is_type_t<T>::value);
     // static_assert(!std::is_null_pointer_v<T>);

@@ -1,155 +1,268 @@
 #pragma once
 #include "Signature.h"
 #include "Ref.h"
+#include "Scope.h"
 // #include "types/Core.h"
 #include <functional>
 #include <stdexcept>
 
 namespace rebind {
 
-// call_none: no return
-// call_value: return Value or exception
-// call_ref:
-
-// struct FnOutput : rebind_value {
-//     stat::call none() {
-//         return stat::call::none;
-//     }
-
-//     stat::call value() {
-//         return stat::call::ok;
-//     }
-
-//     stat::call ref() {
-//         return stat::call::ok;
-//     }
-
-//     stat::call exception() {
-//         return stat::call::exception;
-//     }
-
-//     stat::call invalid_return() {
-//         return stat::call::invalid_return;
-//     }
-
-//     stat::call wrong_number(int expect, int got) {
-//         return stat::call::wrong_number;
-//     }
-
-//     stat::call wrong_type() {
-//         return stat::call::wrong_type;
-//     }
-// };
-
-
 /******************************************************************************************/
 
-struct ArgView : rebind_args {
-    // constexpr
-    ArgView(Ref *r, std::size_t c);// : rebind_args{static_cast<rebind_ref *>(static_cast<void *>(r)), c} {}
+template <std::size_t N>
+struct ArgStack : rebind_args {
+    Ref refs[N];
 
-    Caller &caller() const;// {return *reinterpret(ptr)->target<Caller &>();}
-
-    std::string_view name() const {
-        auto const &s = reinterpret_cast<rebind_str const &>(pointer[1]);
-        return std::string_view(s.pointer, s.len);
-    }
-
-    Ref tag() const;// {return *reinterpret(ptr + 2);}
-
-    Ref * begin() const noexcept {return reinterpret(pointer) + 3;}
-
-    auto size() const noexcept {return len;}
-
-    Ref * end() const noexcept {return begin() + size();}
-
-    Ref &operator[](std::size_t i) const noexcept {return begin()[i];}
-
-    static constexpr Ref * reinterpret(rebind_ref *r) {return static_cast<Ref *>(static_cast<void *>(r));}
+    template <class ...Ts>
+    ArgStack(Caller &c, Ts &&...ts) noexcept
+        : rebind_args{&c, N}, refs{static_cast<Ts &&>(ts)...} {}
 };
 
 /******************************************************************************************/
 
-// template <class ...Ts>
-// std::array<Ref, sizeof...(Ts)> to_arguments(Ts &&...ts) {
-//     return {Ref(static_cast<Ts &&>(ts))...};
-// }
+struct ArgView : rebind_args {
+    ArgView() = delete;
+    ArgView(ArgView const &) = delete;
+
+    Caller &caller() const {return *static_cast<Caller *>(caller_ptr);}
+
+    // std::string_view name() const {
+    //     if (name_ptr) return std::string_view(name_ptr, name_len);
+    //     else return {};
+    // }
+
+    Ref * begin() noexcept {return reinterpret_cast<ArgStack<1> &>(*this).refs;}
+
+    auto size() const noexcept {return args;}
+
+    Ref * end() noexcept {return begin() + size();}
+
+    Ref &operator[](std::size_t i) noexcept {return begin()[i];}
+};
+
+/******************************************************************************************/
+
+template <class T>
+struct Arg;
+
+template <class T>
+struct Arg<T&> {
+    T &t;
+
+    Arg(T &t) : t(t) {}
+    Ref ref() {return Ref(t);}
+};
+
+template <class T>
+struct Arg<T const&> {
+    T const &t;
+
+    Arg(T const &t) : t(t) {}
+    Ref ref() {return Ref(t);}
+};
+
+template <class T>
+struct Arg<T &&> {
+    std::aligned_union_t<0, T> storage;
+
+    Arg(T &&t) {new(&storage) T(std::move(t));}
+    Ref ref() {return Ref(TagIndex(Index::of<T>(), Stack), &storage);}
+};
+
+/******************************************************************************************/
+
+inline void handle_call_errors(Call::stat, Target const &target) {
+
+}
+
+/******************************************************************************************/
+
+template <class T>
+struct CallReturn {
+    template <class ...Ts>
+    static std::optional<T> call(Index i, Tag qualifier, void *self, Caller &c, Arg<Ts &&> ...ts) {
+        std::aligned_union_t<0, T, void*> buffer;
+        DUMP("calling something...");
+        ArgStack<sizeof...(Ts)> args(c, ts.ref()...); // Ts && now safely scheduled for destruction
+        Target target{&buffer, Index::of<T>(), sizeof(buffer), Target::Stack};
+        auto const stat = Call::call(i, &target, self, qualifier, reinterpret_cast<ArgView &>(args));
+
+        std::optional<T> out;
+        // can throw, fix this later
+        if (stat == Call::in_place) {
+            auto p = reinterpret_cast<T *>(&buffer);
+            out.emplace(std::move(*p));
+            p->~T();
+        } else if (stat == Call::heap) {
+            auto p = reinterpret_cast<T *&>(buffer);
+            out.emplace(std::move(*p));
+            delete p;
+        } else {
+            // function is noexcept until here, now it is permitted to throw (I think)
+            handle_call_errors(stat, target);
+        }
+        return out;
+    }
+};
+
+/******************************************************************************************/
+
+template <class T>
+struct CallReturn<T &> {
+    template <class ...Ts>
+    static T * call(Index i, Tag qualifier, void *self, Caller &c, Arg<Ts &&> ...ts) {
+        DUMP("calling something that returns reference ...");
+        ArgStack<sizeof...(Ts)> args(c, ts.ref()...); // Ts && now safely scheduled for destruction
+        Target target{nullptr, Index::of<std::remove_cv_t<T>>(), 0,
+            std::is_const_v<T> ? Target::Const : Target::Mutable};
+        auto const stat = Call::call(i, &target, self, qualifier, reinterpret_cast<ArgView &>(args));
+        DUMP("got stat ", stat);
+
+        if (stat == Call::in_place) {
+            return reinterpret_cast<T *>(target.out);
+        } else {
+            // function is noexcept until here, now it is permitted to throw (I think)
+            handle_call_errors(stat, target);
+            return nullptr;
+        }
+    }
+};
+
+/******************************************************************************************/
+
+template <>
+struct CallReturn<void> {
+    template <class ...Ts>
+    static void call(Index i, Tag qualifier, void *self, Caller &c, Arg<Ts &&> ...ts) {
+        DUMP("calling something...");
+        ArgStack<sizeof...(Ts)> args(c, ts.ref()...); // Ts && now safely scheduled for destruction
+        auto const stat = Call::call(i, nullptr, self, qualifier, reinterpret_cast<ArgView &>(args));
+        //handle_call_errors(stat, target);
+    }
+};
+
+/******************************************************************************************/
+
+template <>
+struct CallReturn<Ref> {
+    template <class ...Ts>
+    static Ref call(Index i, Tag qualifier, void *self, Caller &c, Arg<Ts &&> ...ts) {
+        DUMP("calling something...");
+        ArgStack<sizeof...(Ts)> args(c, ts.ref()...); // Ts && now safely scheduled for destruction
+        Target target{nullptr, Index(), 0, Target::Reference};
+        auto const stat = Call::call(i, &target, self, qualifier, reinterpret_cast<ArgView &>(args));
+
+        if (stat == Call::in_place) {
+            return Ref(TagIndex(target.idx, target.tag), target.out);
+        } else {
+            // function is noexcept until here, now it is permitted to throw (I think)
+            handle_call_errors(stat, target);
+            return nullptr;
+        }
+    }
+};
+
+/******************************************************************************************/
+
+namespace parts {
+
+template <class T, class ...Ts>
+Maybe<T> call(Index i, Tag qualifier, void *self, Caller &c, Ts &&...ts) {
+    DUMP(type_name<T>());
+    return CallReturn<T>::template call<Ts...>(i, qualifier, self, c, static_cast<Ts &&>(ts)...);
+}
+
+}
 
 /******************************************************************************/
 
 /// Cast element i of v to type T
 template <class T>
-Maybe<T> cast_index(ArgView &v, Scope &s, IndexedType<T> i);
-//  {
-//     // s.index = i.index;
-//     return v[i.index].cast(s, Type<T>());
-// }
+Maybe<T> cast_index(ArgView &v, Scope &s, IndexedType<T> i) {
+    // s.index = i.index;
+    DUMP(i.index);
+    DUMP(v[i.index].name());
+    return v[i.index].load(s, Type<T>());
+}
 
 /******************************************************************************/
 
 /// Invoke a function and arguments, storing output if it doesn't return void
 template <class F, class ...Ts>
-stat::call invoke_to(void *o, Len n, Index i, F const &f, Ts &&... ts) {
+Call::stat invoke_to(Target* out, F const &f, Ts &&... ts) {
     using O = simplify_result<std::invoke_result_t<F, Ts...>>;
+    using U = unqualified<O>;
     DUMP("invoking function ", type_name<F>(), " with output ", type_name<O>());
 
-    if (!i) {
+    if (!out || (std::is_void_v<U> && !out->idx)) {
         std::invoke(f, static_cast<Ts &&>(ts)...);
-        return stat::call::ok;
+        return Call::none;
     }
-    if constexpr(std::is_void_v<O>) {
-        return stat::call::exception;
-        // std::invoke(f, static_cast<Ts &&>(ts)...);
-        // return stat::call::none;
-    } else {
-        if constexpr(!std::is_reference_v<O>) {
-            if (i.equals<O>()) {
-                new(o) O(std::invoke(f, static_cast<Ts &&>(ts)...));
-                return stat::call::ok;
+
+    if (!out->accepts<U>()) return Call::wrong_type;
+
+    if constexpr(!std::is_void_v<U>) { // void already handled
+        if (out->wants_value()) {
+            if constexpr(std::is_same_v<O, U> || std::is_convertible_v<O, U>) {
+                if (auto p = out->placement<U>()) {
+                    new(p) U(std::invoke(f, static_cast<Ts &&>(ts)...));
+                    out->set_index<U>();
+                    return Call::in_place;
+                } else {
+                    out->set_reference(*new U(std::invoke(f, static_cast<Ts &&>(ts)...)));
+                    return Call::heap;
+                }
+            }
+        } else { // returns const & or &
+            if constexpr(std::is_reference_v<O>) {
+                if (std::is_same_v<O, U &> || out->tag != Target::Mutable) {
+                    DUMP("set reference");
+                    out->set_reference(std::invoke(f, static_cast<Ts &&>(ts)...));
+                    return Call::in_place;
+                }
             }
         }
-        return stat::call::exception;
-        // return dump(o, n, i, std::invoke(f, static_cast<Ts &&>(ts)...));
     }
+    return Call::wrong_qualifier;
 }
 
 template <bool UseCaller, class F, class ...Ts>
-stat::call caller_invoke(void *o, Len n, Index i, F const &f, Caller &&c, Maybe<Ts> &&...ts) {
-    if (!(ts && ...)) return stat::call::exception;
+Call::stat caller_invoke(Target* out, F const &f, Caller &&c, Maybe<Ts> &&...ts) {
+    DUMP("casting arguments");
+    if (!(ts && ...)) {
+        DUMP("casting arguments failed");
+        return Call::invalid_argument;
+    }
+    DUMP("caller_invoke");
     c.enter();
     if constexpr(UseCaller) {
-        invoke_to(o, n, i, f, std::move(c), static_cast<Ts &&>(*ts)...);
+        return invoke_to(out, f, std::move(c), static_cast<Ts &&>(*ts)...);
     } else {
-        invoke_to(o, n, i, f, static_cast<Ts &&>(*ts)...);
+        return invoke_to(out, f, static_cast<Ts &&>(*ts)...);
     }
 }
 
 /******************************************************************************************/
 
-template <class T, class SFINAE=void>
-struct Call : std::false_type {};
-
-/******************************************************************************/
-
 template <int N, class F, class SFINAE=void>
 struct Adapter;
 
 template <int N, class F>
-struct Callable {
+struct Functor {
     F function;
-    Callable(F &&f) : function(std::move(f)) {}
+    Functor(F &&f) : function(std::move(f)) {}
 
     constexpr operator F const &() const noexcept {
-        DUMP("cast into Callable ", &function, " ", reinterpret_cast<void const *>(function), " ", type_name<F>());
+        DUMP("cast into Functor ", &function, " ", reinterpret_cast<void const *>(function), " ", type_name<F>());
         return function;
     }
 };
 
 template <int N, class F>
-struct Call<Callable<N, F>> : Adapter<N, F>, std::true_type {};
+struct Callable<Functor<N, F>> : Adapter<N, F>, std::true_type {};
 
 /******************************************************************************/
-
 
 template <class F, class SFINAE>
 struct Adapter<0, F, SFINAE> {
@@ -162,13 +275,13 @@ struct Adapter<0, F, SFINAE> {
      Interface implementation for a function with no optional arguments.
      - Returns WrongNumber if args is not the right length
      */
-    static stat::call call_to(void* o, Len n, Index i, F const &f, ArgView &args) noexcept {
+    Call::stat operator()(Target* out, F const &f, ArgView &args) const noexcept {
         DUMP("call_to function adapter ", type_name<F>(), " ", std::addressof(f), " ", args.size());
-        DUMP("method name", args.name(), " ", !args.name().empty());
+        // DUMP("method name", args.name(), " ", !args.name().empty());
 
         if (args.size() != Args::size) {
             // return v.wrong_number(Args::size, args.size());
-            return stat::call::wrong_number;
+            return Call::wrong_number;
         }
 
         auto frame = args.caller().new_frame(); // make a new unentered frame, must be noexcept
@@ -176,10 +289,10 @@ struct Adapter<0, F, SFINAE> {
         Scope s(handle);
 
         return Args::indexed([&](auto ...ts) {
-            return caller_invoke<UseCaller::value, F, decltype(*ts)...>(o, n, i, f, std::move(handle), cast_index(args, s, ts)...);
+            DUMP("invoking...");
+            return caller_invoke<UseCaller::value, F, decltype(*ts)...>(out, f, std::move(handle), cast_index(args, s, ts)...);
         });
-        // It is planned to be allowed that the invoked function's C++ exception may propagate
-        // in the future, assuming the caller policies allow this.
+        // It is planned to be allowed that the invoked function's C++ exception may propagad       // in the future, assuming the caller policies allow this.
         // Therefore, resource destruction must be done via the frame going out of scope.
     }
 };
@@ -230,8 +343,8 @@ auto make_function(F f) {
     constexpr int n = N == -1 ? 0 : simplify_signature<S>::size - 1 - N;
 
     // Return the callable object holding the functor
-    static_assert(is_usable<Callable<n, S>>);
-    return Callable<n, S>{std::move(simplified)};
+    static_assert(is_usable<Functor<n, S>>);
+    return Functor<n, S>{std::move(simplified)};
 }
 
 /******************************************************************************/
@@ -250,8 +363,7 @@ auto make_function(F f) {
 //         return P::indexed([&](auto ...ts) {
 //             caller_invoke(out, UsesCaller(), f, std::move(c), cast_index(args, s, simplify_argument(ts))...);
 //             return true;
-//         });
-//     }
+//         }d/     }
 
 //     template <class Out, std::size_t ...Is>
 //     static bool call_indexed(F const &f, Out &out, Caller &c, ArgView const &args, Scope &s, std::index_sequence<Is...>) {
@@ -270,8 +382,7 @@ auto make_function(F f) {
 //                 caller_invoke(out, UsesCaller(), f,
 //                     std::move(handle), cast_index(args, s, simplify_argument(ts))...);
 //                 return true;
-//             });
-//         } else if (args.size() < Args::size - N) {
+//             }d/         } else if (args.size() < Args::size - N) {
 //             throw WrongNumber(Args::size - N, args.size());
 //         } else if (args.size() > Args::size) {
 //             throw WrongNumber(Args::size, args.size()); // try under-specified arguments

@@ -5,9 +5,11 @@
 #pragma GCC diagnostic pop
 
 #include <functional>
-#include <rebind/Type.h>
+#include <string_view>
+#include <vector>
+#include <rebind/Index.h>
 #include <rebind/Common.h>
-#include <rebind/Scope.h>
+// #include <rebind/Scope.h>
 
 namespace rebind::py {
 
@@ -73,7 +75,7 @@ inline bool set_tuple_item(PyObject *t, Py_ssize_t i, PyObject *x) {
 
 /// Helper class for dealing with memoryview, Py_buffer
 class Buffer {
-    static Vector<std::pair<std::string_view, Index>> formats;
+    static std::vector<std::pair<std::string_view, Index>> formats;
     bool valid;
 
 public:

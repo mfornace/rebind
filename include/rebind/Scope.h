@@ -1,6 +1,7 @@
 #pragma once
 #include "Frame.h"
 #include "Signature.h"
+#include "Index.h"
 
 #include <stdexcept>
 #include <string_view>

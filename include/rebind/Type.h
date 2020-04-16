@@ -14,13 +14,15 @@ using unqualified = std::remove_cv_t<std::remove_reference_t<T>>;
 
 /******************************************************************************************/
 
+enum class Qualifier {C, L, R};
+
 // template <class T, Qualifier Q>
 // using qualified = std::conditional_t<Q == Const, T const &,
 //     std::conditional_t<Q == Lvalue, T &, T &&>>;
 
-// template <class T>
-// static constexpr Qualifier qualifier_of =
-//     std::is_rvalue_reference_v<T> ? Rvalue : (std::is_const_v<std::remove_reference_t<T>> ? Const : Lvalue);
+template <class T>
+static constexpr Qualifier qualifier_of =
+    std::is_rvalue_reference_v<T> ? Qualifier::R : (std::is_const_v<std::remove_reference_t<T>> ? Qualifier::C : Qualifier::L);
 
 // inline constexpr bool compatible_qualifier(Qualifier from, Qualifier to) {
 //     // from = const: {const yes, rvalue no, lvalue no}
@@ -74,14 +76,13 @@ std::string demangle(char const *);
 template <class T, class SFINAE=void>
 struct TypeName {
     static std::string const name;
-    static bool impl(std::string_view &s) noexcept {s = name; return true;}
 };
 
 template <class T, class SFINAE>
 std::string const TypeName<T, SFINAE>::name = demangle(typeid(T).name());
 
 template <class T>
-auto const & type_name() noexcept {return TypeName<T>::value;}
+auto const & type_name() noexcept {return TypeName<T>::name;}
 
 /******************************************************************************/
 
