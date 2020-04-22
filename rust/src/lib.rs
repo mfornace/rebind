@@ -100,9 +100,9 @@ pub type ToRefT = Option<extern fn(&mut Ref, *mut Void, Qual) -> Bool>;
 pub type AssignIfT = Option<extern fn(*mut Void, &Ref) -> Bool>;
 pub type FromRefT = Option<extern fn(&mut Value, &Ref, &Scope) -> Bool>;
 
-// #[link(name = "librustrebind")]
+// #[link(name = "librustara")]
 extern "C" {
-    pub fn rebind_table_emplace(
+    pub fn ara_table_emplace(
         name: StrView,
         data: *const Void,
         drop: DropT,
@@ -113,40 +113,40 @@ extern "C" {
         from_ref: FromRefT
     ) -> Index;
 
-    // pub fn rebind_table_add_method(index: Index, name: *const Char, method: &CFunction);
+    // pub fn ara_table_add_method(index: Index, name: *const Char, method: &CFunction);
 
-    pub fn rebind_table_add_base(index: Index, base: Index);
-
-    /**************************************************************************/
-
-    pub fn rebind_init() -> Bool;
+    pub fn ara_table_add_base(index: Index, base: Index);
 
     /**************************************************************************/
 
-    pub fn rebind_value_drop(v: *mut Value);
-
-    pub fn rebind_value_copy(v: *mut Value, o: *const Value) -> Bool;
-
-    pub fn rebind_value_method_to_value(v: *const Value, name: StrView, argv: Args) -> Value;
-
-    pub fn rebind_value_call_value(o: *mut Value, v: *const Value, argv: Args) -> Bool;
-
-    pub fn rebind_value_call_ref(v: *const Value, argv: Args) -> Ref;
-
-    pub fn rebind_lookup(name: StrView) -> *const Value;
+    pub fn ara_init() -> Bool;
 
     /**************************************************************************/
 
-    pub fn rebind_index_name(v: Index) -> *const Char;
+    pub fn ara_value_drop(v: *mut Value);
+
+    pub fn ara_value_copy(v: *mut Value, o: *const Value) -> Bool;
+
+    pub fn ara_value_method_to_value(v: *const Value, name: StrView, argv: Args) -> Value;
+
+    pub fn ara_value_call_value(o: *mut Value, v: *const Value, argv: Args) -> Bool;
+
+    pub fn ara_value_call_ref(v: *const Value, argv: Args) -> Ref;
+
+    pub fn ara_lookup(name: StrView) -> *const Value;
+
+    /**************************************************************************/
+
+    pub fn ara_index_name(v: Index) -> *const Char;
 
     /**************************************************************************/
 }
 
 pub fn initialize() {
     println!("initializing...");
-    let ok = unsafe {rebind_init()};
+    let ok = unsafe {ara_init()};
     if ok == 0 {
-        panic!("rebind initialization failed");
+        panic!("ara initialization failed");
     }
     println!("initialized...");
 }
@@ -156,7 +156,7 @@ pub fn lookup(name: &str) -> &'static Value {
     unsafe {
         println!("wait what");
         println!("ok...: {}", name);
-        let ptr = rebind_lookup(StrView::from(name));
+        let ptr = ara_lookup(StrView::from(name));
         println!("ok...: {} {}", name, ptr as u64);
         if ptr != std::ptr::null() {return &(*ptr)}
     }
@@ -211,7 +211,7 @@ extern "C" fn from_ref<T>(v: &mut Value, r: &Ref, s: &Scope) -> Bool {
 /******************************************************************************/
 
 pub fn create_table<T: 'static>(name: &str) -> Index {
-    unsafe{ rebind_table_emplace(
+    unsafe{ ara_table_emplace(
         StrView::from(name),
         std::mem::transmute::<TypeId, *const Void>(TypeId::of::<T>()),
         drop::<T>,
@@ -266,7 +266,7 @@ impl Value {
 
     pub fn method<T: IntoArgView>(&self, name: &str, args: T) -> Value {
         // let mut argv =
-        unsafe {rebind_value_method_to_value(self, StrView::from(name), Args::new())}
+        unsafe {ara_value_method_to_value(self, StrView::from(name), Args::new())}
     }
 
     pub fn is<T: 'static>(&self) -> bool {
@@ -280,7 +280,7 @@ impl Value {
 
     pub fn call<T: IntoArgView>(&self, args: T) -> Value {
         let mut o = Value::new();
-        let ok = unsafe { rebind_value_call_value(&mut o, self, Args::new()) };
+        let ok = unsafe { ara_value_call_value(&mut o, self, Args::new()) };
         if ok == 0 {
             panic!("function failed");
         }
@@ -288,7 +288,7 @@ impl Value {
     }
 
     pub fn call_ref<T: IntoArgView>(&self, args: T) -> Ref {
-        unsafe {rebind_value_call_ref(self, Args::new())}
+        unsafe {ara_value_call_ref(self, Args::new())}
     }
 
     pub fn cast<T: 'static + FromValue>(self) -> T {
@@ -309,7 +309,7 @@ impl Value {
 impl Drop for Value {
     fn drop(&mut self) {
         println!("dropping value");
-        unsafe{rebind_value_drop(self);}
+        unsafe{ara_value_drop(self);}
         println!("dropped value");
     }
 }
@@ -319,7 +319,7 @@ impl Drop for Value {
 impl Clone for Value {
     fn clone(&self) -> Value {
         let mut v = Value::new();
-        if unsafe{rebind_value_copy(&mut v, self) == 0} { panic!("copy failed!"); }
+        if unsafe{ara_value_copy(&mut v, self) == 0} { panic!("copy failed!"); }
         v
     }
 }
@@ -328,7 +328,7 @@ impl Clone for Value {
 
 impl Index {
     pub fn name(&self) -> &str {
-        unsafe{std::ffi::CStr::from_ptr(rebind_index_name(*self))}.to_str().unwrap()
+        unsafe{std::ffi::CStr::from_ptr(ara_index_name(*self))}.to_str().unwrap()
     }
 }
 

@@ -1,6 +1,6 @@
 #pragma once
 
-namespace rebind {
+namespace ara {
 
 
 template <class T, class=void>

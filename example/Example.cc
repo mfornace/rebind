@@ -1,7 +1,7 @@
 
-#include <rebind/Call.h>
-#include <rebind-cpp/Schema.h>
-// #include <rebind/types/Arrays.h>
+#include <ara/Call.h>
+#include <ara-cpp/Schema.h>
+// #include <ara/types/Arrays.h>
 #include <iostream>
 
 
@@ -22,12 +22,11 @@ static_assert(8 == sizeof(std::optional<int>));
 
 static_assert(std::is_trivially_copyable_v<std::optional<int>>);
 
-namespace example {
 
-using rebind::Type;
-using rebind::Scope;
-using rebind::Value;
-using rebind::Schema;
+using ara::Type;
+using ara::Scope;
+using ara::Value;
+using ara::Schema;
 
 /******************************************************************************/
 
@@ -64,13 +63,6 @@ struct Goo : GooBase {
 //     return s("x", &Goo::x);
 // }
 
-// bool method(Input<Goo> &self) {
-//     return self("x", &Goo::x)
-//         || self("test_throw", &Goo::test_throw)
-//         || self("get_x", [](Goo const &g) {return g.x;})
-//         || self("add", [](double x) {g.x += x;})
-//         || self.derive<GooBase>();
-// }
 
 // template <class T>
 // struct Temporary {
@@ -181,15 +173,42 @@ struct Goo : GooBase {
 
 /******************************************************************************/
 
-// bool members(Self<Example> &s) {
-//     return s("global_value", 123);
-// }
+template <>
+struct ara::Callable<Goo> {
+    bool operator()(Method, Goo &) {
+        DUMP("calling Goo");
+        return false;
+    }
+    bool operator()(Method, Goo &&) {
+        DUMP("calling Goo");
+        return false;
+    }
+    bool operator()(Method method, Goo const &self) {
+        return method(self, &Goo::x)
+            || method(self, ".x", &Goo::x)
+            // || method(self, "test_throw", &Goo::test_throw)
+            || method(self, "get_x", [](Goo const &g) {return g.x;})
+            // || method(self, "add", [](Goo &g, double x) {g.x += x;})
+            || method.derive<GooBase const &>(self);
+    }
+};
 
+
+/******************************************************************************/
+
+struct Example : ara::GlobalSchema<Example> {
+    static void write(ara::Schema &s);
+};
+
+template ara_stat ara::impl<Example>::call(ara_input, void*, void*, ara_args*) noexcept;
 
 // could make this return a schema
-void write_schema(rebind::Schema &s) {
+void Example::write(ara::Schema &s) {
     s.object("global_value", 123);
-    s.function("easy", [] {return 1.2;});
+    s.function("easy", [] {
+        DUMP("invoking easy");
+        return 1.2;
+    });
     s.function("fun", [](int i, double d) {
         DUMP("fun", " ", i, " ", d);
         return i + d;
@@ -223,7 +242,7 @@ void write_schema(rebind::Schema &s) {
 
     s.function("Goo.new", [](double x) -> Goo {return x;});
 
-    // s.function("buffer", [](std::tuple<rebind::BinaryData, std::type_index, std::vector<std::size_t>> i) {
+    // s.function("buffer", [](std::tuple<ara::BinaryData, std::type_index, std::vector<std::size_t>> i) {
     //     DUMP(std::get<0>(i).size());
     //     DUMP(std::get<1>(i).name());
     //     DUMP(std::get<2>(i).size());
@@ -238,10 +257,9 @@ void write_schema(rebind::Schema &s) {
     DUMP("made schema");
 }
 
-}
 
-namespace rebind {
+namespace ara {
 
-void init(Schema &s) {example::write_schema(s);}
+// void init(Schema &s) {write_schema(s);}
 
 }

@@ -176,7 +176,7 @@ stat call(Index &out, void *r, F const &self, ArgView args) {
     try {
         new(r) Out(invoke(self, *args));
         out = Index::of<Out>();
-        return stat::const_ref;
+        return stat::Const;
     } catch (...) { /* same as for void */ }
 ```
 
@@ -189,10 +189,10 @@ stat call(Index &out, void *r, unsigned size, F const &self, ArgView args) {
         out = Index::of<Out>();
         if (size <= sizeof(Out)) {
             new(r) Out(invoke(self, *args));
-            return stat::stack;
+            return stat::Stack;
         } else {
             *static_cast<void **r> = new Out(invoke(self, *args));
-            return stat::heap;
+            return stat::Heap;
         }
     } catch (...) { /* same as for void */ }
 ```
@@ -208,7 +208,7 @@ stat call(Index &out, void *r, unsigned size, F const &self, ArgView args) {
         } else {
             new(r) Out(invoke(self, *args));
             out = Index::of<Out>();
-            return stat::const_ref;
+            return stat::Const;
         }
     } catch (...) { /* same as for void */ }
 ```
@@ -278,6 +278,6 @@ For call it's different
 
 ## Call argument payload
 - `Caller` - caller is not easy.
-- `rebind_str` for method name
+- `ara_str` for method name
 - extra `Ref` for tag
 - `Ref` for each argument

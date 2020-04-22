@@ -1,7 +1,7 @@
 import logging
 
 from .cpp import schema
-from .rebind import Schema, set_logger
+from .ara import Schema, set_logger
 
 ################################################################################
 

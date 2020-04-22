@@ -1,8 +1,8 @@
 [package]
-name = "rebind"
+name = "ara"
 version = "0.0.1"
 authors = ["Mark Fornace <mfornace@caltech.edu>"]
 
 [lib]
-name = "rebind"
+name = "ara"
 path = "src/lib.rs"

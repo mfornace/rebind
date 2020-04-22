@@ -1,61 +1,85 @@
 
-#include <rebind-cpp/Schema.h>
-#include <rebind-cpp/Core.h>
+#include <ara-cpp/Schema.h>
+#include <ara-cpp/Core.h>
 #include <mutex>
 
+struct Example;
 
-namespace rebind { void init(Schema &s); }
+namespace ara {
 
+template <>
+ara_stat impl<Example>::call(ara_input, void*, void*, ara_args*) noexcept;
+
+}
+
+using Mod = ara::Module<Example>;
 
 int main() {
-    using namespace rebind;
-    Schema schema{global_schema()};
-    init(schema);
+    using namespace ara;
+    Mod::init();
 
-    auto v = schema["global_value"];
-    auto p = v->target<int>();
-    DUMP(v->name(), *p);
-
-    DUMP(v->load<int>().value());
+    // auto v = schema["global_value"];
+    // auto p = v.target<int const &>();
+    // DUMP(v.name(), *p);
+    // DUMP(v.has_value());
+    // Scope s;
+    // DUMP(v.load<int>(s).value());
 {
-    auto blah = schema["fun"]->call<double>(Caller(), 1, 2.0);
-    DUMP(blah.value());
+    DUMP("testing first function fun with args 1, 2.0");
+    auto blah = Mod::call<double>("fun", Caller(), 1, 2.0);
+    DUMP("got result ", blah);
 }
 {
     DUMP("call void");
-    schema["fun"]->call<void>(Caller(), 1, 2.0);
+    Mod::call<void>("fun", Caller(), 1, 2.0);
 }
 {
     DUMP("call Value");
-    auto val = schema["fun"]->call<Value>(Caller(), 1, 2.0);
+    auto val = Mod::call<Value>("fun", Caller(), 1, 2.0);
 }
 {
     DUMP("call void 2");
     double x;
-    schema["lref"]->call<void>(Caller(), x);
+    Mod::call<void>("lref", Caller(), x);
 }
 {
     DUMP("call ref");
     double x;
-    double *y = schema["lref2"]->call<double &>(Caller(), x);
-    DUMP(bool(y));
-    DUMP(x, " ", *y, " ", &x == y);
+    double &y = Mod::call<double &>("lref2", Caller(), x);
+    DUMP(x, " ", y, " ", &x == &y);
 }
 
 {
     DUMP("call ref2");
     double x=5;
-    double const *y = schema["lref3"]->call<double const &>(Caller(), x);
+    double const &y = Mod::call<double const &>("lref3", Caller(), x);
     DUMP(bool(y));
-    DUMP(x, " ", *y, " ", &x == y);
+    DUMP(x, " ", y, " ", &x == &y);
 }
     std::mutex mut;
-    auto x = schema["mutex"]->call(Caller(), mut);
+    try {
+        auto x = Mod::call<Value>("mutex", Caller(), mut);
+    } catch (...) {
+
+    }
+
+    auto x = Mod::get<Value>("mutex", Caller(), mut);
 
 {
     auto v = Value(1);
     DUMP(bool(v.load<int>()));
     DUMP(bool(v.load<double>()));
+}
+
+{
+    DUMP("Goo stuff");
+    Value v = Mod::call<Value>("Goo.new", Caller(), 1.5);
+    DUMP("got the Goo? ", v.name(), " ", int(v.location()), " ", v.address());//, " ", int(Value::loc_of<Goo>));
+    double y = v.call<double, 1>(Caller(), ".x");
+    DUMP("got .x ", y);
+    double y2 = v.call<double, 1>(Caller(), ".x");
+    DUMP("got .x ", y2);
+    double y3 = v.call<double>(Caller());
 }
 
     DUMP("done");

@@ -2,7 +2,7 @@
 #include "Common.h"
 #include "Error.h"
 static_cast(false);
-namespace rebind {
+namespace ara {
 
 /******************************************************************************/
 

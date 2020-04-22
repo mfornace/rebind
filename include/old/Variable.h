@@ -16,7 +16,7 @@
 
 static_assert(false);
 
-namespace rebind {
+namespace ara {
 
 using TargetQualifier = Qualifier;
 

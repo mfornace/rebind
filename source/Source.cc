@@ -1,13 +1,14 @@
-#include <rebind/Call.h>
+#include <ara/Call.h>
 #include <stdexcept>
+#include <exception>
 #include <string_view>
 
 /******************************************************************************/
 
-
+// static_assert(sizeof(std::exception_ptr) == 8);
 // #if __has_include(<boost/core/demangle.hpp>)
 // #   include <boost/core/demangle.hpp>
-//     namespace rebind::runtime {
+//     namespace ara::runtime {
 //         std::string demangle(char const *s) {return boost::demangle(s);}
 
 //         char const * unknown_exception_description() noexcept {
@@ -17,7 +18,7 @@
 
 #if __has_include(<cxxabi.h>)
 #   include <cxxabi.h>
-    namespace rebind {
+    namespace ara {
         using namespace __cxxabiv1;
 
         std::string demangle(char const *s) {
@@ -34,7 +35,7 @@
         }
     }
 #else
-    namespace rebind {
+    namespace ara {
         std::string demangle(char const *s) {return s;}
 
         char const *unknown_exception_description() noexcept {return "C++: unknown exception";}
@@ -43,7 +44,7 @@
 
 /******************************************************************************/
 
-namespace rebind {
+namespace ara {
 
 /******************************************************************************/
 
@@ -62,6 +63,79 @@ void set_debug(bool debug) noexcept {Debug = debug;}
 bool debug() noexcept {return Debug;}
 
 /******************************************************************************/
+
+void Target::set_current_exception() noexcept {
+    try {
+        emplace<std::exception_ptr>(std::current_exception());
+        idx = Index::of<std::exception_ptr>();
+    } catch (...) {
+        out = nullptr;
+    }
+}
+
+#warning "cleanup"
+struct Exception : std::exception {
+    Index idx;
+    void *ptr;
+    Exception(Index i, void *p) : idx(i), ptr(p) {}
+
+    Exception(Exception const &) = delete;
+    Exception &operator=(Exception const &) = delete;
+
+    Exception(Exception &&e) noexcept : idx(std::exchange(e.idx, Index())), ptr(e.ptr) {}
+
+    Exception &operator=(Exception &&e) noexcept {idx = std::exchange(e.idx, Index()); return *this;}
+
+    ~Exception() {
+        if (idx) Destruct::call(idx, ptr, Destruct::Heap);
+    }
+};
+
+[[noreturn]] void Target::rethrow_exception() {
+    if (idx == Index::of<std::exception_ptr>()) {
+        std::exception_ptr &ptr = *reinterpret_cast<std::exception_ptr *>(out);
+        auto exc = std::move(ptr);
+        ptr.~exception_ptr();
+        std::rethrow_exception(std::move(exc));
+    } else {
+        throw Exception{idx, out};
+    }
+}
+
+Call::stat Call::wrong_number(Target &target, Code got, Code expected) noexcept {
+    target.emplace<ara_input>(got, expected);
+    return WrongNumber;
+}
+
+Call::stat Call::wrong_type(Target &target, Code n, Index i, Qualifier q) noexcept {
+    // target.emplace<ara_index>(ara_tag_index(i, static_cast<ara_tag>(q)), n);
+    return WrongType;
+}
+
+Call::stat Call::wrong_return(Target &target, Index i, Qualifier q) noexcept {
+    target.emplace<ara_index>(ara_tag_index(i, static_cast<ara_tag>(q)));
+    return WrongReturn;
+}
+
+
+[[noreturn]] void call_throw(Target &&target, Call::stat stat) {
+    switch (stat) {
+        case Call::Stack:   {throw CallError("Invalid call status: Stack", stat);}
+        case Call::Heap:    {throw CallError("Invalid call status: Heap", stat);}
+        case Call::None:    {throw CallError("Invalid call status: None", stat);}
+        case Call::Const:   {throw CallError("Invalid call status: Const", stat);}
+        case Call::Mutable: {throw CallError("Invalid call status: Mutable", stat);}
+
+        case Call::Impossible:  {throw CallError("Impossible", stat);}
+        case Call::WrongType:   {throw CallError("WrongType", stat);}
+        case Call::WrongNumber: {throw CallError("WrongNumber", stat);}
+        case Call::WrongReturn: {throw CallError("WrongReturn", stat);}
+                // Postcondition failure
+        case Call::OutOfMemory: {throw std::bad_alloc();}
+        case Call::Exception: {target.rethrow_exception();}
+    }
+    throw std::runtime_error("very bad");
+}
 
 // void lvalue_fails(Variable const &v, Scope &msg, Index t) {
 //     char const *s = "could not convert to lvalue reference";

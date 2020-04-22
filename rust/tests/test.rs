@@ -1,8 +1,8 @@
 // #[macro_use]
 // mod macros;
 // mod submod;
-extern crate rebind;
-use rebind::{Value, invoke, initialize};
+extern crate ara;
+use ara::{Value, invoke, initialize};
 
 /******************************************************************************/
 
@@ -82,7 +82,7 @@ pub fn test_fun() {
     lookup_solution();
 }
 
-use rebind::*;
+use ara::*;
 
 pub struct Type<T> {
     marker: std::marker::PhantomData::<T>
@@ -194,7 +194,7 @@ pub fn foo1() {
     //   let _ = fmt!("...");
     // foo();
     // let x = unsafe {
-    //     capi::rebind_add()
+    //     capi::ara_add()
     // };
     // println!("Hello {}", x);
 
@@ -207,7 +207,7 @@ pub fn foo1() {
     // println!("Hello {}", v.many);
 
     // unsafe {
-    //     rebind_destruct(&mut v as *mut Value);
+    //     ara_destruct(&mut v as *mut Value);
     // }
 
     // println!("Hello {}", v.many);
