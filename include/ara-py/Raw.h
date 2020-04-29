@@ -26,7 +26,7 @@ PyObject* init_module() noexcept;
 
 /******************************************************************************/
 
-static constexpr int Major = PY_MAJOR_VERSION, Minor = PY_MINOR_VERSION;
+static constexpr auto Version = std::make_tuple(PY_MAJOR_VERSION, PY_MINOR_VERSION, PY_MICRO_VERSION);
 using Ptr = PyObject*;
 
 /******************************************************************************/
@@ -109,4 +109,12 @@ std::nullptr_t type_error(char const *s, Ts ...ts) {
 // template <>
 // PyObject* init_module<PY_MAJOR_VERSION, PY_MINOR_VERSION>(Object<PY_MAJOR_VERSION, PY_MINOR_VERSION> const &);
 
+}
+
+
+namespace std {
+    template <>
+    struct hash<ara::py::Object> {
+        size_t operator()(ara::py::Object const &o) const {return std::hash<PyObject*>()(o.base);}
+    };
 }

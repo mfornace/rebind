@@ -20,7 +20,7 @@ template <class ...Ts>
 void print_arguments(char const *s, int n, Ts const &...ts) {
     if (!Debug) return;
     std::cout << '[' << s << ':' << n << "] ";
-    int x[] = {(std::cout << ts, 0)...};
+    int x[] = {(std::cout << ts << ' ', 0)...};
     std::cout << std::endl;
 }
 
@@ -69,12 +69,6 @@ static constexpr bool is_copy_constructible_v = is_copy_constructible<T>::value;
 
 /******************************************************************************/
 
-/// To avoid template type deduction on a given parameter
-template <class T>
-struct SameType {using type = T;};
-
-/******************************************************************************/
-
 // Ignore variable to use a parameter when the argument should be ignored
 struct Ignore {
     template <class ...Ts>
@@ -86,16 +80,18 @@ struct Ignore {
 template <class T>
 using SizeOf = std::integral_constant<std::size_t, sizeof(T)>;
 
-/// Binary search of an iterable of std::pair
-template <class V>
-auto binary_search(V const &v, typename V::value_type::first_type t) {
-    auto it = std::lower_bound(v.begin(), v.end(), t,
-        [](auto const &x, auto const &t) {return x.first < t;});
-    return (it != v.end() && it->first == t) ? it : v.end();
-}
-
 /******************************************************************************/
 
+// Update for std::bit_cast in the future;
+template <class To, class From>
+To bit_cast(From const &from) noexcept {
+    static_assert(std::is_trivially_copyable_v<From>);
+    static_assert(std::is_trivial_v<To>);
+    static_assert(sizeof(To) == sizeof(From));
+    To to;
+    std::memcpy(&to, &from, sizeof(To));
+    return to;
+}
 // template <class T>
 // constexpr std::uintptr_t aligned_location(std::uintptr_t i) {
 //     static_assert((alignof(T) & (alignof(T) - 1)) == 0, "not power of 2");

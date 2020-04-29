@@ -5,7 +5,7 @@ namespace ara::py {
 
 /******************************************************************************/
 
-std::string_view from_unicode(Ptr o) {
+inline std::string_view from_unicode(Ptr o) {
     Py_ssize_t size;
 #if PY_MAJOR_VERSION > 2
     char const *c = PyUnicode_AsUTF8AndSize(+o, &size);
@@ -19,7 +19,7 @@ std::string_view from_unicode(Ptr o) {
 
 /******************************************************************************/
 
-std::string_view from_bytes(Ptr o) {
+inline std::string_view from_bytes(Ptr o) {
     char *c;
     Py_ssize_t size;
     PyBytes_AsStringAndSize(+o, &c, &size);
@@ -28,7 +28,8 @@ std::string_view from_bytes(Ptr o) {
 
 /******************************************************************************/
 
-bool dump_object(Target &target, Ptr o) {
+inline bool dump_object(Target &target, Ptr o) {
+    DUMP("dumping object");
     if (target.accepts<std::string_view>()) {
         if (PyUnicode_Check(+o)) return target.emplace_if<std::string_view>(from_unicode(o));
         if (PyBytes_Check(+o)) return target.emplace_if<std::string_view>(from_bytes(o));

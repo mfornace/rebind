@@ -1,6 +1,5 @@
 #pragma once
 #include <ara/Ref.h>
-#include <ara/Scope.h>
 #include <vector>
 
 namespace ara {
@@ -105,7 +104,7 @@ Binary data convenience wrapper for an array of POD data
 /******************************************************************************/
 
 struct ArrayView {
-    Ref data;
+    Reference data;
     ArrayLayout layout;
 };
 
@@ -150,16 +149,18 @@ struct Dumpable<BinaryView> {
 
 template <>
 struct Loadable<BinaryView> {
-    std::optional<BinaryView> operator()(Ref &v, Scope &s) const {
-        if (auto p = v.load<BinaryData>(s)) return BinaryView(p->data(), p->size());
-        return s.error("not convertible to binary view", Index::of<BinaryView>());
+    std::optional<BinaryView> operator()(Ref &v) const {
+        if (auto p = v.load<BinaryData>()) return BinaryView(p->data(), p->size());
+        return {};
+        // return s.error("not convertible to binary view", Index::of<BinaryView>());
     }
 };
 
 template <>
 struct Loadable<BinaryData> {
-    std::optional<BinaryData> operator()(Ref &v, Scope &s) const {
-        return s.error("not convertible to binary data", Index::of<BinaryData>());
+    std::optional<BinaryData> operator()(Ref &v) const {
+        return {};
+        // return s.error("not convertible to binary data", Index::of<BinaryData>());
     }
 };
 

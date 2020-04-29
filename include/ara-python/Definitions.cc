@@ -79,45 +79,6 @@ PyObject * c_value_from(PyObject *cls, PyObject *obj) noexcept {
 
 /******************************************************************************/
 
-PyObject *index_new(PyTypeObject *subtype, PyObject *, PyObject *) noexcept {
-    PyObject* o = subtype->tp_alloc(subtype, 0); // 0 unused
-    if (o) new (&cast_object<Index>(o)) Index(); // noexcept
-    return o;
-}
-
-long index_hash(PyObject *o) noexcept {
-    return static_cast<long>(std::hash<Index>()(cast_object<Index>(o)));
-}
-
-PyObject *index_repr(PyObject *o) noexcept {
-    Index const *p = cast_if<Index>(o);
-    if (p) return PyUnicode_FromFormat("Index('%s')", p->name().data());
-    return type_error("Expected instance of ara.Index");
-}
-
-PyObject *index_str(PyObject *o) noexcept {
-    Index const *p = cast_if<Index>(o);
-    if (p) return PyUnicode_FromString(p->name().data());
-    return type_error("Expected instance of ara.Index");
-}
-
-PyObject *index_compare(PyObject *self, PyObject *other, int op) {
-    return raw_object([=]() -> Object {
-        return {compare(op, cast_object<Index>(self), cast_object<Index>(other)) ? Py_True : Py_False, true};
-    });
-}
-
-template <>
-storage_like<PyTypeObject> Wrap<Index>::type = []{
-    auto out = type_definition<Index>("ara.Index", "C++ type Index");
-    auto &o = storage_cast<PyTypeObject>(out);
-    o.tp_repr = index_repr;
-    o.tp_hash = index_hash;
-    o.tp_str = index_str;
-    o.tp_richcompare = index_compare;
-    return out;
-}();
-
 /******************************************************************************/
 
 int array_data_buffer(PyObject *self, Py_buffer *view, int flags) {

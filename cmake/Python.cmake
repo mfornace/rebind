@@ -32,6 +32,7 @@ set_property(GLOBAL PROPERTY ara_module_files
     ${CMAKE_CURRENT_SOURCE_DIR}/source/python/Module.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/source/python/Source.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/source/python/Load.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/python/Call.cc
     # ${CMAKE_CURRENT_SOURCE_DIR}/source/python/Cast.cc
     # ${CMAKE_CURRENT_SOURCE_DIR}/source/python/Globals.cc
 )

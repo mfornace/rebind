@@ -90,10 +90,10 @@ typedef struct ara_str {
 
 /******************************************************************************************/
 
-typedef struct ara_exception {
-    ara_index index;
-    void *pointer;
-} ara_exception;
+// typedef struct ara_exception {
+//     ara_index index;
+//     void *pointer;
+// } ara_exception;
 
 /******************************************************************************************/
 
@@ -128,6 +128,23 @@ typedef struct ara_array {
 
 /******************************************************************************************/
 
+typedef struct ara_target {
+    // Requested type index. May be null if no type is requested
+    ara_index index;
+    // Output storage address. Must satisfy at least void* alignment and size requirements.
+    void* output;
+    // Bit mask for dependent reference argument indices
+    std::uint64_t lifetime;
+    // Output storage capacity in bytes (sizeof)
+    ara_code length;
+    // Requested qualifier (roughly T, T &, or T const &)
+    ara_tag tag;
+    // void* allocator_data;
+    // void* (*allocator)(Code size, Code alignment) noexcept
+} ara_target;
+
+/******************************************************************************************/
+
 // reinterpret_cast is legal C++ for interconversion of uintptr_t and void *
 // need to check about function pointer though
 // 32-bit (4 bytes): the pointer must be a multiple of 4 (2 bits are guaranteed 0)
@@ -151,8 +168,16 @@ inline ara_index ara_get_index(ara_index i) {
 
 /******************************************************************************************/
 
+#define ARA_FUNCTION(NAME) ara_define_##NAME
+
 #ifdef __cplusplus
 }
+
+#define ARA_DEFINE(NAME, TYPE) ara_stat ARA_FUNCTION(NAME)(ara_input i, void* s, void* p, ara_args* a) noexcept {return ara::impl<TYPE>::build(i,s,p,a);}
+
+#define ARA_DECLARE(NAME, TYPE) \
+    extern "C" ara_stat ARA_FUNCTION(NAME)(ara_input, void*, void*, ara_args*) noexcept; \
+    namespace ara {inline ara_index fetch(ara::Type<TYPE>) {return ARA_FUNCTION(NAME);}}
 
 #include <type_traits>
 
@@ -207,10 +232,10 @@ inline char const * code_name(Code t) {
 
 /******************************************************************************/
 
-class Scope;
-class Caller;
+// class Caller;
 class ArgView;
-class Ref;
+struct Ref;
+struct Target;
 
 template <class T>
 static constexpr bool is_usable = true

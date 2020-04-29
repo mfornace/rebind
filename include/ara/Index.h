@@ -11,7 +11,7 @@ template <class T, class SFINAE=void>
 struct impl;
 
 template <class T>
-Idx fetch() noexcept {return &impl<T>::call;}
+Idx fetch(Type<T>) noexcept {return &impl<T>::call;}
 
 /******************************************************************************************/
 
@@ -33,7 +33,7 @@ struct Index {
     constexpr Idx operator+() const {return base;}
 
     template <class T>
-    static Index of() noexcept {return {fetch<T>()};}
+    static Index of() noexcept {return {fetch(Type<T>())};}
 
     template <class T>
     constexpr bool equals() const {return *this == of<T>();}
@@ -94,7 +94,7 @@ static constexpr bool is_always_stackable = is_stackable<T>(sizeof(void*));
 struct Pointer {
     void *base;
 
-    constexpr Pointer(void *b=nullptr) : base(b) {}
+    static constexpr Pointer from(void *b=nullptr) {return {b};}
 
     template <class T>
     constexpr T load() const {

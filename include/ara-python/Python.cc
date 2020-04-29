@@ -99,7 +99,7 @@ std::string_view from_bytes(PyObject *o) {
 
 template <class T>
 bool arithmetic_to_value(Target &v, Object const &o) {
-    DUMP("cast arithmetic in: ", v.name());
+    DUMP("cast arithmetic in:", v.name());
     if (PyFloat_Check(o)) return v.emplace_if<T>(PyFloat_AsDouble(+o));
     if (PyLong_Check(o))  return v.emplace_if<T>(PyLong_AsLongLong(+o));
     if (PyBool_Check(o))  return v.emplace_if<T>(+o == Py_True);
@@ -112,7 +112,7 @@ bool arithmetic_to_value(Target &v, Object const &o) {
                return v.emplace_if<T>(PyFloat_AsDouble(+i));
         }
     }
-    DUMP("cast arithmetic out: ", v.name());
+    DUMP("cast arithmetic out:", v.name());
     return false;
 }
 
@@ -121,9 +121,9 @@ bool arithmetic_to_value(Target &v, Object const &o) {
 bool dump_object(Target &v, Object o) {
     if (Debug) {
         auto repr = Object::from(PyObject_Repr(SubClass<PyTypeObject>{(+o)->ob_type}));
-        DUMP("input object reference count = ", reference_count(o));
-        DUMP("trying to convert object to ", v.name(), " ", from_unicode(+repr));
-        DUMP("is Value = ", bool(cast_if<Value>(o)));
+        DUMP("input object reference count =", reference_count(o));
+        DUMP("trying to convert object to", v.name(), from_unicode(+repr));
+        DUMP("is Value =", bool(cast_if<Value>(o)));
     }
     if (!o) return false;
 

@@ -114,7 +114,7 @@ struct Info {
     struct impl {
         static stat put(Idx& out, void const*& t) noexcept {
             t = &typeid(T);
-            out = fetch<T>();
+            out = fetch(Type<std::type_info>());
             return OK;
         }
     };
@@ -184,7 +184,6 @@ struct Dump {
 
 /******************************************************************************/
 
-// std::optional<T> operator()(Ref &v, Scope &s)
 template <class T, class SFINAE=void>
 struct Loadable;
 
@@ -192,11 +191,10 @@ struct Loadable;
 // -- Prefer to return None
 // -- More likely to encounter exceptions when preconditions are not met
 struct Load {
-    enum stat : Stat {Heap, Stack, None};
+    enum stat : Stat {None, OK, Exception, OutOfMemory};
 
     template <class T>
     struct impl {
-        // std::optional<T> operator()(Ref, Scope &) ?
         // currently not planned that out can be a reference, I think
         static stat put(Target &out, Pointer source, Tag qualifier) noexcept {
             if constexpr(is_complete_v<Loadable<T>>) {
@@ -233,9 +231,10 @@ struct Call {
     enum stat : Stat {Impossible, WrongNumber, WrongType, WrongReturn,
                       None, Stack, Heap, Mutable, Const,
                       Exception, OutOfMemory};
+    // enum source :
 
-    static constexpr bool was_invoked(stat s) {return s < 4;}
-
+    static constexpr bool was_invoked(stat s) {return 3 < s;}
+#warning "todo: static method"
     template <class T>
     struct impl {
         static stat put(Target &out, Pointer self, ArgView &args, Tag qualifier) noexcept {
@@ -256,9 +255,9 @@ struct Call {
         return static_cast<stat>(f({code::call, static_cast<Code>(qualifier)}, &out, self.base, reinterpret_cast<ara_args *>(&args)));
     }
 
-    static stat wrong_number(Target &, Code, Code) noexcept;
-    static stat wrong_type(Target &, Code, Index, Qualifier) noexcept;
-    static stat wrong_return(Target &, Index, Qualifier) noexcept;
+    [[nodiscard]] static stat wrong_number(Target &, Code, Code) noexcept;
+    [[nodiscard]] static stat wrong_type(Target &, Code, Index, Qualifier) noexcept;
+    [[nodiscard]] static stat wrong_return(Target &, Index, Qualifier) noexcept;
 };
 
 /******************************************************************************************/
@@ -266,10 +265,19 @@ struct Call {
 template <class Op, class T, class ...Ts>
 Stat impl_put(Ts &&...ts) {
     typename Op::stat out = Op::template impl<T>::put(static_cast<Ts &&>(ts)...);
+    DUMP("Impl output", static_cast<Stat>(out));
     return static_cast<Stat>(out);
 }
 
-static_assert(std::is_trivial_v<std::uint32_t[2]>);
+/******************************************************************************************/
+
+template <class T, std::enable_if_t<is_complete_v<Callable<T>> || is_complete_v<Loadable<T>> || is_complete_v<Dumpable<T>> || is_complete_v<Callable<T>>, int> = 0>
+void warn_unimplemented() {}
+
+template <class T, std::enable_if_t<!(is_complete_v<Callable<T>> || is_complete_v<Loadable<T>> || is_complete_v<Dumpable<T>> || is_complete_v<Callable<T>>), int> = 0>
+// [[deprecated]]
+void warn_unimplemented() {}
+
 /******************************************************************************************/
 
 template <class T, class SFINAE>
@@ -281,26 +289,31 @@ struct impl {
     static_assert(!std::is_same_v<T, Ref>);
 
     static Stat call(ara_input i, void* o, void* s, ara_args *args) noexcept __attribute__((noinline)) {
-        static_assert(sizeof(T) >= 0, "Type should be complete");
+        return build(i, o, s, args);
+    }
 
-        if (i.code != code::name) DUMP("Impl::", code_name(i.code), ": ", type_name<T>());
+    static Stat build(ara_input i, void* o, void* s, ara_args *args) noexcept {
+        static_assert(sizeof(T) >= 0, "Type should be complete");
+        warn_unimplemented<T>();
+
+        if (i.code != code::name) DUMP("Impl<", type_name<T>(), ">: ", code_name(i.code));
 
         switch(i.code) {
             case code::destruct: {
-                return impl_put<Destruct, T>(Pointer(o).load<T &>(), static_cast<Destruct::storage>(i.tag));
+                return impl_put<Destruct, T>(Pointer::from(o).load<T &>(), static_cast<Destruct::storage>(i.tag));
             }
             case code::relocate: {
-                return impl_put<Relocate, T>(o, Pointer(s).load<T &&>());
+                return impl_put<Relocate, T>(o, Pointer::from(s).load<T &&>());
             }
             case code::copy: {
-                return impl_put<Copy, T>(o, i.tag, Pointer(s).load<T const &>());
+                return impl_put<Copy, T>(o, i.tag, Pointer::from(s).load<T const &>());
             }
             case code::load: {
-                return impl_put<Load, T>(*static_cast<Target *>(o), Pointer(s), static_cast<Tag>(i.tag));
+                return impl_put<Load, T>(*static_cast<Target *>(o), Pointer::from(s), static_cast<Tag>(i.tag));
             }
             case code::dump: {
-                // return impl_put<Dump, T>(o, i.tag, reinterpret_cast<Tagged &>(f), Pointer(s));
-                return impl_put<Dump, T>(*static_cast<Target *>(o), Pointer(s), static_cast<Tag>(i.tag));
+                // return impl_put<Dump, T>(o, i.tag, reinterpret_cast<Tagged &>(f), Pointer::from(s));
+                return impl_put<Dump, T>(*static_cast<Target *>(o), Pointer::from(s), static_cast<Tag>(i.tag));
             }
             case code::assign: {
                 return {};
@@ -308,7 +321,7 @@ struct impl {
                 // else return stat::put(default_assign(*static_cast<T *>(b), *static_cast<Ref const *>(o)));
             }
             case code::call: {
-                return impl_put<Call, T>(*static_cast<Target *>(o), Pointer(s), reinterpret_cast<ArgView &>(*args), static_cast<Tag>(i.tag));
+                return impl_put<Call, T>(*static_cast<Target *>(o), Pointer::from(s), reinterpret_cast<ArgView &>(*args), static_cast<Tag>(i.tag));
             }
             case code::name: {
                 return impl_put<Name, T>(*static_cast<ara_str *>(o));
@@ -330,7 +343,11 @@ struct impl {
 
 template <class SFINAE>
 struct impl<void, SFINAE> {
-    static Stat call(ara_input i, void* o, void* s, ara_args *args) {
+    static Stat call(ara_input i, void* o, void* s, ara_args *args) noexcept __attribute__((noinline)) {
+        return build(i, o, s, args);
+    }
+
+    static Stat build(ara_input i, void* o, void* s, ara_args *args) noexcept {
         switch (i.code) {
             case code::name: {
                 return impl_put<Name, void>(*static_cast<ara_str *>(o));

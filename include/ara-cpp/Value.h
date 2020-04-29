@@ -95,20 +95,17 @@ struct Value {
     template <class T>
     T *target(Type<T> t={}) {return const_cast<T *>(std::as_const(*this).target(t));}
 
-    void *address() const {
-        if (!has_value()) return nullptr;
-        else if (location() == Heap) return storage.pointer;
-        else return const_cast<void *>(static_cast<void const *>(&storage));
+    Pointer address() const {
+        if (!has_value()) return Pointer::from(nullptr);
+        else if (location() == Heap) return Pointer::from(storage.pointer);
+        else return Pointer::from(const_cast<void *>(static_cast<void const *>(&storage)));
     }
 
-    Ref as_ref() const & noexcept {return *this ? Ref(index(), Tag::Const, address()) : Ref();}
-    Ref as_ref() & noexcept {return *this ? Ref(index(), Tag::Mutable, address()) : Ref();}
+    Ref as_ref() const & noexcept {return *this ? Ref::from_existing(index(), address(), false) : Ref();}
+    Ref as_ref() & noexcept {return *this ? Ref::from_existing(index(), address(), true) : Ref();}
 
     template <class T>
-    std::optional<T> load(Scope &s, Type<T> t={}) const {return as_ref().load(s, t);}
-
-    template <class T>
-    std::optional<T> load(Type<T> t={}) const {Scope s; return load(s, t);}
+    std::optional<T> load(Type<T> t={}) const {return as_ref().load(t);}
 
     /**************************************************************************/
 
@@ -124,9 +121,9 @@ struct Value {
 
     template <class T=Value, int N=0, class ...Ts>
     T move(Caller c, Ts &&...ts) {
-        Ref ref(index(), location() == Heap ? Tag::Heap : Tag::Stack, address());
+        Reference ref(index(), location() == Heap ? Tag::Heap : Tag::Stack, address());
         release();
-        return parts::call<T, N>(ref.index(), ref.tag(), ref.ptr, c, static_cast<Ts &&>(ts)...);
+        return parts::call<T, N>(ref.index(), ref.tag(), ref.pointer(), c, static_cast<Ts &&>(ts)...);
     }
 
     template <class T=Value, int N=0, class ...Ts>
@@ -134,62 +131,6 @@ struct Value {
         if (!has_value()) return Maybe<T>::none();
         return parts::get<T, N>(index(), Tag::Const, address(), c, static_cast<Ts &&>(ts)...);
     }
-
-    // template <class ...Ts>
-    // Value call_value(Caller c, Ts &&...ts) const {
-    //     return parts::call_value(index(), Const, storage.pointer, c, static_cast<Ts &&>(ts)...);
-    // }
-    // template <class T>
-    // Maybe<T> request(Scope &s, Type<T> t={}) const &;
-    //  {
-        // if constexpr(std::is_convertible_v<Value const &, T>) return some<T>(*this);
-        // else return parts::request(index(), address(), s, t, Const);
-    // }
-
-    // template <class T>
-    // Maybe<T> request(Scope &s, Type<T> t={}) &;
-    // {
-        // if constexpr(std::is_convertible_v<Value &, T>) return some<T>(*this);
-        // else return parts::request(index(), address(), s, t, Lvalue);
-    // }
-
-    // template <class T>
-    // Maybe<T> request(Scope &s, Type<T> t={}) &&;
-    // {
-        // if constexpr(std::is_convertible_v<Value &&, T>) return some<T>(std::move(*this));
-        // else return parts::request(index(), address(), s, t, Rvalue);
-    // }
-
-    /**************************************************************************/
-
-    // template <class T>
-    // Maybe<T> request(Type<T> t={}) const & {Scope s; return request(s, t);}
-
-    // template <class T>
-    // Maybe<T> request(Type<T> t={}) & {Scope s; return request(s, t);}
-
-    // template <class T>
-    // Maybe<T> request(Type<T> t={}) && {Scope s; return std::move(*this).request(s, t);}
-
-    /**************************************************************************/
-
-    // template <class T>
-    // T cast(Scope &s, Type<T> t={}) const & {
-    //     if (auto p = from_ref(s, t)) return static_cast<T &&>(*p);
-    //     throw std::move(s.set_error("invalid cast (ara::Value const &)"));
-    // }
-
-    // template <class T>
-    // T cast(Scope &s, Type<T> t={}) & {
-    //     if (auto p = from_ref(s, t)) return static_cast<T &&>(*p);
-    //     throw std::move(s.set_error("invalid cast (ara::Value &)"));
-    // }
-
-    // template <class T>
-    // T cast(Scope &s, Type<T> t={}) && {
-    //     if (auto p = from_ref(s, t)) return static_cast<T &&>(*p);
-    //     throw std::move(s.set_error("invalid cast (ara::Value &&)"));
-    // }
 
     // bool assign_if(Ref const &p) {return stat::assign_if::ok == parts::assign_if(index(), address(), p);}
 
@@ -206,20 +147,12 @@ struct Value {
 
     /**************************************************************************/
 
-    bool load_to(Target &t) const {
-        Scope s;
-        return as_ref().load_to(t, s);
-    }
-    // const & {return stat::request::ok == parts::request_to(v, index(), address(), Const);}
-    // bool request_to(Output &v) & {return stat::request::ok == parts::request_to(v, index(), address(), Lvalue);}
-    // bool request_to(Output &v) && {return stat::request::ok == parts::request_to(v, index(), address(), Rvalue);}
+    auto load_to(Target &t) const {return as_ref().load_to(t);}
 
     /**************************************************************************/
 
     // template <class ...Args>
     // Value operator()(Args &&...args) const;
-
-    // bool call_to(Value &, ArgView) const;
 };
 
 template <>
@@ -239,7 +172,7 @@ Value::Value(Type<T> t, Args&& ...args) {
         parts::alloc_to<T>(&storage.data, static_cast<Args &&>(args)...);
     }
     idx = Tagged(Index::of<T>(), loc_of<T>);
-    // DUMP("construct! ", idx, " ", index().name());
+    // DUMP("construct! ", idx, index().name());
 }
 
 /******************************************************************************/
@@ -255,7 +188,7 @@ T & Value::emplace(Type<T>, Args &&...args) {
         out = parts::alloc_to<T>(&storage.data, static_cast<Args &&>(args)...);
     }
     idx = Tagged(Index::of<T>(), loc_of<T>);
-    // DUMP("emplace! ", idx, " ", index().name(), " ", Index::of<T>().name());
+    // DUMP("emplace! ", idx, index().name(), Index::of<T>().name());
     return *out;
 }
 
@@ -282,8 +215,8 @@ inline bool Value::destruct() noexcept {
     if (!has_value()) return false;
     switch (location()) {
         case Loc::Trivial: break;
-        case Loc::Heap: {Destruct::call(index(), storage.pointer, Destruct::Heap); break;}
-        default: {Destruct::call(index(), &storage, Destruct::Stack); break;}
+        case Loc::Heap: {Destruct::call(index(), Pointer::from(storage.pointer), Destruct::Heap); break;}
+        default: {Destruct::call(index(), Pointer::from(&storage), Destruct::Stack); break;}
     }
     return true;
 }
@@ -292,9 +225,9 @@ inline bool Value::destruct() noexcept {
 
 template <>
 struct CallReturn<Value> {
-    static Value call(Index i, Tag qualifier, void *self, Caller &c, ArgView &args);
+    static Value call(Index i, Tag qualifier, Pointer self, Caller &c, ArgView &args);
 
-    static Value get(Index i, Tag qualifier, void *self, Caller &c, ArgView &args);
+    static Value get(Index i, Tag qualifier, Pointer self, Caller &c, ArgView &args);
 };
 
 // struct Copyable : Value {

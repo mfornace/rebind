@@ -116,7 +116,7 @@ public:
 
     /// Only call variable move constructor if its lifetime is being managed inside the buffer
     Variable & operator=(Variable &&v) noexcept {
-        // DUMP("move assign ", type(), v.type());
+        // DUMP("move assign", type(), v.type());
         if (auto p = handle()) act(ActionType::destroy, p, nullptr);
         static_cast<VariableData &>(*this) = v;
         if (auto p = v.handle()) {
@@ -127,7 +127,7 @@ public:
     }
 
     Variable & operator=(Variable const &v) {
-        // DUMP("copy assign ", type(), v.type());
+        // DUMP("copy assign", type(), v.type());
         if (auto p = handle()) act(ActionType::destroy, p, nullptr);
         static_cast<VariableData &>(*this) = v;
         if (auto p = v.handle()) v.act(ActionType::copy, p, this);

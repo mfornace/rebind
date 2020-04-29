@@ -110,27 +110,6 @@ Object getattr(PyObject *obj, char const *name) {
     return {};
 }
 
-// condition: PyType_CheckExact(type) is false
-bool is_structured_type(PyObject *type, PyObject *origin) {
-    if constexpr(PythonVersion >= Version(3, 7, 0)) {
-        DUMP("is_structure_type 3.7A");
-        // in this case, origin may or may not be a PyTypeObject *
-        return origin == +getattr(type, "__origin__");
-    } else {
-        // case like typing.Union: type(typing.Union[int, float] == typing.Union)
-        return (+type)->ob_type == reinterpret_cast<PyTypeObject *>(origin);
-    }
-}
-
-bool is_structured_type(PyObject *type, PyTypeObject *origin) {
-    if constexpr(PythonVersion >= Version(3, 7, 0)) {
-        DUMP("is_structure_type 3.7B");
-        return reinterpret_cast<PyObject *>(origin) == +getattr(type, "__origin__");
-    } else {
-        // case like typing.Tuple: issubclass(typing.Tuple[int, float], tuple)
-        return is_subclass(reinterpret_cast<PyTypeObject *>(type), reinterpret_cast<PyTypeObject *>(origin));
-    }
-}
 
 Object union_cast(Ref &v, Object const &t, Object const &root) {
     if (auto args = type_args(t)) {

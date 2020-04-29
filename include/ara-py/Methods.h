@@ -7,7 +7,7 @@ template <class F>
 PyObject *raw_object(F &&f) noexcept {
     try {
         Object o = static_cast<F &&>(f)();
-        Py_INCREF(+o);
+        Py_XINCREF(+o);
         return +o;
     } catch (PythonError const &) {
         return nullptr;

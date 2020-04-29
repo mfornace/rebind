@@ -11,7 +11,7 @@ Object function_call_impl(Object out, Variable &self, ArgView &&args) {
 //     // if (auto py = self.target<PythonFunction>())
 //         // return {PyObject_CallObject(+py->function, +args), false};
     DUMP("constructed python args ", args.size());
-    for (auto const &p : args) DUMP("argument type: ", p.name());//, " ", p.qualifier());
+    for (auto const &p : args) DUMP("argument type: ", p.name());//, p.qualifier());
 
     if (!out) {
         auto obj = Variable::new_object();
@@ -27,7 +27,7 @@ Object function_call_impl(Object out, Variable &self, ArgView &&args) {
         // return {Py_None, true};
     }
 
-    // DUMP("got the output Value ", out.name(), " ", out.has_value());
+    // DUMP("got the output Value ", out.name(), out.has_value());
 
         // if (auto p = out.target<Object>()) return std::move(*p);
         // if (auto p = out.target<PyObject * &>()) return {*p, true};

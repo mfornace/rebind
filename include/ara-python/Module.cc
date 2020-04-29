@@ -103,31 +103,31 @@ Object initialize(Schema const &schema) {
     }));
 
     // Configuration functions
-    s = s && attach(m, "set_output_conversion", Variable::from(make_function([](Object t, Object o) {
+    s = s && attach(m, "set_output_conversion", Variable::from(make_functor([](Object t, Object o) {
         output_conversions.insert_or_assign(std::move(t), std::move(o));
     })));
-    s = s && attach(m, "set_input_conversion", Variable::from(make_function([](Object t, Object o) {
+    s = s && attach(m, "set_input_conversion", Variable::from(make_functor([](Object t, Object o) {
         input_conversions.insert_or_assign(std::move(t), std::move(o));
     })));
-    s = s && attach(m, "set_translation", Variable::from(make_function([](Object t, Object o) {
+    s = s && attach(m, "set_translation", Variable::from(make_functor([](Object t, Object o) {
         DUMP("set_translation ", repr(t), " -> ", repr(o));
         type_translations.insert_or_assign(std::move(t), std::move(o));
     })));
 
-    s = s && attach(m, "clear_global_objects", Variable::from(make_function(&clear_global_objects)));
+    s = s && attach(m, "clear_global_objects", Variable::from(make_functor(&clear_global_objects)));
 
-    s = s && attach(m, "set_debug", Variable::from(make_function([](bool b) {
+    s = s && attach(m, "set_debug", Variable::from(make_functor([](bool b) {
         DUMP("set_debug ", b);
         return std::exchange(Debug, b);})));
 
-    s = s && attach(m, "debug", Variable::from(make_function([] {return Debug;})));
+    s = s && attach(m, "debug", Variable::from(make_functor([] {return Debug;})));
 
-    s = s && attach(m, "set_type_error", Variable::from(make_function([](Object o) {
+    s = s && attach(m, "set_type_error", Variable::from(make_functor([](Object o) {
         DUMP("setting type error");
         TypeError = std::move(o);
     })));
 
-    s = s && attach(m, "set_type", Variable::from(make_function([](Index idx, Object cls, Object ref) {
+    s = s && attach(m, "set_type", Variable::from(make_functor([](Index idx, Object cls, Object ref) {
         DUMP("set_type in");
         python_types[idx] = {std::move(cls), std::move(ref)};
         DUMP("set_type out");

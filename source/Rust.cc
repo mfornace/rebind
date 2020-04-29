@@ -64,7 +64,7 @@ inline ara::ArgView as_view(ara_args const &s) {
 
 ara_value const * ara_lookup(ara_str s) noexcept {
     auto const &c = ara::schema().contents;
-    DUMP("looking up ", as_view(s), " ", as_view(s).size());
+    DUMP("looking up", as_view(s), as_view(s).size());
     if (auto it = c.find(as_view(s)); it != c.end()) {
         auto v = it->second.as_raw();
         DUMP("hmmm");

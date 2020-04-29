@@ -1,9 +1,25 @@
 #include <ara/Call.h>
+#include <ara/Error.h>
 #include <stdexcept>
-#include <exception>
-#include <string_view>
+#include <ara/Core.h>
 
 /******************************************************************************/
+
+extern "C" {
+
+ARA_DEFINE(void, void);
+ARA_DEFINE(bool, bool);
+ARA_DEFINE(char, char);
+ARA_DEFINE(uchar, unsigned char);
+ARA_DEFINE(int, int);
+ARA_DEFINE(long, long);
+ARA_DEFINE(longlong, long long);
+ARA_DEFINE(ulonglong, unsigned long long);
+ARA_DEFINE(unsigned, unsigned);
+ARA_DEFINE(float, float);
+ARA_DEFINE(double, double);
+
+}
 
 // static_assert(sizeof(std::exception_ptr) == 8);
 // #if __has_include(<boost/core/demangle.hpp>)
@@ -67,38 +83,20 @@ bool debug() noexcept {return Debug;}
 void Target::set_current_exception() noexcept {
     try {
         emplace<std::exception_ptr>(std::current_exception());
-        idx = Index::of<std::exception_ptr>();
+        c.index = Index::of<std::exception_ptr>();
     } catch (...) {
-        out = nullptr;
+        c.output = nullptr;
     }
 }
 
-#warning "cleanup"
-struct Exception : std::exception {
-    Index idx;
-    void *ptr;
-    Exception(Index i, void *p) : idx(i), ptr(p) {}
-
-    Exception(Exception const &) = delete;
-    Exception &operator=(Exception const &) = delete;
-
-    Exception(Exception &&e) noexcept : idx(std::exchange(e.idx, Index())), ptr(e.ptr) {}
-
-    Exception &operator=(Exception &&e) noexcept {idx = std::exchange(e.idx, Index()); return *this;}
-
-    ~Exception() {
-        if (idx) Destruct::call(idx, ptr, Destruct::Heap);
-    }
-};
-
 [[noreturn]] void Target::rethrow_exception() {
-    if (idx == Index::of<std::exception_ptr>()) {
-        std::exception_ptr &ptr = *reinterpret_cast<std::exception_ptr *>(out);
+    if (index() == Index::of<std::exception_ptr>()) {
+        std::exception_ptr &ptr = *reinterpret_cast<std::exception_ptr *>(output());
         auto exc = std::move(ptr);
         ptr.~exception_ptr();
         std::rethrow_exception(std::move(exc));
     } else {
-        throw Exception{idx, out};
+        throw Failure{index(), output()};
     }
 }
 
@@ -120,21 +118,21 @@ Call::stat Call::wrong_return(Target &target, Index i, Qualifier q) noexcept {
 
 [[noreturn]] void call_throw(Target &&target, Call::stat stat) {
     switch (stat) {
-        case Call::Stack:   {throw CallError("Invalid call status: Stack", stat);}
-        case Call::Heap:    {throw CallError("Invalid call status: Heap", stat);}
-        case Call::None:    {throw CallError("Invalid call status: None", stat);}
-        case Call::Const:   {throw CallError("Invalid call status: Const", stat);}
-        case Call::Mutable: {throw CallError("Invalid call status: Mutable", stat);}
+        case Call::Stack:   {throw InvalidStatus("Call: InvalidStatus: Stack", stat);}
+        case Call::Heap:    {throw InvalidStatus("Call: InvalidStatus: Heap", stat);}
+        case Call::None:    {throw InvalidStatus("Call: InvalidStatus: None", stat);}
+        case Call::Const:   {throw InvalidStatus("Call: InvalidStatus: Const", stat);}
+        case Call::Mutable: {throw InvalidStatus("Call: InvalidStatus: Mutable", stat);}
 
-        case Call::Impossible:  {throw CallError("Impossible", stat);}
-        case Call::WrongType:   {throw CallError("WrongType", stat);}
-        case Call::WrongNumber: {throw CallError("WrongNumber", stat);}
-        case Call::WrongReturn: {throw CallError("WrongReturn", stat);}
+        case Call::Impossible:  {throw NotImplemented("Call: Impossible", stat);}
+        case Call::WrongType:   {throw WrongType("WrongType");}
+        case Call::WrongNumber: {throw WrongNumber(1, 2);}
+        case Call::WrongReturn: {throw WrongReturn("WrongReturn");}
                 // Postcondition failure
         case Call::OutOfMemory: {throw std::bad_alloc();}
         case Call::Exception: {target.rethrow_exception();}
     }
-    throw std::runtime_error("very bad");
+    throw InvalidStatus("Call: InvalidStatus: Unknown", stat);
 }
 
 // void lvalue_fails(Variable const &v, Scope &msg, Index t) {

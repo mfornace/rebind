@@ -9,7 +9,6 @@
 #include <vector>
 #include <ara/Index.h>
 #include <ara/Common.h>
-// #include <ara/Scope.h>
 
 namespace ara::py {
 

@@ -1,6 +1,6 @@
 
 #include <ara-cpp/Schema.h>
-#include <ara-cpp/Core.h>
+#include <ara/Core.h>
 #include <mutex>
 
 struct Example;
@@ -22,12 +22,11 @@ int main() {
     // auto p = v.target<int const &>();
     // DUMP(v.name(), *p);
     // DUMP(v.has_value());
-    // Scope s;
     // DUMP(v.load<int>(s).value());
 {
     DUMP("testing first function fun with args 1, 2.0");
     auto blah = Mod::call<double>("fun", Caller(), 1, 2.0);
-    DUMP("got result ", blah);
+    DUMP("got result", blah);
 }
 {
     DUMP("call void");
@@ -46,7 +45,7 @@ int main() {
     DUMP("call ref");
     double x;
     double &y = Mod::call<double &>("lref2", Caller(), x);
-    DUMP(x, " ", y, " ", &x == &y);
+    DUMP(x, y, &x == &y);
 }
 
 {
@@ -54,7 +53,7 @@ int main() {
     double x=5;
     double const &y = Mod::call<double const &>("lref3", Caller(), x);
     DUMP(bool(y));
-    DUMP(x, " ", y, " ", &x == &y);
+    DUMP(x, y, &x == &y);
 }
     std::mutex mut;
     try {
@@ -74,11 +73,12 @@ int main() {
 {
     DUMP("Goo stuff");
     Value v = Mod::call<Value>("Goo.new", Caller(), 1.5);
-    DUMP("got the Goo? ", v.name(), " ", int(v.location()), " ", v.address());//, " ", int(Value::loc_of<Goo>));
+    DUMP("got the Goo?", v.name(), int(v.location()));//, int(Value::loc_of<Goo>));
+
     double y = v.call<double, 1>(Caller(), ".x");
-    DUMP("got .x ", y);
+    DUMP("got .x", y);
     double y2 = v.call<double, 1>(Caller(), ".x");
-    DUMP("got .x ", y2);
+    DUMP("got .x", y2);
     double y3 = v.call<double>(Caller());
 }
 

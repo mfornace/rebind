@@ -218,6 +218,7 @@ std::is_convertible<T, C> third_is_convertible(Pack<R, S, T, Ts...>);
 inline Type<void> simplify_argument(Type<void>) {return {};}
 
 /// Check type and remove cv qualifiers on arguments that are not lvalues
+// Output is like X, X const &, X &, or X &&
 template <class T>
 constexpr auto simplify_argument(Type<T>) {
     using U = std::remove_reference_t<T>;
@@ -233,6 +234,7 @@ auto simplify_argument(IndexedType<T> t) {
     return IndexedType<typename decltype(simplify_argument(Type<T>()))::type>{t.index};
 }
 
+// Output is like X, X const &, X &
 template <class T>
 constexpr auto simplify_return_type(Type<T>) {
     using U = std::remove_reference_t<T>;

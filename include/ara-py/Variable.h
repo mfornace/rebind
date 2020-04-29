@@ -57,30 +57,7 @@ inline Variable::~Variable() noexcept {
 
 /******************************************************************************/
 
-Object call_to_variable(Index self, Pointer address, Tag qualifier, ArgView &args) {
-    auto o = Variable::new_object();
-    Variable &out = cast_object<Variable>(+o);
-    Target target{Index(), &out.storage, sizeof(out.storage), Target::Stack};
-
-    auto const stat = Call::call(self, target, address, qualifier, args);
-    DUMP("Variable got stat: ", stat);
-
-    switch (stat) {
-        case Call::None:        break;
-        case Call::Const:       {out.idx = Tagged(target.idx, Variable::Const);   break;}
-        case Call::Mutable:     {out.idx = Tagged(target.idx, Variable::Mutable); break;}
-        case Call::Stack:       {out.idx = Tagged(target.idx, Variable::Stack);   break;}
-        case Call::Heap:        {out.idx = Tagged(target.idx, Variable::Heap);    break;}
-#warning "implement these"
-        case Call::Impossible:  {throw PythonError(type_error("Impossible"));}
-        case Call::WrongNumber: {throw PythonError(type_error("WrongNumber"));}
-        case Call::WrongType:   {throw PythonError(type_error("WrongType"));}
-        case Call::WrongReturn: {throw PythonError(type_error("WrongReturn"));}
-        case Call::Exception:   {throw PythonError(type_error("Exception"));}
-        case Call::OutOfMemory: {throw std::bad_alloc();}
-    }
-    return o;
-}
+Object call_to_variable(Index self, Pointer address, Tag qualifier, ArgView &args);
 
 /******************************************************************************/
 

@@ -1,7 +1,9 @@
 
 #include <ara/Call.h>
+#include <ara/Core.h>
 #include <ara-cpp/Schema.h>
-// #include <ara/types/Arrays.h>
+#include <ara-cpp/Standard.h>
+#include <ara-cpp/Arrays.h>
 #include <iostream>
 
 
@@ -24,7 +26,6 @@ static_assert(std::is_trivially_copyable_v<std::optional<int>>);
 
 
 using ara::Type;
-using ara::Scope;
 using ara::Value;
 using ara::Schema;
 
@@ -184,6 +185,7 @@ struct ara::Callable<Goo> {
         return false;
     }
     bool operator()(Method method, Goo const &self) {
+        DUMP("calling Goo method");
         return method(self, &Goo::x)
             || method(self, ".x", &Goo::x)
             // || method(self, "test_throw", &Goo::test_throw)
@@ -210,7 +212,7 @@ void Example::write(ara::Schema &s) {
         return 1.2;
     });
     s.function("fun", [](int i, double d) {
-        DUMP("fun", " ", i, " ", d);
+        DUMP("fun", i, d);
         return i + d;
     });
     s.function("refthing", [](double const &d) {

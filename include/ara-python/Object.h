@@ -67,9 +67,3 @@ struct Object {
 
 }
 
-namespace std {
-    template <>
-    struct hash<ara::py::Object> {
-        size_t operator()(ara::py::Object const &o) const {return std::hash<PyObject *>()(o.ptr);}
-    };
-}
