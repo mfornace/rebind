@@ -13,7 +13,7 @@ struct Blah {
     void dump() const {DUMP(name);}
 };
 
-Variable response(std::type_index t, Blah b) {
+Variable response(TypeIndex t, Blah b) {
     if (t == typeid(std::string)) return std::move(b.name);
     return {};
 }

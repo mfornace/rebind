@@ -4,6 +4,7 @@
 #include <string_view>
 #include <iostream>
 #include <functional>
+#include <typeindex>
 
 namespace rebind {
 
@@ -82,6 +83,9 @@ public:
     std::type_info const & info() const noexcept {return p.first ? *p.first : typeid(void);}
     std::string name() const noexcept {return demangle(info().name());}
     constexpr Qualifier qualifier() const noexcept {return p.second;}
+
+    operator std::type_info const &() const noexcept {return info();}
+    operator std::type_index() const noexcept {return info();}
 
     /// For now, hash code does not incorporate the qualifier
     std::size_t hash_code() const noexcept {return info().hash_code();}

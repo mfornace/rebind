@@ -16,7 +16,7 @@ struct ImplicitConversions {
 
 template <class U, class T>
 bool implicit_match(Variable &out, Type<U>, TargetQualifier const q, T &&t) {
-    DUMP("implicit_match", typeid(U).name(), typeid(Type<T &&>).name(), q);
+    DUMP("implicit_match: ", typeid(U).name(), typeid(Type<T &&>).name(), q);
     if constexpr(std::is_convertible_v<T &&, U>)
         if (q == Value) out = {Type<U>(), static_cast<T &&>(t)};
     if constexpr(std::is_convertible_v<T &&, U &>)
@@ -25,7 +25,7 @@ bool implicit_match(Variable &out, Type<U>, TargetQualifier const q, T &&t) {
         if (q == Rvalue) out = {Type<U &&>(), static_cast<T &&>(t)};
     if constexpr(std::is_convertible_v<T &&, U const &>)
         if (q == Const) out = {Type<U const &>(), static_cast<T &&>(t)};
-    DUMP("implicit_response result ", out.has_value(), typeid(Type<T &&>).name(), typeid(U).name(), q);
+    DUMP("implicit_response result: ", out.has_value(), typeid(Type<T &&>).name(), typeid(U).name(), q);
     return out.has_value();
 }
 
@@ -36,7 +36,7 @@ bool recurse_implicit(Variable &out, Type<U>, TypeIndex const &idx, TargetQualif
 
 template <class T>
 bool implicit_response(Variable &out, TypeIndex const &idx, TargetQualifier q, T &&t) {
-    DUMP("implicit_response", typeid(Type<T &&>).name(), idx.name(), typeid(typename ImplicitConversions<std::decay_t<T>>::types).name(), q);
+    DUMP("implicit_response: ", typeid(Type<T &&>).name(), idx.name(), typeid(typename ImplicitConversions<std::decay_t<T>>::types).name(), q);
     return ImplicitConversions<std::decay_t<T>>::types::apply([&](auto ...ts) {
         static_assert((!decltype(is_same(+Type<T>(), +ts))::value && ...), "Implicit conversion creates a cycle");
         return ((idx.matches(ts) && implicit_match(out, ts, q, static_cast<T &&>(t))) || ...)
@@ -67,7 +67,7 @@ struct Response {
 
     template <class T2>
     bool operator()(Variable &out, TypeIndex const &idx, T2 &&t) const {
-        DUMP("no conversion found from source", TypeIndex(typeid(T), Q), "to", idx);
+        DUMP("no conversion found from source ", TypeIndex(typeid(T), Q), " to ", idx);
         return implicit_response(out, idx, Q, static_cast<T2 &&>(t));
     }
 };
@@ -92,7 +92,7 @@ struct Response<T, Q, std::void_t<decltype(response(std::declval<TypeIndex>(), s
 
     template <class T2>
     bool operator()(Variable &out, TypeIndex const &idx, T2 &&t) const {
-        DUMP("ADL Response", typeid(T), idx);
+        DUMP("ADL Response: ", typeid(T), idx);
         out = response(idx, static_cast<T2 &&>(t));
         return out || implicit_response(out, idx, Q, static_cast<T2 &&>(t));
     }
