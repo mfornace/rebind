@@ -41,6 +41,10 @@ struct Target {
         // Trivial           // Request stack storage as long as type is trivial
     };
 
+    static Target from(Index i, void* out, Code len, Tag tag) {
+        return {ara_target{i, out, 0, len, tag}};
+    }
+
     Tag tag() const {return static_cast<Tag>(c.tag);}
     Index index() const {return c.index;}
     Code length() const {return c.length;}
@@ -102,10 +106,6 @@ struct Target {
     }
 
     [[noreturn]] void rethrow_exception();
-
-    static Target from(Index i, void* out, Code len, Tag tag) {
-        return {ara_target{i, out, 0, len, tag}};
-    }
 };
 
 static_assert(std::is_aggregate_v<Target>);

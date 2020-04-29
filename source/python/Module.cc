@@ -7,7 +7,7 @@ struct Example;
 extern "C" {
 
 PyMODINIT_FUNC PyInit_cpp(void) {
-    return ara::py::init_module<Example>();
+    return reinterpret_cast<PyObject*>(ara::py::init_module<Example>());
 }
 
 }

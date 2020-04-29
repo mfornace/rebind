@@ -119,13 +119,14 @@ bool arithmetic_to_value(Target &v, Object const &o) {
 /******************************************************************************/
 
 bool dump_object(Target &v, Object o) {
-    if (Debug) {
+    if (!o) return false;
+
+    // if (Debug) {
         auto repr = Object::from(PyObject_Repr(SubClass<PyTypeObject>{(+o)->ob_type}));
         DUMP("input object reference count =", reference_count(o));
         DUMP("trying to convert object to", v.name(), from_unicode(+repr));
-        DUMP("is Value =", bool(cast_if<Value>(o)));
-    }
-    if (!o) return false;
+        // DUMP("is Value =", bool(cast_if<Value>(o)));
+    // }
 
 #warning "need to finish ToValue<py::Object>?"
 

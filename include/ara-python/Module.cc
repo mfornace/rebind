@@ -68,17 +68,17 @@ Object initialize(Schema const &schema) {
 
     auto m = Object::from(PyDict_New());
 
-    if (PyType_Ready(TypePtr::from<ArrayBuffer>()) < 0) return {};
-    incref(TypePtr::from<ArrayBuffer>());
+    if (PyType_Ready(static_type<ArrayBuffer>()) < 0) return {};
+    incref(static_type<ArrayBuffer>());
 
     DUMP("making python");
 
     bool s = true;
 
     // Builtin types
-    s = s && attach_type(m, "Variable", TypePtr::from<Variable>());
-    // s = s && attach_type(m, "Ref", TypePtr::from<Ref>());
-    s = s && attach_type(m, "Index", TypePtr::from<Index>());
+    s = s && attach_type(m, "Variable", static_type<Variable>());
+    // s = s && attach_type(m, "Ref", static_type<Ref>());
+    s = s && attach_type(m, "Index", static_type<Index>());
 
     // scalars: exposed as Tuple[Tuple[int, Index, int], ...]
     s = s && attach(m, "scalars", map_as_tuple(scalars, [](auto const &x) {

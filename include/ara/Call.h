@@ -78,14 +78,6 @@ struct Arg<T&&> {
 /******************************************************************************/
 
 template <class T>
-struct Destructor {
-    T &held;
-    ~Destructor() noexcept {Destruct::impl<T>::put(held, Destruct::Stack);}
-};
-
-/******************************************************************************/
-
-template <class T>
 struct CallReturn {
     static std::optional<T> get(Index i, Tag qualifier, Pointer self, Caller &c, ArgView &args) {
         std::aligned_union_t<0, T, void*> buffer;

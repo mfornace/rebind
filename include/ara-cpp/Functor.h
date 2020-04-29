@@ -112,8 +112,8 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
         return Call::None;
     }
 
-    if (target.accepts<U>()) {
-        if constexpr(!std::is_void_v<U>) { // void already handled
+    if constexpr(!std::is_void_v<U>) { // void already handled
+        if (target.accepts<U>()) {
             if (target.wants_value()) {
                 if constexpr(std::is_same_v<O, U> || std::is_convertible_v<O, U>) {
                     if (auto p = target.placement<U>()) {
@@ -135,9 +135,28 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
                     }
                 }
             }
+        } else {
+            if constexpr(std::is_reference_v<O>) {
+                switch (Reference(std::invoke(f, static_cast<Ts &&>(ts)...)).load_to(target)) {
+                    case Load::Exception: return Call::Exception;
+                    case Load::OutOfMemory: return Call::OutOfMemory;
+                    case Load::OK: return std::is_same_v<O, U &> ? Call::Mutable : Call::Const;
+                    case Load::None: {}
+                }
+            } else {
+                storage_like<U> storage;
+                new (&storage) U(std::invoke(f, static_cast<Ts &&>(ts)...));
+                switch (Reference(Index::of<U>(), Tag::Stack, Pointer::from(&storage)).load_to(target)) {
+                    case Load::Exception: return Call::Exception;
+                    case Load::OutOfMemory: return Call::OutOfMemory;
+                    case Load::OK: return Call::Stack;
+                    case Load::None: {}
+                }
+            }
         }
     }
-#   warning "fix a bit for reference returned as value..."
+
+#   warning "needs work... for reference returned as value... etc"
 
     return Call::wrong_return(target, Index::of<U>(), qualifier_of<O>);
 }

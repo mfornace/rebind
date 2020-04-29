@@ -1,6 +1,7 @@
 #pragma once
 #include "Wrap.h"
 #include "Raw.h"
+#include "Load.h"
 #include <ara/Ref.h>
 
 namespace ara::py {
@@ -34,42 +35,41 @@ struct Variable {
     auto name() const noexcept {return index().name();}
 
     void *address() const {return idx.tag() == Stack ? const_cast<Storage *>(&storage) : storage.pointer;}
-    Ref as_ref() const {return Ref(index(), Tag::Const, address());}
-    Ref as_ref() {return Ref(index(), Tag::Mutable, address());}
+    Ref as_ref() const {return has_value() ? Ref::from_existing(index(), Pointer::from(address()), false) : Ref();}
+    Ref as_ref() {return has_value() ? Ref::from_existing(index(), Pointer::from(address()), true) : Ref();}
 
     template <class T>
-    static Object from(T value, Object ward={});
+    static Shared from(T value, Shared ward={});
 
-    static Object from(Ref const &, Object ward={});
+    static Shared from(Ref const &, Shared ward={});
 
-    static Object new_object();
+    static Shared new_object();
 };
-
 
 inline Variable::~Variable() noexcept {
     if (has_value()) switch (location()) {
         case Const:   return;
         case Mutable: return;
-        case Heap:    {Destruct::call(index(), storage.pointer, Destruct::Heap); break;}
-        case Stack:   {Destruct::call(index(), &storage, Destruct::Stack); break;}
+        case Heap:    {Destruct::call(index(), Pointer::from(storage.pointer), Destruct::Heap); break;}
+        case Stack:   {Destruct::call(index(), Pointer::from(&storage), Destruct::Stack); break;}
     }
 }
 
 /******************************************************************************/
 
-Object call_to_variable(Index self, Pointer address, Tag qualifier, ArgView &args);
+Shared call_to_variable(Index self, Pointer address, Tag qualifier, ArgView &args);
 
 /******************************************************************************/
 
-Ref ref_from_object(Object &o, bool move=false);
+Ref ref_from_object(Instance<> o, bool move=false);
 
-inline Object Variable::new_object() {
-    return Object::from(PyObject_CallObject(TypePtr::from<Variable>(), nullptr));
+inline Shared Variable::new_object() {
+    return Shared::from(PyObject_CallObject(static_type<Variable>().object(), nullptr));
 }
 
 template <class T>
-Object Variable::from(T value, Object ward) {
-    auto o = new_object();
+Shared Variable::from(T value, Shared ward) {
+    Shared o = new_object();
     auto &v = cast_object<Variable>(+o);
     if constexpr(loc_of<T> == Heap) {
         v.storage.pointer = parts::alloc<T>(std::move(value));
@@ -80,7 +80,7 @@ Object Variable::from(T value, Object ward) {
     return o;
 }
 
-inline Object Variable::from(Ref const &r, Object ward) {
+inline Shared Variable::from(Ref const &r, Shared ward) {
     Loc loc;
     if (r) switch (r.tag()) {
         case Tag::Const: {loc = Const; break;}
@@ -92,11 +92,12 @@ inline Object Variable::from(Ref const &r, Object ward) {
     auto o = new_object();
     auto &v = cast_object<Variable>(+o);
     if (r) {
-        v.storage.pointer = r.ptr.base;
+        v.storage.pointer = r.pointer().base;
         v.idx = Tagged(r.index(), loc);
     }
     return o;
 }
+
 // void args_from_python(ArgView &s, Object const &pypack);
 
 // bool object_response(Value &v, Index t, Object o);

@@ -105,6 +105,14 @@ struct Destruct {
 
 /******************************************************************************/
 
+template <class T>
+struct Destructor {
+    T &held;
+    ~Destructor() noexcept {Destruct::impl<T>::put(held, Destruct::Stack);}
+};
+
+/******************************************************************************/
+
 // Return a handle to std::type_info or some language-specific equivalent
 // -- Should be done in a noexcept way and should always succeed
 struct Info {

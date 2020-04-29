@@ -20,25 +20,28 @@ namespace ara::py {
 
 /******************************************************************************/
 
-Ptr index_new(PyTypeObject *subtype, Ptr, Ptr) noexcept {
-    Ptr o = subtype->tp_alloc(subtype, 0); // 0 unused
-    if (o) new (&cast_object<Index>(o)) Index(); // noexcept
+PyObject* c_index_new(PyTypeObject *subtype, PyObject*, PyObject*) noexcept {
+    PyObject* o = subtype->tp_alloc(subtype, 0); // 0 unused
+    if (o) new (&cast_object_unsafe<Index>(o)) Index(); // noexcept
     return o;
 }
 
-long index_hash(Ptr o) noexcept {
-    return static_cast<long>(std::hash<Index>()(cast_object<Index>(o)));
+long c_index_hash(PyObject* o) noexcept {
+    if (auto p = cast_if<Index>(o))
+        return static_cast<long>(std::hash<Index>()(*p));
+    type_error("Expected instance of ara.Index");
+    return -1;
 }
 
-Ptr index_repr(Ptr o) noexcept {
-    Index const *p = cast_if<Index>(o);
-    if (p) return PyUnicode_FromFormat("Index('%s')", p->name().data());
+PyObject* c_index_repr(PyObject* o) noexcept {
+    if (auto p = cast_if<Index>(o))
+        return PyUnicode_FromFormat("Index('%s')", p->name().data());
     return type_error("Expected instance of ara.Index");
 }
 
-Ptr index_str(Ptr o) noexcept {
-    Index const *p = cast_if<Index>(o);
-    if (p) return PyUnicode_FromString(p->name().data());
+PyObject* c_index_str(PyObject* o) noexcept {
+    if (auto p = cast_if<Index>(o))
+        return PyUnicode_FromString(p->name().data());
     return type_error("Expected instance of ara.Index");
 }
 
@@ -48,11 +51,12 @@ Ptr index_str(Ptr o) noexcept {
 //     });
 // }
 
-void initialize_index(PyTypeObject *o) {
-    define_type<Index>(o, "ara.Index", "Index");
-    o->tp_repr = index_repr;
-    o->tp_hash = index_hash;
-    o->tp_str = index_str;
+template <>
+void Wrap<Index>::initialize(Instance<PyTypeObject> o) noexcept {
+    define_type<Index>(o, "ara.Index", "Index type");
+    (+o)->tp_repr = c_index_repr;
+    (+o)->tp_hash = c_index_hash;
+    (+o)->tp_str = c_index_str;
     // o->tp_richcompare = index_compare;
     // no init (just use default constructor)
     // tp_traverse, tp_clear
@@ -103,22 +107,37 @@ PyMethodDef VariableMethods[] = {
 
 /******************************************************************************/
 
-void initialize_variable(PyTypeObject *o) {
+template <>
+void Wrap<Variable>::initialize(Instance<PyTypeObject> o) noexcept {
     DUMP("defining Variable");
     define_type<Variable>(o, "ara.Variable", "Object class");
-    o->tp_as_number = &VariableNumberMethods;
+    (+o)->tp_as_number = &VariableNumberMethods;
     DUMP("defining Variable");
-    o->tp_methods = VariableMethods;
+    (+o)->tp_methods = VariableMethods;
     DUMP("defining Variable");
-    // o.tp_call = function_call;
+    (+o)->tp_call = c_variable_call;
     DUMP("defined Variable");
     // no init (just use default constructor)
     // tp_traverse, tp_clear
     // PyMemberDef, tp_members
 };
 
+/******************************************************************************/
 
-template<> Ptr init_module<Example>() noexcept {
+template <class T>
+bool add_module_type(PyObject* mod, char const* name) {
+    auto t = static_type<T>();
+    Wrap<T>::initialize(t);
+    if (PyType_Ready(+t) < 0) return false;
+    // incref(t);
+    if (PyModule_AddObject(mod, name, t.object()) < 0) return false;
+    return true;
+}
+
+/******************************************************************************/
+
+template<>
+PyObject* init_module<Example>() noexcept {
     Py_Initialize();
 
     DUMP("initializing...");
@@ -132,7 +151,7 @@ template<> Ptr init_module<Example>() noexcept {
 
     DUMP("initializing...done");
     static PyMethodDef methods[] = {
-        {"call", c_function(c_call<Example>), METH_VARARGS, "Execute a shell command."},
+        {"call", c_function(c_module_call<Example>), METH_VARARGS, "Execute a shell command."},
         {NULL, NULL, 0, NULL}        /* Sentinel */
     };
 
@@ -158,23 +177,10 @@ template<> Ptr init_module<Example>() noexcept {
     // - the strings may not be valid, OK this is not good.
 
     Py_Initialize();
-    Ptr mod = PyModule_Create(&module);
-{
-    auto t = TypePtr::from<Variable>();
-    initialize_variable(t);
-    if (PyType_Ready(t) < 0) return nullptr;
-    // incref(t);
-    if (PyModule_AddObject(mod, "Variable", t) < 0) return nullptr;
-}
-
-{
-    auto t = TypePtr::from<Index>();
-    initialize_index(t);
-    if (PyType_Ready(t) < 0) return nullptr;
-    // incref(t);
-    if (PyModule_AddObject(mod, "Index", t) < 0) return nullptr;
-}
-
+    PyObject* mod = PyModule_Create(&module);
+    if (!mod) return nullptr;
+    if (!add_module_type<Variable>(mod, "Variable")) return nullptr;
+    if (!add_module_type<Index>(mod, "Index")) return nullptr;
 
     return mod;
 }

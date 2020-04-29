@@ -6,7 +6,7 @@ namespace ara::py {
 template <class F>
 PyObject *raw_object(F &&f) noexcept {
     try {
-        Object o = static_cast<F &&>(f)();
+        Shared o = static_cast<F &&>(f)();
         Py_XINCREF(+o);
         return +o;
     } catch (PythonError const &) {
@@ -26,10 +26,10 @@ PyObject *raw_object(F &&f) noexcept {
 /******************************************************************************/
 
 template <class T>
-PyObject *c_new(PyTypeObject *subtype, PyObject *, Ptr) noexcept {
+PyObject *c_new(PyTypeObject* subtype, PyObject*, PyObject*) noexcept {
     static_assert(noexcept(T{}), "Default constructor should be noexcept");
     PyObject *o = subtype->tp_alloc(subtype, 0); // 0 unused
-    if (o) new (&cast_object<T>(o)) T; // Default construct the C++ type
+    if (o) new (&cast_object_unsafe<T>(o)) T; // Default construct the C++ type
     return o;
 }
 
@@ -44,14 +44,14 @@ void c_delete(PyObject *o) noexcept {
 /******************************************************************************/
 
 template <class T>
-void define_type(PyTypeObject *o, char const *name, char const *doc) noexcept {
+void define_type(Instance<PyTypeObject> o, char const *name, char const *doc) noexcept {
     DUMP("define type ", name);
-    o->tp_name = name;
-    o->tp_basicsize = sizeof(Wrap<T>);
-    o->tp_dealloc = c_delete<T>;
-    o->tp_new = c_new<T>;
-    o->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
-    o->tp_doc = doc;
+    (+o)->tp_name = name;
+    (+o)->tp_basicsize = sizeof(Wrap<T>);
+    (+o)->tp_dealloc = c_delete<T>;
+    (+o)->tp_new = c_new<T>;
+    (+o)->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
+    (+o)->tp_doc = doc;
 }
 
 /******************************************************************************/
@@ -60,38 +60,38 @@ void define_type(PyTypeObject *o, char const *name, char const *doc) noexcept {
 //                     2) during assignment, R.move_from(L), to transfer the object (here cast V to new object of same type, swap)
 //                     2) during assignment, R.move_from(V), to transfer the object (here cast V to new object of same type, swap)
 template <class Self>
-PyObject * c_copy_from(Ptr self, PyObject *value) noexcept {
-    return raw_object([=]() -> Object {
+PyObject * c_copy_from(PyObject* self, PyObject* value) noexcept {
+    return raw_object([=]() -> Shared {
         // DUMP("- copy_from ", typeid(Self).name());
-        // Object val(value, true);
+        // Shared val(value, true);
         // bool ok = Ref(cast_object<Self>(self)).assign_if(ref_from_object(val, false));
         // if (!ok) return type_error("could not assign");
-        return Object(self, true);
+        return Shared(self, true);
     });
 }
 
 template <class Self>
-PyObject * c_move_from(Ptr self, PyObject *value) noexcept {
+PyObject * c_move_from(PyObject* self, PyObject* value) noexcept {
     return raw_object([=] {
         // DUMP("- move_from");
-        // Object val(value, true);
+        // Shared val(value, true);
         // Ref(cast_object<Self>(self)).assign_if(ref_from_object(val, false));
         // if (auto p = cast_if<Value>(value)) p->reset();
-        return Object(self, true);
+        return Shared(self, true);
     });
 }
 
 /******************************************************************************/
 
 template <class Self>
-int c_operator_has_value(Ptr self) noexcept {
+int c_operator_has_value(PyObject* self) noexcept {
     if (auto v = cast_if<Self>(self)) return v->has_value();
     else return PyObject_IsTrue(self);
 }
 
 template <class Self>
-Ptr c_has_value(Ptr self, Ptr) noexcept {
-    Ptr out = c_operator_has_value<Self>(self) ? Py_True : Py_False;
+PyObject* c_has_value(PyObject* self, PyObject*) noexcept {
+    PyObject* out = c_operator_has_value<Self>(self) ? Py_True : Py_False;
     Py_INCREF(out);
     return out;
 }
@@ -99,10 +99,10 @@ Ptr c_has_value(Ptr self, Ptr) noexcept {
 /******************************************************************************/
 
 template <class Self>
-PyObject * c_get_index(Ptr self, Ptr) noexcept {
+PyObject * c_get_index(PyObject* self, PyObject*) noexcept {
     return raw_object([=] {
-        auto o = Object::from(PyObject_CallObject(TypePtr::from<Index>(), nullptr));
-        cast_object<Index>(+o) = cast_object<Self>(self).index();
+        auto o = Shared::from(PyObject_CallObject(static_type<Index>().object(), nullptr));
+        cast_object_unsafe<Index>(+o) = cast_object<Self>(self).index();
         return o;
     });
 }
@@ -128,17 +128,17 @@ PyObject * c_get_index(Ptr self, Ptr) noexcept {
 // }
 
 template <class Self>
-PyObject * c_get_ward(Ptr self, Ptr) noexcept {
+PyObject * c_get_ward(PyObject* self, PyObject*) noexcept {
     return raw_object([=] {
-        Object out = cast_object<Self>(self).ward;
-        return out ? out : Object(Py_None, true);
+        Shared out = cast_object<Self>(self).ward;
+        return out ? out : Shared(Py_None, true);
     });
 }
 
 template <class Self>
-PyObject * c_set_ward(Ptr self, PyObject *arg) noexcept {
-    return raw_object([=]() -> Object {
-        Object root{arg, true};
+PyObject * c_set_ward(PyObject* self, PyObject *arg) noexcept {
+    return raw_object([=]() -> Shared {
+        Shared root{arg, true};
         while (true) { // recurse upwards to find the governing lifetime
             auto p = cast_if<Self>(root);
             if (!p || !p->ward) break;
@@ -152,8 +152,8 @@ PyObject * c_set_ward(Ptr self, PyObject *arg) noexcept {
 /******************************************************************************/
 
 template <class Self>
-PyObject * c_method(PyObject *s, PyObject *args, PyObject *kws) noexcept {
-    return raw_object([=]() -> Object {
+PyObject* c_method(PyObject* s, PyObject* args, PyObject* kws) noexcept {
+    return raw_object([=]() -> Shared {
         return {};
         // auto argv = objects_from_argument_tuple(args);
         // auto const [tag, out, gil] = function_call_keywords(kws);

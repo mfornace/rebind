@@ -14,20 +14,12 @@
 // #define ARA_PY_BEGIN ara::py { inline namespace v37
 // #define ARA_PY_END }
 
-/******************************************************************************************/
-
-
-/******************************************************************************************/
+/******************************************************************************/
 
 namespace ara::py {
 
-template <class Module>
-PyObject* init_module() noexcept;
-
-/******************************************************************************/
 
 static constexpr auto Version = std::make_tuple(PY_MAJOR_VERSION, PY_MINOR_VERSION, PY_MICRO_VERSION);
-using Ptr = PyObject*;
 
 /******************************************************************************/
 
@@ -35,59 +27,71 @@ struct PythonError {
     PythonError(std::nullptr_t=nullptr) {}
 };
 
-struct Object {
-    PyObject *base;
+/******************************************************************************/
 
-    Object() : base(nullptr) {}
-    Object(std::nullptr_t) : base(nullptr) {}
-
-    Object(PyObject *o, bool increment) : base(o) {if (increment) Py_XINCREF(base);}
-
-    Object(Object const &o) noexcept : base(o.base) {Py_XINCREF(base);}
-    Object & operator=(Object const &o) noexcept {base = o.base; Py_XINCREF(base); return *this;}
-
-    Object(Object &&o) noexcept : base(std::exchange(o.base, nullptr)) {}
-    Object & operator=(Object &&o) noexcept {base = std::exchange(o.base, nullptr); return *this;}
-
-    explicit operator bool() const {return base;}
-    PyObject *operator+() const {return base;}
-
-    bool operator<(Object const &o) const {return base < o.base;}
-    bool operator>(Object const &o) const {return base > o.base;}
-    bool operator==(Object const &o) const {return base == o.base;}
-    bool operator!=(Object const &o) const {return base != o.base;}
-    bool operator<=(Object const &o) const {return base <= o.base;}
-    bool operator>=(Object const &o) const {return base >= o.base;}
-    friend void swap(Object &o, Object &p) noexcept {std::swap(o.base, p.base);}
-
-    static Object from(PyObject *o) {return o ? Object(o, false) : throw PythonError();}
-
-    ~Object() {Py_XDECREF(base);}
-};
+template <class Module>
+PyObject* init_module() noexcept;
 
 /******************************************************************************/
 
-template <class T>
-struct SubClass {
+// Non null wrapper for object pointer
+template <class T=PyObject>
+struct Instance {
     T *ptr;
-    SubClass(T* p=nullptr) noexcept : ptr(p) {}
+    explicit constexpr Instance(T *b) noexcept __attribute__((nonnull (2))) : ptr(b) {}
 
-    operator PyObject *() const {return reinterpret_cast<PyObject *>(ptr);}
-    operator T *() const {return ptr;}
-    explicit operator bool() const {return ptr;}
+    constexpr T* operator+() const noexcept __attribute__((returns_nonnull)) {return ptr;}
+    PyObject* object() const noexcept __attribute__((returns_nonnull)) {return reinterpret_cast<PyObject*>(ptr);}
 
-    bool operator==(SubClass const &other) {return ptr == other.ptr;}
+    template <class To>
+    Instance<To> reinterpret() const {return Instance<To>(reinterpret_cast<To *>(ptr));}
+
+    constexpr bool operator==(Instance const &other) noexcept {return ptr == other.ptr;}
 };
 
-struct TypePtr : SubClass<PyTypeObject> {
-    using SubClass<PyTypeObject>::SubClass;
+// inline constexpr Instance<> instance(PyObject* t) {return Instance<>(t);}
 
-    static TypePtr from(Ptr p) noexcept {
-        return TypePtr(PyType_CheckExact(p) ? reinterpret_cast<PyTypeObject *>(p) : nullptr);
-    }
+template <class T>
+constexpr Instance<T> instance(T* t) noexcept {
+    // if (!t) throw std::runtime_error("bad!");
+    return Instance<T>(t);
+}
 
-    template <class T>
-    static TypePtr from(Type<T> t={}) noexcept;
+// template <class T>
+// Instance<T> instance(PyObject* t) {return Instance<T>(reinterpret_cast<T*>(t));}
+
+/******************************************************************************/
+
+// RAII shared pointer interface to a possibly null object
+struct Shared {
+    PyObject* base;
+
+    Shared() : base(nullptr) {}
+    Shared(std::nullptr_t) : base(nullptr) {}
+
+    Shared(PyObject* o, bool increment) : base(o) {if (increment) Py_XINCREF(base);}
+    Shared(Instance<> o, bool increment) : base(+o) {if (increment) Py_INCREF(base);}
+
+    Shared(Shared const &o) noexcept : base(o.base) {Py_XINCREF(base);}
+    Shared & operator=(Shared const &o) noexcept {base = o.base; Py_XINCREF(base); return *this;}
+
+    Shared(Shared &&o) noexcept : base(std::exchange(o.base, nullptr)) {}
+    Shared & operator=(Shared &&o) noexcept {base = std::exchange(o.base, nullptr); return *this;}
+
+    static Shared from(PyObject* o) {return o ? Shared(o, false) : throw PythonError();}
+
+    explicit operator bool() const {return base;}
+    PyObject* operator+() const {return base;}
+
+    bool operator<(Shared const &o) const {return base < o.base;}
+    bool operator>(Shared const &o) const {return base > o.base;}
+    bool operator==(Shared const &o) const {return base == o.base;}
+    bool operator!=(Shared const &o) const {return base != o.base;}
+    bool operator<=(Shared const &o) const {return base <= o.base;}
+    bool operator>=(Shared const &o) const {return base >= o.base;}
+    friend void swap(Shared &o, Shared &p) noexcept {std::swap(o.base, p.base);}
+
+    ~Shared() {Py_XDECREF(base);}
 };
 
 /******************************************************************************/
@@ -100,6 +104,11 @@ std::nullptr_t type_error(char const *s, Ts ...ts) {
 
 /******************************************************************************/
 
+template <int M, int N>
+union Object {PyObject* base;};
+
+using Export = Object<PY_MAJOR_VERSION, PY_MINOR_VERSION>;
+
 // Dump
 //  {
 //     PyErr_Format(PyExc_ImportError, "Python version %d.%d was not compiled by the ara library", Major, Minor);
@@ -107,14 +116,14 @@ std::nullptr_t type_error(char const *s, Ts ...ts) {
 // }
 
 // template <>
-// PyObject* init_module<PY_MAJOR_VERSION, PY_MINOR_VERSION>(Object<PY_MAJOR_VERSION, PY_MINOR_VERSION> const &);
+// PyObject* init_module<PY_MAJOR_VERSION, PY_MINOR_VERSION>(Shared<PY_MAJOR_VERSION, PY_MINOR_VERSION> const &);
 
 }
 
 
 namespace std {
     template <>
-    struct hash<ara::py::Object> {
-        size_t operator()(ara::py::Object const &o) const {return std::hash<PyObject*>()(o.base);}
+    struct hash<ara::py::Shared> {
+        size_t operator()(ara::py::Shared const &o) const {return std::hash<PyObject*>()(o.base);}
     };
 }

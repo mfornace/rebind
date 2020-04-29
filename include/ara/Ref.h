@@ -128,13 +128,19 @@ bool Ref::binds_to(Qualifier q) const {
     }
 }
 
-inline Load::stat Ref::load_to(Target &target) noexcept {
-    switch (Dump::call(index(), target, pointer(), tag())) {
+inline Load::stat dump_or_load(Target &target, Index i, Pointer p, Tag t) noexcept {
+    switch (Dump::call(i, target, p, t)) {
         case Dump::OK: {return Load::OK;}
         case Dump::OutOfMemory: {return Load::OutOfMemory;}
         case Dump::Exception: {return Load::Exception;}
-        case Dump::None: {return Load::call(index(), target, pointer(), tag());}
+        case Dump::None: {return Load::call(i, target, p, t);}
     }
+}
+
+inline Load::stat Ref::load_to(Target &target) noexcept {
+    DUMP("load_to", has_value(), name(), pointer().base);
+    if (!has_value()) return Load::None;
+    return dump_or_load(target, index(), pointer(), tag());
 }
 
 template <class T, std::enable_if_t<!std::is_reference_v<T>, int>>
@@ -157,9 +163,8 @@ std::optional<T> Ref::load(Type<T> t) {
         switch (load_to(target)) {
             case Load::OK: {
                 DUMP("load succeeded");
-                auto &t = storage_cast<T>(storage);
-                out.emplace(std::move(t));
-                t.~T();
+                Destructor<T> raii{storage_cast<T>(storage)};
+                out.emplace(std::move(raii.held));
                 break;
             }
             case Load::None: {break;}

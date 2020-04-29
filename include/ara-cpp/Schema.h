@@ -68,6 +68,8 @@ Schema GlobalSchema<Module>::global_schema{};
 
 template <class T>
 struct Callable<T, std::void_t<decltype(T::global_schema)>> {
+    static_assert(std::is_aggregate_v<T>);
+
     bool operator()(Method m, T) {
         if (!m.args.tags()) {
             DUMP("writing the schema");

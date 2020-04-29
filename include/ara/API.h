@@ -134,7 +134,7 @@ typedef struct ara_target {
     // Output storage address. Must satisfy at least void* alignment and size requirements.
     void* output;
     // Bit mask for dependent reference argument indices
-    std::uint64_t lifetime;
+    uint64_t lifetime;
     // Output storage capacity in bytes (sizeof)
     ara_code length;
     // Requested qualifier (roughly T, T &, or T const &)

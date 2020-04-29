@@ -51,14 +51,16 @@ struct PythonFrame final : Frame {
 
 /******************************************************************************/
 
-Object module_call(Index index, PyObject *args);
+Shared module_call(Index index, Instance<PyTupleObject> args);
 
 template <class Module>
-PyObject* c_call(PyObject *self, PyObject *args) noexcept {
+PyObject* c_module_call(PyObject* self, PyObject* args) noexcept {
     return raw_object([args] {
-        return module_call(impl<Module>::call, args);
+        return module_call(impl<Module>::call, instance(reinterpret_cast<PyTupleObject *>(args)));
     });
 }
+
+PyObject* c_variable_call(PyObject* self, PyObject* args, PyObject* kws) noexcept;
 
 /******************************************************************************/
 

@@ -10,9 +10,10 @@ namespace ara::py {
 
 template <class T>
 struct Wrap {
-    static PyTypeObject type;
-    PyObject_HEAD // 16 bytes for the ref count and the type object
+    PyObject_HEAD // seems to be 16 bytes for the ref count and the type object
     T value; // stack is OK because this object is only casted to anyway.
+    static PyTypeObject type;
+    static void initialize(Instance<PyTypeObject>) noexcept;
 };
 
 template <class T>
@@ -21,24 +22,26 @@ PyTypeObject Wrap<T>::type{PyVarObject_HEAD_INIT(NULL, 0)};
 /******************************************************************************/
 
 template <class T>
-TypePtr TypePtr::from(Type<T>) noexcept {return {&Wrap<T>::type};}
+Instance<PyTypeObject> static_type(Type<T> t={}) noexcept {
+    return instance(&Wrap<T>::type);
+}
 
 /******************************************************************************/
 
 template <class T>
-T * cast_if(PyObject *o) {
-    if (!PyObject_TypeCheck(o, TypePtr::from<T>())) return nullptr;
-    return std::addressof(reinterpret_cast<Wrap<T> *>(o)->value);
+T* cast_if(PyObject* o) {
+    if (!o || !PyObject_TypeCheck(+o, +static_type<T>())) return nullptr;
+    return std::addressof(reinterpret_cast<Wrap<T> *>(+o)->value);
 }
 
 template <class T>
-T & cast_object_unsafe(PyObject *o) {return reinterpret_cast<Wrap<T> *>(o)->value;}
+T& cast_object_unsafe(PyObject *o) noexcept {return reinterpret_cast<Wrap<T> *>(o)->value;}
 
 template <class T>
-T & cast_object(PyObject *o) {
-    if (!PyObject_TypeCheck(o, TypePtr::from<T>()))
+T& cast_object(PyObject *o) {
+    if (!PyObject_TypeCheck(o, +static_type<T>()))
         throw std::invalid_argument("Expected instance of " + std::string(typeid(T).name()));
-    return reinterpret_cast<Wrap<T> *>(o)->value;
+    return cast_object_unsafe<T>(o);
 }
 
 /******************************************************************************/
