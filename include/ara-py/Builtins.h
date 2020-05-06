@@ -205,7 +205,7 @@ template <class F>
 Shared map_output(Instance<> t, F &&f) {
     // Type objects
     if (PyType_CheckExact(+t)) {
-        auto type = t.reinterpret<PyTypeObject>();
+        auto type = t.as<PyTypeObject>();
         if (Output<None>::matches(type))  return f(Output<None>());
         if (Output<Bool>::matches(type))  return f(Output<Bool>());
         if (Output<Int>::matches(type))   return f(Output<Int>());

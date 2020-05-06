@@ -1,9 +1,9 @@
 import logging
-from . import cpp
+from .cpp import call, Variable
 
 print(dir(cpp))
-# print(cpp.call(None,'easy').load(cpp.Variable).load(float))
-# print(cpp.call(int,'easy'))
+# print(call(None,'easy').load(Variable).load(float))
+# print(call(int,'easy'))
 
 from .ara import Schema, set_logger
 
@@ -19,48 +19,43 @@ set_logger(log)
 ################################################################################
 
 def easy():
-    return cpp.call(cpp.Variable, 'easy')
+    return call('easy', out=Variable)
 
-class Goo(cpp.Variable):
+class Goo(Variable):
     def __init__(self, value: float):
-        cpp.call(self, 'Goo.new', value)
+        call('Goo.new', value, out=self)
 
     def get_x(self):
-        print(repr(self.index()), bool(self))
-        return self(cpp.Variable, 'get_x')
+        return self.method('get_x', out=Variable, refs='r')
 
+    def x(self):
+        return self.method('.x', out=Variable)
+
+
+print('running easy()')
 print(easy())
+print('making Goo()')
 goo = Goo(1.5)
-print(goo)
-print(goo.get_x())
-print(goo.get_x().load(float))
+print('goo', goo)
+print('get_x()', goo.get_x())
+print('get_x().lock()', goo.get_x().lock())
+print('get_x', goo.get_x().load(float))
 
-################################################################################
+a1 = Goo(1.5)
+a2 = Goo(1.5)
 
-from . import submodule
+print('uses', goo.use_count(), a1.use_count(), a2.use_count())
 
-################################################################################
+try:
+    blah = goo.method('add', a1, a1, out=Variable, gil=True, mode='r:ww')
+    raise ValueError('bad')
+except TypeError as e:
+    print('works:', e)
 
-@schema.type
-class Goo:
-    x: float
+print('uses', goo.use_count(), a1.use_count(), a2.use_count())
 
-    @schema.init
-    def __init__(self, value):
-        pass
-
-    @schema.method
-    def undefined(self):
-        pass
-
-    @schema.method
-    def __str__(self) -> str:
-        pass
-
-    @schema.method
-    def add(self) -> 'Goo':
-        pass
-
-global_value = schema.object('global_value', int)
+blah = goo.method('add', a1, a2, out=Variable, gil=True, mode='r:rr')
+blah = goo.method('add', a1, a2, out=Goo, gil=True, mode='r')
+# blah = goo.method('add', a1, a2, out=Variable, gil=True, mode='w')
 
 ################################################################################

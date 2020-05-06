@@ -10,7 +10,7 @@ namespace ara {
 template <class F>
 struct Functor {
     F function;
-    Lifetime return_lifetime;
+    Lifetime lifetime;
     // tricky... may have a difference depending if return result is coerced to value...
 
     // constexpr operator F const &() const noexcept {
@@ -108,25 +108,28 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
     DUMP("invoking function", type_name<F>(), "with output", type_name<O>(), "to tag", int(target.tag()));
 
     if (target.tag() == Target::None || (std::is_void_v<U> && !target.index())) {
-        std::invoke(f, static_cast<Ts &&>(ts)...);
+        (void) std::invoke(f, static_cast<Ts &&>(ts)...);
         return Call::None;
     }
 
     if constexpr(!std::is_void_v<U>) { // void already handled
         if (target.accepts<U>()) {
-            if (target.wants_value()) {
+
+            if (target.wants_value()) { // target needs a value, or target accepts a value and the output is a value
                 if constexpr(std::is_same_v<O, U> || std::is_convertible_v<O, U>) {
+                    if (!std::is_same_v<O, U> && !is_alias<U>) target.set_lifetime({});
+
                     if (auto p = target.placement<U>()) {
                         new(p) U(std::invoke(f, static_cast<Ts &&>(ts)...));
                         target.set_index<U>();
                         return Call::Stack;
                     } else {
-                        target.set_reference(*new U(std::invoke(f, static_cast<Ts &&>(ts)...)));
+                        target.set_heap(new U(std::invoke(f, static_cast<Ts &&>(ts)...)));
                         DUMP("returned heap...?", int(target.tag()));
                         return Call::Heap;
                     }
                 }
-            } else { // returns const & or &
+            } else { // return const & or &
                 if constexpr(std::is_reference_v<O>) {
                     if (std::is_same_v<O, U &> || target.tag() != Target::Mutable) {
                         DUMP("set reference");
@@ -135,13 +138,15 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
                     }
                 }
             }
+
         } else {
             if constexpr(std::is_reference_v<O>) {
-                switch (Reference(std::invoke(f, static_cast<Ts &&>(ts)...)).load_to(target)) {
+                switch (Ref::from_existing(std::invoke(f, static_cast<Ts &&>(ts)...)).load_to(target)) {
                     case Load::Exception: return Call::Exception;
                     case Load::OutOfMemory: return Call::OutOfMemory;
-                    case Load::OK: return std::is_same_v<O, U &> ? Call::Mutable : Call::Const;
-                    case Load::None: {}
+                    case std::is_same_v<O, U &> ? Load::Mutable : Load::Const:
+                        return std::is_same_v<O, U &> ? Call::Mutable : Call::Const;
+                    default: {}
                 }
             } else {
                 storage_like<U> storage;
@@ -149,8 +154,9 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
                 switch (Reference(Index::of<U>(), Tag::Stack, Pointer::from(&storage)).load_to(target)) {
                     case Load::Exception: return Call::Exception;
                     case Load::OutOfMemory: return Call::OutOfMemory;
-                    case Load::OK: return Call::Stack;
-                    case Load::None: {}
+                    case Load::Stack: return Call::Stack;
+                    case Load::Heap: return Call::Heap;
+                    default: {}
                 }
             }
         }
@@ -204,6 +210,7 @@ struct Callable<Functor<F>> {
         auto frame = m.args.caller().new_frame(); // make a new unentered frame, must be noexcept
         Caller handle(frame); // make the Caller with a weak reference to frame
 
+        m.target.set_lifetime(f.lifetime);
         m.stat = m.target.make_noexcept([&] {
             return Args::indexed([&](auto ...ts) {
                 DUMP("invoking...");

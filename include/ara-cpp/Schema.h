@@ -84,8 +84,6 @@ struct Callable<T, std::void_t<decltype(T::global_schema)>> {
 
         if (auto name = m.args.tag(0).load<std::string_view>()) {
             auto const &value = T::global_schema[*name];
-            // Target target{nullptr, Index(), 0, Target::Reference};
-            std::rotate(m.args.raw_begin(), m.args.raw_begin() + 1, m.args.raw_end());
             m.args.c.tags -= 1;
             DUMP("invoking module member! args=", m.args.size(), " tags=", m.args.tags());
             m.stat = Call::call(value.index(), m.target, value.address(), Tag::Const, m.args);

@@ -2,6 +2,7 @@
 #include "Raw.h"
 #include "Variable.h"
 #include "Methods.h"
+#include "Dump.h"
 #include <ara/Call.h>
 #include <mutex>
 
@@ -49,18 +50,67 @@ struct PythonFrame final : Frame {
     ~PythonFrame() {if (state) PyEval_RestoreThread(state);}
 };
 
+
 /******************************************************************************/
 
-Shared module_call(Index index, Instance<PyTupleObject> args);
+struct CallKeywords {
+    std::string_view mode;
+    Instance<> out;
+    PyObject* tags;
+    bool gil = true;
+
+    CallKeywords(Instance<PyDictObject> kws) :
+        out(PyDict_GetItemString(kws.object(), "out")),
+        tags(PyDict_GetItemString(kws.object(), "tags")) {
+        if (auto g = PyDict_GetItemString(kws.object(), "gil")) {
+            gil = PyObject_IsTrue(g);
+        }
+
+        if (auto r = PyDict_GetItemString(kws.object(), "mode")) {
+            if (auto p = get_unicode(instance(r))) mode = from_unicode(instance(p));
+            else throw PythonError(type_error("Expected str"));
+        }
+    }
+};
+
+/******************************************************************************/
+
+struct ArgAlloc {
+    ArgView &view;
+
+    static void* allocate(std::size_t n) {
+        using namespace std;
+        static_assert(alignof(ArgStack<0, 1>) <= alignof(ara_ref));
+        std::size_t const size = sizeof(ArgStack<0, 1>) - sizeof(ara_ref) + n * sizeof(ara_ref);
+        return aligned_alloc(alignof(ArgStack<0, 1>), size);
+    }
+
+    ArgAlloc(std::uint32_t args, std::uint32_t tags)
+        : view(*static_cast<ArgView *>(allocate(args + tags))) {
+        view.c.args = args;
+        view.c.tags = tags;
+    }
+
+    ~ArgAlloc() noexcept {std::free(&view);}
+};
+
+/******************************************************************************/
+
+Shared module_call(Index index, Instance<PyTupleObject> args, CallKeywords const &);
 
 template <class Module>
-PyObject* c_module_call(PyObject* self, PyObject* args) noexcept {
-    return raw_object([args] {
-        return module_call(impl<Module>::call, instance(reinterpret_cast<PyTupleObject *>(args)));
+PyObject* c_module_call(PyObject* self, PyObject* args, PyObject* kws) noexcept {
+    if (!kws) return type_error("expected keywords");
+    return raw_object([args, kws] {
+        return module_call(impl<Module>::call,
+            instance(reinterpret_cast<PyTupleObject *>(args)),
+            instance(reinterpret_cast<PyDictObject *>(kws)));
     });
 }
 
 PyObject* c_variable_call(PyObject* self, PyObject* args, PyObject* kws) noexcept;
+
+PyObject* c_variable_method(PyObject* self, PyObject* args, PyObject* kws) noexcept;
 
 /******************************************************************************/
 

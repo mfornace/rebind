@@ -5,13 +5,13 @@ namespace ara::py {
 
 /******************************************************************************/
 
-inline std::string_view from_unicode(Instance<> o) {
+inline std::string_view from_unicode(Instance<PyUnicodeObject> o) {
     Py_ssize_t size;
 #if PY_MAJOR_VERSION > 2
-    char const *c = PyUnicode_AsUTF8AndSize(+o, &size);
+    char const *c = PyUnicode_AsUTF8AndSize(o.object(), &size);
 #else
     char *c;
-    if (PyString_AsStringAndSize(o, &c, &size)) throw PythonError();
+    if (PyString_AsStringAndSize(o.object(), &c, &size)) throw PythonError();
 #endif
     if (!c) throw PythonError();
     return std::string_view(static_cast<char const *>(c), size);
@@ -19,10 +19,11 @@ inline std::string_view from_unicode(Instance<> o) {
 
 /******************************************************************************/
 
-inline std::string_view from_bytes(Instance<> o) {
+inline std::string_view from_bytes(Instance<PyBytesObject> o) {
     char *c;
     Py_ssize_t size;
-    PyBytes_AsStringAndSize(+o, &c, &size);
+    PyBytes_AsStringAndSize(o.object(), &c, &size);
+    if (!c) throw PythonError();
     return std::string_view(c, size);
 }
 
@@ -47,24 +48,33 @@ bool dump_arithmetic(Target &target, Instance<> o) {
     return false;
 }
 
+inline PyUnicodeObject* get_unicode(Instance<> o) {
+    return PyUnicode_Check(+o) ? reinterpret_cast<PyUnicodeObject *>(+o) : nullptr;
+}
+
+inline PyBytesObject* get_bytes(Instance<> o) {
+    return PyBytes_Check(+o) ? reinterpret_cast<PyBytesObject *>(+o) : nullptr;
+}
+
 /******************************************************************************/
 
 inline bool dump_object(Target &target, Instance<> o) {
     DUMP("dumping object");
 
     if (auto v = cast_if<Variable>(+o)) {
-        return v->as_ref().load_to(target);
+        auto acquired = acquire_ref(*v, true, true);
+        return acquired.ref.load_to(target);
     }
 
     if (target.accepts<std::string_view>()) {
-        if (PyUnicode_Check(+o)) return target.emplace_if<std::string_view>(from_unicode(o));
-        if (PyBytes_Check(+o)) return target.emplace_if<std::string_view>(from_bytes(o));
+        if (auto p = get_unicode(o)) return target.emplace_if<std::string_view>(from_unicode(instance(p)));
+        if (auto p = get_bytes(o)) return target.emplace_if<std::string_view>(from_bytes(instance(p)));
         return false;
     }
 
     if (target.accepts<std::string>()) {
-        if (PyUnicode_Check(+o)) return target.emplace_if<std::string>(from_unicode(o));
-        if (PyBytes_Check(+o)) return target.emplace_if<std::string>(from_bytes(o));
+        if (auto p = get_unicode(o)) return target.emplace_if<std::string>(from_unicode(instance(p)));
+        if (auto p = get_bytes(o)) return target.emplace_if<std::string>(from_bytes(instance(p)));
         return false;
     }
 

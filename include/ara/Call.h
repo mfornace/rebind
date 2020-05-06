@@ -12,12 +12,18 @@ namespace ara {
 
 template <std::size_t Tags, std::size_t Args>
 struct ArgStack : ara_args {
-    Ref refs[Tags + Args];
+    Ref refs[Args + Tags];
 
     template <class ...Ts>
     ArgStack(Caller &c, Ts &&...ts) noexcept
         : ara_args{&c, Tags, Args}, refs{static_cast<Ts &&>(ts)...} {
-        static_assert(Tags + Args == sizeof...(Ts));
+        static_assert(Args + Tags == sizeof...(Ts));
+        // Tags go at the back and they're reversed.
+        // Possible to do at compile time...but sort of tedious.
+        if constexpr(Tags > 0) {
+            std::rotate(std::begin(refs), std::begin(refs) + Tags, std::end(refs));
+            std::reverse(std::begin(refs) + Args, std::end(refs));
+        }
     }
 };
 
@@ -26,16 +32,14 @@ struct ArgStack : ara_args {
 struct ArgView {
     ara_args c;
 
-    Caller &caller() const {return *static_cast<Caller *>(c.caller_ptr);}
-    Ref &tag(unsigned int i) noexcept {return reinterpret_cast<ArgStack<1, 0> &>(c).refs[i];}
-    auto tags() const noexcept {return c.tags;}
-
-    Ref *begin() noexcept {return reinterpret_cast<ArgStack<1, 0> &>(c).refs + c.tags;}
+    Ref *begin() noexcept {return reinterpret_cast<ArgStack<1, 0> &>(c).refs;}
     auto size() const noexcept {return c.args;}
     Ref *end() noexcept {return begin() + size();}
 
-    ara_ref* raw_begin() noexcept {return reinterpret_cast<ara_ref *>(reinterpret_cast<ArgStack<1, 0> &>(c).refs);}
-    ara_ref* raw_end() noexcept {return raw_begin() + c.tags + c.args;}
+    Caller &caller() const {return *static_cast<Caller *>(c.caller_ptr);}
+
+    auto tags() const noexcept {return c.tags;}
+    Ref &tag(unsigned int i) noexcept {return *(end() + tags() - i - 1);}
 
     Ref &operator[](std::size_t i) noexcept {return begin()[i];}
 };
@@ -87,7 +91,7 @@ struct CallReturn {
         std::optional<T> out;
         switch (stat) {
             case Call::Stack: {
-                Destructor<T> raii{storage_cast<T>(buffer)};
+                DestructGuard<T, false> raii{storage_cast<T>(buffer)};
                 out.emplace(std::move(raii.held));
                 break;
             }
@@ -108,7 +112,7 @@ struct CallReturn {
 
         switch (stat) {
             case Call::Stack: {
-                Destructor<T> raii{storage_cast<T>(buffer)};
+                DestructGuard<T, false> raii{storage_cast<T>(buffer)};
                 return std::move(raii.held);
             }
             default: call_throw(std::move(target), stat);

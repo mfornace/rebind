@@ -3,38 +3,79 @@
 #include "Raw.h"
 #include "Load.h"
 #include <ara/Ref.h>
+#include <atomic>
 
 namespace ara::py {
 
 /******************************************************************************/
 
 struct Variable {
-    union Storage {
+    struct Address {
         void* pointer;
+        Tag qualifier; // Heap, Const, or Mutable
+    };
+
+    union Storage {
+        Address address;
         char data[24];
     };
 
-    enum Loc : ara_tag {Stack, Heap, Mutable, Const};
+    union Lock {
+        PyObject* other;
+        // empty: no lock
+        // otherwise reference to another Variable
+        // may be tuple of Variables? not sure yet.
+        std::uintptr_t count;
+        // only necessary when lock is empty, otherwise that Variable's lock would be used.
+        // 0: no references
+        // 1: one const reference
+        // 2: two const references
+        // <0: one mutable reference
+    };
+
+    enum State : ara_tag {Stack, StackAlias, Heap, HeapAlias};
 
     template <class T>
-    static constexpr Loc loc_of = Heap;
+    static constexpr bool allocated = is_stackable<T>(sizeof(Storage));
 
-    Storage storage;
-    Tagged<Loc> idx;
-    // Object ward;
+    Tagged<State> idx;
+    Storage storage; // stack storage
+    Lock lock;
 
     Variable() noexcept = default;
-    ~Variable() noexcept;
+    ~Variable() noexcept {reset();}
 
     Variable(Variable const &) = delete;
     Variable(Variable &&) = delete; //default;
 
+    void set_stack(Index i, Shared lock) {
+        if (lock) {
+            this->lock.other = std::exchange(lock.base, nullptr);
+            idx = Tagged<State>(i, StackAlias);
+        } else {
+            this->lock.count = 0;
+            idx = Tagged<State>(i, Stack);
+        }
+    }
+
+    void set_heap(Index i, void *ptr, Tag tag, Shared lock) {
+        storage.address.pointer = ptr;
+        storage.address.qualifier = tag;
+        if (lock) {
+            this->lock.other = std::exchange(lock.base, nullptr);
+            idx = Tagged<State>(i, HeapAlias);
+        } else {
+            this->lock.count = 0;
+            idx = Tagged<State>(i, Heap);
+        }
+    }
+
     bool has_value() const noexcept {return idx.has_value();}
     Index index() const noexcept {return Index(idx);}
-    Loc location() const noexcept {return static_cast<Loc>(idx.tag());}
+    void reset() noexcept;
     auto name() const noexcept {return index().name();}
 
-    void *address() const {return idx.tag() == Stack ? const_cast<Storage *>(&storage) : storage.pointer;}
+    void *address() const {return idx.tag() < 2 ? const_cast<Storage *>(&storage) : storage.address.pointer;}
     Ref as_ref() const {return has_value() ? Ref::from_existing(index(), Pointer::from(address()), false) : Ref();}
     Ref as_ref() {return has_value() ? Ref::from_existing(index(), Pointer::from(address()), true) : Ref();}
 
@@ -44,15 +85,67 @@ struct Variable {
     static Shared from(Ref const &, Shared ward={});
 
     static Shared new_object();
+
+    auto & current_lock() {
+        return (idx.tag() & 0x1 ? cast_object<Variable>(lock.other).lock.count : lock.count);
+    }
 };
 
-inline Variable::~Variable() noexcept {
-    if (has_value()) switch (location()) {
-        case Const:   return;
-        case Mutable: return;
-        case Heap:    {Destruct::call(index(), Pointer::from(storage.pointer), Destruct::Heap); break;}
-        case Stack:   {Destruct::call(index(), Pointer::from(&storage), Destruct::Stack); break;}
+/******************************************************************************/
+
+static constexpr auto MutateSentinel = std::numeric_limits<std::uintptr_t>::max();
+
+inline Ref begin_acquisition(Variable& v, bool allow_mut, bool allow_const) {
+    if (!v.has_value()) return {nullptr};
+    auto &count = v.current_lock();
+
+    if (count == MutateSentinel) {
+        throw PythonError(type_error("cannot reference object which is being mutated"));
+    } else if (count == 0 && allow_mut) {
+        DUMP("write lock");
+        count = MutateSentinel;
+        return Ref::from_existing(v.index(), Pointer::from(v.address()), true);
+    } else if (allow_const) {
+        DUMP("read lock");
+        ++count;
+        return Ref::from_existing(v.index(), Pointer::from(v.address()), false);
+    } else {
+        throw PythonError(type_error("cannot mutate object which is already referenced"));
     }
+}
+
+inline void end_acquisition(Variable& v) {
+    if (!v.has_value()) return;
+    auto &count = v.current_lock();
+
+    if (count == MutateSentinel) count = 0;
+    else --count;
+    DUMP("restored acquisition!", count);
+}
+
+struct AcquiredRef {
+    Ref ref;
+    Variable &v;
+    ~AcquiredRef() noexcept {end_acquisition(v);}
+};
+
+inline AcquiredRef acquire_ref(Variable& v, bool allow_mut, bool allow_const) {
+    return AcquiredRef{begin_acquisition(v, allow_mut, allow_const), v};
+}
+
+/******************************************************************************/
+
+inline void Variable::reset() noexcept {
+    if (!has_value()) return;
+    auto const state = idx.tag();
+    if (state & 0x2) {
+        if (storage.address.qualifier == Tag::Heap)
+            Destruct::call(index(), Pointer::from(storage.address.pointer), Destruct::Heap);
+    } else {
+        Destruct::call(index(), Pointer::from(&storage), Destruct::Stack);
+    }
+    if (state & 0x1) Py_DECREF(lock.other);
+    idx = {};
 }
 
 /******************************************************************************/
@@ -68,32 +161,38 @@ inline Shared Variable::new_object() {
 }
 
 template <class T>
-Shared Variable::from(T value, Shared ward) {
+Shared Variable::from(T value, Shared lock) {
     Shared o = new_object();
     auto &v = cast_object<Variable>(+o);
-    if constexpr(loc_of<T> == Heap) {
-        v.storage.pointer = parts::alloc<T>(std::move(value));
+    if constexpr(allocated<T>) {
+        v.storage.address.pointer = parts::alloc<T>(std::move(value));
+        v.storage.address.qualifier = Tag::Heap;
     } else {
         parts::alloc_to<T>(&v.storage.data, std::move(value));
     }
-    v.idx = Tagged(Index::of<T>(), loc_of<T>);
+    if (lock) {
+        v.lock.other = +lock;
+        Py_INCREF(v.lock.other);
+        v.idx = Tagged(Index::of<T>(), allocated<T> ? HeapAlias : StackAlias);
+    } else {
+        v.lock.count = 0;
+        v.idx = Tagged(Index::of<T>(), allocated<T> ? Heap : Stack);
+    }
     return o;
 }
 
 inline Shared Variable::from(Ref const &r, Shared ward) {
-    Loc loc;
-    if (r) switch (r.tag()) {
-        case Tag::Const: {loc = Const; break;}
-        case Tag::Mutable: {loc = Mutable; break;}
-        default: return type_error("cannot create Variable from temporary reference");
-    }
-
     DUMP("making reference Variable object");
     auto o = new_object();
     auto &v = cast_object<Variable>(+o);
     if (r) {
-        v.storage.pointer = r.pointer().base;
-        v.idx = Tagged(r.index(), loc);
+        switch (r.tag()) {
+            case Tag::Const: {v.storage.address.qualifier = Tag::Const; break;}
+            case Tag::Mutable: {v.storage.address.qualifier = Tag::Mutable; break;}
+            default: return type_error("cannot create Variable from temporary reference");
+        }
+        v.storage.address.pointer = r.pointer().base;
+        v.idx = Tagged(r.index(), ward ? HeapAlias : Heap);
     }
     return o;
 }

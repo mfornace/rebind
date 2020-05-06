@@ -44,7 +44,7 @@ struct Instance {
     PyObject* object() const noexcept __attribute__((returns_nonnull)) {return reinterpret_cast<PyObject*>(ptr);}
 
     template <class To>
-    Instance<To> reinterpret() const {return Instance<To>(reinterpret_cast<To *>(ptr));}
+    Instance<To> as() const {return Instance<To>(reinterpret_cast<To *>(ptr));}
 
     constexpr bool operator==(Instance const &other) noexcept {return ptr == other.ptr;}
 };

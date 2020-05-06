@@ -11,3 +11,5 @@ Possible Rc like behavior:
 3. for type `T const &`, holds shared ownership over the pointer, may or may not delete upon destruction.
 
 Could implement with something like `shared_ptr`. optional deleter.
+
+## `Index` implementation

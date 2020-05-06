@@ -30,14 +30,14 @@ struct Target {
 
     // Kinds of return values that can be requested
     enum Tag : ara_tag {
-        None,                // Request no output
-        Mutable,             // Request &
-        Const,               // Request const &
-        Reference,           // Request & or const &
-        Stack,               // Request stack storage
-        Heap,                // Request heap allocated value
-        TrivialRelocate,     // Request stack storage as long as type is trivially_relocatable
-        NoThrowMove//,       // Request stack storage as long as type is noexcept movable
+        /*0*/ None,                // Request no output
+        /*1*/ Mutable,             // Request &
+        /*2*/ Const,               // Request const &
+        /*3*/ Reference,           // Request & or const &
+        /*4*/ Stack,               // Request stack storage
+        /*5*/ Heap,                // Request heap allocated value
+        /*6*/ TrivialRelocate,     // Request stack storage as long as type is trivially_relocatable
+        /*7*/ NoThrowMove//,       // Request stack storage as long as type is noexcept movable
         // Trivial           // Request stack storage as long as type is trivial
     };
 
@@ -54,9 +54,9 @@ struct Target {
     bool accepts() const noexcept {return !index() || index() == Index::of<T>();}
 
     template <class T, class ...Ts>
-    [[nodiscard]] T * emplace_if(Ts &&...ts) {
+    [[nodiscard]] T* emplace_if(Ts &&...ts) {
         if (accepts<T>()) emplace<T>(static_cast<Ts &&>(ts)...);
-        return static_cast<T *>(output());
+        return static_cast<T*>(output());
     }
 
     template <class T>
@@ -76,8 +76,35 @@ struct Target {
 
     template <class T, class ...Ts>
     void emplace(Ts &&...ts) {
-        if (auto p = placement<T>()) parts::alloc_to<T>(p, static_cast<Ts &&>(ts)...);
-        else c.output = parts::alloc<T>(static_cast<Ts &&>(ts)...);
+        if (auto p = placement<T>()) {
+            parts::alloc_to<T>(p, static_cast<Ts &&>(ts)...);
+            c.tag = Tag::Stack;
+        } else {
+            c.output = parts::alloc<T>(static_cast<Ts &&>(ts)...);
+            c.tag = Tag::Heap;
+        }
+        set_index<T>();
+    }
+
+    // Set pointer to a heap allocation
+    template <class T>
+    void set_reference(T &t) noexcept {
+        c.output = std::addressof(t);
+        c.tag = Tag::Mutable;
+        set_index<T>();
+    }
+
+    template <class T>
+    void set_reference(T const &t) noexcept {
+        c.output = const_cast<T *>(std::addressof(t));
+        c.tag = Tag::Const;
+        set_index<T>();
+    }
+
+    template <class T>
+    void set_heap(T *t) noexcept {
+        c.output = t;
+        c.tag = Tag::Heap;
         set_index<T>();
     }
 
@@ -87,13 +114,7 @@ struct Target {
     void set_index() noexcept {c.index = Index::of<T>();}
 
     void set_lifetime(Lifetime l) noexcept {c.lifetime = l.value;}
-
-    // Set pointer to a heap allocation
-    template <class T>
-    void set_reference(T &t) noexcept {c.output = std::addressof(t); set_index<T>();}
-
-    template <class T>
-    void set_reference(T const &t) noexcept {c.output = const_cast<T *>(std::addressof(t)); set_index<T>();}
+    Lifetime lifetime() const noexcept {return c.lifetime;}
 
     void set_current_exception() noexcept;
 

@@ -187,6 +187,7 @@ struct ara::Callable<Goo> {
     bool operator()(Method method, Goo const &self) {
         DUMP("calling Goo method");
         return method(self, &Goo::x)
+            || method(self, "add", [](Goo g, Goo g2, Goo g3) {return g;})
             || method(self, ".x", &Goo::x)
             // || method(self, "test_throw", &Goo::test_throw)
             || method(self, "get_x", [](Goo const &g) {return g.x;})

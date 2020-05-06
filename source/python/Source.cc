@@ -63,6 +63,47 @@ void Wrap<Index>::initialize(Instance<PyTypeObject> o) noexcept {
     // PyMemberDef, tp_members
 };
 
+PyObject * c_variable_lock(PyObject* self, PyObject*) noexcept {
+    return raw_object([=] {
+        auto &v = cast_object<Variable>(self);
+        if (v.has_value() && v.idx.tag() & 0x1) return Shared(v.lock.other, true);
+        else return Shared(Py_None, true);
+    });
+}
+
+PyObject * c_variable_state(PyObject* self, PyObject*) noexcept {
+    return raw_object([=] {
+        auto &v = cast_object<Variable>(self);
+        if (!v.has_value()) return Shared(Py_None, true);
+        if (v.idx.tag() < 0x2) return as_object(static_cast<Integer>(Tag::Stack));
+        else return as_object(static_cast<Integer>(v.storage.address.qualifier));
+    });
+}
+
+/******************************************************************************/
+
+PyObject * c_return_self(PyObject* self, PyObject*) noexcept {Py_INCREF(self); return self;}
+
+PyObject * c_variable_reset(PyObject* self, PyObject*) noexcept {
+    return raw_object([=] {
+        cast_object<Variable>(self).reset();
+        return Shared(Py_None, true);
+    });
+}
+
+PyObject * c_variable_use_count(PyObject* self, PyObject*) noexcept {
+    return raw_object([=] {
+        auto &v = cast_object<Variable>(self);
+        Integer stat = 0;
+        if (v.has_value()) {
+            auto i = v.current_lock();
+            if (i == MutateSentinel) stat = -1;
+            else stat = i;
+        }
+        return as_object(stat);
+    });
+}
+
 /******************************************************************************/
 
 PyNumberMethods VariableNumberMethods = {
@@ -76,26 +117,35 @@ PyMethodDef VariableMethods[] = {
     // {"move_from", c_function(c_move_from<Value>),
     //     METH_O, "assign from other using C++ move assignment"},
 
-    // {"method", c_function(c_method<Value>),
-        // METH_VARARGS | METH_KEYWORDS, "call a method given a name and arguments"},
+    {"method", c_function(c_variable_method),
+        METH_VARARGS | METH_KEYWORDS, "call a method given a name and arguments"},
 
     // {"address", c_function(c_address<Value>),
     //     METH_NOARGS, "get C++ pointer address"},
 
-    // {"_ward", c_function(c_get_ward<Variable>),
-        // METH_NOARGS, "get ward object"},
+    {"lock", c_function(c_variable_lock),
+        METH_NOARGS, "get lock object"},
 
-    // {"_set_ward", c_function(c_set_ward<Variable>),
-        // METH_O, "set ward object and return self"},
+    {"__enter__", c_function(c_return_self),
+        METH_NOARGS, "return self"},
 
-    // {"is_stack_type", c_function(var_is_stack_type),
-    // METH_NOARGS, "return if object is held in stack storage"},
+    {"__exit__", c_function(c_variable_reset),
+        METH_VARARGS, "alias for Variable.reset"},
+
+    {"reset", c_function(c_variable_reset),
+        METH_NOARGS, "reset the Variable"},
+
+    {"use_count", c_function(c_variable_use_count),
+        METH_NOARGS, "use count or -1"},
+
+    {"state", c_function(c_variable_state),
+        METH_NOARGS, "return state of object"},
 
     {"index", c_function(c_get_index<Variable>),
         METH_NOARGS, "return Index of the held C++ object"},
 
-    {"has_value", c_function(c_has_value<Variable>),
-        METH_NOARGS, "return if a C++ object is being held"},
+    // {"as_value", c_function(c_as_value<Variable>),
+    //     METH_NOARGS, "return an equivalent non-reference object"},
 
     {"load", c_function(c_load<Variable>),
         METH_O, "cast to a given Python type"},
@@ -118,7 +168,7 @@ void Wrap<Variable>::initialize(Instance<PyTypeObject> o) noexcept {
     (+o)->tp_call = c_variable_call;
     DUMP("defined Variable");
     // no init (just use default constructor)
-    // tp_traverse, tp_clear
+    // tp_traverse, tp_clear <- need these
     // PyMemberDef, tp_members
 };
 
@@ -151,8 +201,8 @@ PyObject* init_module<Example>() noexcept {
 
     DUMP("initializing...done");
     static PyMethodDef methods[] = {
-        {"call", c_function(c_module_call<Example>), METH_VARARGS, "Execute a shell command."},
-        {NULL, NULL, 0, NULL}        /* Sentinel */
+        {"call", c_function(c_module_call<Example>), METH_VARARGS | METH_KEYWORDS, "Call a function"},
+        {nullptr, nullptr, 0, nullptr}
     };
 
     // Needs to be static (either in function or outside)

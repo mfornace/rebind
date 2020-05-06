@@ -52,9 +52,9 @@ template <class Self>
 PyObject* c_load(PyObject* self, PyObject* type) noexcept {
     return raw_object([=]() -> Shared {
         DUMP("c_load ", typeid(Self).name(), bool(type));
-        Ref ref = cast_object<Self>(self).as_ref();
-        if (auto out = try_load(ref, instance(type), Shared())) return out;
-        return type_error("cannot convert value to type %R from %R", type, +as_object(ref.index()));
+        auto acquired = acquire_ref(cast_object<Self>(self), true, true);
+        if (auto out = try_load(acquired.ref, instance(type), Shared())) return out;
+        return type_error("cannot convert value to type %R from %R", type, +as_object(acquired.ref.index()));
     });
 }
 

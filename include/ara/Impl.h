@@ -16,6 +16,23 @@ namespace ara {
 
 /******************************************************************************************/
 
+template <class T>
+struct Alias : std::false_type {};
+
+template <class T>
+struct Alias<T &> : std::true_type {};
+
+template <class T>
+struct Alias<T const &> : std::true_type {};
+
+template <class T>
+struct Alias<T &&> : std::true_type {};
+
+template <class T>
+static constexpr bool is_alias = Alias<T>::value;
+
+/******************************************************************************************/
+
 // Insert a new copy of the object into a buffer of size n
 // -- If the buffer is too small, allocate the object on the Heap
 // -- Out of memory errors are handled specifically
@@ -105,10 +122,10 @@ struct Destruct {
 
 /******************************************************************************/
 
-template <class T>
-struct Destructor {
+template <class T, bool Heap>
+struct DestructGuard {
     T &held;
-    ~Destructor() noexcept {Destruct::impl<T>::put(held, Destruct::Stack);}
+    ~DestructGuard() noexcept {Destruct::impl<T>::put(held, Heap ? Destruct::Heap : Destruct::Stack);}
 };
 
 /******************************************************************************/
@@ -155,33 +172,39 @@ struct Name {
 
 /******************************************************************************/
 
-// stat operator()(Target &target, T source)
 template <class T, class SFINAE=void>
 struct Dumpable;
+// bool operator()(Target &target, T source)
+// exception -> Exception
+// bad_alloc -> OutOfMemory
+// false -> None
+// true ->
 
 // Dump the held object to a less constrained type that has been requested
 // -- Exceptions should be very rare. Prefer to return None.
 struct Dump {
-    enum stat : Stat {None, OK, Exception, OutOfMemory};
+    enum stat : Stat {None, Mutable, Const, Stack, Heap, Exception, OutOfMemory};
 
     template <class T>
     struct impl {
         static stat put(Target &out, Pointer source, Tag qualifier) noexcept {
             if constexpr(is_complete_v<Dumpable<T>>) {
-                try {
+                return out.make_noexcept([&] {
                     switch (qualifier) {
-                        case Tag::Stack:   return static_cast<stat>(Dumpable<T>()(out, source.load<T &&>()));
-                        case Tag::Heap:    return static_cast<stat>(Dumpable<T>()(out, source.load<T &&>()));
-                        case Tag::Mutable: return static_cast<stat>(Dumpable<T>()(out, source.load<T &>()));
-                        case Tag::Const:   return static_cast<stat>(Dumpable<T>()(out, source.load<T const &>()));
+                        case Tag::Stack:   {if (!Dumpable<T>()(out, source.load<T &&>())) return None; break;}
+                        case Tag::Heap:    {if (!Dumpable<T>()(out, source.load<T &&>())) return None; break;}
+                        case Tag::Mutable: {if (!Dumpable<T>()(out, source.load<T &>())) return None; break;}
+                        case Tag::Const:   {if (!Dumpable<T>()(out, source.load<T const &>())) return None; break;}
                     }
-                } catch (std::bad_alloc const &) {
-                    return OutOfMemory;
-                } catch (...) {
-                    return Exception;
-                }
-            }
-            return None;
+                    switch (out.tag()) {
+                        case Target::Mutable: return Mutable;
+                        case Target::Const: return Const;
+                        case Target::Stack: return Stack;
+                        case Target::Heap: return Heap;
+                        default: return None;
+                    }
+                });
+            } else return None;
         }
     };
 
@@ -199,20 +222,27 @@ struct Loadable;
 // -- Prefer to return None
 // -- More likely to encounter exceptions when preconditions are not met
 struct Load {
-    enum stat : Stat {None, OK, Exception, OutOfMemory};
+    enum stat : Stat {None, Mutable, Const, Stack, Heap, Exception, OutOfMemory};
 
     template <class T>
     struct impl {
         // currently not planned that out can be a reference, I think
         static stat put(Target &out, Pointer source, Tag qualifier) noexcept {
             if constexpr(is_complete_v<Loadable<T>>) {
-                // auto source_index = out.index();
-                // Ref src(Tagged(source_index, qualifier), source);
-                // if (auto t = Loadable<T>()(src, scope)) {
-                //     if (auto p = out.placement<T>()) new(p) T(std::move(*t));
-                // }
-            }
-            return None;
+                return out.make_noexcept([&] {
+                    ara_ref r{ara_tag_index(out.index(), static_cast<ara_tag>(qualifier)), source.base};
+                    if (std::optional<T> o = Loadable<T>()(reinterpret_cast<Ref &>(r))) {
+                        out.emplace<T>(std::move(*o));
+                        switch (out.tag()) {
+                            case Target::Mutable: return Mutable;
+                            case Target::Const: return Const;
+                            case Target::Stack: return Stack;
+                            case Target::Heap: return Heap;
+                            default: return None;
+                        }
+                    } else return None;
+                });
+            } else return None;
         }
     };
 
@@ -264,7 +294,7 @@ struct Call {
     }
 
     [[nodiscard]] static stat wrong_number(Target &, Code, Code) noexcept;
-    [[nodiscard]] static stat wrong_type(Target &, Code, Index, Qualifier) noexcept;
+    static stat wrong_type(Target &, Code, Index, Qualifier) noexcept;
     [[nodiscard]] static stat wrong_return(Target &, Index, Qualifier) noexcept;
 };
 

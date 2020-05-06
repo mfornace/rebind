@@ -1,4 +1,84 @@
-# Python API
+# New API
+
+Capabilities of the Variable object:
+
+```python
+class Variable:
+    def index(self):
+        '''Return self index'''
+
+    def has_value(self):
+        '''Return if self has value'''
+
+    def load(self, return_type):
+        '''Request conversion into another type'''
+
+    def qualifier(self):
+        raise NotImplementedError('Not yet')
+
+    def __call__(self, return_type, *args):
+        '''
+        Call function with args and return as return_type
+        Need to add gil flag too
+        '''
+
+    def mutate(self, return_type, *args):
+        '''
+        Call with the wrapped variable being held "mutable"
+        - Lock on this object or, if this variable aliases another one, the lock of that object
+        - Acquires exclusive access on the locked variable
+        - Throws if another variable currently has access
+        - Releases access on function exit
+
+        If the returned object is aliasing,
+        - The returned object may then assume access over the locked variable
+        - You should probably use "with" to ensure destruction of the access after use
+        '''
+
+    def access(self, return_type, *args):
+        '''
+        Same semantics as mutate except multiple const references are allowed
+        '''
+```
+
+Return type casting...
+- `Variable` or subclasses currently request output as a value
+- `float` etc have custom requests I believe
+- other types can use load
+
+Do we want the default variable output to be a value...?  How to annotate?
+Sometimes we might want a member access to be a copy, sometimes we want it to be const, sometimes we want it mutable...
+Seems more explicit to annotate this in the function call itself rather than afterwards...
+
+```python
+self.value(MyType, 'x') # MyType does not need to be a Variable subclass
+self.reference(MyType, 'x') # MyType must be a Variable subclass
+```
+
+I think it's ... OK to have it be just value or reference as in the C++.
+These are OK but we need to have the const-ness in there:
+
+```python
+self.value(MyType, 'x') # const reference on self and returns value
+self.reference(MyType, 'x') # const reference on self and returns reference
+self.value_mut(MyType, 'x') # mutable reference on self and returns value
+self.reference_mut(MyType, 'x') # mutable reference on self and returns reference
+```
+
+This brings up how to handle the other arguments though...
+We have delay to runtime probably the locking into mut ... would be pretty hard to do manually.
+Well for the function call itself, we could probably handle specifically the possibility of each argument being a Variable?
+We would just get the most permissive reference for each argument...
+This falls apart a little though if there are aliasing arguments, I guess we can handle that though
+The other option is just to explicitly notate the mutability:
+```python
+self.value(MyType, 'x', var1, mutvar2, mutate=(0, 2)) # mutate self and mutvar
+self.value(MyType, 'x', var1, mutvar2, qualifiers=('const', 'move', 'mut')) # mutate self and mutvar
+self.value((MyType, 'rwx'), 'x', var1, mutvar2) # varying syntax ideas...
+self.value('x', var1, mutvar2, out=MyType, refs='wrx', gil=False, tags=1) # varying syntax ideas...
+```
+
+# Old Python API
 
 The `ara` Python API is generally designed around the following workflow:
 

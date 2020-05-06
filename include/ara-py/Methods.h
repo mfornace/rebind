@@ -126,14 +126,7 @@ PyObject * c_get_index(PyObject* self, PyObject*) noexcept {
 //         return as_object(Integer(reinterpret_cast<std::uintptr_t>(cast_object<Self>(self).address())));
 //     });
 // }
-
-template <class Self>
-PyObject * c_get_ward(PyObject* self, PyObject*) noexcept {
-    return raw_object([=] {
-        Shared out = cast_object<Self>(self).ward;
-        return out ? out : Shared(Py_None, true);
-    });
-}
+// template <class Self>
 
 template <class Self>
 PyObject * c_set_ward(PyObject* self, PyObject *arg) noexcept {
