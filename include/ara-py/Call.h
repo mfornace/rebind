@@ -55,20 +55,37 @@ struct PythonFrame final : Frame {
 
 struct CallKeywords {
     std::string_view mode;
-    Instance<> out;
-    PyObject* tags;
+    PyObject* out = nullptr;
+    PyObject* tags = nullptr;
     bool gil = true;
 
-    CallKeywords(Instance<PyDictObject> kws) :
-        out(PyDict_GetItemString(kws.object(), "out")),
-        tags(PyDict_GetItemString(kws.object(), "tags")) {
-        if (auto g = PyDict_GetItemString(kws.object(), "gil")) {
+    explicit CallKeywords(PyObject* kws) {
+        if (!kws) return;
+        out = PyDict_GetItemString(kws, "out");
+        tags = PyDict_GetItemString(kws, "tags");
+
+        Py_ssize_t n = 0;
+        if (tags) ++n;
+        if (out) ++n;
+
+        if (auto g = PyDict_GetItemString(kws, "gil")) {
             gil = PyObject_IsTrue(g);
+            ++n;
         }
 
-        if (auto r = PyDict_GetItemString(kws.object(), "mode")) {
+        if (auto r = PyDict_GetItemString(kws, "mode")) {
             if (auto p = get_unicode(instance(r))) mode = from_unicode(instance(p));
             else throw PythonError(type_error("Expected str"));
+            ++n;
+        }
+
+        if (n != PyDict_Size(kws)) {
+            PyDict_DelItemString(kws, "tag");
+            PyDict_DelItemString(kws, "out");
+            PyDict_DelItemString(kws, "mode");
+            PyDict_DelItemString(kws, "gil");
+            auto keys = Shared::from(PyDict_Keys(kws));
+            throw PythonError(type_error("ara.Variable: unexpected keyword arguments: %R", +keys));
         }
     }
 };
@@ -100,11 +117,9 @@ Shared module_call(Index index, Instance<PyTupleObject> args, CallKeywords const
 
 template <class Module>
 PyObject* c_module_call(PyObject* self, PyObject* args, PyObject* kws) noexcept {
-    if (!kws) return type_error("expected keywords");
     return raw_object([args, kws] {
         return module_call(impl<Module>::call,
-            instance(reinterpret_cast<PyTupleObject *>(args)),
-            instance(reinterpret_cast<PyDictObject *>(kws)));
+            instance(reinterpret_cast<PyTupleObject *>(args)), CallKeywords(kws));
     });
 }
 

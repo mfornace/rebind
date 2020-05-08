@@ -10,7 +10,7 @@ struct Example;
 namespace ara {
 
 template <>
-ara_stat impl<Example>::call(ara_input, void*, void*, ara_args*) noexcept;
+ara_stat impl<Example>::call(ara_input, void*, void*, void*) noexcept;
 
 }
 

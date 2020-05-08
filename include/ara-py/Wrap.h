@@ -22,7 +22,7 @@ PyTypeObject Wrap<T>::type{PyVarObject_HEAD_INIT(NULL, 0)};
 /******************************************************************************/
 
 template <class T>
-Instance<PyTypeObject> static_type(Type<T> t={}) noexcept {
+Instance<PyTypeObject> static_type(Type<T> = {}) noexcept {
     return instance(&Wrap<T>::type);
 }
 

@@ -28,8 +28,6 @@ typedef struct ara_input {
 enum ara_tags {ara_stack=0, ara_heap=1, ara_const=2, ara_mutable=3};
 typedef uint_fast8_t ara_tag;
 
-/// List of arguments
-typedef struct ara_args ara_args;
 
 // typedef void (*ara_fptr)(void);
 // typedef union ara_storage {
@@ -49,7 +47,7 @@ typedef ara_stat (*ara_index)(
     ara_input code_tag,  // slot for dispatching the operation, slot for additional integer input
     void* output,           // slot for output location of any type
     void* self,             // slot for source reference
-    ara_args *args);     // slot for function arguments
+    void* args);     // slot for function arguments
 
     // ara_fptr function, // slot for function pointer of any type
 /******************************************************************************************/
@@ -84,8 +82,8 @@ typedef struct ara_args {
 
 /// ara_str is essentially an in-house copy of std::string_view
 typedef struct ara_str {
-    char const *pointer;
-    uintptr_t len;
+    char const *data;
+    uintptr_t size;
 } ara_str;
 
 /******************************************************************************************/
@@ -173,10 +171,10 @@ inline ara_index ara_get_index(ara_index i) {
 #ifdef __cplusplus
 }
 
-#define ARA_DEFINE(NAME, TYPE) ara_stat ARA_FUNCTION(NAME)(ara_input i, void* s, void* p, ara_args* a) noexcept {return ara::impl<TYPE>::build(i,s,p,a);}
+#define ARA_DEFINE(NAME, TYPE) ara_stat ARA_FUNCTION(NAME)(ara_input i, void* s, void* p, void* a) noexcept {return ara::impl<TYPE>::build(i,s,p,a);}
 
 #define ARA_DECLARE(NAME, TYPE) \
-    extern "C" ara_stat ARA_FUNCTION(NAME)(ara_input, void*, void*, ara_args*) noexcept; \
+    extern "C" ara_stat ARA_FUNCTION(NAME)(ara_input, void*, void*, void*) noexcept; \
     namespace ara {inline ara_index fetch(ara::Type<TYPE>) {return ARA_FUNCTION(NAME);}}
 
 #include <type_traits>
@@ -233,7 +231,7 @@ inline char const * code_name(Code t) {
 /******************************************************************************/
 
 // class Caller;
-class ArgView;
+struct ArgView;
 struct Ref;
 struct Target;
 

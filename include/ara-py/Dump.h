@@ -62,7 +62,7 @@ inline bool dump_object(Target &target, Instance<> o) {
     DUMP("dumping object");
 
     if (auto v = cast_if<Variable>(+o)) {
-        auto acquired = acquire_ref(*v, true, true);
+        auto acquired = acquire_ref(*v, LockType::Read);
         return acquired.ref.load_to(target);
     }
 

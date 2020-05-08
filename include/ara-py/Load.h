@@ -9,7 +9,7 @@ namespace ara::py {
 
 // Unambiguous conversions from some basic C++ types to Objects
 
-inline Shared as_object(Shared o) {return std::move(o);}
+inline Shared as_object(Shared o) {return o;}
 
 inline Shared as_object(bool b) {return {b ? Py_True : Py_False, true};}
 
@@ -52,7 +52,7 @@ template <class Self>
 PyObject* c_load(PyObject* self, PyObject* type) noexcept {
     return raw_object([=]() -> Shared {
         DUMP("c_load ", typeid(Self).name(), bool(type));
-        auto acquired = acquire_ref(cast_object<Self>(self), true, true);
+        auto acquired = acquire_ref(cast_object<Self>(self), LockType::Read);
         if (auto out = try_load(acquired.ref, instance(type), Shared())) return out;
         return type_error("cannot convert value to type %R from %R", type, +as_object(acquired.ref.index()));
     });

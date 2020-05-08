@@ -21,15 +21,31 @@ set_logger(log)
 def easy():
     return call('easy', out=Variable)
 
+class Float(Variable):
+    def __init__(self):
+        raise NotImplementedError
+
+    def value(self):
+        return self.load(float)
+
+    def __repr__(self):
+        return 'Float({})'.format(self.value())
+
+
 class Goo(Variable):
     def __init__(self, value: float):
         call('Goo.new', value, out=self)
 
     def get_x(self):
-        return self.method('get_x', out=Variable, refs='r')
+        return self.method('get_x', out=Float, mode='r')
 
+    @property
     def x(self):
-        return self.method('.x', out=Variable)
+        return self.method('.x', out=Float)
+
+    @x.setter
+    def x(self, value):
+        return self.method('.x=', value, out=Float, mode='w')
 
 
 print('running easy()')

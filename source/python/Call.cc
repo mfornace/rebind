@@ -7,30 +7,31 @@
 
 namespace ara::py {
 
-void call_to_variable(Variable &out, Index self, Pointer address, Tag qualifier, ArgView &args) {
+Lifetime call_to_variable(Variable &out, Index self, Pointer address, Tag qualifier, ArgView &args) {
     DUMP(out.name(), out.address());
-    auto target = Target::from(Index(), &out.storage, sizeof(out.storage), Target::Stack);
+    auto target = Target::from(Index(), &out.storage, sizeof(out.storage),
+        Target::Mutable | Target::Const | Target::Heap | Target::Trivial |
+        Target::Relocatable | Target::MoveNoThrow | Target::Unmovable | Target::MoveThrow
+    );
 
     auto const stat = Call::call(self, target, address, qualifier, args);
-    DUMP("Variable got stat:", stat, target.c.lifetime);
-    Shared lock;
+    DUMP("Variable got stat and lifetime:", stat, target.c.lifetime);
 
     switch (stat) {
         case Call::None:        break;
-        case Call::Stack:       {out.set_stack(target.index(), lock); break;}
-        case Call::Const:       {out.set_heap(target.index(), target.output(), Tag::Const, lock); break;}
-        case Call::Mutable:     {out.set_heap(target.index(), target.output(), Tag::Mutable, lock); break;}
-        case Call::Heap:        {out.set_heap(target.index(), target.output(), Tag::Heap, lock); break;}
-#warning "implement these"
+        case Call::Stack:       {out.set_stack(target.index()); break;}
+        case Call::Const:       {out.set_heap(target.index(), target.output(), Tag::Const); break;}
+        case Call::Mutable:     {out.set_heap(target.index(), target.output(), Tag::Mutable); break;}
+        case Call::Heap:        {out.set_heap(target.index(), target.output(), Tag::Heap); break;}
         case Call::Impossible:  {throw PythonError(type_error("Impossible"));}
-        case Call::WrongNumber: {DUMP("hmm"); throw PythonError(type_error("WrongNumber"));}
+        case Call::WrongNumber: {throw PythonError(type_error("WrongNumber"));}
         case Call::WrongType:   {throw PythonError(type_error("WrongType"));}
         case Call::WrongReturn: {throw PythonError(type_error("WrongReturn"));}
         case Call::Exception:   {throw PythonError(type_error("Exception"));}
         case Call::OutOfMemory: {throw std::bad_alloc();}
     }
-    DUMP("output:", out.name(), "address:", out.address());
-    // return o;
+    DUMP("output:", out.name(), "address:", out.address(), target.c.lifetime, target.lifetime().value);
+    return target.lifetime();
 }
 
 /******************************************************************************/
@@ -41,11 +42,18 @@ bool is_subclass(Instance<> o, Instance<PyTypeObject> t) {
     return (x < 0) ? throw PythonError() : x;
 }
 
-Shared call_to_output(Instance<> output, Index self, Pointer address, Tag qualifier, ArgView &args) {
+Lifetime call_to_output(Shared &out, PyObject* maybe_output, Index self, Pointer address, Tag qualifier, ArgView &args) {
+    if (!maybe_output) {
+        out = Shared::from(c_new<Variable>(+static_type<Variable>(), nullptr, nullptr));
+        Variable &v = cast_object<Variable>(+out);
+        return call_to_variable(v, self, address, qualifier, args);
+    }
+    auto output = instance(maybe_output);
+
     if (auto v = cast_if<Variable>(+output)) {
         DUMP("instance of Variable");
-        call_to_variable(*v, self, address, qualifier, args);
-        return {Py_None, true};
+        out = {Py_None, true};
+        return call_to_variable(*v, self, address, qualifier, args);
     }
 
     if (PyType_CheckExact(+output)) {
@@ -53,15 +61,96 @@ Shared call_to_output(Instance<> output, Index self, Pointer address, Tag qualif
         if (is_subclass(output, static_type<Variable>())) {
             DUMP("is Variable subclass");
             auto type = output.as<PyTypeObject>();
-            auto obj = Shared::from(c_new<Variable>(+type, nullptr, nullptr));
-            Variable &v = cast_object<Variable>(+obj);
-            call_to_variable(v, self, address, qualifier, args);
-            return obj;
+            out = Shared::from(c_new<Variable>(+type, nullptr, nullptr));
+            Variable &v = cast_object<Variable>(+out);
+            return call_to_variable(v, self, address, qualifier, args);
         }
-        return type_error("Output type is not handled: %R", +output);
     }
-    return type_error("Bad");
+#warning "aliasing is a problem here"
+    Variable v;
+    call_to_variable(v, self, address, qualifier, args);
+    auto r = Ref::from_existing(v.index(), Pointer::from(v.address()), true);
+    if (auto o = try_load(r, output, Shared())) {out = o; return {};}
+    else throw PythonError(type_error("could not load"));
 }
+
+
+/******************************************************************************/
+
+struct TupleLock {
+    ArgView &view;
+    Instance<PyTupleObject> args;
+    Py_ssize_t start;
+
+    // Prepare a lock on each argument: v[i] <-- a[s+i]
+    // The immediate next step after constructor should be either read_lock() or lock()
+    TupleLock(ArgView &v, Instance<PyTupleObject> a, Py_ssize_t s=0) noexcept
+        : view(v), args(a), start(s) {for (auto &ref : view) ref.c.tag_index = nullptr;}
+
+    void lock_default() {
+        auto s = start;
+        for (auto &ref : view) {
+            PyObject* item = PyTuple_GET_ITEM(args.object(), s++);
+            if (auto p = cast_if<Variable>(item)) {
+                DUMP("its variable!");
+                ref = begin_acquisition(*p, LockType::Read);
+            } else {
+                ref = Ref::from_existing(Index::of<Export>(), Pointer::from(item), true);
+            }
+        }
+    }
+
+    void lock(std::string_view mode) {
+        if (mode.empty())
+            return lock_default();
+        if (mode.size() != view.size())
+            throw PythonError(type_error("wrong number of modes"));
+
+        auto s = start;
+        auto c = mode.begin();
+        for (auto &ref : view) {
+            PyObject* item = PyTuple_GET_ITEM(args.object(), s++);
+            if (auto p = cast_if<Variable>(item)) {
+                DUMP("its variable!", *c);
+                ref = begin_acquisition(*p, *c == 'w' ? LockType::Write : LockType::Read);
+            } else {
+                ref = Ref::from_existing(Index::of<Export>(), Pointer::from(item), true);
+            }
+            ++c;
+        }
+    }
+
+    ~TupleLock() noexcept {
+        auto s = start;
+        for (auto &ref : view) {
+            if (ref.has_value())
+                if (auto v = cast_if<Variable>(PyTuple_GET_ITEM(args.object(), s)))
+                    end_acquisition(*v);
+            ++s;
+        }
+    }
+};
+
+// struct SelfTupleLock : TupleLock {
+//     Variable &self;
+//     SelfTupleLock(Variable &s, ArgView &v, Instance<PyTupleObject> a, std::string_view mode) noexcept : TupleLock(v, a, 1), self(s) {
+//         char const first = mode.empty() ? 'r' : mode[0];
+//         begin_acquisition(self, first == 'w', first == 'r');
+//     }
+
+//     void lock(std::string_view mode) {
+//         if (mode.size() > 2) {
+//            mode.remove_prefix(std::min(mode.size(), std::size_t(2)));
+//             if (mode.size() != view.size())
+//                 throw PythonError(type_error("wrong number of modes"));
+//             lock_arguments(mode);
+//         } else {
+//             lock_arguments();
+//         }
+//     }
+
+//     ~SelfTupleLock() noexcept {end_acquisition(self);}
+// };
 
 /******************************************************************************/
 
@@ -86,7 +175,9 @@ Shared module_call(Index index, Instance<PyTupleObject> args, CallKeywords const
     Caller caller(lk);
     a.view.c.caller_ptr = &caller;
 
-    return call_to_output(kws.out, index, Pointer::from(nullptr), Tag::Const, a.view);
+    Shared out;
+    auto life = call_to_output(out, kws.out, index, Pointer::from(nullptr), Tag::Const, a.view);
+    return out;
 }
 
 /******************************************************************************/
@@ -105,59 +196,20 @@ Shared variable_call(Variable &v, Instance<PyTupleObject> args, CallKeywords con
     Caller caller(lk);
     a.view.c.caller_ptr = &caller;
 
-    return call_to_output(kws.out, v.index(), Pointer::from(v.address()), Tag::Const, a.view);
+    Shared out;
+    auto life = call_to_output(out, kws.out, v.index(), Pointer::from(v.address()), Tag::Const, a.view);
+    return out;
 }
 
 /******************************************************************************/
 
-struct ArgTupleLock {
-    ArgView &view;
-    Instance<PyTupleObject> args;
-    Py_ssize_t start;
+char remove_mode(std::string_view &mode) {
+    char const first = mode.empty() ? 'r' : mode[0];
+    mode.remove_prefix(std::min(mode.size(), std::size_t(2)));
+    return first;
+}
 
-    ArgTupleLock(ArgView &v, Instance<PyTupleObject> a, Py_ssize_t s=0)
-        : view(v), args(a), start(s) {for (auto &ref : view) ref.c.tag_index = nullptr;}
-
-    void read_lock() {
-        auto s = start;
-        for (auto &ref : view) {
-            PyObject* item = PyTuple_GET_ITEM(args.object(), s++);
-            if (auto p = cast_if<Variable>(item)) {
-                DUMP("its variable!");
-                ref = begin_acquisition(*p, false, true);
-            } else {
-                ref = Ref::from_existing(Index::of<Export>(), Pointer::from(item), true);
-            }
-        }
-    }
-
-    void lock(std::string_view mode) {
-        auto s = start;
-        auto c = mode.begin();
-        for (auto &ref : view) {
-            PyObject* item = PyTuple_GET_ITEM(args.object(), s++);
-            if (auto p = cast_if<Variable>(item)) {
-                DUMP("its variable!", *c);
-                ref = begin_acquisition(*p, *c == 'w', *c == 'r');
-            } else {
-                ref = Ref::from_existing(Index::of<Export>(), Pointer::from(item), true);
-            }
-            ++c;
-        }
-    }
-
-    ~ArgTupleLock() noexcept {
-        auto s = start;
-        for (auto &ref : view) {
-            if (ref.has_value())
-                if (auto v = cast_if<Variable>(PyTuple_GET_ITEM(args.object(), s)))
-                    end_acquisition(*v);
-            ++s;
-        }
-    }
-};
-
-Shared variable_method(Variable &v, Instance<PyTupleObject> args, CallKeywords &&kws) {
+Shared variable_method(Variable &v, Instance<> pyself, Instance<PyTupleObject> args, CallKeywords &&kws) {
     DUMP("variable_method", v.name());
     auto const total = PyTuple_GET_SIZE(args.object());
     ArgAlloc a(total-1, 1);
@@ -165,49 +217,61 @@ Shared variable_method(Variable &v, Instance<PyTupleObject> args, CallKeywords &
     std::string_view name;
     if (auto p = get_unicode(instance(PyTuple_GET_ITEM(args.object(), 0)))) {
         name = from_unicode(instance(p));
+        // name.data = s.data();
+        // name.size = s.size();
     } else throw PythonError(type_error("expected str"));
     a.view.tag(0) = Ref::from_existing(name);
 
     DUMP("mode", kws.mode);
-    // also need to lock on v and maybe output ...
-    char const first = kws.mode.empty() ? 'r' : kws.mode[0];
-    auto self = acquire_ref(v, first == 'w', first == 'r');
+    Shared out;
+    Lifetime life;
+    {
+        char self_mode = remove_mode(kws.mode);
+        auto self = acquire_ref(v, self_mode == 'w' ? LockType::Write : LockType::Read);
+        TupleLock locking(a.view, args, 1);
+        locking.lock(kws.mode);
 
-    ArgTupleLock locks(a.view, args, 1);
+        auto lk = std::make_shared<PythonFrame>(!kws.gil);
+        Caller caller(lk);
+        a.view.c.caller_ptr = &caller;
 
-    if (kws.mode.size() > 2) {
-        kws.mode.remove_prefix(std::min(kws.mode.size(), std::size_t(2)));
-        if (kws.mode.size() != a.view.size())
-            throw PythonError(type_error("wrong number of modes"));
-        locks.lock(kws.mode);
-    } else {
-        locks.read_lock();
+        life = call_to_output(out, kws.out, self.ref.index(), self.ref.pointer(), self.ref.tag(), a.view);
     }
-
-    auto lk = std::make_shared<PythonFrame>(!kws.gil);
-    Caller caller(lk);
-    a.view.c.caller_ptr = &caller;
-
-    return call_to_output(kws.out, self.ref.index(), self.ref.pointer(), self.ref.tag(), a.view);
+    DUMP("lifetime to attach = ", life.value);
+    if (life.value) {
+        if (auto o = cast_if<Variable>(+out)) {
+            for (unsigned i = 0; life.value; ++i) {
+                if (life.value & 1) {
+                    DUMP("got one", i);
+                    if (i) {
+                        DUMP("setting root to argument", i-1, PyTuple_GET_SIZE(args.object()));
+                        auto arg = instance(PyTuple_GET_ITEM(args.object(), i));
+                        o->set_lock(cast_object<Variable>(+arg).current_root(arg));
+                    } else {
+                        DUMP("setting root to self");
+                        o->set_lock(v.current_root(pyself));
+                    }
+                }
+                life.value >>= 1;
+            }
+        }
+    }
+    return out;
 }
 
 /******************************************************************************/
 
 PyObject* c_variable_call(PyObject* self, PyObject* args, PyObject* kws) noexcept {
-    if (!kws) return type_error("expected keywords");
     return raw_object([=] {
         return variable_call(cast_object<Variable>(self),
-            instance(reinterpret_cast<PyTupleObject *>(args)),
-            instance(reinterpret_cast<PyDictObject *>(kws)));
+            instance(reinterpret_cast<PyTupleObject *>(args)), CallKeywords(kws));
     });
 }
 
 PyObject* c_variable_method(PyObject* self, PyObject* args, PyObject* kws) noexcept {
-    if (!kws) return type_error("expected keywords");
     return raw_object([=] {
-        return variable_method(cast_object<Variable>(self),
-            instance(reinterpret_cast<PyTupleObject *>(args)),
-            instance(reinterpret_cast<PyDictObject *>(kws)));
+        return variable_method(cast_object<Variable>(self), instance(self),
+            instance(reinterpret_cast<PyTupleObject *>(args)), CallKeywords(kws));
     });
 }
 

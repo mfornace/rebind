@@ -44,24 +44,24 @@ struct Method {
     Call::stat &stat;
 
     template <class S, class F>
-    [[nodiscard]] bool operator()(S &&self, F const functor) {
-        DUMP(args.tags(), args.size());
+    [[nodiscard]] bool operator()(S &&self, F const functor, Lifetime life={}) {
+        DUMP("Method::operator()", args.tags(), args.size());
         if (args.tags() == 0) {
             DUMP("found match");
-            stat = MethodCall<F>::call(target, functor, std::forward<S>(self), args);
+            stat = MethodCall<F>::call(target, life, functor, std::forward<S>(self), args);
             return true;
         }
         return false;
     }
 
     template <class S, class F>
-    [[nodiscard]] bool operator()(S &&self, std::string_view name, F const functor) {
-        DUMP(args.tags(), args.size());
+    [[nodiscard]] bool operator()(S &&self, std::string_view name, F const functor, Lifetime life={}) {
+        DUMP("Method::operator()", args.tags(), args.size());
         if (args.tags() == 1) if (auto given = args.tag(0).load<std::string_view>()) {
             DUMP("Checking for method", name, "from", *given);
             if (*given == name) {
                 DUMP("found match");
-                stat = MethodCall<F>::call(target, functor, std::forward<S>(self), args);
+                stat = MethodCall<F>::call(target, life, functor, std::forward<S>(self), args);
                 return true;
             }
         }
@@ -73,8 +73,7 @@ struct Method {
         static_assert(std::is_reference_v<Base>, "T should be a reference type for Method::derive<T>()");
         static_assert(std::is_convertible_v<S &&, Base>);
         static_assert(!std::is_same_v<unqualified<S>, unqualified<Base>>);
-        // stat = Callable<unqualified<Base>>()(target, std::forward<S>(self), args);
-        return Call::was_invoked(stat);
+        return Callable<unqualified<Base>>()(*this, std::forward<S>(self));
     }
 };
 
@@ -105,9 +104,9 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
     static_assert(std::is_invocable_v<F, Ts...>, "Function is not invokable with designated arguments");
     using O = simplify_result<std::invoke_result_t<F, Ts...>>;
     using U = unqualified<O>;
-    DUMP("invoking function", type_name<F>(), "with output", type_name<O>(), "to tag", int(target.tag()));
+    DUMP("invoking function", type_name<F>(), "with output", type_name<O>(), "to tag", int(target.c.tag));
 
-    if (target.tag() == Target::None || (std::is_void_v<U> && !target.index())) {
+    if (target.c.tag == Target::None || (std::is_void_v<U> && !target.index())) {
         (void) std::invoke(f, static_cast<Ts &&>(ts)...);
         return Call::None;
     }
@@ -115,27 +114,29 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
     if constexpr(!std::is_void_v<U>) { // void already handled
         if (target.accepts<U>()) {
 
-            if (target.wants_value()) { // target needs a value, or target accepts a value and the output is a value
-                if constexpr(std::is_same_v<O, U> || std::is_convertible_v<O, U>) {
-                    if (!std::is_same_v<O, U> && !is_alias<U>) target.set_lifetime({});
+            if (std::is_same_v<O, U &> && target.c.tag & Target::Mutable) {
+                target.set_reference(std::invoke(f, static_cast<Ts &&>(ts)...));
+                return Call::Mutable;
+            }
 
+            if (std::is_reference_v<O> && target.c.tag & Target::Const) {
+                target.set_reference(static_cast<U const &>(std::invoke(f, static_cast<Ts &&>(ts)...)));
+                return Call::Const;
+            }
+            if (std::is_same_v<O, U> || std::is_convertible_v<O, U>) {
+                if (target.c.tag & Target::constraint<U>) {
                     if (auto p = target.placement<U>()) {
                         new(p) U(std::invoke(f, static_cast<Ts &&>(ts)...));
                         target.set_index<U>();
+                        if (!std::is_same_v<O, U> && !is_alias<U>) target.set_lifetime({});
                         return Call::Stack;
-                    } else {
-                        target.set_heap(new U(std::invoke(f, static_cast<Ts &&>(ts)...)));
-                        DUMP("returned heap...?", int(target.tag()));
-                        return Call::Heap;
                     }
                 }
-            } else { // return const & or &
-                if constexpr(std::is_reference_v<O>) {
-                    if (std::is_same_v<O, U &> || target.tag() != Target::Mutable) {
-                        DUMP("set reference");
-                        target.set_reference(std::invoke(f, static_cast<Ts &&>(ts)...));
-                        return std::is_same_v<O, U &> ? Call::Mutable : Call::Const;
-                    }
+                if (target.c.tag & Target::Heap) {
+                    target.set_heap(new U(std::invoke(f, static_cast<Ts &&>(ts)...)));
+                    if (!std::is_same_v<O, U> && !is_alias<U>) target.set_lifetime({});
+                    DUMP("returned heap...?", int(target.c.tag));
+                    return Call::Heap;
                 }
             }
 
@@ -218,7 +219,7 @@ struct Callable<Functor<F>> {
                     m.target, f.function, std::move(handle), cast_index(m.args, ts)...);
             });
         });
-        DUMP("hmm", m.stat);
+        DUMP("invoked with stat and lifetime", m.stat, f.lifetime.value);
         return Call::was_invoked(m.stat);
         // It is possible that maybe the invoked function's C++ exception may propagated in the future, assuming the caller policies allow this.
         // Therefore, resource destruction must be done via the frame going out of scope.
@@ -257,8 +258,8 @@ struct MethodCall {
      - Returns WrongNumber if args is not the right length
      */
     template <class S>
-    static Call::stat call(Target& out, F const &f, S &&self, ArgView &args) noexcept {
-        DUMP("call_to MethodCall<", type_name<F>(), ">:", std::addressof(f), args.size());
+    static Call::stat call(Target& out, Lifetime life, F const &f, S &&self, ArgView &args) noexcept {
+        DUMP("call_to MethodCall<", type_name<F>(), ">:", std::addressof(f), args.size(), life.value);
 
         if (args.size() != Args::size)
             return Call::wrong_number(out, args.size(), Args::size);
@@ -266,6 +267,7 @@ struct MethodCall {
         auto frame = args.caller().new_frame(); // make a new unentered frame, must be noexcept
         Caller handle(frame); // make the Caller with a weak reference to frame
 
+        out.set_lifetime(life);
         return out.make_noexcept([&] {
             return Args::indexed([&](auto ...ts) {
                 DUMP("invoking...");

@@ -8,7 +8,7 @@ namespace ara {
 /// Interface: return a new frame given a shared_ptr of *this
 struct Frame {
     // 1. make a new (unentered) child frame (noexcept). this happens before argument conversion
-    virtual std::shared_ptr<Frame> new_frame(std::shared_ptr<Frame> self) noexcept {return std::move(self);}
+    virtual std::shared_ptr<Frame> new_frame(std::shared_ptr<Frame> self) noexcept {return self;}
     // 2. enter this frame. this happens once all arguments have been converted properly
     virtual void enter() = 0;
     // 3. handle resource destruction when the frame is done

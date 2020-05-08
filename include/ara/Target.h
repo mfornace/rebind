@@ -13,10 +13,14 @@ struct Lifetime {
     constexpr Lifetime() noexcept = default;
 
     constexpr Lifetime(std::initializer_list<std::uint_fast8_t> const &v) noexcept {
-        for (auto const i : v) value &= 1 << i;
+        for (auto const i : v) value |= 1 << i;
     }
 
-    constexpr Lifetime(std::uint_fast8_t i) noexcept : value(1 << i) {}
+    static constexpr Lifetime from_mask(std::uint_fast8_t i) noexcept {
+        Lifetime out;
+        out.value = i;
+        return out;
+    }
 };
 
 /******************************************************************************/
@@ -28,24 +32,30 @@ struct Lifetime {
 struct Target {
     ara_target c;
 
-    // Kinds of return values that can be requested
-    enum Tag : ara_tag {
-        /*0*/ None,                // Request no output
-        /*1*/ Mutable,             // Request &
-        /*2*/ Const,               // Request const &
-        /*3*/ Reference,           // Request & or const &
-        /*4*/ Stack,               // Request stack storage
-        /*5*/ Heap,                // Request heap allocated value
-        /*6*/ TrivialRelocate,     // Request stack storage as long as type is trivially_relocatable
-        /*7*/ NoThrowMove//,       // Request stack storage as long as type is noexcept movable
-        // Trivial           // Request stack storage as long as type is trivial
-    };
+    // Kinds of values:
+    static constexpr ara_tag
+        None        = 0,
+        Mutable     = 1 << 0, // Mutable reference
+        Const       = 1 << 1, // Immutable reference
+        Heap        = 1 << 2, // Heap allocation
+        Trivial     = 1 << 3, // Trivial type
+        Relocatable = 1 << 4, // Relocatable but not trivial type
+        MoveNoThrow = 1 << 5, // Noexcept move constructible
+        MoveThrow   = 1 << 6, // Non-noexcept move constructible
+        Unmovable   = 1 << 7; // Not move constructible
 
-    static Target from(Index i, void* out, Code len, Tag tag) {
+    template <class T>
+    static constexpr ara_tag constraint = {
+        std::is_trivial_v<T> ? Trivial :
+            is_trivially_relocatable_v<T> ? Relocatable :
+                std::is_nothrow_move_constructible_v<T> ? MoveNoThrow :
+                    std::is_move_constructible_v<T> ? MoveThrow : Unmovable};
+
+    static Target from(Index i, void* out, Code len, ara_tag tag) {
         return {ara_target{i, out, 0, len, tag}};
     }
 
-    Tag tag() const {return static_cast<Tag>(c.tag);}
+    Tag returned_tag() const {return static_cast<Tag>(c.tag);}
     Index index() const {return c.index;}
     Code length() const {return c.length;}
     void* output() const {return c.output;}
@@ -62,26 +72,20 @@ struct Target {
     template <class T>
     [[nodiscard]] bool set_if(T &&t) {return emplace_if<unqualified<T>>(std::forward<T>(t));}
 
-    bool wants_value() const {return 3 < tag();}
-
     // Return placement new pointer if it is available for type T
     template <class T>
     constexpr void* placement() const noexcept {
-        if (tag() == Stack       && is_stackable<T>(length())) return output();
-        // if (tag() == Trivial     && is_stackable<T>(length()) && std::is_trivially_copyable_v<T>) return output();
-        if (tag() == NoThrowMove     && is_stackable<T>(length()) && std::is_nothrow_move_constructible_v<T>) return output();
-        if (tag() == TrivialRelocate && is_stackable<T>(length()) && is_trivially_relocatable_v<T>) return output();
-        return nullptr;
+        return ((c.tag & constraint<T>) && is_stackable<T>(length())) ? output() : nullptr;
     }
 
     template <class T, class ...Ts>
     void emplace(Ts &&...ts) {
         if (auto p = placement<T>()) {
             parts::alloc_to<T>(p, static_cast<Ts &&>(ts)...);
-            c.tag = Tag::Stack;
+            c.tag = static_cast<ara_tag>(Tag::Stack);
         } else {
             c.output = parts::alloc<T>(static_cast<Ts &&>(ts)...);
-            c.tag = Tag::Heap;
+            c.tag = static_cast<ara_tag>(Tag::Heap);
         }
         set_index<T>();
     }
@@ -90,21 +94,21 @@ struct Target {
     template <class T>
     void set_reference(T &t) noexcept {
         c.output = std::addressof(t);
-        c.tag = Tag::Mutable;
+        c.tag = static_cast<ara_tag>(Tag::Mutable);
         set_index<T>();
     }
 
     template <class T>
     void set_reference(T const &t) noexcept {
         c.output = const_cast<T *>(std::addressof(t));
-        c.tag = Tag::Const;
+        c.tag = static_cast<ara_tag>(Tag::Const);
         set_index<T>();
     }
 
     template <class T>
     void set_heap(T *t) noexcept {
         c.output = t;
-        c.tag = Tag::Heap;
+        c.tag = static_cast<ara_tag>(Tag::Heap);
         set_index<T>();
     }
 
@@ -114,7 +118,7 @@ struct Target {
     void set_index() noexcept {c.index = Index::of<T>();}
 
     void set_lifetime(Lifetime l) noexcept {c.lifetime = l.value;}
-    Lifetime lifetime() const noexcept {return c.lifetime;}
+    Lifetime lifetime() const noexcept {return Lifetime::from_mask(c.lifetime);}
 
     void set_current_exception() noexcept;
 

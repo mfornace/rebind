@@ -48,26 +48,23 @@ struct Variable {
     Variable(Variable const &) = delete;
     Variable(Variable &&) = delete; //default;
 
-    void set_stack(Index i, Shared lock) {
-        if (lock) {
-            this->lock.other = std::exchange(lock.base, nullptr);
-            idx = Tagged<State>(i, StackAlias);
-        } else {
-            this->lock.count = 0;
-            idx = Tagged<State>(i, Stack);
-        }
+    void set_stack(Index i) noexcept {
+        this->lock.count = 0;
+        idx = Tagged<State>(i, Stack);
     }
 
-    void set_heap(Index i, void *ptr, Tag tag, Shared lock) {
+    void set_heap(Index i, void *ptr, Tag tag) noexcept {
         storage.address.pointer = ptr;
         storage.address.qualifier = tag;
-        if (lock) {
-            this->lock.other = std::exchange(lock.base, nullptr);
-            idx = Tagged<State>(i, HeapAlias);
-        } else {
-            this->lock.count = 0;
-            idx = Tagged<State>(i, Heap);
-        }
+        this->lock.count = 0;
+        idx = Tagged<State>(i, Heap);
+    }
+
+    void set_lock(Instance<> other) {
+        lock.other = +other;
+        Py_INCREF(+other);
+        reinterpret_cast<std::uintptr_t &>(idx.base) |= 1;//Tagged<State>(i, idx.state() | 1);
+        ++(cast_object<Variable>(lock.other).lock.count);
     }
 
     bool has_value() const noexcept {return idx.has_value();}
@@ -86,6 +83,10 @@ struct Variable {
 
     static Shared new_object();
 
+    Instance<> current_root(Instance<> self) const {
+        return (idx.tag() & 0x1) ? instance(lock.other) : self;
+    }
+
     auto & current_lock() {
         return (idx.tag() & 0x1 ? cast_object<Variable>(lock.other).lock.count : lock.count);
     }
@@ -95,17 +96,17 @@ struct Variable {
 
 static constexpr auto MutateSentinel = std::numeric_limits<std::uintptr_t>::max();
 
-inline Ref begin_acquisition(Variable& v, bool allow_mut, bool allow_const) {
-    if (!v.has_value()) return {nullptr};
+inline Ref begin_acquisition(Variable& v, LockType type) {
+    if (!v.has_value()) return Ref::empty();
     auto &count = v.current_lock();
 
     if (count == MutateSentinel) {
         throw PythonError(type_error("cannot reference object which is being mutated"));
-    } else if (count == 0 && allow_mut) {
+    } else if (count == 0 && type == LockType::Write) {
         DUMP("write lock");
         count = MutateSentinel;
         return Ref::from_existing(v.index(), Pointer::from(v.address()), true);
-    } else if (allow_const) {
+    } else if (type == LockType::Read) {
         DUMP("read lock");
         ++count;
         return Ref::from_existing(v.index(), Pointer::from(v.address()), false);
@@ -129,8 +130,8 @@ struct AcquiredRef {
     ~AcquiredRef() noexcept {end_acquisition(v);}
 };
 
-inline AcquiredRef acquire_ref(Variable& v, bool allow_mut, bool allow_const) {
-    return AcquiredRef{begin_acquisition(v, allow_mut, allow_const), v};
+inline AcquiredRef acquire_ref(Variable& v, LockType type) {
+    return AcquiredRef{begin_acquisition(v, type), v};
 }
 
 /******************************************************************************/
@@ -138,19 +139,26 @@ inline AcquiredRef acquire_ref(Variable& v, bool allow_mut, bool allow_const) {
 inline void Variable::reset() noexcept {
     if (!has_value()) return;
     auto const state = idx.tag();
+    if (!(state & 0x1) && lock.count > 0) {
+        DUMP("not resetting because a reference is held");
+        return;
+    }
     if (state & 0x2) {
         if (storage.address.qualifier == Tag::Heap)
             Destruct::call(index(), Pointer::from(storage.address.pointer), Destruct::Heap);
     } else {
         Destruct::call(index(), Pointer::from(&storage), Destruct::Stack);
     }
-    if (state & 0x1) Py_DECREF(lock.other);
+    if (state & 0x1) {
+        --cast_object<Variable>(lock.other).lock.count;
+        Py_DECREF(lock.other);
+    }
     idx = {};
 }
 
 /******************************************************************************/
 
-Shared call_to_variable(Index self, Pointer address, Tag qualifier, ArgView &args);
+Lifetime call_to_variable(Index self, Pointer address, Tag qualifier, ArgView &args);
 
 /******************************************************************************/
 

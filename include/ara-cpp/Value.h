@@ -86,7 +86,7 @@ struct Value {
     std::optional<Copyable> clone() const;
 
     template <class T>
-    T const *target(Type<T> t={}) const {
+    T const *target(Type<T> = {}) const {
         if (!index().equals<T>()) return nullptr;
         else if (location() == Loc::Heap) return static_cast<T const *>(storage.pointer);
         else return &storage_cast<T const>(storage);
@@ -164,7 +164,7 @@ struct Maybe<Value> {
 /******************************************************************************/
 
 template <class T, class ...Args, std::enable_if_t<is_manageable<T>, int>>
-Value::Value(Type<T> t, Args&& ...args) {
+Value::Value(Type<T>, Args&& ...args) {
     static_assert(std::is_constructible_v<T, Args &&...>);
     if constexpr(loc_of<T> == Loc::Heap) {
         storage.pointer = parts::alloc<T>(static_cast<Args &&>(args)...);
@@ -225,9 +225,9 @@ inline bool Value::destruct() noexcept {
 
 template <>
 struct CallReturn<Value> {
-    static Value call(Index i, Tag qualifier, Pointer self, Caller &c, ArgView &args);
+    static Value call(Index i, Tag qualifier, Pointer self, ArgView &args);
 
-    static Value get(Index i, Tag qualifier, Pointer self, Caller &c, ArgView &args);
+    static Value get(Index i, Tag qualifier, Pointer self, ArgView &args);
 };
 
 // struct Copyable : Value {

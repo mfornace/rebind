@@ -2,10 +2,11 @@
 
 namespace ara {
 
-Value CallReturn<Value>::call(Index i, Tag qualifier, Pointer self, Caller &c, ArgView &args) {
+Value CallReturn<Value>::call(Index i, Tag qualifier, Pointer self, ArgView &args) {
     DUMP("calling to get Value");
     Value out;
-    auto target = Target::from(Index(), &out.storage, sizeof(out.storage), Target::NoThrowMove);
+    auto target = Target::from(Index(), &out.storage, sizeof(out.storage),
+        Target::Trivial | Target::Relocatable | Target::MoveNoThrow | Target::Heap);
     auto const stat = Call::call(i, target, self, qualifier, args);
     DUMP("called the output!", stat);
 
@@ -25,10 +26,11 @@ Value CallReturn<Value>::call(Index i, Tag qualifier, Pointer self, Caller &c, A
     return out;
 }
 
-Value CallReturn<Value>::get(Index i, Tag qualifier, Pointer self, Caller &c, ArgView &args) {
+Value CallReturn<Value>::get(Index i, Tag qualifier, Pointer self, ArgView &args) {
     DUMP("calling to get Value");
     Value out;
-    auto target = Target::from(Index(), &out.storage, sizeof(out.storage), Target::NoThrowMove);
+    auto target = Target::from(Index(), &out.storage, sizeof(out.storage),
+        Target::Trivial | Target::Relocatable | Target::MoveNoThrow | Target::Heap);
     auto const stat = Call::call(i, target, self, qualifier, args);
     DUMP("called the output!", stat);
 

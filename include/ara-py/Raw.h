@@ -29,6 +29,10 @@ struct PythonError {
 
 /******************************************************************************/
 
+enum class LockType {Read, Write};
+
+/******************************************************************************/
+
 template <class Module>
 PyObject* init_module() noexcept;
 

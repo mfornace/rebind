@@ -49,7 +49,7 @@ struct Pack {
     }
 
     template <class T>
-    static constexpr auto position(Type<T> t={}) {return position_impl<T>(indices());}
+    static constexpr auto position(Type<T> = {}) {return position_impl<T>(indices());}
 
     template <std::size_t B, std::size_t ...Is>
     static constexpr auto slice_sequence(std::index_sequence<Is...>) {return Pack<typename decltype(at<B + Is>())::type...>();}

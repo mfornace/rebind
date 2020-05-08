@@ -37,7 +37,7 @@ struct Streamable {
 };
 
 template <class T>
-Streamable<T> streamable(Type<T> t={}) {return {};}
+Streamable<T> streamable(Type<T> = {}) {return {};}
 
 /*
 1. bool operator()(Value &, ArgView const &)

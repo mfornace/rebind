@@ -175,20 +175,26 @@ struct Goo : GooBase {
 /******************************************************************************/
 
 template <>
+struct ara::Callable<GooBase> {
+    bool operator()(Method, GooBase const &) {return false;}
+};
+
+template <>
 struct ara::Callable<Goo> {
-    bool operator()(Method, Goo &) {
+    bool operator()(Method method, Goo &self) {
         DUMP("calling Goo");
-        return false;
+        return method(self, ".x", &Goo::x, {0})
+            || method(self, ".x=", [](Goo &s, double x) {s.x = x;});
     }
     bool operator()(Method, Goo &&) {
         DUMP("calling Goo");
         return false;
     }
     bool operator()(Method method, Goo const &self) {
-        DUMP("calling Goo method");
+        DUMP("calling Goo method", ara::Lifetime({0}).value);
         return method(self, &Goo::x)
             || method(self, "add", [](Goo g, Goo g2, Goo g3) {return g;})
-            || method(self, ".x", &Goo::x)
+            || method(self, ".x", &Goo::x, {0})
             // || method(self, "test_throw", &Goo::test_throw)
             || method(self, "get_x", [](Goo const &g) {return g.x;})
             // || method(self, "add", [](Goo &g, double x) {g.x += x;})
@@ -203,7 +209,7 @@ struct Example : ara::GlobalSchema<Example> {
     static void write(ara::Schema &s);
 };
 
-template ara_stat ara::impl<Example>::call(ara_input, void*, void*, ara_args*) noexcept;
+template ara_stat ara::impl<Example>::call(ara_input, void*, void*, void*) noexcept;
 
 // could make this return a schema
 void Example::write(ara::Schema &s) {

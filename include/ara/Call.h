@@ -83,9 +83,9 @@ struct Arg<T&&> {
 
 template <class T>
 struct CallReturn {
-    static std::optional<T> get(Index i, Tag qualifier, Pointer self, Caller &c, ArgView &args) {
+    static std::optional<T> get(Index i, Tag qualifier, Pointer self, ArgView &args) {
         std::aligned_union_t<0, T, void*> buffer;
-        auto target = Target::from(Index::of<T>(), &buffer, sizeof(buffer), Target::Stack);
+        auto target = Target::from(Index::of<T>(), &buffer, sizeof(buffer), Target::constraint<T>);
         auto const stat = Call::call(i, target, self, qualifier, args);
 
         std::optional<T> out;
@@ -105,9 +105,9 @@ struct CallReturn {
     }
 
     template <class ...Ts>
-    static T call(Index i, Tag qualifier, Pointer self, Caller &c, ArgView &args) {
+    static T call(Index i, Tag qualifier, Pointer self, ArgView &args) {
         std::aligned_union_t<0, T, void*> buffer;
-        auto target = Target::from(Index::of<T>(), &buffer, sizeof(buffer), Target::Stack);
+        auto target = Target::from(Index::of<T>(), &buffer, sizeof(buffer), Target::constraint<T>);
         auto const stat = Call::call(i, target, self, qualifier, args);
 
         switch (stat) {
@@ -124,7 +124,7 @@ struct CallReturn {
 
 template <class T>
 struct CallReturn<T &> {
-    static T * get(Index i, Tag qualifier, Pointer self, Caller &c, ArgView &args) {
+    static T * get(Index i, Tag qualifier, Pointer self, ArgView &args) {
         DUMP("calling something that returns reference ...");
         auto target = Target::from(Index::of<std::remove_cv_t<T>>(), nullptr, 0,
             std::is_const_v<T> ? Target::Const : Target::Mutable);
@@ -141,7 +141,7 @@ struct CallReturn<T &> {
         }
     }
 
-    static T & call(Index i, Tag qualifier, Pointer self, Caller &c, ArgView &args) {
+    static T & call(Index i, Tag qualifier, Pointer self, ArgView &args) {
         DUMP("calling something that returns reference ...");
         auto target = Target::from(Index::of<std::remove_cv_t<T>>(), nullptr, 0,
             std::is_const_v<T> ? Target::Const : Target::Mutable);
@@ -159,7 +159,7 @@ struct CallReturn<T &> {
 
 template <>
 struct CallReturn<void> {
-    static void call(Index i, Tag qualifier, Pointer self, Caller &c, ArgView &args) {
+    static void call(Index i, Tag qualifier, Pointer self, ArgView &args) {
         DUMP("calling something...", args.size());
         auto target = Target::from(Index(), nullptr, 0, Target::None);
 
@@ -171,7 +171,7 @@ struct CallReturn<void> {
         }
     }
 
-    static void get(Index i, Tag qualifier, Pointer self, Caller &c, ArgView &args) {
+    static void get(Index i, Tag qualifier, Pointer self, ArgView &args) {
         DUMP("calling something...");
         auto target = Target::from(Index(), nullptr, 0, Target::None);
 
@@ -192,9 +192,9 @@ struct CallReturn<void> {
 
 template <>
 struct CallReturn<Reference> {
-    static Reference call(Index i, Tag qualifier, Pointer self, Caller &c, ArgView &args) {
+    static Reference call(Index i, Tag qualifier, Pointer self, ArgView &args) {
         DUMP("calling something...");
-        auto target = Target::from(Index(), nullptr, 0, Target::Reference);
+        auto target = Target::from(Index(), nullptr, 0, Target::Const | Target::Mutable);
         auto stat = Call::call(i, target, self, qualifier, args);
 
         switch (stat) {
@@ -252,7 +252,7 @@ T call_args(Index i, Tag qualifier, Pointer self, Caller &c, Arg<Ts &&> ...ts) {
     ArgStack<N, sizeof...(Ts) - N> args(c, ts.ref()...);
     DUMP(type_name<T>(), " tags=", N, " args=", reinterpret_cast<ArgView &>(args).size());
     ((std::cout << type_name<Ts>() << std::endl), ...);
-    return CallReturn<T>::call(i, qualifier, self, c, reinterpret_cast<ArgView &>(args));
+    return CallReturn<T>::call(i, qualifier, self, reinterpret_cast<ArgView &>(args));
 }
 
 template <class T, int N, class ...Ts>
@@ -263,7 +263,7 @@ T call(Index i, Tag qualifier, Pointer self, Caller &c, Ts &&...ts) {
 template <class T, int N, class ...Ts>
 maybe<T> get_args(Index i, Tag qualifier, Pointer self, Caller &c, Arg<Ts &&> ...ts) {
     ArgStack<N, sizeof...(Ts) - N> args(c, ts.ref()...);
-    return CallReturn<T>::get(i, qualifier, self, c, reinterpret_cast<ArgView &>(args));
+    return CallReturn<T>::get(i, qualifier, self, reinterpret_cast<ArgView &>(args));
 }
 
 template <class T, int N, class ...Ts>

@@ -20,7 +20,7 @@ template <class ...Ts>
 void print_arguments(char const *s, int n, Ts const &...ts) {
     if (!Debug) return;
     std::cout << '[' << s << ':' << n << "] ";
-    int x[] = {(std::cout << ts << ' ', 0)...};
+    ((std::cout << ts << ' '), ...);
     std::cout << std::endl;
 }
 
@@ -72,7 +72,7 @@ static constexpr bool is_copy_constructible_v = is_copy_constructible<T>::value;
 // Ignore variable to use a parameter when the argument should be ignored
 struct Ignore {
     template <class ...Ts>
-    constexpr Ignore(Ts const &...ts) {}
+    constexpr Ignore(Ts const &...) {}
 };
 
 /******************************************************************************/

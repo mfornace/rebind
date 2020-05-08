@@ -7,7 +7,17 @@ namespace ara {
 
 template <>
 struct Dumpable<ara_str> {
-    bool operator()(Target &v, ara_str s) const {return false;};
+    bool operator()(Target &v, ara_str s) const {
+        if (v.accepts<std::string_view>()) {
+            if (s.data) return v.emplace_if<std::string_view>(s.data, s.size);
+            else return v.emplace_if<std::string_view>();
+        }
+        if (v.accepts<std::string>()) {
+            if (s.data) return v.emplace_if<std::string>(s.data, s.size);
+            else return v.emplace_if<std::string>();
+        }
+        return false;
+    };
 };
 
 template <>

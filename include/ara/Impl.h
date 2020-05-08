@@ -33,38 +33,33 @@ static constexpr bool is_alias = Alias<T>::value;
 
 /******************************************************************************************/
 
-// Insert a new copy of the object into a buffer of size n
-// -- If the buffer is too small, allocate the object on the Heap
-// -- Out of memory errors are handled specifically
-// -- Other exceptions are currently not output and are just returned as the Exception code
+// Dont need target here, just:
+// void* output
+// length
+// Pointer source
+// bool move
 struct Copy {
     enum stat : Stat {Stack, Heap, Impossible, Exception, OutOfMemory};
 
     template <class T>
     struct impl {
-        static stat put(void* out, Code n, T const &t) noexcept {
-            if constexpr(is_copy_constructible_v<T>) {
-                try {
-                    if (is_stackable<T>(n)) {
-                        new(out) T(t);
+        static stat put(void *out, T const &self, Code length) noexcept {
+            // return out.make_noexcept([&] {
+                if constexpr(std::is_copy_constructible_v<T>) {
+                    if (is_stackable<T>(length)) {
+                        new(out) T(self);
                         return Stack;
                     } else {
-                        *static_cast<void**>(out) = new T(t);
+                        *static_cast<void **>(out) = new T(self);
                         return Heap;
                     }
-                } catch (std::bad_alloc) {
-                    return OutOfMemory;
-                } catch (...) {
-                    return Exception;
-                }
-            } else {
-                return Impossible;
-            }
+                } else return Impossible;
+            // });
         }
     };
 
-    static stat call(Idx f, void* out, Code n, Pointer source) noexcept {
-        return static_cast<stat>(f({code::copy, n}, out, source.base, {}));
+    static stat call(Idx f, void* out, Pointer source, Code length) noexcept {
+        return static_cast<stat>(f({code::copy, static_cast<Code>(length)}, out, source.base, {}));
     }
 };
 
@@ -159,8 +154,8 @@ struct Name {
     template <class T>
     struct impl {
         static stat put(ara_str &s) noexcept {
-            s.pointer = TypeName<T>::name.data();
-            s.len = TypeName<T>::name.size();
+            s.data = TypeName<T>::name.data();
+            s.size = TypeName<T>::name.size();
             return OK;
         }
     };
@@ -196,11 +191,11 @@ struct Dump {
                         case Tag::Mutable: {if (!Dumpable<T>()(out, source.load<T &>())) return None; break;}
                         case Tag::Const:   {if (!Dumpable<T>()(out, source.load<T const &>())) return None; break;}
                     }
-                    switch (out.tag()) {
-                        case Target::Mutable: return Mutable;
-                        case Target::Const: return Const;
-                        case Target::Stack: return Stack;
-                        case Target::Heap: return Heap;
+                    switch (out.returned_tag()) {
+                        case Tag::Mutable: return Mutable;
+                        case Tag::Const: return Const;
+                        case Tag::Stack: return Stack;
+                        case Tag::Heap: return Heap;
                         default: return None;
                     }
                 });
@@ -233,11 +228,11 @@ struct Load {
                     ara_ref r{ara_tag_index(out.index(), static_cast<ara_tag>(qualifier)), source.base};
                     if (std::optional<T> o = Loadable<T>()(reinterpret_cast<Ref &>(r))) {
                         out.emplace<T>(std::move(*o));
-                        switch (out.tag()) {
-                            case Target::Mutable: return Mutable;
-                            case Target::Const: return Const;
-                            case Target::Stack: return Stack;
-                            case Target::Heap: return Heap;
+                        switch (out.returned_tag()) {
+                            case Tag::Mutable: return Mutable;
+                            case Tag::Const: return Const;
+                            case Tag::Stack: return Stack;
+                            case Tag::Heap: return Heap;
                             default: return None;
                         }
                     } else return None;
@@ -248,6 +243,43 @@ struct Load {
 
     static stat call(Idx f, Target &out, Pointer source, Tag qualifier) noexcept {
         return static_cast<stat>(f({code::load, static_cast<Code>(qualifier)}, &out, source.base, {}));
+    }
+};
+
+/******************************************************************************************/
+
+// Similar to Load except
+struct Assign {
+    enum stat : Stat {OK, NoConversion, Impossible, Exception, OutOfMemory};
+
+    template <class T>
+    struct impl {
+        static stat put(Target &out, T &self, Pointer source, Tag qualifier) noexcept {
+            return out.make_noexcept([&] {
+                if constexpr(std::is_move_assignable_v<T>) {
+                    if (out.index() == Index::of<T>()) {
+                        if (qualifier == Tag::Stack || qualifier == Tag::Heap) {
+                            self = std::move(source.load<T &&>());
+                        } else {
+                            if (std::is_copy_assignable_v<T>) self = source.load<T const &>();
+                        }
+                    }
+
+                    if constexpr(is_complete_v<Loadable<T>>) {
+                        ara_ref r{ara_tag_index(out.index(), static_cast<ara_tag>(qualifier)), source.base};
+                        if (std::optional<T> o = Loadable<T>()(reinterpret_cast<Ref &>(r))) {
+                            self = std::move(*o);
+                            return OK;
+                        } else return NoConversion;
+                    }
+                }
+                return Impossible;
+            });
+        }
+    };
+
+    static stat call(Idx f, Target &out, Pointer source, Tag qualifier) noexcept {
+        return static_cast<stat>(f({code::copy, static_cast<Code>(qualifier)}, &out, source.base, {}));
     }
 };
 
@@ -269,10 +301,9 @@ struct Call {
     enum stat : Stat {Impossible, WrongNumber, WrongType, WrongReturn,
                       None, Stack, Heap, Mutable, Const,
                       Exception, OutOfMemory};
-    // enum source :
 
     static constexpr bool was_invoked(stat s) {return 3 < s;}
-#warning "todo: static method"
+
     template <class T>
     struct impl {
         static stat put(Target &out, Pointer self, ArgView &args, Tag qualifier) noexcept {
@@ -326,11 +357,11 @@ struct impl {
     static_assert(!std::is_volatile_v<T>);
     static_assert(!std::is_same_v<T, Ref>);
 
-    static Stat call(ara_input i, void* o, void* s, ara_args *args) noexcept __attribute__((noinline)) {
+    static Stat call(ara_input i, void* o, void* s, void* args) noexcept __attribute__((noinline)) {
         return build(i, o, s, args);
     }
 
-    static Stat build(ara_input i, void* o, void* s, ara_args *args) noexcept {
+    static Stat build(ara_input i, void* o, void* s, void* args) noexcept {
         static_assert(sizeof(T) >= 0, "Type should be complete");
         warn_unimplemented<T>();
 
@@ -340,26 +371,23 @@ struct impl {
             case code::destruct: {
                 return impl_put<Destruct, T>(Pointer::from(o).load<T &>(), static_cast<Destruct::storage>(i.tag));
             }
+            case code::copy: {
+                return impl_put<Copy, T>(o, Pointer::from(s).load<T const &>(), i.tag);
+            }
             case code::relocate: {
                 return impl_put<Relocate, T>(o, Pointer::from(s).load<T &&>());
             }
-            case code::copy: {
-                return impl_put<Copy, T>(o, i.tag, Pointer::from(s).load<T const &>());
+            case code::assign: {
+                return impl_put<Assign, T>(*static_cast<Target *>(o), Pointer::from(s).load<T &>(), Pointer::from(args), static_cast<Tag>(i.tag));
             }
             case code::load: {
                 return impl_put<Load, T>(*static_cast<Target *>(o), Pointer::from(s), static_cast<Tag>(i.tag));
             }
             case code::dump: {
-                // return impl_put<Dump, T>(o, i.tag, reinterpret_cast<Tagged &>(f), Pointer::from(s));
                 return impl_put<Dump, T>(*static_cast<Target *>(o), Pointer::from(s), static_cast<Tag>(i.tag));
             }
-            case code::assign: {
-                return {};
-                // if constexpr(!std::is_move_assignable_v<T>) return stat::put(stat::assign_if::Impossible);
-                // else return stat::put(default_assign(*static_cast<T *>(b), *static_cast<Ref const *>(o)));
-            }
             case code::call: {
-                return impl_put<Call, T>(*static_cast<Target *>(o), Pointer::from(s), reinterpret_cast<ArgView &>(*args), static_cast<Tag>(i.tag));
+                return impl_put<Call, T>(*static_cast<Target *>(o), Pointer::from(s), *reinterpret_cast<ArgView *>(args), static_cast<Tag>(i.tag));
             }
             case code::name: {
                 return impl_put<Name, T>(*static_cast<ara_str *>(o));
@@ -381,11 +409,11 @@ struct impl {
 
 template <class SFINAE>
 struct impl<void, SFINAE> {
-    static Stat call(ara_input i, void* o, void* s, ara_args *args) noexcept __attribute__((noinline)) {
-        return build(i, o, s, args);
+    static Stat call(ara_input i, void* o, void* s, void*) noexcept __attribute__((noinline)) {
+        return build(i, o, s, nullptr);
     }
 
-    static Stat build(ara_input i, void* o, void* s, ara_args *args) noexcept {
+    static Stat build(ara_input i, void* o, void* s, void*) noexcept {
         switch (i.code) {
             case code::name: {
                 return impl_put<Name, void>(*static_cast<ara_str *>(o));
@@ -407,7 +435,7 @@ inline std::string_view Index::name() const noexcept {
     if (!has_value()) return "null";
     ara_str out;
     Name::call(*this, out);
-    return std::string_view(out.pointer, out.len);
+    return std::string_view(out.data, out.size);
 }
 
 /******************************************************************************************/

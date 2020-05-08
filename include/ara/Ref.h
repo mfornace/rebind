@@ -9,6 +9,8 @@ namespace ara {
 struct Ref {
     ara_ref c;
 
+    static Ref empty() noexcept {return {nullptr, nullptr};}
+
     static Ref from_existing(Index i, Pointer p, bool mutate) noexcept {
         return {Tagged<Tag>(i, mutate ? Tag::Mutable : Tag::Const).base, p.base};
     }
@@ -96,6 +98,12 @@ struct Reference : Ref {
     Reference(Tagged<Tag> i, Pointer p) noexcept : Ref{i.base, p.base} {}
     Reference(Index i, Tag t, Pointer p) noexcept : Reference{{i, t}, p} {}
 
+    template <class T>
+    explicit Reference(T &t) noexcept : Ref(Ref::from_existing(t)) {}
+
+    template <class T>
+    explicit Reference(T const &t) noexcept : Ref(Ref::from_existing(t)) {}
+
     /**************************************************************************************/
 
     Reference(Reference &&r) noexcept : Ref{std::exchange(r.c.tag_index, nullptr), r.c.pointer} {}
@@ -155,7 +163,7 @@ inline Load::stat Ref::load_to(Target &target) noexcept {
 }
 
 template <class T, std::enable_if_t<!std::is_reference_v<T>, int>>
-std::optional<T> Ref::load(Type<T> t) {
+std::optional<T> Ref::load(Type<T>) {
     std::optional<T> out;
     if (!has_value()) {
         DUMP("no value");
@@ -170,7 +178,7 @@ std::optional<T> Ref::load(Type<T> t) {
         }
     } else {
         storage_like<T> storage;
-        auto target = Target::from(Index::of<T>(), &storage, sizeof(storage), Target::Stack);
+        auto target = Target::from(Index::of<T>(), &storage, sizeof(storage), Target::constraint<T>);
         switch (load_to(target)) {
             case Load::Stack: {
                 DUMP("load succeeded");
@@ -193,7 +201,7 @@ std::optional<T> Ref::load(Type<T> t) {
 }
 
 template <class T, std::enable_if_t<std::is_reference_v<T>, int>>
-std::remove_reference_t<T> * Ref::load(Type<T> t) const {
+std::remove_reference_t<T> * Ref::load(Type<T>) const {
     DUMP("load reference", type_name<T>(), name());
     if (auto t = target<T>()) return t;
     return nullptr;
