@@ -3,7 +3,8 @@
 #include <ara/Core.h>
 #include <ara-cpp/Schema.h>
 #include <ara-cpp/Standard.h>
-#include <ara-cpp/Arrays.h>
+#include <ara-cpp/Array.h>
+#include <ara-cpp/Tuple.h>
 #include <iostream>
 
 
@@ -209,7 +210,7 @@ struct Example : ara::GlobalSchema<Example> {
     static void write(ara::Schema &s);
 };
 
-template ara_stat ara::impl<Example>::call(ara_input, void*, void*, void*) noexcept;
+template ara_stat ara::Switch<Example>::call(ara_input, void*, void*, void*) noexcept;
 
 // could make this return a schema
 void Example::write(ara::Schema &s) {

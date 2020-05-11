@@ -57,7 +57,7 @@ struct Arg<T&> {
     T &t;
 
     Arg(T &t) noexcept : t(t) {}
-    Reference ref() noexcept {return Reference(t);}
+    Ref ref() noexcept {return Ref(t);}
 };
 
 template <class T>
@@ -65,7 +65,7 @@ struct Arg<T const&> {
     T const& t;
 
     Arg(T const& t) noexcept : t(t) {}
-    Reference ref() noexcept {return Reference(t);}
+    Ref ref() noexcept {return Ref(t);}
 };
 
 // For rvalue, Hold a non-RAII version of the value to allow stealing
@@ -73,8 +73,8 @@ template <class T>
 struct Arg<T&&> {
     storage_like<T> storage;
 
-    Arg(T&& t) noexcept {new(&storage) T(std::move(t));}
-    Reference ref() noexcept {return Reference(Index::of<T>(), Tag::Stack, Pointer::from(&storage));}
+    Arg(T&& t) noexcept {allocate_in_place<T>(&storage, std::move(t));}
+    Ref ref() noexcept {return Ref(Index::of<T>(), Tag::Stack, Pointer::from(&storage));}
 };
 
 [[noreturn]] void call_throw(Target &&target, Call::stat c);
@@ -85,7 +85,7 @@ template <class T>
 struct CallReturn {
     static std::optional<T> get(Index i, Tag qualifier, Pointer self, ArgView &args) {
         std::aligned_union_t<0, T, void*> buffer;
-        auto target = Target::from(Index::of<T>(), &buffer, sizeof(buffer), Target::constraint<T>);
+        Target target(Index::of<T>(), &buffer, sizeof(buffer), Target::constraint<T>);
         auto const stat = Call::call(i, target, self, qualifier, args);
 
         std::optional<T> out;
@@ -107,7 +107,7 @@ struct CallReturn {
     template <class ...Ts>
     static T call(Index i, Tag qualifier, Pointer self, ArgView &args) {
         std::aligned_union_t<0, T, void*> buffer;
-        auto target = Target::from(Index::of<T>(), &buffer, sizeof(buffer), Target::constraint<T>);
+        Target target(Index::of<T>(), &buffer, sizeof(buffer), Target::constraint<T>);
         auto const stat = Call::call(i, target, self, qualifier, args);
 
         switch (stat) {
@@ -126,7 +126,7 @@ template <class T>
 struct CallReturn<T &> {
     static T * get(Index i, Tag qualifier, Pointer self, ArgView &args) {
         DUMP("calling something that returns reference ...");
-        auto target = Target::from(Index::of<std::remove_cv_t<T>>(), nullptr, 0,
+        Target target(Index::of<std::remove_cv_t<T>>(), nullptr, 0,
             std::is_const_v<T> ? Target::Const : Target::Mutable);
 
         auto const stat = Call::call(i, target, self, qualifier, args);
@@ -143,7 +143,7 @@ struct CallReturn<T &> {
 
     static T & call(Index i, Tag qualifier, Pointer self, ArgView &args) {
         DUMP("calling something that returns reference ...");
-        auto target = Target::from(Index::of<std::remove_cv_t<T>>(), nullptr, 0,
+        Target target(Index::of<std::remove_cv_t<T>>(), nullptr, 0,
             std::is_const_v<T> ? Target::Const : Target::Mutable);
 
         auto const stat = Call::call(i, target, self, qualifier, args);
@@ -161,7 +161,7 @@ template <>
 struct CallReturn<void> {
     static void call(Index i, Tag qualifier, Pointer self, ArgView &args) {
         DUMP("calling something...", args.size());
-        auto target = Target::from(Index(), nullptr, 0, Target::None);
+        Target target(Index(), nullptr, 0, Target::None);
 
         auto const stat = Call::call(i, target, self, qualifier, args);
         DUMP("got stat", stat);
@@ -173,7 +173,7 @@ struct CallReturn<void> {
 
     static void get(Index i, Tag qualifier, Pointer self, ArgView &args) {
         DUMP("calling something...");
-        auto target = Target::from(Index(), nullptr, 0, Target::None);
+        Target target(Index(), nullptr, 0, Target::None);
 
         auto const stat = Call::call(i, target, self, qualifier, args);
         DUMP("got stat", stat);
@@ -191,15 +191,15 @@ struct CallReturn<void> {
 /******************************************************************************/
 
 template <>
-struct CallReturn<Reference> {
-    static Reference call(Index i, Tag qualifier, Pointer self, ArgView &args) {
+struct CallReturn<Ref> {
+    static Ref call(Index i, Tag qualifier, Pointer self, ArgView &args) {
         DUMP("calling something...");
-        auto target = Target::from(Index(), nullptr, 0, Target::Const | Target::Mutable);
+        Target target(Index(), nullptr, 0, Target::Const | Target::Mutable);
         auto stat = Call::call(i, target, self, qualifier, args);
 
         switch (stat) {
-            case Call::Const:   return Reference(target.index(), Tag::Const, Pointer::from(target.output()));
-            case Call::Mutable: return Reference(target.index(), Tag::Mutable, Pointer::from(target.output()));
+            case Call::Const:   return Ref(target.index(), Tag::Const, Pointer::from(target.output()));
+            case Call::Mutable: return Ref(target.index(), Tag::Mutable, Pointer::from(target.output()));
             // function is noexcept until here, now it is permitted to throw (I think)
             default: return nullptr;
         }

@@ -126,15 +126,15 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
             if (std::is_same_v<O, U> || std::is_convertible_v<O, U>) {
                 if (target.c.tag & Target::constraint<U>) {
                     if (auto p = target.placement<U>()) {
-                        new(p) U(std::invoke(f, static_cast<Ts &&>(ts)...));
+                        new(p) Alias<U>(std::invoke(f, static_cast<Ts &&>(ts)...));
                         target.set_index<U>();
-                        if (!std::is_same_v<O, U> && !is_alias<U>) target.set_lifetime({});
+                        if (!std::is_same_v<O, U> && !is_dependent<U>) target.set_lifetime({});
                         return Call::Stack;
                     }
                 }
                 if (target.c.tag & Target::Heap) {
-                    target.set_heap(new U(std::invoke(f, static_cast<Ts &&>(ts)...)));
-                    if (!std::is_same_v<O, U> && !is_alias<U>) target.set_lifetime({});
+                    target.set_heap(new Alias<U>(std::invoke(f, static_cast<Ts &&>(ts)...)));
+                    if (!std::is_same_v<O, U> && !is_dependent<U>) target.set_lifetime({});
                     DUMP("returned heap...?", int(target.c.tag));
                     return Call::Heap;
                 }
@@ -142,7 +142,7 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
 
         } else {
             if constexpr(std::is_reference_v<O>) {
-                switch (Ref::from_existing(std::invoke(f, static_cast<Ts &&>(ts)...)).load_to(target)) {
+                switch (Ref(std::invoke(f, static_cast<Ts &&>(ts)...)).load_to(target)) {
                     case Load::Exception: return Call::Exception;
                     case Load::OutOfMemory: return Call::OutOfMemory;
                     case std::is_same_v<O, U &> ? Load::Mutable : Load::Const:
@@ -152,7 +152,7 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
             } else {
                 storage_like<U> storage;
                 new (&storage) U(std::invoke(f, static_cast<Ts &&>(ts)...));
-                switch (Reference(Index::of<U>(), Tag::Stack, Pointer::from(&storage)).load_to(target)) {
+                switch (Ref(Index::of<U>(), Tag::Stack, Pointer::from(&storage)).load_to(target)) {
                     case Load::Exception: return Call::Exception;
                     case Load::OutOfMemory: return Call::OutOfMemory;
                     case Load::Stack: return Call::Stack;

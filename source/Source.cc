@@ -19,6 +19,18 @@ ARA_DEFINE(unsigned, unsigned);
 ARA_DEFINE(float, float);
 ARA_DEFINE(double, double);
 
+// ara_define_str() {return }
+// ara::Switch<TYPE>::call
+
+ARA_DEFINE(str,    ara::Str);
+ARA_DEFINE(bin,    ara::Bin);
+ARA_DEFINE(string, ara::String);
+ARA_DEFINE(binary, ara::Binary);
+ARA_DEFINE(span,   ara::Span);
+ARA_DEFINE(array,  ara::Array);
+ARA_DEFINE(tuple,  ara::Tuple);
+ARA_DEFINE(view,   ara::View);
+
 }
 
 // static_assert(sizeof(std::exception_ptr) == 8);

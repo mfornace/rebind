@@ -2,17 +2,17 @@
 #define ARA_API_H
 
 /*
-    Defines raw C API and corresponding C++ API
+Defines raw C API
 */
 
 #include <stdint.h> // uintptr_t
 #include <stddef.h> // size_t
 
 #ifdef __cplusplus
-
 extern "C" {
-
 #endif
+
+/******************************************************************************************/
 
 /// Output status code for raw operations
 typedef int32_t ara_stat;
@@ -28,21 +28,12 @@ typedef struct ara_input {
 enum ara_tags {ara_stack=0, ara_heap=1, ara_const=2, ara_mutable=3};
 typedef uint_fast8_t ara_tag;
 
-
-// typedef void (*ara_fptr)(void);
-// typedef union ara_storage {
-//     void *pointer;
-//     char storage[16];
-// } ara_storage;
-
 typedef intmax_t ara_integer;
 typedef double ara_float;
 
 /******************************************************************************************/
 
-/// ara_index is a function pointer of the following type
-// typedef ara_stat (*ara_index)(ara_code t, void *a, void *b, ara_args);
-
+// ara_index := ara_stat(ara_code, void*, void*, void*)
 typedef ara_stat (*ara_index)(
     ara_input code_tag,  // slot for dispatching the operation, slot for additional integer input
     void* output,           // slot for output location of any type
@@ -80,52 +71,99 @@ typedef struct ara_args {
 
 /******************************************************************************************/
 
-/// ara_str is essentially an in-house copy of std::string_view
+/// ara_str is essentially an in-house copy of std::string_view.
 typedef struct ara_str {
     char const *data;
-    uintptr_t size;
+    size_t size;
 } ara_str;
 
 /******************************************************************************************/
 
-// typedef struct ara_exception {
-//     ara_index index;
-//     void *pointer;
-// } ara_exception;
-
-/******************************************************************************************/
-
 // type-erasure used to deallocate another pointer
-typedef struct ara_alloc {
-    void *pointer; // for std::allocator, this is just reinterpreted as capacity
-    void (*destructor)(size_t, void *); // destructor function pointer, called with size and data
-} ara_alloc;
+typedef struct ara_string_alloc {
+    char *pointer; // for std::allocator, this is just reinterpreted as capacity
+    void (*destructor)(char*, size_t); // destructor function pointer, called with size and data
+} ara_string_alloc;
 
-/// small buffer optimization of same size as ara_alloc
-typedef union ara_alloc_sbo {
-    ara_alloc alloc;
-    char storage[sizeof(ara_alloc)];
-} ara_alloc_sbo;
+/// small buffer optimization of same size as ara_string_alloc
+typedef union ara_string_sbo {
+    char storage[sizeof(ara_string_alloc)];
+    ara_string_alloc alloc;
+} ara_string_sbo;
 
-/******************************************************************************************/
-
-/// A simple std::string-like class containing a type-erased destructor and SSO
+/// A simple null-terminated std::string-like class containing a type-erased destructor and SSO
 typedef struct ara_string {
-    ara_alloc_sbo storage;
-    size_t size; // if size <= sizeof(storage), SSO is used
+    ara_string_sbo sbo;
+    size_t size; // if size < sizeof(storage), SSO is used
 } ara_string;
 
 /******************************************************************************************/
 
+/// ara_str is essentially an in-house copy of std::string_view
+typedef struct ara_bin {
+    unsigned char const *data;
+    uintptr_t size;
+} ara_bin;
+
+// type-erasure used to deallocate another pointer
+typedef struct ara_binary_alloc {
+    unsigned char *pointer; // for std::allocator, this is just reinterpreted as capacity
+    void (*destructor)(size_t, void *); // destructor function pointer, called with size and data
+} ara_binary_alloc;
+
+/// small buffer optimization of same size as ara_binary_alloc
+typedef union ara_binary_sbo {
+    ara_binary_alloc alloc;
+    char storage[sizeof(ara_binary_alloc)];
+} ara_binary_sbo;
+
+/// A simple null-terminated std::string-like class containing a type-erased destructor and SSO
+typedef struct ara_binary {
+    ara_binary_sbo sbo;
+    size_t size; // if size < sizeof(storage), SSO is used
+} ara_binary;
+
+/******************************************************************************************/
+
+// Contiguous container similar to a type-erased std::vector (extend to ND shape?)
+typedef struct ara_span {
+    ara_index index;   // Type and qualifier of the held type
+    void* data;        // Address to the start of the array
+    uintptr_t shape;     // Either shape pointer or the length itself if rank=1
+    uint32_t rank;     // Rank of the array
+    uint32_t item;     // Item size
+} ara_span;
+
+// Contiguous container similar to a type-erased std::vector (extend to ND shape?)
 typedef struct ara_array {
-    ara_index index; // type and qualifier of the held type
-    void *pointer;      // address to the start of the array
-    size_t length;      // length of the array
-    void (*destructor)(size_t, void *);
+    ara_span span;
+    void* storage;     // destructor data
+    void (*destructor)(ara_index, void*); // called with previous members
 } ara_array;
 
 /******************************************************************************************/
 
+// Container of heterogeneous types
+typedef struct ara_view {
+    ara_ref* data;                               // address to the start of the array
+    size_t size;                                 // if shape is given, number of shape. otherwise length of array
+    size_t* shape;                               // list of shape, may be null
+    void* storage;                               // destructor storage to know how to delete data, shape
+    void (*destructor)(ara_ref*, size_t, void*); // called with previous members
+} ara_view;
+
+// Container of heterogeneous types
+typedef struct ara_tuple {
+    ara_ref* data;                               // address to the start of the array
+    size_t size;                                 // if shape is given, number of shape. otherwise length of array
+    size_t* shape;                               // list of shape, may be null
+    void* storage;
+    void (*destructor)(ara_ref*, size_t, void*); // called with previous members
+} ara_tuple;
+
+/******************************************************************************************/
+
+// Main type used for emplacing a function output
 typedef struct ara_target {
     // Requested type index. May be null if no type is requested
     ara_index index;
@@ -144,7 +182,6 @@ typedef struct ara_target {
 /******************************************************************************************/
 
 // reinterpret_cast is legal C++ for interconversion of uintptr_t and void *
-// need to check about function pointer though
 // 32-bit (4 bytes): the pointer must be a multiple of 4 (2 bits are guaranteed 0)
 // 64-bit (8 bytes): the pointer must be a multiple of 8 (3 bits are guaranteed 0)
 // We have 4 qualifiers, so we use the last 2 bits for the qualifier tagging, i.e. 11 = 3
@@ -156,113 +193,24 @@ inline ara_index ara_tag_index(ara_index i, ara_tag q) {
 
 // Get out the last 2 bits as the tag
 inline ara_tag ara_get_tag(ara_index i) {
-    return (ara_tag)( (uintptr_t)(i) & (uintptr_t)(3) );
+    return (ara_tag)( (uintptr_t)(i) & (uintptr_t)(0x3) );
 }
 
 // Get out the pointer minus the tag
 inline ara_index ara_get_index(ara_index i) {
-    return (ara_index)( (uintptr_t)(i) & ~((uintptr_t)(3)) );
+    return (ara_index)( (uintptr_t)(i) & ~((uintptr_t)(0x3)) );
 }
 
 /******************************************************************************************/
 
 #define ARA_FUNCTION(NAME) ara_define_##NAME
 
+/******************************************************************************************/
+
 #ifdef __cplusplus
 }
-
-#define ARA_DEFINE(NAME, TYPE) ara_stat ARA_FUNCTION(NAME)(ara_input i, void* s, void* p, void* a) noexcept {return ara::impl<TYPE>::build(i,s,p,a);}
-
-#define ARA_DECLARE(NAME, TYPE) \
-    extern "C" ara_stat ARA_FUNCTION(NAME)(ara_input, void*, void*, void*) noexcept; \
-    namespace ara {inline ara_index fetch(ara::Type<TYPE>) {return ARA_FUNCTION(NAME);}}
-
-#include <type_traits>
-
-namespace ara {
-
-// C++ version of ara_tags enum
-enum class Tag : ara_tag {Stack=ara_stack, Heap=ara_heap, Const=ara_const, Mutable=ara_mutable};
-
-static char const * TagNames[4] = {"stack", "heap", "const", "mutable"};
-
-// C++ alias of ara_code
-using Code = ara_code;
-
-using Stat = ara_stat;
-
-using Idx = ara_index;
-
-using Integer = ara_integer;
-using Float = ara_float;
-
-static_assert(sizeof(ara_input) == 2 * sizeof(ara_code));
-
-namespace code {
-    static constexpr Code const
-        check            {0},
-        destruct         {1},
-        copy             {2},
-        name             {3},
-        info             {4},
-        relocate         {5},
-        call             {6},
-        dump             {7},
-        load             {8},
-        assign           {9};
-}
-
-inline char const * code_name(Code t) {
-    switch (t) {
-        case code::check:      return "check";
-        case code::destruct:   return "destruct";
-        case code::copy:       return "copy";
-        case code::name:       return "name";
-        case code::info:       return "info";
-        case code::relocate:   return "relocate";
-        case code::call:       return "call";
-        case code::dump:       return "dump";
-        case code::load:       return "load";
-        case code::assign:     return "assign";
-        default:                return "unknown";
-    }
-}
-
-/******************************************************************************/
-
-// class Caller;
-struct ArgView;
-struct Ref;
-struct Target;
-
-template <class T>
-static constexpr bool is_usable = true
-    && !std::is_void_v<T>
-    && !std::is_const_v<T>
-    && !std::is_reference_v<T>
-    && !std::is_volatile_v<T>
-    && !std::is_same_v<T, Ref>;
-    // && !is_type_t<T>::value;
-    // && !std::is_null_pointer_v<T>
-    // && !std::is_function_v<T>
-
-/******************************************************************************/
-
-template <class T>
-constexpr void assert_usable() {
-    // static_assert(std::is_nothrow_destructible_v<T>);
-    static_assert(!std::is_void_v<T>);
-    static_assert(!std::is_const_v<T>);
-    static_assert(!std::is_reference_v<T>);
-    static_assert(!std::is_volatile_v<T>);
-    static_assert(!std::is_same_v<T, Ref>);
-    // static_assert(!std::is_same_v<T, Value>);
-    // static_assert(!is_type_t<T>::value);
-    // static_assert(!std::is_null_pointer_v<T>);
-}
-
-}
-
 #endif
+
+/******************************************************************************************/
 
 #endif

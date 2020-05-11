@@ -6,24 +6,33 @@ namespace ara {
 
 /******************************************************************************************/
 
-struct Ref {
+union Ref {
     ara_ref c;
 
-    static Ref empty() noexcept {return {nullptr, nullptr};}
+    Ref() noexcept : c{nullptr, nullptr} {}
+    Ref(std::nullptr_t) noexcept : Ref() {}
 
-    static Ref from_existing(Index i, Pointer p, bool mutate) noexcept {
-        return {Tagged<Tag>(i, mutate ? Tag::Mutable : Tag::Const).base, p.base};
+    template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
+    explicit Ref(T &&t) noexcept
+        : Ref(Index::of<unqualified<T>>(),
+          std::is_const_v<std::remove_reference_t<T>> ? Tag::Const : Tag::Mutable,
+          Pointer::from(const_cast<void*>(static_cast<void const*>(std::addressof(t))))) {}
+
+    Ref(Tagged<Tag> i, Pointer p) noexcept : c{i.base, p.base} {}
+    Ref(Index i, Tag t, Pointer p) noexcept : Ref{{i, t}, p} {}
+
+    Ref(Ref &&r) noexcept : c{std::exchange(r.c.tag_index, nullptr), r.c.pointer} {}
+
+    Ref &operator=(Ref &&r) noexcept {
+        c.tag_index = std::exchange(r.c.tag_index, nullptr);
+        c.pointer = r.c.pointer;
+        return *this;
     }
 
-    template <class T>
-    static Ref from_existing(T &t) noexcept {
-        return from_existing(Index::of<T>(), Pointer::from(std::addressof(t)), true);
-    }
+    Ref(Ref const &) = delete;
+    Ref &operator=(Ref const &) = delete;
 
-    template <class T>
-    static Ref from_existing(T const &t) noexcept {
-        return from_existing(Index::of<T>(), Pointer::from(std::addressof(const_cast<T &>(t))), false);
-    }
+    ~Ref() noexcept {destroy_if_managed();}
 
     /**********************************************************************************/
 
@@ -86,48 +95,10 @@ struct Ref {
     Load::stat load_to(Target &t) noexcept;
 };
 
-static_assert(std::is_aggregate_v<Ref>);
-
 /******************************************************************************************/
-
-struct Reference : Ref {
-
-    Reference() noexcept = default;
-    Reference(std::nullptr_t) noexcept : Reference() {}
-
-    Reference(Tagged<Tag> i, Pointer p) noexcept : Ref{i.base, p.base} {}
-    Reference(Index i, Tag t, Pointer p) noexcept : Reference{{i, t}, p} {}
-
-    template <class T>
-    explicit Reference(T &t) noexcept : Ref(Ref::from_existing(t)) {}
-
-    template <class T>
-    explicit Reference(T const &t) noexcept : Ref(Ref::from_existing(t)) {}
-
-    /**************************************************************************************/
-
-    Reference(Reference &&r) noexcept : Ref{std::exchange(r.c.tag_index, nullptr), r.c.pointer} {}
-
-    Reference &operator=(Reference &&r) noexcept {
-        c.tag_index = std::exchange(r.c.tag_index, nullptr);
-        c.pointer = r.c.pointer;
-        return *this;
-    }
-
-    Reference(Reference const &) = delete;
-    Reference &operator=(Reference const &) = delete;
-
-    ~Reference() {Ref::destroy_if_managed();}
-};
-
-/******************************************************************************************/
-
-static_assert(std::is_standard_layout_v<Reference>);
-static_assert(std::is_standard_layout_v<Ref>);
 
 template <>
 struct is_trivially_relocatable<Ref> : std::true_type {};
-
 
 template <class T>
 bool Ref::binds_to(Qualifier q) const {
@@ -178,7 +149,7 @@ std::optional<T> Ref::load(Type<T>) {
         }
     } else {
         storage_like<T> storage;
-        auto target = Target::from(Index::of<T>(), &storage, sizeof(storage), Target::constraint<T>);
+        Target target(Index::of<T>(), &storage, sizeof(storage), Target::constraint<T>);
         switch (load_to(target)) {
             case Load::Stack: {
                 DUMP("load succeeded");

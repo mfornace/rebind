@@ -72,11 +72,19 @@ We would just get the most permissive reference for each argument...
 This falls apart a little though if there are aliasing arguments, I guess we can handle that though
 The other option is just to explicitly notate the mutability:
 ```python
-self.value(MyType, 'x', var1, mutvar2, mutate=(0, 2)) # mutate self and mutvar
-self.value(MyType, 'x', var1, mutvar2, qualifiers=('const', 'move', 'mut')) # mutate self and mutvar
-self.value((MyType, 'rwx'), 'x', var1, mutvar2) # varying syntax ideas...
-self.value('x', var1, mutvar2, out=MyType, refs='wrx', gil=False, tags=1) # varying syntax ideas...
+self.value(MyType, 'fun', var1, mutvar2, mutate=(0, 2)) # mutate self and mutvar
+self.value(MyType, 'fun', var1, mutvar2, qualifiers=('const', 'move', 'mut')) # mutate self and mutvar
+self.value((MyType, 'rwx'), 'fun', var1, mutvar2) # varying syntax ideas...
+self.value('fun', var1, mutvar2, out=MyType, refs='wrx', gil=False, tags=1) # varying syntax ideas...
+self('fun', var1, mutvar2, out=MyType, refs='xwrx', gil=False, tags=1) # varying syntax ideas...
 ```
+
+New version
+```python
+self(*args, refs='x:rrr', out=MyType, gil=False, tags=()) # refs defaults to 'x:rrrr...'
+self.method('name', *args, refs='x:rrr', out=MyType, gil=False) # refs defaults to 'x:wrrrr...'
+```
+The main trouble with this one is the output type qualifier...maybe it can just be deduced?
 
 # Old Python API
 

@@ -16,23 +16,6 @@ namespace ara {
 
 /******************************************************************************************/
 
-template <class T>
-struct Alias : std::false_type {};
-
-template <class T>
-struct Alias<T &> : std::true_type {};
-
-template <class T>
-struct Alias<T const &> : std::true_type {};
-
-template <class T>
-struct Alias<T &&> : std::true_type {};
-
-template <class T>
-static constexpr bool is_alias = Alias<T>::value;
-
-/******************************************************************************************/
-
 // Dont need target here, just:
 // void* output
 // length
@@ -42,15 +25,15 @@ struct Copy {
     enum stat : Stat {Stack, Heap, Impossible, Exception, OutOfMemory};
 
     template <class T>
-    struct impl {
+    struct Impl {
         static stat put(void *out, T const &self, Code length) noexcept {
             // return out.make_noexcept([&] {
                 if constexpr(std::is_copy_constructible_v<T>) {
                     if (is_stackable<T>(length)) {
-                        new(out) T(self);
+                        allocate_in_place<T>(out, self);
                         return Stack;
                     } else {
-                        *static_cast<void **>(out) = new T(self);
+                        *static_cast<void **>(out) = allocate<T>(self);
                         return Heap;
                     }
                 } else return Impossible;
@@ -72,10 +55,10 @@ struct Relocate {
     enum stat : Stat {OK, Impossible};
 
     template <class T>
-    struct impl {
+    struct Impl {
         static stat put(void* out, T&& t) noexcept {
             if constexpr(std::is_nothrow_move_constructible_v<T> && std::is_destructible_v<T>) {
-                new(out) T(std::move(t));
+                allocate_in_place<T>(out, std::move(t));
                 t.~T();
                 return OK;
             } else {
@@ -98,7 +81,7 @@ struct Destruct {
     enum stat : Stat {OK, Impossible};
 
     template <class T>
-    struct impl {
+    struct Impl {
         static stat put(T& t, storage s) noexcept {
             if constexpr(std::is_destructible_v<T>) {
                 if (s == Heap) delete std::addressof(t);
@@ -120,7 +103,7 @@ struct Destruct {
 template <class T, bool Heap>
 struct DestructGuard {
     T &held;
-    ~DestructGuard() noexcept {Destruct::impl<T>::put(held, Heap ? Destruct::Heap : Destruct::Stack);}
+    ~DestructGuard() noexcept {Destruct::Impl<T>::put(held, Heap ? Destruct::Heap : Destruct::Stack);}
 };
 
 /******************************************************************************/
@@ -131,7 +114,7 @@ struct Info {
     enum stat : Stat {OK};
 
     template <class T>
-    struct impl {
+    struct Impl {
         static stat put(Idx& out, void const*& t) noexcept {
             t = &typeid(T);
             out = fetch(Type<std::type_info>());
@@ -152,7 +135,7 @@ struct Name {
     enum stat : Stat {OK};
 
     template <class T>
-    struct impl {
+    struct Impl {
         static stat put(ara_str &s) noexcept {
             s.data = TypeName<T>::name.data();
             s.size = TypeName<T>::name.size();
@@ -181,7 +164,7 @@ struct Dump {
     enum stat : Stat {None, Mutable, Const, Stack, Heap, Exception, OutOfMemory};
 
     template <class T>
-    struct impl {
+    struct Impl {
         static stat put(Target &out, Pointer source, Tag qualifier) noexcept {
             if constexpr(is_complete_v<Dumpable<T>>) {
                 return out.make_noexcept([&] {
@@ -216,11 +199,12 @@ struct Loadable;
 // Load T from a less constrained type
 // -- Prefer to return None
 // -- More likely to encounter exceptions when preconditions are not met
+// -- Note that Dump is not called by Load
 struct Load {
     enum stat : Stat {None, Mutable, Const, Stack, Heap, Exception, OutOfMemory};
 
     template <class T>
-    struct impl {
+    struct Impl {
         // currently not planned that out can be a reference, I think
         static stat put(Target &out, Pointer source, Tag qualifier) noexcept {
             if constexpr(is_complete_v<Loadable<T>>) {
@@ -253,15 +237,17 @@ struct Assign {
     enum stat : Stat {OK, NoConversion, Impossible, Exception, OutOfMemory};
 
     template <class T>
-    struct impl {
+    struct Impl {
         static stat put(Target &out, T &self, Pointer source, Tag qualifier) noexcept {
             return out.make_noexcept([&] {
                 if constexpr(std::is_move_assignable_v<T>) {
                     if (out.index() == Index::of<T>()) {
                         if (qualifier == Tag::Stack || qualifier == Tag::Heap) {
                             self = std::move(source.load<T &&>());
+                            return OK;
                         } else {
-                            if (std::is_copy_assignable_v<T>) self = source.load<T const &>();
+                            if constexpr(std::is_copy_assignable_v<T>) self = source.load<T const &>();
+                            else return NoConversion;
                         }
                     }
 
@@ -305,7 +291,7 @@ struct Call {
     static constexpr bool was_invoked(stat s) {return 3 < s;}
 
     template <class T>
-    struct impl {
+    struct Impl {
         static stat put(Target &out, Pointer self, ArgView &args, Tag qualifier) noexcept {
             stat s = Impossible;
             if constexpr(is_complete_v<Callable<T>>) {
@@ -333,7 +319,7 @@ struct Call {
 
 template <class Op, class T, class ...Ts>
 Stat impl_put(Ts &&...ts) {
-    typename Op::stat out = Op::template impl<T>::put(static_cast<Ts &&>(ts)...);
+    typename Op::stat out = Op::template Impl<T>::put(static_cast<Ts &&>(ts)...);
     DUMP("Impl output", static_cast<Stat>(out));
     return static_cast<Stat>(out);
 }
@@ -350,18 +336,14 @@ void warn_unimplemented() {}
 /******************************************************************************************/
 
 template <class T, class SFINAE>
-struct impl {
+struct Switch {
     static_assert(!std::is_void_v<T>);
     static_assert(!std::is_const_v<T>);
     static_assert(!std::is_reference_v<T>);
     static_assert(!std::is_volatile_v<T>);
     static_assert(!std::is_same_v<T, Ref>);
 
-    static Stat call(ara_input i, void* o, void* s, void* args) noexcept __attribute__((noinline)) {
-        return build(i, o, s, args);
-    }
-
-    static Stat build(ara_input i, void* o, void* s, void* args) noexcept {
+    static Stat call(ara_input i, void* o, void* s, void* args) noexcept {
         static_assert(sizeof(T) >= 0, "Type should be complete");
         warn_unimplemented<T>();
 
@@ -408,12 +390,8 @@ struct impl {
 /******************************************************************************************/
 
 template <class SFINAE>
-struct impl<void, SFINAE> {
-    static Stat call(ara_input i, void* o, void* s, void*) noexcept __attribute__((noinline)) {
-        return build(i, o, s, nullptr);
-    }
-
-    static Stat build(ara_input i, void* o, void* s, void*) noexcept {
+struct Switch<void, SFINAE> {
+    static Stat call(ara_input i, void* o, void* s, void*) noexcept {
         switch (i.code) {
             case code::name: {
                 return impl_put<Name, void>(*static_cast<ara_str *>(o));

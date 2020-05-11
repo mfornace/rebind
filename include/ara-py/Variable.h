@@ -73,8 +73,6 @@ struct Variable {
     auto name() const noexcept {return index().name();}
 
     void *address() const {return idx.tag() < 2 ? const_cast<Storage *>(&storage) : storage.address.pointer;}
-    Ref as_ref() const {return has_value() ? Ref::from_existing(index(), Pointer::from(address()), false) : Ref();}
-    Ref as_ref() {return has_value() ? Ref::from_existing(index(), Pointer::from(address()), true) : Ref();}
 
     template <class T>
     static Shared from(T value, Shared ward={});
@@ -97,7 +95,7 @@ struct Variable {
 static constexpr auto MutateSentinel = std::numeric_limits<std::uintptr_t>::max();
 
 inline Ref begin_acquisition(Variable& v, LockType type) {
-    if (!v.has_value()) return Ref::empty();
+    if (!v.has_value()) return Ref();
     auto &count = v.current_lock();
 
     if (count == MutateSentinel) {
@@ -105,11 +103,11 @@ inline Ref begin_acquisition(Variable& v, LockType type) {
     } else if (count == 0 && type == LockType::Write) {
         DUMP("write lock");
         count = MutateSentinel;
-        return Ref::from_existing(v.index(), Pointer::from(v.address()), true);
+        return Ref(v.index(), Tag::Mutable, Pointer::from(v.address()));
     } else if (type == LockType::Read) {
         DUMP("read lock");
         ++count;
-        return Ref::from_existing(v.index(), Pointer::from(v.address()), false);
+        return Ref(v.index(), Tag::Const, Pointer::from(v.address()));
     } else {
         throw PythonError(type_error("cannot mutate object which is already referenced"));
     }
@@ -173,10 +171,10 @@ Shared Variable::from(T value, Shared lock) {
     Shared o = new_object();
     auto &v = cast_object<Variable>(+o);
     if constexpr(allocated<T>) {
-        v.storage.address.pointer = parts::alloc<T>(std::move(value));
+        v.storage.address.pointer = allocate<T>(std::move(value));
         v.storage.address.qualifier = Tag::Heap;
     } else {
-        parts::alloc_to<T>(&v.storage.data, std::move(value));
+        allocate_in_place<T>(&v.storage.data, std::move(value));
     }
     if (lock) {
         v.lock.other = +lock;

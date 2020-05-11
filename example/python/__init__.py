@@ -41,11 +41,11 @@ class Goo(Variable):
 
     @property
     def x(self):
-        return self.method('.x', out=Float)
+        return self.method('.x', out=float)
 
     @x.setter
     def x(self, value):
-        return self.method('.x=', value, out=Float, mode='w')
+        self.method('.x=', value, out=None, mode='w')
 
 
 print('running easy()')

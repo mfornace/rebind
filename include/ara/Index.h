@@ -1,5 +1,5 @@
 #pragma once
-#include "API.h"
+#include "Raw.h"
 
 #include <string_view>
 
@@ -8,10 +8,15 @@ namespace ara {
 /******************************************************************************************/
 
 template <class T, class SFINAE=void>
-struct impl;
+struct Switch;
 
 template <class T>
-Idx fetch(Type<T>) noexcept {return &impl<T>::call;}
+struct Lookup {
+    static constexpr Idx call = Switch<Alias<T>>::call;
+};
+
+template <class T>
+Idx fetch(Type<T>) noexcept {return Lookup<T>::call;}
 
 /******************************************************************************************/
 

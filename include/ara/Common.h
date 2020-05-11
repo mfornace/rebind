@@ -83,7 +83,7 @@ using SizeOf = std::integral_constant<std::size_t, sizeof(T)>;
 /******************************************************************************/
 
 // Update for std::bit_cast in the future;
-template <class To, class From>
+template <class To, class From, std::enable_if_t<!std::is_pointer_v<To> || !std::is_pointer_v<From>, int> = 0>
 To bit_cast(From const &from) noexcept {
     static_assert(std::is_trivially_copyable_v<From>);
     static_assert(std::is_trivial_v<To>);
@@ -91,6 +91,11 @@ To bit_cast(From const &from) noexcept {
     To to;
     std::memcpy(&to, &from, sizeof(To));
     return to;
+}
+
+template <class To, class From, std::enable_if_t<std::is_pointer_v<To>, int> = 0>
+constexpr To bit_cast(From *from) noexcept {
+    return static_cast<To>(static_cast<std::conditional_t<std::is_const_v<From>, void const, void>*>(from));
 }
 // template <class T>
 // constexpr std::uintptr_t aligned_location(std::uintptr_t i) {

@@ -37,7 +37,7 @@ Object function_call_impl(Object out, Variable &self, ArgView &&args) {
 
 /******************************************************************************/
 
-auto function_call_keywords(PyObject *kws) {
+auto function_call_keywords(PyObject* kws) {
     Object out;
     bool gil = true;
 
@@ -45,7 +45,7 @@ auto function_call_keywords(PyObject *kws) {
         PyObject *g = PyDict_GetItemString(kws, "gil");
         if (g) gil = PyObject_IsTrue(g);
 
-        out = {not_none(PyDict_GetItemString(kws, "output")), true};
+        out = PyDict_GetItemString(kws, "out");
     }
     return std::make_tuple(out, gil);
 }

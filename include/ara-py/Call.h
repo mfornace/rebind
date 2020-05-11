@@ -118,7 +118,7 @@ Shared module_call(Index index, Instance<PyTupleObject> args, CallKeywords const
 template <class Module>
 PyObject* c_module_call(PyObject* self, PyObject* args, PyObject* kws) noexcept {
     return raw_object([args, kws] {
-        return module_call(impl<Module>::call,
+        return module_call(Switch<Module>::call,
             instance(reinterpret_cast<PyTupleObject *>(args)), CallKeywords(kws));
     });
 }

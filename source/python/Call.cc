@@ -9,7 +9,7 @@ namespace ara::py {
 
 Lifetime call_to_variable(Variable &out, Index self, Pointer address, Tag qualifier, ArgView &args) {
     DUMP(out.name(), out.address());
-    auto target = Target::from(Index(), &out.storage, sizeof(out.storage),
+    Target target(Index(), &out.storage, sizeof(out.storage),
         Target::Mutable | Target::Const | Target::Heap | Target::Trivial |
         Target::Relocatable | Target::MoveNoThrow | Target::Unmovable | Target::MoveThrow
     );
@@ -69,7 +69,7 @@ Lifetime call_to_output(Shared &out, PyObject* maybe_output, Index self, Pointer
 #warning "aliasing is a problem here"
     Variable v;
     call_to_variable(v, self, address, qualifier, args);
-    auto r = Ref::from_existing(v.index(), Pointer::from(v.address()), true);
+    Ref r(v.index(), Tag::Mutable, Pointer::from(v.address()));
     if (auto o = try_load(r, output, Shared())) {out = o; return {};}
     else throw PythonError(type_error("could not load"));
 }
@@ -95,7 +95,7 @@ struct TupleLock {
                 DUMP("its variable!");
                 ref = begin_acquisition(*p, LockType::Read);
             } else {
-                ref = Ref::from_existing(Index::of<Export>(), Pointer::from(item), true);
+                ref = Ref(Index::of<Export>(), Tag::Mutable, Pointer::from(item));
             }
         }
     }
@@ -114,7 +114,7 @@ struct TupleLock {
                 DUMP("its variable!", *c);
                 ref = begin_acquisition(*p, *c == 'w' ? LockType::Write : LockType::Read);
             } else {
-                ref = Ref::from_existing(Index::of<Export>(), Pointer::from(item), true);
+                ref = Ref(Index::of<Export>(), Tag::Mutable, Pointer::from(item));
             }
             ++c;
         }
@@ -164,11 +164,11 @@ Shared module_call(Index index, Instance<PyTupleObject> args, CallKeywords const
     if (auto p = get_unicode(instance(PyTuple_GET_ITEM(args.object(), 0)))) {
         name = from_unicode(instance(p));
     } else throw PythonError(type_error("expected str"));
-    a.view.tag(0) = Ref::from_existing(name);
+    a.view.tag(0) = Ref(name);
 
     for (Py_ssize_t i = 0; i != total-1; ++i) {
         PyObject* item = PyTuple_GET_ITEM(args.object(), i+1);
-        a.view[i] = Ref::from_existing(Index::of<Export>(), Pointer::from(item), true);
+        a.view[i] = Ref(Index::of<Export>(), Tag::Mutable, Pointer::from(item));
     }
 
     auto lk = std::make_shared<PythonFrame>(!kws.gil);
@@ -189,7 +189,7 @@ Shared variable_call(Variable &v, Instance<PyTupleObject> args, CallKeywords con
 
     for (Py_ssize_t i = 0; i != total; ++i) {
         PyObject* item = PyTuple_GET_ITEM(args.object(), i);
-        a.view[i] = Ref::from_existing(Index::of<Export>(), Pointer::from(item), true);
+        a.view[i] = Ref(Index::of<Export>(), Tag::Mutable, Pointer::from(item));
     }
 
     auto lk = std::make_shared<PythonFrame>(!kws.gil);
@@ -220,7 +220,7 @@ Shared variable_method(Variable &v, Instance<> pyself, Instance<PyTupleObject> a
         // name.data = s.data();
         // name.size = s.size();
     } else throw PythonError(type_error("expected str"));
-    a.view.tag(0) = Ref::from_existing(name);
+    a.view.tag(0) = Ref(name);
 
     DUMP("mode", kws.mode);
     Shared out;

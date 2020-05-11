@@ -89,12 +89,12 @@ int c_operator_has_value(PyObject* self) noexcept {
     else return PyObject_IsTrue(self);
 }
 
-template <class Self>
-PyObject* c_has_value(PyObject* self, PyObject*) noexcept {
-    PyObject* out = c_operator_has_value<Self>(self) ? Py_True : Py_False;
-    Py_INCREF(out);
-    return out;
-}
+// template <class Self>
+// PyObject* c_has_value(PyObject* self, PyObject*) noexcept {
+//     PyObject* out = c_operator_has_value<Self>(self) ? Py_True : Py_False;
+//     Py_INCREF(out);
+//     return out;
+// }
 
 /******************************************************************************/
 

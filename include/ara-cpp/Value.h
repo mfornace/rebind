@@ -13,11 +13,6 @@ struct Value;
 template <class T>
 static constexpr bool is_manageable = is_usable<T> && !std::is_same_v<T, Value>;
 
-// parts::alloc_to<T>(&storage, static_cast<Args &&>(args)...);
-        // if (std::is_trivially_copyable_v<T>) loc = Loc::Trivial;
-        // else if (is_trivially_relocatable_v<T>) loc = Loc::Relocatable;
-        // else loc = Loc::Stack;
-
 /******************************************************************************/
 
 struct Value {
@@ -101,8 +96,8 @@ struct Value {
         else return Pointer::from(const_cast<void *>(static_cast<void const *>(&storage)));
     }
 
-    Ref as_ref() const & noexcept {return *this ? Ref::from_existing(index(), address(), false) : Ref();}
-    Ref as_ref() & noexcept {return *this ? Ref::from_existing(index(), address(), true) : Ref();}
+    Ref as_ref() const & noexcept {return *this ? Ref(index(), Tag::Const, address()) : Ref();}
+    Ref as_ref() & noexcept {return *this ? Ref(index(), Tag::Mutable, address()) : Ref();}
 
     template <class T>
     std::optional<T> load(Type<T> t={}) const {return as_ref().load(t);}
@@ -121,7 +116,7 @@ struct Value {
 
     template <class T=Value, int N=0, class ...Ts>
     T move(Caller c, Ts &&...ts) {
-        Reference ref(index(), location() == Heap ? Tag::Heap : Tag::Stack, address());
+        Ref ref(index(), location() == Heap ? Tag::Heap : Tag::Stack, address());
         release();
         return parts::call<T, N>(ref.index(), ref.tag(), ref.pointer(), c, static_cast<Ts &&>(ts)...);
     }
@@ -167,9 +162,9 @@ template <class T, class ...Args, std::enable_if_t<is_manageable<T>, int>>
 Value::Value(Type<T>, Args&& ...args) {
     static_assert(std::is_constructible_v<T, Args &&...>);
     if constexpr(loc_of<T> == Loc::Heap) {
-        storage.pointer = parts::alloc<T>(static_cast<Args &&>(args)...);
+        storage.pointer = allocate<T>(static_cast<Args &&>(args)...);
     } else {
-        parts::alloc_to<T>(&storage.data, static_cast<Args &&>(args)...);
+        allocate_in_place<T>(&storage.data, static_cast<Args &&>(args)...);
     }
     idx = Tagged(Index::of<T>(), loc_of<T>);
     // DUMP("construct! ", idx, index().name());
@@ -183,9 +178,9 @@ T & Value::emplace(Type<T>, Args &&...args) {
     reset();
     T *out;
     if constexpr(loc_of<T> == Loc::Heap) {
-        storage.pointer = out = parts::alloc<T>(static_cast<Args &&>(args)...);
+        storage.pointer = out = allocate<T>(static_cast<Args &&>(args)...);
     } else {
-        out = parts::alloc_to<T>(&storage.data, static_cast<Args &&>(args)...);
+        out = allocate_in_place<T>(&storage.data, static_cast<Args &&>(args)...);
     }
     idx = Tagged(Index::of<T>(), loc_of<T>);
     // DUMP("emplace! ", idx, index().name(), Index::of<T>().name());

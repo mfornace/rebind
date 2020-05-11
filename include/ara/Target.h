@@ -7,6 +7,28 @@ namespace ara {
 
 /******************************************************************************/
 
+template <class T, class ...Args>
+T * allocate(Args &&...args) {
+    assert_usable<T>();
+    if constexpr(std::is_constructible_v<T, Args &&...>) {
+        return reinterpret_cast<T *>(new Alias<T>(static_cast<Args &&>(args)...));
+    } else {
+        return reinterpret_cast<T *>(new Alias<T>{static_cast<Args &&>(args)...});
+    }
+}
+
+template <class T, class ...Args>
+T * allocate_in_place(void *p, Args &&...args) {
+    assert_usable<T>();
+    if constexpr(std::is_constructible_v<T, Args &&...>) {
+        return reinterpret_cast<T *>(new(p) Alias<T>(static_cast<Args &&>(args)...));
+    } else {
+        return reinterpret_cast<T *>(new(p) Alias<T>{static_cast<Args &&>(args)...});
+    }
+}
+
+/******************************************************************************/
+
 struct Lifetime {
     std::uint64_t value = 0;
 
@@ -29,10 +51,17 @@ struct Lifetime {
 // types as an element or non-static member [...]: this makes
 // it safe to cast from the first member of a struct and from an element of a
 // union to the struct/union that contains it.
-struct Target {
+union Target {
     ara_target c;
 
-    // Kinds of values:
+    constexpr Target(Index i, void* out, Code len, ara_tag tag) : c{i, out, 0, len, tag} {}
+    Target(Target &&) noexcept = delete;
+    Target(Target const &) = delete;
+    ~Target() noexcept {}
+
+    /**************************************************************************/
+
+    // Kinds of values (used as a mask, exclusive with each other)
     static constexpr ara_tag
         None        = 0,
         Mutable     = 1 << 0, // Mutable reference
@@ -51,14 +80,15 @@ struct Target {
                 std::is_nothrow_move_constructible_v<T> ? MoveNoThrow :
                     std::is_move_constructible_v<T> ? MoveThrow : Unmovable};
 
-    static Target from(Index i, void* out, Code len, ara_tag tag) {
-        return {ara_target{i, out, 0, len, tag}};
-    }
+    /**************************************************************************/
 
     Tag returned_tag() const {return static_cast<Tag>(c.tag);}
     Index index() const {return c.index;}
     Code length() const {return c.length;}
     void* output() const {return c.output;}
+    auto name() const {return index().name();}
+
+    /**************************************************************************/
 
     template <class T>
     bool accepts() const noexcept {return !index() || index() == Index::of<T>();}
@@ -81,14 +111,16 @@ struct Target {
     template <class T, class ...Ts>
     void emplace(Ts &&...ts) {
         if (auto p = placement<T>()) {
-            parts::alloc_to<T>(p, static_cast<Ts &&>(ts)...);
+            allocate_in_place<T>(p, static_cast<Ts &&>(ts)...);
             c.tag = static_cast<ara_tag>(Tag::Stack);
         } else {
-            c.output = parts::alloc<T>(static_cast<Ts &&>(ts)...);
+            c.output = allocate<T>(static_cast<Ts &&>(ts)...);
             c.tag = static_cast<ara_tag>(Tag::Heap);
         }
         set_index<T>();
     }
+
+    /**************************************************************************/
 
     // Set pointer to a heap allocation
     template <class T>
@@ -112,8 +144,6 @@ struct Target {
         set_index<T>();
     }
 
-    auto name() const {return index().name();}
-
     template <class T>
     void set_index() noexcept {c.index = Index::of<T>();}
 
@@ -133,7 +163,10 @@ struct Target {
     [[noreturn]] void rethrow_exception();
 };
 
-static_assert(std::is_aggregate_v<Target>);
+static_assert(!std::is_copy_constructible_v<Target>);
+static_assert(!std::is_move_constructible_v<Target>);
+static_assert(!std::is_move_assignable_v<Target>);
+static_assert(!std::is_copy_assignable_v<Target>);
 
 /******************************************************************************/
 

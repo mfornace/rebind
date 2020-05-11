@@ -54,26 +54,6 @@ T call(Index i, Tag qualifier, Pointer self, Caller &c, Ts &&...ts);
 template <class T, int N, class ...Ts>
 maybe<T> get(Index i, Tag qualifier, Pointer self, Caller &c, Ts &&...ts);
 
-template <class T, class ...Args>
-T * alloc(Args &&...args) {
-    assert_usable<T>();
-    if constexpr(std::is_constructible_v<T, Args &&...>) {
-        return new T(static_cast<Args &&>(args)...);
-    } else {
-        return new T{static_cast<Args &&>(args)...};
-    }
-}
-
-template <class T, class ...Args>
-T * alloc_to(void *p, Args &&...args) {
-    assert_usable<T>();
-    if constexpr(std::is_constructible_v<T, Args &&...>) {
-        return new(p) T(static_cast<Args &&>(args)...);
-    } else {
-        return new(p) T{static_cast<Args &&>(args)...};
-    }
-}
-
 }
 
 /******************************************************************************************/

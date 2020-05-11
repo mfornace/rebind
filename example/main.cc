@@ -8,7 +8,7 @@ struct Example;
 namespace ara {
 
 template <>
-ara_stat impl<Example>::call(ara_input, void*, void*, void*) noexcept;
+ara_stat Switch<Example>::call(ara_input, void*, void*, void*) noexcept;
 
 }
 

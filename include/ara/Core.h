@@ -1,67 +1,60 @@
 #pragma once
 #include "Impl.h"
+#include "Ref.h"
+#include "Structs.h"
 #include <cstdlib>
 #include <tuple>
+#include <vector>
 
 namespace ara {
 
-template <>
-struct Dumpable<ara_str> {
-    bool operator()(Target &v, ara_str s) const {
-        if (v.accepts<std::string_view>()) {
-            if (s.data) return v.emplace_if<std::string_view>(s.data, s.size);
-            else return v.emplace_if<std::string_view>();
-        }
-        if (v.accepts<std::string>()) {
-            if (s.data) return v.emplace_if<std::string>(s.data, s.size);
-            else return v.emplace_if<std::string>();
+/******************************************************************************/
+
+template <class S, class T>
+struct DumpableStr {
+    bool operator()(Target &v, S s) const {
+        using view = std::basic_string_view<T>;
+        if (v.accepts<view>()) return v.emplace_if<view>(s);
+
+        using string = std::basic_string<T>;
+        if (v.accepts<string>()) return v.emplace_if<string>(view(s));
+
+        using vector = std::vector<T>;
+        if (v.accepts<vector>()) {
+            auto t = view(s);
+            return v.emplace_if<vector>(t.begin(), t.end());
         }
         return false;
     };
 };
 
 template <>
-struct Dumpable<ara_string> {
-    bool operator()(Target &v, ara_string const &s) const {return false;};
-    bool operator()(Target &v, ara_string &&s) const {return false;};
-};
+struct Dumpable<Str> : DumpableStr<Str, char> {};
+
+template <>
+struct Dumpable<Bin> : DumpableStr<Bin, std::byte> {};
+
+// We don't need Loadable<Str> since C++ functionality already covered in Dumpable
 
 /******************************************************************************/
 
-template <class T>
-struct Loadable<T *> {
-    std::optional<T *> operator()(Ref &v) const {
-        std::optional<T *> out;
-        if (!v || v.load<std::nullptr_t>()) {
-            out.emplace(nullptr);
-        } else {
-            if constexpr(!std::is_function_v<T>) {
-                if (auto p = v.load<T &>()) out.emplace(std::addressof(*p));
-            }
-        }
-        return out;
-    }
+template <class S, class T>
+struct DumpableString {
+    bool operator()(Target &v, S const &s) const {return false;};
+    bool operator()(Target &v, S &&s) const {return false;};
 };
 
 template <>
-struct Loadable<void *> {
-    std::optional<void *> operator()(Ref &v) const {
-        std::optional<void *> out;
-        // if (v.qualifier() != Const) out.emplace(v.address());
-        return out;
-    }
-};
+struct Dumpable<String> : DumpableString<String, char> {};
 
 template <>
-struct Loadable<void const *> {
-    std::optional<void const *> operator()(Ref &v) const {
-        // return v.address();
-        return {};
-    }
-};
+struct Dumpable<Binary> : DumpableString<Binary, unsigned char> {};
+
+// We don't need Loadable<String> since C++ functionality already covered in Dumpable
 
 /******************************************************************************/
 
+// Not sure about the wisdom of including these...?
 template <>
 struct Dumpable<char const *> {
     bool operator()(Target &v, char const *s) const {
@@ -87,6 +80,38 @@ struct Loadable<char const *> {
         return out;
     }
 };
+
+template <class T>
+struct Loadable<T *> {
+    std::optional<T *> operator()(Ref &v) const {
+        std::optional<T *> out;
+        if (!v || v.load<std::nullptr_t>()) {
+            out.emplace(nullptr);
+        } else {
+            if constexpr(!std::is_function_v<T>) {
+                if (auto p = v.load<T &>()) out.emplace(std::addressof(*p));
+            }
+        }
+        return out;
+    }
+};
+
+// template <>
+// struct Loadable<void *> {
+//     std::optional<void *> operator()(Ref &v) const {
+//         std::optional<void *> out;
+//         // if (v.qualifier() != Const) out.emplace(v.address());
+//         return out;
+//     }
+// };
+
+// template <>
+// struct Loadable<void const *> {
+//     std::optional<void const *> operator()(Ref &v) const {
+//         // return v.address();
+//         return {};
+//     }
+// };
 
 /******************************************************************************/
 
@@ -183,5 +208,3 @@ ARA_DECLARE(ulonglong, unsigned long long);
 ARA_DECLARE(unsigned, unsigned);
 ARA_DECLARE(float, float);
 ARA_DECLARE(double, double);
-ARA_DECLARE(str, ara_str);
-ARA_DECLARE(string, ara_string);
