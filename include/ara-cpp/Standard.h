@@ -9,6 +9,56 @@
 
 namespace ara {
 
+template <>
+struct Dumpable<std::string_view> {
+    bool operator()(Target &a, std::string_view t) const {
+        if (a.accepts<Str>()) return a.emplace_if<Str>(t);
+        if (a.accepts<String>()) return a.emplace_if<String>(t);
+        return false;
+    }
+};
+
+template <>
+struct Loadable<std::string_view> {
+    std::optional<std::string_view> operator()(Ref &r) const {
+        std::optional<std::string_view> out;
+        if (auto p = r.load<Str>()) out.emplace(*p);
+        return out;
+    }
+};
+
+/******************************************************************************/
+
+template <class Alloc>
+struct Dumpable<std::basic_string<char, std::char_traits<char>, Alloc>> {
+    using S = std::basic_string<char, std::char_traits<char>, Alloc>;
+
+    bool operator()(Target &a, S &&t) const {
+        DUMP("dumping std::string");
+        if (a.accepts<String>()) return a.emplace_if<String>(std::move(t));
+        return false;
+    }
+    bool operator()(Target &a, S const &t) const {
+        DUMP("dumping std::string");
+        if (a.accepts<Str>()) return a.emplace_if<Str>(std::string_view(t));
+        if (a.accepts<String>()) return a.emplace_if<String>(std::string_view(t));
+        return false;
+    }
+};
+
+template <class Alloc>
+struct Loadable<std::basic_string<char, std::char_traits<char>, Alloc>> {
+    using S = std::basic_string<char, std::char_traits<char>, Alloc>;
+
+    std::optional<S> operator()(Ref &r) const {
+        DUMP("loading std::string");
+        std::optional<S> out;
+        if (auto p = r.load<Str>()) out.emplace(*p);
+        if (auto p = r.load<String>()) out.emplace(std::move(*p));
+        return out;
+    }
+};
+
 /******************************************************************************/
 
 template <class T>

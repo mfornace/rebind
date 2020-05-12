@@ -1,5 +1,6 @@
 #pragma once
 #include <ara/Call.h>
+#include <ara/Structs.h>
 
 // Implementations for defining functions and methods in C++
 
@@ -57,9 +58,10 @@ struct Method {
     template <class S, class F>
     [[nodiscard]] bool operator()(S &&self, std::string_view name, F const functor, Lifetime life={}) {
         DUMP("Method::operator()", args.tags(), args.size());
-        if (args.tags() == 1) if (auto given = args.tag(0).load<std::string_view>()) {
-            DUMP("Checking for method", name, "from", *given);
-            if (*given == name) {
+        if (args.tags() == 1) if (auto given = args.tag(0).load<Str>()) {
+            std::string_view s(*given);
+            DUMP("Checking for method", name, "from", s);
+            if (s == name) {
                 DUMP("found match");
                 stat = MethodCall<F>::call(target, life, functor, std::forward<S>(self), args);
                 return true;

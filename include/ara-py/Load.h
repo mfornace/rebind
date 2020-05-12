@@ -1,6 +1,7 @@
 #pragma once
 #include "Wrap.h"
 #include <ara/Ref.h>
+#include <ara/Structs.h>
 
 namespace ara::py {
 
@@ -17,9 +18,9 @@ inline Shared as_object(Integer i) {return Shared::from(PyLong_FromLongLong(stat
 
 inline Shared as_object(ara_float x) {return Shared::from(PyFloat_FromDouble(x));}
 
-inline Shared as_object(std::string const &s) {return Shared::from(PyUnicode_FromStringAndSize(s.data(), s.size()));}
+inline Shared as_object(String const &s) {return Shared::from(PyUnicode_FromStringAndSize(s.data(), s.size()));}
 
-inline Shared as_object(std::string_view s) {return Shared::from(PyUnicode_FromStringAndSize(s.data(), s.size()));}
+inline Shared as_object(Str s) {return Shared::from(PyUnicode_FromStringAndSize(s.data(), s.size()));}
 
 // Initialize an object that has a direct Python wrapped equivalent
 template <class T>

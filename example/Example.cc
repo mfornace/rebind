@@ -249,6 +249,9 @@ void Example::write(ara::Schema &s) {
     s.function("clref", [](double const &i) {});
     s.function("noref", [](double i) {});
     s.function("rref", [](double &&i) {});
+    s.function("str_argument", [](std::string_view s) {DUMP("string =", s); return std::string(s);});
+    s.function("string_argument", [](std::string s) {DUMP("string =", s); return s;});
+    s.function("stringref_argument", [](std::string const &s) {DUMP("string =", s); return s;});
 
     s.function("Goo.new", [](double x) -> Goo {return x;});
 

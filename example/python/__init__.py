@@ -74,4 +74,6 @@ blah = goo.method('add', a1, a2, out=Variable, gil=True, mode='r:rr')
 blah = goo.method('add', a1, a2, out=Goo, gil=True, mode='r')
 # blah = goo.method('add', a1, a2, out=Variable, gil=True, mode='w')
 
+s = call('string_argument', 'uhh2').load(str)
+
 ################################################################################

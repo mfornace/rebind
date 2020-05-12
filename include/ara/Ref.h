@@ -128,7 +128,7 @@ inline Load::stat dump_or_load(Target &target, Index source, Pointer p, Tag t) n
 }
 
 inline Load::stat Ref::load_to(Target &target) noexcept {
-    DUMP("load_to", has_value(), name(), pointer().base);
+    DUMP("load_to", has_value(), name(), target.name(), pointer().base);
     if (!has_value()) return Load::None;
     return dump_or_load(target, index(), pointer(), tag());
 }
@@ -177,25 +177,6 @@ std::remove_reference_t<T> * Ref::load(Type<T>) const {
     if (auto t = target<T>()) return t;
     return nullptr;
 }
-
-/******************************************************************************************/
-
-template <class Mod>
-struct Module {
-    static void init(Caller caller={}) {
-        parts::call<void, 0>(fetch(Type<Mod>()), Tag::Const, Pointer::from(nullptr), caller);
-    }
-
-    template <class T, int N=1, class ...Ts>
-    static T call(std::string_view name, Caller caller, Ts&& ...ts) {
-        return parts::call<T, N>(fetch(Type<Mod>()), Tag::Const, Pointer::from(nullptr), caller, name, std::forward<Ts>(ts)...);
-    }
-
-    template <class T, int N=1, class ...Ts>
-    static T get(std::string_view name, Caller caller, Ts&& ...ts) {
-        return parts::get<T, N>(fetch(Type<Mod>()), Tag::Const, Pointer::from(nullptr), caller, name, std::forward<Ts>(ts)...);
-    }
-};
 
 /******************************************************************************************/
 

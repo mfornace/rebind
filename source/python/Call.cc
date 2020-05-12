@@ -160,7 +160,7 @@ Shared module_call(Index index, Instance<PyTupleObject> args, CallKeywords const
     if (!total) throw PythonError(type_error("ara call: expected at least one argument"));
     ArgAlloc a(total-1, 1);
 
-    std::string_view name;
+    Str name;
     if (auto p = get_unicode(instance(PyTuple_GET_ITEM(args.object(), 0)))) {
         name = from_unicode(instance(p));
     } else throw PythonError(type_error("expected str"));
@@ -214,7 +214,7 @@ Shared variable_method(Variable &v, Instance<> pyself, Instance<PyTupleObject> a
     auto const total = PyTuple_GET_SIZE(args.object());
     ArgAlloc a(total-1, 1);
 
-    std::string_view name;
+    Str name;
     if (auto p = get_unicode(instance(PyTuple_GET_ITEM(args.object(), 0)))) {
         name = from_unicode(instance(p));
         // name.data = s.data();

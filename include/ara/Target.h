@@ -11,9 +11,9 @@ template <class T, class ...Args>
 T * allocate(Args &&...args) {
     assert_usable<T>();
     if constexpr(std::is_constructible_v<T, Args &&...>) {
-        return reinterpret_cast<T *>(new Alias<T>(static_cast<Args &&>(args)...));
+        return new T(static_cast<Args &&>(args)...);
     } else {
-        return reinterpret_cast<T *>(new Alias<T>{static_cast<Args &&>(args)...});
+        return new T{static_cast<Args &&>(args)...};
     }
 }
 
@@ -21,9 +21,9 @@ template <class T, class ...Args>
 T * allocate_in_place(void *p, Args &&...args) {
     assert_usable<T>();
     if constexpr(std::is_constructible_v<T, Args &&...>) {
-        return reinterpret_cast<T *>(new(p) Alias<T>(static_cast<Args &&>(args)...));
+        return new(p) T(static_cast<Args &&>(args)...);
     } else {
-        return reinterpret_cast<T *>(new(p) Alias<T>{static_cast<Args &&>(args)...});
+        return new(p) T{static_cast<Args &&>(args)...};
     }
 }
 

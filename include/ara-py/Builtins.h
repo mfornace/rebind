@@ -7,23 +7,23 @@ namespace ara::py {
 template <class T>
 struct Output;
 
-struct None;
-struct Bool;
-struct Int;
-struct Float;
-struct Str;
-struct Bytes;
-struct Function;
-struct List;
-struct Union;
-struct Dict;
-struct Tuple;
-struct MemoryView;
+struct NoneType;
+struct BoolType;
+struct IntType;
+struct FloatType;
+struct StrType;
+struct BytesType;
+struct FunctionType;
+struct ListType;
+struct UnionType;
+struct DictType;
+struct TupleType;
+struct MemoryViewType;
 
 /******************************************************************************/
 
 template <>
-struct Output<None> {
+struct Output<NoneType> {
     static bool matches(Instance<PyTypeObject> p) {return +p == Py_None->ob_type;}
 
     static Shared load(Ignore, Ignore, Ignore) {return {Py_None, true};}
@@ -31,7 +31,7 @@ struct Output<None> {
 
 
 template <>
-struct Output<Bool> {
+struct Output<BoolType> {
     static bool matches(Instance<PyTypeObject> p) {return +p == &PyBool_Type;}
 
     static Shared load(Ref &ref, Ignore, Ignore) {
@@ -43,7 +43,7 @@ struct Output<Bool> {
 
 
 template <>
-struct Output<Int> {
+struct Output<IntType> {
     static bool matches(Instance<PyTypeObject> p) {return +p == &PyLong_Type;}
 
     static Shared load(Ref &ref, Ignore, Ignore) {
@@ -55,7 +55,7 @@ struct Output<Int> {
 };
 
 template <>
-struct Output<Float> {
+struct Output<FloatType> {
     static bool matches(Instance<PyTypeObject> p) {return +p == &PyFloat_Type;}
 
     static Shared load(Ref &ref, Ignore, Ignore) {
@@ -67,13 +67,14 @@ struct Output<Float> {
 };
 
 template <>
-struct Output<Str> {
+struct Output<StrType> {
     static bool matches(Instance<PyTypeObject> p) {return +p == &PyUnicode_Type;}
 
     static Shared load(Ref &ref, Ignore, Ignore) {
         DUMP("converting", ref.name(), " to str");
-        if (auto p = ref.load<std::string_view>()) return as_object(std::move(*p));
-        if (auto p = ref.load<std::string>()) return as_object(std::move(*p));
+        if (auto p = ref.load<Str>()) return as_object(std::move(*p));
+        if (auto p = ref.load<String>()) return as_object(std::move(*p));
+
         if (auto p = ref.load<std::wstring_view>())
             return {PyUnicode_FromWideChar(p->data(), static_cast<Py_ssize_t>(p->size())), false};
         if (auto p = ref.load<std::wstring>())
@@ -83,7 +84,7 @@ struct Output<Str> {
 };
 
 template <>
-struct Output<Bytes> {
+struct Output<BytesType> {
     static bool matches(Instance<PyTypeObject> p) {return +p == &PyBytes_Type;}
 
     static Shared load(Ref &ref, Ignore, Ignore) {
@@ -109,18 +110,18 @@ struct Output<Index> {
 };
 
 template <>
-struct Output<Function> {
+struct Output<FunctionType> {
     static bool matches(Instance<PyTypeObject> p) {return +p == &PyFunction_Type;}
 
     static Shared load(Ref &ref, Ignore, Ignore) {
-        // if (auto p = ref.load<Function>()) return as_object(std::move(*p));
-        // if (auto p = ref.load<Overload>()) return as_object(Function(std::move(*p)));
+        // if (auto p = ref.load<FunctionType>()) return as_object(std::move(*p));
+        // if (auto p = ref.load<Overload>()) return as_object(FunctionType(std::move(*p)));
         return {};
     }
 };
 
 template <>
-struct Output<MemoryView> {
+struct Output<MemoryViewType> {
     static bool matches(Instance<PyTypeObject> p) {return +p == &PyMemoryView_Type;}
 
     static Shared load(Ref &ref, Shared const &root) {
@@ -143,7 +144,7 @@ struct Output<MemoryView> {
 //         // in this case, origin may or may not be a PyTypeObject *
 //         return origin == +getattr(type, "__origin__");
 //     } else {
-//         // case like typing.Union: type(typing.Union[int, float] == typing.Union)
+//         // case like typing.UnionType: type(typing.UnionType[int, float] == typing.UnionType)
 //         return (+type)->ob_type == reinterpret_cast<PyTypeObject *>(origin);
 //     }
 // }
@@ -153,35 +154,35 @@ bool is_structured_type(Instance<> type, PyTypeObject *origin) {
         DUMP("is_structure_type 3.7B");
         // return reinterpret_cast<PyObject *>(origin) == +getattr(type, "__origin__");
     } else {
-        // case like typing.Tuple: issubclass(typing.Tuple[int, float], tuple)
+        // case like typing.TupleType: issubclass(typing.TupleType[int, float], tuple)
         // return is_subclass(reinterpret_cast<PyTypeObject *>(type), reinterpret_cast<PyTypeObject *>(origin));
     }
     return false;
 }
 
 template <>
-struct Output<List> {
+struct Output<ListType> {
     static bool matches(Instance<> p) {return is_structured_type(p, &PyList_Type);}
 
     static Shared load(Ref &ref, Instance<> p, Shared root) {return {};}
 };
 
 template <>
-struct Output<Dict> {
+struct Output<DictType> {
     static bool matches(Instance<> p) {return is_structured_type(p, &PyDict_Type);}
 
     static Shared load(Ref &ref, Instance<> p, Shared root) {return {};}
 };
 
 template <>
-struct Output<Tuple> {
+struct Output<TupleType> {
     static bool matches(Instance<> p) {return is_structured_type(p, &PyTuple_Type);}
 
     static Shared load(Ref &ref, Instance<> p, Shared root) {return {};}
 };
 
 template <>
-struct Output<Union> {
+struct Output<UnionType> {
     static bool matches(Instance<> p) {return false;}// is_structured_type(p, &PyUnion_Type);}
 
     static Shared load(Ref &ref, Instance<> p, Shared root) {return {};}
@@ -206,12 +207,12 @@ Shared map_output(Instance<> t, F &&f) {
     // Type objects
     if (PyType_CheckExact(+t)) {
         auto type = t.as<PyTypeObject>();
-        if (Output<None>::matches(type))  return f(Output<None>());
-        if (Output<Bool>::matches(type))  return f(Output<Bool>());
-        if (Output<Int>::matches(type))   return f(Output<Int>());
-        if (Output<Float>::matches(type)) return f(Output<Float>());
-        if (Output<Str>::matches(type))   return f(Output<Str>());
-        if (Output<Bytes>::matches(type)) return f(Output<Bytes>());
+        if (Output<NoneType>::matches(type))  return f(Output<NoneType>());
+        if (Output<BoolType>::matches(type))  return f(Output<BoolType>());
+        if (Output<IntType>::matches(type))   return f(Output<IntType>());
+        if (Output<FloatType>::matches(type)) return f(Output<FloatType>());
+        if (Output<StrType>::matches(type))   return f(Output<StrType>());
+        if (Output<BytesType>::matches(type)) return f(Output<BytesType>());
         if (Output<Index>::matches(type)) return f(Output<Index>());
 // //         else if (type == &PyBaseObject_Type)                  return as_deduced_object(std::move(r));        // object
         if (type == static_type<Variable>()) return f(Output<Variable>());           // Value
@@ -220,10 +221,10 @@ Shared map_output(Instance<> t, F &&f) {
     DUMP("Not a type");
     if (auto p = cast_if<Index>(+t)) return f(Output<Index>());  // Index
 
-    if (Output<Union>::matches(t)) return f(Output<Union>());
-    if (Output<List>::matches(t))  return f(Output<List>());       // List[T] for some T (compound type)
-    if (Output<Tuple>::matches(t)) return f(Output<Tuple>());      // Tuple[Ts...] for some Ts... (compound type)
-    if (Output<Dict>::matches(t))  return f(Output<Dict>());       // Dict[K, V] for some K, V (compound type)
+    if (Output<UnionType>::matches(t)) return f(Output<UnionType>());
+    if (Output<ListType>::matches(t))  return f(Output<ListType>());       // ListType[T] for some T (compound type)
+    if (Output<TupleType>::matches(t)) return f(Output<TupleType>());      // TupleType[Ts...] for some Ts... (compound type)
+    if (Output<DictType>::matches(t))  return f(Output<DictType>());       // DictType[K, V] for some K, V (compound type)
     DUMP("Not one of the structure types");
     return Shared();
 //     DUMP("custom convert ", output_conversions.size());

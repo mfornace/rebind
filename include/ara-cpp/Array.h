@@ -207,7 +207,7 @@ struct LoadVector {
 /******************************************************************************/
 
 template <class T, class A>
-struct Dumpable<std::vector<T, A>, std::enable_if_t<!std::is_same_v<T, Value>>> : DumpVector<std::vector<T, A>> {};
+struct Dumpable<std::vector<T, A>> : DumpVector<std::vector<T, A>> {};
 
 template <class T, class A>
 struct Loadable<std::vector<T, A>> : LoadVector<std::vector<T, A>> {};

@@ -5,7 +5,7 @@ namespace ara::py {
 
 /******************************************************************************/
 
-inline std::string_view from_unicode(Instance<PyUnicodeObject> o) {
+inline Str from_unicode(Instance<PyUnicodeObject> o) {
     Py_ssize_t size;
 #if PY_MAJOR_VERSION > 2
     char const *c = PyUnicode_AsUTF8AndSize(o.object(), &size);
@@ -14,17 +14,17 @@ inline std::string_view from_unicode(Instance<PyUnicodeObject> o) {
     if (PyString_AsStringAndSize(o.object(), &c, &size)) throw PythonError();
 #endif
     if (!c) throw PythonError();
-    return std::string_view(static_cast<char const *>(c), size);
+    return Str(static_cast<char const *>(c), size);
 }
 
 /******************************************************************************/
 
-inline std::string_view from_bytes(Instance<PyBytesObject> o) {
+inline Str from_bytes(Instance<PyBytesObject> o) {
     char *c;
     Py_ssize_t size;
     PyBytes_AsStringAndSize(o.object(), &c, &size);
     if (!c) throw PythonError();
-    return std::string_view(c, size);
+    return Str(c, size);
 }
 
 /******************************************************************************/
@@ -66,15 +66,15 @@ inline bool dump_object(Target &target, Instance<> o) {
         return acquired.ref.load_to(target);
     }
 
-    if (target.accepts<std::string_view>()) {
-        if (auto p = get_unicode(o)) return target.emplace_if<std::string_view>(from_unicode(instance(p)));
-        if (auto p = get_bytes(o)) return target.emplace_if<std::string_view>(from_bytes(instance(p)));
+    if (target.accepts<Str>()) {
+        if (auto p = get_unicode(o)) return target.emplace_if<Str>(from_unicode(instance(p)));
+        if (auto p = get_bytes(o)) return target.emplace_if<Str>(from_bytes(instance(p)));
         return false;
     }
 
-    if (target.accepts<std::string>()) {
-        if (auto p = get_unicode(o)) return target.emplace_if<std::string>(from_unicode(instance(p)));
-        if (auto p = get_bytes(o)) return target.emplace_if<std::string>(from_bytes(instance(p)));
+    if (target.accepts<String>()) {
+        if (auto p = get_unicode(o)) return target.emplace_if<String>(from_unicode(instance(p)));
+        if (auto p = get_bytes(o)) return target.emplace_if<String>(from_bytes(instance(p)));
         return false;
     }
 

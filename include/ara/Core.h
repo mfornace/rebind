@@ -10,29 +10,22 @@ namespace ara {
 
 /******************************************************************************/
 
-template <class S, class T>
-struct DumpableStr {
-    bool operator()(Target &v, S s) const {
-        using view = std::basic_string_view<T>;
-        if (v.accepts<view>()) return v.emplace_if<view>(s);
-
-        using string = std::basic_string<T>;
-        if (v.accepts<string>()) return v.emplace_if<string>(view(s));
-
-        using vector = std::vector<T>;
-        if (v.accepts<vector>()) {
-            auto t = view(s);
-            return v.emplace_if<vector>(t.begin(), t.end());
-        }
+template <>
+struct Dumpable<Str> {
+    bool operator()(Target &v, Str s) const {
+        if (v.accepts<String>()) return v.emplace_if<String>(s);
         return false;
     };
 };
 
-template <>
-struct Dumpable<Str> : DumpableStr<Str, char> {};
 
 template <>
-struct Dumpable<Bin> : DumpableStr<Bin, std::byte> {};
+struct Dumpable<Bin> {
+    bool operator()(Target &v, Bin s) const {
+        if (v.accepts<Binary>()) return v.emplace_if<Binary>(s);
+        return false;
+    };
+};
 
 // We don't need Loadable<Str> since C++ functionality already covered in Dumpable
 
@@ -58,12 +51,12 @@ struct Dumpable<Binary> : DumpableString<Binary, unsigned char> {};
 template <>
 struct Dumpable<char const *> {
     bool operator()(Target &v, char const *s) const {
-        if (v.accepts<std::string_view>())
-            return v.set_if(s ? std::string_view(s) : std::string_view());
+        if (v.accepts<Str>())
+            return v.set_if(s ? Str(s) : Str());
 
-        if (v.accepts<std::string>()) {
-            if (s) return v.emplace_if<std::string>(s);
-            return v.emplace_if<std::string>();
+        if (v.accepts<String>()) {
+            if (s) return v.emplace_if<String>(s);
+            return v.emplace_if<String>();
         }
         return false;
     }
@@ -75,7 +68,7 @@ struct Loadable<char const *> {
         DUMP("loading char const *");
         std::optional<char const *> out;
         if (!v || v.load<std::nullptr_t>()) out.emplace(nullptr);
-        else if (auto p = v.load<std::string_view>()) out.emplace(p->data());
+        else if (auto p = v.load<Str>()) out.emplace(p->data());
         // else if (auto p = v.load<char const &>()) out.emplace(std::addressof(*p));
         return out;
     }

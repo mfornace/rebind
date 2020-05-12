@@ -117,48 +117,57 @@ typedef union ara_binary_sbo {
     char storage[sizeof(ara_binary_alloc)];
 } ara_binary_sbo;
 
-/// A simple null-terminated std::string-like class containing a type-erased destructor and SSO
+/// A simple non-null-terminated byte container containing a type-erased destructor and SSO
 typedef struct ara_binary {
     ara_binary_sbo sbo;
-    size_t size; // if size < sizeof(storage), SSO is used
+    size_t size; // if size <= sizeof(storage), SSO is used
 } ara_binary;
 
 /******************************************************************************************/
 
+typedef struct ara_shape_alloc {
+    size_t* dimensions;
+    void (*destructor)(size_t*, uint32_t);
+} ara_shape_alloc;
+
+// Either shape pointer or the length itself if rank=1
+typedef union ara_shape {
+    size_t stack[2];       // 1 or 2 dimensions if rank <= 2
+    ara_shape_alloc alloc; // array of more dimensions, with its deleter
+} ara_shape;
+
 // Contiguous container similar to a type-erased std::vector (extend to ND shape?)
 typedef struct ara_span {
+    ara_shape shape;
     ara_index index;   // Type and qualifier of the held type
     void* data;        // Address to the start of the array
-    uintptr_t shape;     // Either shape pointer or the length itself if rank=1
     uint32_t rank;     // Rank of the array
     uint32_t item;     // Item size
 } ara_span;
+// problem: where is the deleter for the dimensions??
 
 // Contiguous container similar to a type-erased std::vector (extend to ND shape?)
 typedef struct ara_array {
     ara_span span;
-    void* storage;     // destructor data
+    void *storage; // destructor data, could maybe be folded into destructor in the future
     void (*destructor)(ara_index, void*); // called with previous members
 } ara_array;
 
 /******************************************************************************************/
 
-// Container of heterogeneous types
+// View-like container of heterogeneous types
 typedef struct ara_view {
     ara_ref* data;                               // address to the start of the array
-    size_t size;                                 // if shape is given, number of shape. otherwise length of array
-    size_t* shape;                               // list of shape, may be null
-    void* storage;                               // destructor storage to know how to delete data, shape
-    void (*destructor)(ara_ref*, size_t, void*); // called with previous members
+    size_t size;                                 // if shape is given, the rank. otherwise length of array
+    void (*destructor)(ara_ref*, size_t); // called with previous members
 } ara_view;
 
-// Container of heterogeneous types
+// Value container of heterogeneous types
 typedef struct ara_tuple {
     ara_ref* data;                               // address to the start of the array
     size_t size;                                 // if shape is given, number of shape. otherwise length of array
-    size_t* shape;                               // list of shape, may be null
     void* storage;
-    void (*destructor)(ara_ref*, size_t, void*); // called with previous members
+    void (*destructor)(ara_ref*, size_t, void*); // called with previous members (fold in storage?)
 } ara_tuple;
 
 /******************************************************************************************/
