@@ -71,6 +71,13 @@ typedef struct ara_args {
 
 /******************************************************************************************/
 
+/// due to unlikely issue of conflicting implementations of bool ...
+typedef struct ara_bool {
+    unsigned char value; // either 0 or 1. Guaranteed 1 byte of storage.
+} ara_bool;
+
+/******************************************************************************************/
+
 /// ara_str is essentially an in-house copy of std::string_view.
 typedef struct ara_str {
     char const *data;
@@ -144,7 +151,6 @@ typedef struct ara_span {
     uint32_t rank;     // Rank of the array
     uint32_t item;     // Item size
 } ara_span;
-// problem: where is the deleter for the dimensions??
 
 // Contiguous container similar to a type-erased std::vector (extend to ND shape?)
 typedef struct ara_array {

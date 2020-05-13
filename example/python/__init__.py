@@ -76,4 +76,8 @@ blah = goo.method('add', a1, a2, out=Goo, gil=True, mode='r')
 
 s = call('string_argument', 'uhh2').load(str)
 
+vec3 = call('vec3', [1,2,3])
+
+assert call('bool', True, out=bool)
+
 ################################################################################

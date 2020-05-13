@@ -3,6 +3,7 @@
 #include <tuple>
 #include <string_view>
 #include <string>
+#include <array>
 
 namespace ara {
 
@@ -223,8 +224,15 @@ static_assert(std::is_destructible_v<Binary>);
 
 /******************************************************************************/
 
+template <class T>
+T zero_product(T const* t, std::size_t n) {
+    T out = 1;
+    for (auto p = t; p != t + n; ++p) out *= *p;
+    return out;
+}
+
 union Span {
-    static void deallocate(std::size_t* p, std::uint32_t rank) {delete[] p;}
+    static void deallocate(std::size_t* p, std::uint32_t rank) noexcept {delete[] p;}
 
     ara_span c;
     Span() noexcept : c{{0, 0}, nullptr, nullptr, 0, 0} {}
@@ -246,12 +254,15 @@ union Span {
             }
         }
 
-    template <class T>
-    Span(T const* data, std::size_t size) noexcept
-        : c{{size, 0},
+    template <class T, std::size_t N, std::enable_if_t<N <= 2, int> = 0>
+    Span(T* data, std::array<std::size_t, N> size) noexcept
+        : c{{N >= 1 ? size[0] : 0, N >= 2 ? size[1] : 0},
             Tagged<Tag>(Index::of<T>(), std::is_const_v<T> ? Tag::Const : Tag::Mutable).base,
             const_cast<void*>(static_cast<void const *>(data)),
             1, sizeof(T)} {}
+
+    template <class T>
+    Span(T* data, std::size_t size) noexcept : Span(data, std::array<std::size_t, 1>{size}) {}
 
     Span(Span const &s) = delete;
     Span& operator=(Span const &) = delete;
@@ -260,6 +271,45 @@ union Span {
         if (c.rank > 2) c.shape.alloc.destructor(c.shape.alloc.dimensions, c.rank);
     }
 
+    auto rank() const {return c.rank;}
+
+    std::size_t const* shape() const {
+        return rank() < 3 ? c.shape.stack : c.shape.alloc.dimensions;
+    }
+
+    std::size_t length(std::uint32_t axis) const {
+        if (axis >= rank()) throw std::out_of_range("Span dimension out of range");
+        return rank() < 3 ? c.shape.stack[axis] : c.shape.alloc.dimensions[axis];
+    }
+
+    std::size_t size() const {
+        switch (rank()) {
+            case 0: return 0;
+            case 1: return c.shape.stack[0];
+            case 2: return c.shape.stack[0] * c.shape.stack[1];
+            default: return zero_product(shape(), rank());
+        }
+    }
+
+    Index index() const {return ara_get_index(c.index);}
+
+    template <class F>
+    bool map(F &&f) const {
+        auto p = static_cast<char*>(c.data);
+        auto const end = p + size() * c.item;
+        Ref ref;
+        ref.c.tag_index = c.index;
+        for (; p != end; p += c.item) {
+            DUMP("map element");
+            ref.c.pointer = p;
+            if (!f(ref)) return false;
+        }
+        return true;
+    }
+
+    template <class T>
+    T const* target() const {return index() == Index::of<T>() ? static_cast<T const *>(c.data) : nullptr;}
+
     explicit operator ara_span() && noexcept {return move_slice(*this);}
     // explicit operator ara_span() const & {return const_slice(*this);}
 };
@@ -267,9 +317,21 @@ union Span {
 /******************************************************************************/
 
 union Array {
+    struct Deleter {
+        void* storage;
+        void (*function)(ara_index, void*);
+    };
     ara_array c;
 
-    Array() : c{{{0, 0}, nullptr, nullptr, 1, 0}, nullptr, nullptr} {}
+    template <class T>
+    Array(T* data, std::size_t size, Deleter del) noexcept
+        : c{{{size, 0},
+            Tagged<Tag>(Index::of<T>(), std::is_const_v<T> ? Tag::Const : Tag::Mutable).base,
+            const_cast<void*>(static_cast<void const *>(data)),
+            1, sizeof(T)}, del.storage, del.function} {}
+
+    Array() noexcept : c{{{0, 0}, nullptr, nullptr, 1, 0}, nullptr, nullptr} {}
+
     Array(Array &&s) noexcept : Array() {std::swap(c, s.c);}
     Array& operator=(Array &&s) noexcept {std::swap(c, s.c); return *this;}
 
@@ -278,15 +340,24 @@ union Array {
 
     ~Array() noexcept {if (c.destructor) c.destructor(c.span.index, c.span.data);}
 
+    operator Span&() {return reinterpret_cast<Span&>(c.span);}
+    operator Span const&() const {return reinterpret_cast<Span const&>(c.span);}
+
     explicit operator ara_array() && noexcept {return move_slice(*this);}
 };
 
 /******************************************************************************/
 
 union View {
+    template <class T>
+    static void drop(ara_ref* ptr, std::size_t) {T(reinterpret_cast<Ref*>(ptr));}
+
     ara_view c;
 
     constexpr View() noexcept : c{nullptr, 0, nullptr} {}
+
+    View(std::unique_ptr<Ref[]> refs, std::size_t n) noexcept
+        : c{reinterpret_cast<ara_ref*>(refs.release()), n, drop<std::unique_ptr<Ref[]>>} {}
 
     View(View &&s) noexcept : View() {std::swap(c, s.c);}
     View& operator=(View &&s) noexcept {std::swap(c, s.c); return *this;}
@@ -307,8 +378,18 @@ union View {
 /******************************************************************************/
 
 union Tuple {
+    template <class T, class F>
+    static void drop(ara_ref* ptr, std::size_t n, void* storage) {
+        F()(reinterpret_cast<Ref*>(ptr), n, storage);
+        T(reinterpret_cast<Ref*>(ptr));
+    }
+
     ara_tuple c;
     constexpr Tuple() noexcept : c{nullptr, 0, nullptr, nullptr} {}
+
+    template <class F>
+    Tuple(std::unique_ptr<Ref[]> refs, std::size_t n, void* storage, Type<F>) noexcept
+        : c{reinterpret_cast<ara_ref*>(refs.release()), n, storage, drop<std::unique_ptr<Ref[]>, F>} {}
 
     Tuple(Tuple &&s) noexcept : Tuple() {std::swap(c, s.c);}
     Tuple& operator=(Tuple &&s) noexcept {std::swap(c, s.c); return *this;}

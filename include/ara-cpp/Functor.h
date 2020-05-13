@@ -297,7 +297,7 @@ auto make_functor(F f, Lifetime const lifetime={}) {
     using Out = std::conditional_t<n == 0, Functor<S>, DefaultFunctor<n, S>>;
 
     // Return the callable object holding the functor
-    static_assert(is_usable<Out>);
+    static_assert(is_implementable<Out>);
     return Out{std::move(simplified), lifetime};
 }
 

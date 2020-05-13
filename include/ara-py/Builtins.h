@@ -36,7 +36,7 @@ struct Output<BoolType> {
 
     static Shared load(Ref &ref, Ignore, Ignore) {
         DUMP("load_bool");
-        if (auto p = ref.load<bool>()) return as_object(*p);
+        if (auto p = ref.load<Bool>()) return as_object(*p);
         return {};//return type_error("could not convert to bool");
     }
 };
@@ -195,7 +195,7 @@ struct Output<Variable> {
 
     static Shared load(Ref &ref, Ignore, Ignore) {
         DUMP("load_bool");
-        if (auto p = ref.load<bool>()) return as_object(*p);
+        // if (auto p = ref.load<bool>()) return as_object(*p);
         return {};//return type_error("could not convert to bool");
     }
 };

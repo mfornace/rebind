@@ -11,7 +11,7 @@ struct Copyable;
 struct Value;
 
 template <class T>
-static constexpr bool is_manageable = is_usable<T> && !std::is_same_v<T, Value>;
+static constexpr bool is_manageable = is_implementable<T> && !std::is_same_v<T, Value>;
 
 /******************************************************************************/
 
@@ -174,7 +174,7 @@ Value::Value(Type<T>, Args&& ...args) {
 
 template <class T, class ...Args>
 T & Value::emplace(Type<T>, Args &&...args) {
-    assert_usable<T>();
+    assert_implementable<T>();
     reset();
     T *out;
     if constexpr(loc_of<T> == Loc::Heap) {

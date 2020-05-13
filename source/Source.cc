@@ -8,7 +8,8 @@
 extern "C" {
 
 ARA_DEFINE(void, void);
-ARA_DEFINE(bool, bool);
+ARA_DEFINE(bool, ara_bool);
+ARA_DEFINE(cpp_bool, bool);
 ARA_DEFINE(char, char);
 ARA_DEFINE(uchar, unsigned char);
 ARA_DEFINE(int, int);

@@ -265,6 +265,8 @@ void Example::write(ara::Schema &s) {
     s.function("vec2", [](std::vector<int> &) {});
     s.function("vec3", [](std::vector<int>) {});
     s.function("mutex", [] {return std::mutex();});
+    s.function("bool", [](bool b) {return b;});
+    s.function("dict", [](std::map<std::string, std::string> b) {return b;});
     // s.function<1>("vec4", [](int, int i=2) {});
 
     DUMP("made schema");

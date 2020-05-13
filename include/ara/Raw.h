@@ -25,6 +25,7 @@ using Stat    = ara_stat;
 using Idx     = ara_index;
 using Integer = ara_integer;
 using Float   = ara_float;
+using Bool    = ara_bool;
 
 /******************************************************************************************/
 
@@ -88,21 +89,21 @@ union Ref;
 union Target;
 
 template <class T>
-static constexpr bool is_usable = true
+static constexpr bool is_implementable = true
     && !std::is_void_v<T>
     && !std::is_const_v<T>
     && !std::is_reference_v<T>
     && !std::is_volatile_v<T>
+    && !std::is_same_v<T, Ref>
     && !std::is_same_v<T, Target>
-    && !std::is_same_v<T, Ref>;
+    && !std::is_null_pointer_v<T>;
     // && !is_type_t<T>::value;
-    // && !std::is_null_pointer_v<T>
     // && !std::is_function_v<T>
 
 /******************************************************************************/
 
 template <class T>
-constexpr void assert_usable() {
+constexpr void assert_implementable() {
     // static_assert(std::is_nothrow_destructible_v<T>);
     static_assert(!std::is_void_v<T>);
     static_assert(!std::is_const_v<T>);
@@ -110,9 +111,8 @@ constexpr void assert_usable() {
     static_assert(!std::is_volatile_v<T>);
     static_assert(!std::is_same_v<T, Ref>);
     static_assert(!std::is_same_v<T, Target>);
-    // static_assert(!std::is_same_v<T, Value>);
+    static_assert(!std::is_null_pointer_v<T>);
     // static_assert(!is_type_t<T>::value);
-    // static_assert(!std::is_null_pointer_v<T>);
 }
 
 /******************************************************************************/

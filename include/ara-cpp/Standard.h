@@ -140,26 +140,46 @@ template <class V>
 struct DumpMap {
     using T = std::pair<typename V::key_type, typename V::mapped_type>;
 
-    bool operator()(Ref &o, Index t, V &&v) const {
+    bool operator()(Target &a, V &&v) const {
         return false;
         // return range_response<T>(o, t, std::make_move_iterator(std::begin(v)), std::make_move_iterator(std::end(v)));
     }
 
-    bool operator()(Ref &o, Index t, V const &v) const {
+    bool operator()(Target &o, V const &v) const {
         return false;
         // return range_response<T>(o, t, std::begin(v), std::end(v));
     }
 };
 
-template <class V>
+template <class M>
 struct LoadMap {
-    using T = std::pair<typename V::key_type, typename V::mapped_type>;
+    using K = typename M::key_type;
+    using V = typename M::mapped_type;
 
-    std::optional<V> operator()(Ref &v) const {
-        std::optional<V> out;
-        // if (auto p = v.load<Vector<T>>())
-        //     out.emplace(std::make_move_iterator(std::begin(*p)), std::make_move_iterator(std::end(*p)));
-        return out;
+    static void load_span(std::optional<M>& o, Span& span) {
+        DUMP("load span into map", span.rank());
+        if (span.rank() != 2 || span.length(1) != 2) return;
+        o.emplace();
+        std::optional<K> key;
+        span.map([&](Ref &ref) {
+            if (key) {
+                if (auto v = ref.load<V>()) {
+                    o->emplace(std::move(*key), std::move(*v));
+                    key.reset();
+                    return true;
+                } else return false;
+            } else {
+                key = ref.load<K>();
+                return bool(key);
+            }
+        });
+    }
+
+    std::optional<M> operator()(Ref &r) const {
+        std::optional<M> o;
+        if (auto p = r.load<Span>()) load_span(o, *p);
+        else if (auto p = r.load<Array>()) load_span(o, *p);
+        return o;
     }
 };
 

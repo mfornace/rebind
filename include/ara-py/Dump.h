@@ -1,5 +1,6 @@
 #pragma once
 #include "Raw.h"
+#include <ara/Core.h>
 
 namespace ara::py {
 
@@ -58,6 +59,112 @@ inline PyBytesObject* get_bytes(Instance<> o) {
 
 /******************************************************************************/
 
+inline bool dump_span(Target &target, Instance<> o) {
+    DUMP("dump_span");
+    if (PyTuple_Check(+o)) {
+        PyObject** start = reinterpret_cast<PyTupleObject*>(+o)->ob_item;
+        std::size_t size = PyTuple_GET_SIZE(+o);
+        DUMP("dumping tuple into span", start, size ? *start : nullptr);
+        return target.emplace_if<Span>(reinterpret_cast<Export**>(start), size);
+    }
+    // depends on the guarantee below...hmmm...probably better to get rid of this approach
+    if (PyList_Check(+o)) {
+        PyObject** start = reinterpret_cast<PyListObject*>(+o)->ob_item;
+        std::size_t size = PyList_GET_SIZE(+o);
+        DUMP("dumping list into span", start, size ? *start : nullptr);
+        return target.emplace_if<Span>(reinterpret_cast<Export**>(start), size);
+    }
+    return false;
+}
+
+/******************************************************************************/
+
+static void dump_array_deleter(ara_index, void* storage) {Py_DECREF(static_cast<PyObject*>(storage));}
+
+inline bool dump_array(Target &target, Instance<> o) {
+    DUMP("dump_array");
+    if (PyTuple_Check(+o)) {
+        PyObject** start = reinterpret_cast<PyTupleObject*>(+o)->ob_item;
+        std::size_t size = PyTuple_GET_SIZE(+o);
+        if (auto p = target.emplace_if<Array>(reinterpret_cast<Export**>(start), size, Array::Deleter{+o, &dump_array_deleter})) {
+            Py_INCREF(static_cast<PyObject*>(p->c.storage));
+            return true;
+        }
+    }
+    if (PyList_Check(+o)) {
+        PyObject** start = reinterpret_cast<PyListObject*>(+o)->ob_item;
+        std::size_t size = PyList_GET_SIZE(+o);
+        if (auto p = target.emplace_if<Array>(reinterpret_cast<Export**>(start), size, Array::Deleter{+o, &dump_array_deleter})) {
+            Py_INCREF(static_cast<PyObject*>(p->c.storage));
+            return true;
+        }
+    }
+    if (PyDict_Check(+o)) {
+        std::size_t len = PyDict_Size(+o);
+        auto a = std::make_unique<Export*[]>(2 * len);
+        // if (auto p = target.emplace_if<Array>(a, std::array<std::size_t, 2>{len, 2})) {
+        //     return true;
+        // }
+    }
+    return false;
+}
+
+/******************************************************************************/
+
+inline std::pair<std::unique_ptr<Ref[]>, std::size_t> allocated_view(Instance<> o) {
+    if (PyList_Check(+o)) {
+        auto const size = PyList_GET_SIZE(+o);
+        auto refs = std::make_unique<Ref[]>(size);
+        for (Py_ssize_t i = 0; i !=  size; ++i)
+            refs[i] = Ref(reinterpret_cast<Export&>(*PyList_GET_ITEM(+o, i)));
+        return {std::move(refs), size};
+    }
+    if (PyTuple_Check(+o)) {
+        auto const size = PyTuple_GET_SIZE(+o);
+        auto refs = std::make_unique<Ref[]>(size);
+        for (Py_ssize_t i = 0; i !=  size; ++i)
+            refs[i] = Ref(reinterpret_cast<Export&>(*PyTuple_GET_ITEM(+o, i)));
+        return {std::move(refs), size};
+    }
+
+    Shared iter(PyObject_GetIter(+o), true);
+    if (!iter) {
+        PyErr_Clear();
+        return {};
+    }
+    std::vector<Ref> v;
+    Shared item;
+    while ((item = {PyIter_Next(+iter), true}))
+        v.emplace_back(reinterpret_cast<Export&>(*(+o)));
+
+    auto const size = v.size();
+    auto refs = std::make_unique<Ref[]>(size);
+    std::copy(std::make_move_iterator(v.begin()), std::make_move_iterator(v.end()), refs.get());
+    return {std::move(refs), size};
+}
+
+/******************************************************************************/
+
+inline bool dump_view(Target& target, Instance<> o) {
+    auto p = allocated_view(o);
+    return p.first && target.emplace_if<View>(std::move(p.first), p.second);
+}
+
+struct DeleteObject {
+    void operator()(Ignore, Ignore, void* p) const noexcept {Py_DECREF(reinterpret_cast<PyObject*>(p));}
+};
+
+inline bool dump_tuple(Target& target, Instance<> o) {
+    auto p = allocated_view(o);
+    if (p.first) if (auto t = target.emplace_if<Tuple>(std::move(p.first), p.second, +o, Type<DeleteObject>())) {
+        Py_INCREF(reinterpret_cast<PyObject*>(t->c.storage));
+        return true;
+    }
+    return false;
+}
+
+/******************************************************************************/
+
 inline bool dump_object(Target &target, Instance<> o) {
     DUMP("dumping object");
 
@@ -89,10 +196,20 @@ inline bool dump_object(Target &target, Instance<> o) {
     if (target.accepts<Integer>())
         return dump_arithmetic<Integer>(target, o);
 
-    if (target.accepts<bool>()) {
-        if ((+o)->ob_type == Py_None->ob_type) { // fix, doesnt work with Py_None...
-            return target.set_if(false);
-        } else return dump_arithmetic<bool>(target, o);
+    if (target.accepts<Span>())
+        return dump_span(target, o);
+
+    if (target.accepts<Array>())
+        return dump_array(target, o);
+
+    if (target.accepts<View>())
+        return dump_view(target, o);
+
+    if (target.accepts<Tuple>())
+        return dump_tuple(target, o);
+
+    if (target.accepts<Bool>()) {
+        return target.emplace_if<Bool>(Bool{static_cast<bool>(PyObject_IsTrue(+o))});
     }
 
     return false;
@@ -111,6 +228,14 @@ struct Dumpable<py::Export> {
     bool operator()(Target &v, py::Export &o) const {
         DUMP("dumping object!");
         return py::dump_object(v, py::instance(reinterpret_cast<PyObject*>(&o)));
+    }
+};
+
+template <>
+struct Dumpable<py::Export*> {
+    bool operator()(Target &v, py::Export* o) const {
+        DUMP("dumping object pointer!", bool(o), o, reinterpret_cast<std::uintptr_t>(o));
+        return py::dump_object(v, py::instance(reinterpret_cast<PyObject*>(o)));
     }
 };
 

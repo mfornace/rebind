@@ -67,7 +67,7 @@ struct Loadable<char const *> {
     std::optional<char const *> operator()(Ref &v) const {
         DUMP("loading char const *");
         std::optional<char const *> out;
-        if (!v || v.load<std::nullptr_t>()) out.emplace(nullptr);
+        if (!v) out.emplace(nullptr);
         else if (auto p = v.load<Str>()) out.emplace(p->data());
         // else if (auto p = v.load<char const &>()) out.emplace(std::addressof(*p));
         return out;
@@ -78,7 +78,7 @@ template <class T>
 struct Loadable<T *> {
     std::optional<T *> operator()(Ref &v) const {
         std::optional<T *> out;
-        if (!v || v.load<std::nullptr_t>()) {
+        if (!v) {
             out.emplace(nullptr);
         } else {
             if constexpr(!std::is_function_v<T>) {
@@ -133,20 +133,43 @@ struct Loadable<T, std::enable_if_t<std::is_floating_point_v<T>>> {
 
 /******************************************************************************/
 
-template <class T>
-struct Dumpable<T, std::enable_if_t<(std::is_integral_v<T>)>> {
-    bool operator()(Target &v, T t) const {
-        DUMP("Dumpable ", type_name<T>(), " to ", v.name());
+template <>
+struct Dumpable<bool> {
+    bool operator()(Target &v, bool t) const {
+        DUMP("Dumpable <bool> to ", v.name());
+        if (v.accepts<Bool>()) return v.emplace_if<Bool>(t);
         if (v.accepts<Integer>()) return v.emplace_if<Integer>(t);
-        if (v.accepts<Float>()) return v.emplace_if<Float>(t);
-        DUMP("Dumpable ", type_name<T>(), " to ", v.name(), " failed");
+        DUMP("Dumpable <bool> to ", v.name(), " failed");
         return false;
     }
 };
 
-/*
-Default Loadable for integer type tries to go through Integer
-*/
+/// Default Loadable for integer type tries to go through Integer
+template <>
+struct Loadable<bool> {
+    std::optional<bool> operator()(Ref &v) const {
+        DUMP("trying convert to bool ", v.name());
+        if (auto p = v.load<Bool>()) return static_cast<bool>(p->value);
+        if (auto p = v.load<Integer>()) return static_cast<bool>(*p);
+        DUMP("failed to convert to bool", v.name());
+        return {}; //s.error("not convertible to integer", Index::of<T>());
+    }
+};
+
+/******************************************************************************/
+
+template <class T>
+struct Dumpable<T, std::enable_if_t<(std::is_integral_v<T>)>> {
+    bool operator()(Target &v, T t) const {
+        DUMP("Dumpable<", type_name<T>(), "> to ", v.name());
+        if (v.accepts<Integer>()) return v.emplace_if<Integer>(t);
+        if (v.accepts<Float>()) return v.emplace_if<Float>(t);
+        DUMP("Dumpable<", type_name<T>(), "> to ", v.name(), " failed");
+        return false;
+    }
+};
+
+/// Default Loadable for integer type tries to go through Integer
 template <class T>
 struct Loadable<T, std::enable_if_t<std::is_integral_v<T>>> {
     std::optional<T> operator()(Ref &v) const {
@@ -191,7 +214,8 @@ struct Loadable<T, std::enable_if_t<std::is_enum_v<T>>> {
 /******************************************************************************/
 
 ARA_DECLARE(void, void);
-ARA_DECLARE(bool, bool);
+ARA_DECLARE(cpp_bool, bool);
+ARA_DECLARE(bool, ara_bool);
 ARA_DECLARE(char, char);
 ARA_DECLARE(uchar, unsigned char);
 ARA_DECLARE(int, int);

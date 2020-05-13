@@ -14,6 +14,8 @@ inline Shared as_object(Shared o) {return o;}
 
 inline Shared as_object(bool b) {return {b ? Py_True : Py_False, true};}
 
+inline Shared as_object(ara_bool b) {return as_object(static_cast<bool>(b.value));}
+
 inline Shared as_object(Integer i) {return Shared::from(PyLong_FromLongLong(static_cast<long long>(i)));}
 
 inline Shared as_object(ara_float x) {return Shared::from(PyFloat_FromDouble(x));}

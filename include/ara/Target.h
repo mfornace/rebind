@@ -9,7 +9,7 @@ namespace ara {
 
 template <class T, class ...Args>
 T * allocate(Args &&...args) {
-    assert_usable<T>();
+    assert_implementable<T>();
     if constexpr(std::is_constructible_v<T, Args &&...>) {
         return new T(static_cast<Args &&>(args)...);
     } else {
@@ -19,7 +19,7 @@ T * allocate(Args &&...args) {
 
 template <class T, class ...Args>
 T * allocate_in_place(void *p, Args &&...args) {
-    assert_usable<T>();
+    assert_implementable<T>();
     if constexpr(std::is_constructible_v<T, Args &&...>) {
         return new(p) T(static_cast<Args &&>(args)...);
     } else {
