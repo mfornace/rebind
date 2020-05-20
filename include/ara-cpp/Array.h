@@ -108,7 +108,7 @@ struct LoadVector {
         }
     }
 
-    std::optional<V> operator()(Ref& v) const {
+    static std::optional<V> load(Ref& v) {
         std::optional<V> out;
         if (auto p = v.load<Span>()) load_span(out, *p);
         else if (auto p = v.load<Array>()) load_span(out, *p);
@@ -120,10 +120,7 @@ struct LoadVector {
 /******************************************************************************/
 
 template <class T, class A>
-struct Dumpable<std::vector<T, A>> : DumpVector<std::vector<T, A>> {};
-
-template <class T, class A>
-struct Loadable<std::vector<T, A>> : LoadVector<std::vector<T, A>> {};
+struct Impl<std::vector<T, A>> : DumpVector<std::vector<T, A>>, LoadVector<std::vector<T, A>> {};
 
 /******************************************************************************/
 

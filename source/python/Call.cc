@@ -7,10 +7,10 @@
 
 namespace ara::py {
 
-Lifetime call_to_variable(Variable &out, Index self, Pointer address, Tag qualifier, ArgView &args) {
+Lifetime call_to_variable(Variable &out, Index self, Pointer address, Mode qualifier, ArgView &args) {
     DUMP(out.name(), out.address());
     Target target(Index(), &out.storage, sizeof(out.storage),
-        Target::Mutable | Target::Const | Target::Heap | Target::Trivial |
+        Target::Write | Target::Read | Target::Heap | Target::Trivial |
         Target::Relocatable | Target::MoveNoThrow | Target::Unmovable | Target::MoveThrow
     );
 
@@ -20,9 +20,9 @@ Lifetime call_to_variable(Variable &out, Index self, Pointer address, Tag qualif
     switch (stat) {
         case Call::None:        break;
         case Call::Stack:       {out.set_stack(target.index()); break;}
-        case Call::Const:       {out.set_heap(target.index(), target.output(), Tag::Const); break;}
-        case Call::Mutable:     {out.set_heap(target.index(), target.output(), Tag::Mutable); break;}
-        case Call::Heap:        {out.set_heap(target.index(), target.output(), Tag::Heap); break;}
+        case Call::Read:        {out.set_heap(target.index(), target.output(), Mode::Read); break;}
+        case Call::Write:       {out.set_heap(target.index(), target.output(), Mode::Write); break;}
+        case Call::Heap:        {out.set_heap(target.index(), target.output(), Mode::Heap); break;}
         case Call::Impossible:  {throw PythonError(type_error("Impossible"));}
         case Call::WrongNumber: {throw PythonError(type_error("WrongNumber"));}
         case Call::WrongType:   {throw PythonError(type_error("WrongType"));}
@@ -42,7 +42,7 @@ bool is_subclass(Instance<> o, Instance<PyTypeObject> t) {
     return (x < 0) ? throw PythonError() : x;
 }
 
-Lifetime call_to_output(Shared &out, PyObject* maybe_output, Index self, Pointer address, Tag qualifier, ArgView &args) {
+Lifetime call_to_output(Shared &out, PyObject* maybe_output, Index self, Pointer address, Mode qualifier, ArgView &args) {
     if (!maybe_output) {
         out = Shared::from(c_new<Variable>(+static_type<Variable>(), nullptr, nullptr));
         Variable &v = cast_object<Variable>(+out);
@@ -69,7 +69,7 @@ Lifetime call_to_output(Shared &out, PyObject* maybe_output, Index self, Pointer
 #warning "aliasing is a problem here"
     Variable v;
     call_to_variable(v, self, address, qualifier, args);
-    Ref r(v.index(), Tag::Mutable, Pointer::from(v.address()));
+    Ref r(v.index(), Mode::Write, Pointer::from(v.address()));
     if (auto o = try_load(r, output, Shared())) {out = o; return {};}
     else throw PythonError(type_error("could not load"));
 }
@@ -85,7 +85,7 @@ struct TupleLock {
     // Prepare a lock on each argument: v[i] <-- a[s+i]
     // The immediate next step after constructor should be either read_lock() or lock()
     TupleLock(ArgView &v, Instance<PyTupleObject> a, Py_ssize_t s=0) noexcept
-        : view(v), args(a), start(s) {for (auto &ref : view) ref.c.tag_index = nullptr;}
+        : view(v), args(a), start(s) {for (auto &ref : view) ref.c.mode_index = nullptr;}
 
     void lock_default() {
         auto s = start;
@@ -95,7 +95,7 @@ struct TupleLock {
                 DUMP("its variable!");
                 ref = begin_acquisition(*p, LockType::Read);
             } else {
-                ref = Ref(Index::of<Export>(), Tag::Mutable, Pointer::from(item));
+                ref = Ref(Index::of<Export>(), Mode::Write, Pointer::from(item));
             }
         }
     }
@@ -114,7 +114,7 @@ struct TupleLock {
                 DUMP("its variable!", *c);
                 ref = begin_acquisition(*p, *c == 'w' ? LockType::Write : LockType::Read);
             } else {
-                ref = Ref(Index::of<Export>(), Tag::Mutable, Pointer::from(item));
+                ref = Ref(Index::of<Export>(), Mode::Write, Pointer::from(item));
             }
             ++c;
         }
@@ -168,7 +168,7 @@ Shared module_call(Index index, Instance<PyTupleObject> args, CallKeywords const
 
     for (Py_ssize_t i = 0; i != total-1; ++i) {
         PyObject* item = PyTuple_GET_ITEM(args.object(), i+1);
-        a.view[i] = Ref(Index::of<Export>(), Tag::Mutable, Pointer::from(item));
+        a.view[i] = Ref(Index::of<Export>(), Mode::Write, Pointer::from(item));
     }
 
     auto lk = std::make_shared<PythonFrame>(!kws.gil);
@@ -176,7 +176,7 @@ Shared module_call(Index index, Instance<PyTupleObject> args, CallKeywords const
     a.view.c.caller_ptr = &caller;
 
     Shared out;
-    auto life = call_to_output(out, kws.out, index, Pointer::from(nullptr), Tag::Const, a.view);
+    auto life = call_to_output(out, kws.out, index, Pointer::from(nullptr), Mode::Read, a.view);
     return out;
 }
 
@@ -189,7 +189,7 @@ Shared variable_call(Variable &v, Instance<PyTupleObject> args, CallKeywords con
 
     for (Py_ssize_t i = 0; i != total; ++i) {
         PyObject* item = PyTuple_GET_ITEM(args.object(), i);
-        a.view[i] = Ref(Index::of<Export>(), Tag::Mutable, Pointer::from(item));
+        a.view[i] = Ref(Index::of<Export>(), Mode::Write, Pointer::from(item));
     }
 
     auto lk = std::make_shared<PythonFrame>(!kws.gil);
@@ -197,7 +197,7 @@ Shared variable_call(Variable &v, Instance<PyTupleObject> args, CallKeywords con
     a.view.c.caller_ptr = &caller;
 
     Shared out;
-    auto life = call_to_output(out, kws.out, v.index(), Pointer::from(v.address()), Tag::Const, a.view);
+    auto life = call_to_output(out, kws.out, v.index(), Pointer::from(v.address()), Mode::Read, a.view);
     return out;
 }
 

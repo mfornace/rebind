@@ -18,7 +18,7 @@ bool implicit_match(Variable &out, Type<U>, TargetQualifier const q, T &&t) {
     if constexpr(std::is_convertible_v<T &&, U &&>)
         if (q == Rvalue) out = {Type<U &&>(), static_cast<T &&>(t)};
     if constexpr(std::is_convertible_v<T &&, U const &>)
-        if (q == Const) out = {Type<U const &>(), static_cast<T &&>(t)};
+        if (q == Read) out = {Type<U const &>(), static_cast<T &&>(t)};
     DUMP("implicit_response result ", out.has_value(), typeid(Type<T &&>).name(), typeid(U).name(), q);
     return out.has_value();
 }

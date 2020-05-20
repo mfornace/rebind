@@ -35,7 +35,7 @@ struct DumpTuple {
     // static Array array(T &&t, std::index_sequence<Is...>) {return {std::get<Is>(std::move(t))...};}
 
     template <std::size_t ...Is>
-    bool view(Target &v, T const &t, std::index_sequence<Is...>) const {
+    static bool view(Target &v, T const &t, std::index_sequence<Is...>) {
         if (auto o = v.emplace_if<View>()) {
             // o->size = sizeof...(Is);
             // o->shape = nullptr;
@@ -45,11 +45,11 @@ struct DumpTuple {
     }
 
     template <std::size_t ...Is>
-    bool tuple(std::unique_ptr<T> &&p, std::index_sequence<Is...>) const {
+    static bool tuple(std::unique_ptr<T> &&p, std::index_sequence<Is...>) {
         return false;
     }
 
-    bool operator()(Target &v, T const &t) const {
+    static bool dump(Target &v, T const &t) {
         auto idx = std::make_index_sequence<std::tuple_size_v<T>>();
         if (v.accepts<View>()) return view(v, t, idx);
         if constexpr(std::is_copy_constructible_v<T>) {
@@ -58,7 +58,7 @@ struct DumpTuple {
         return false;
     }
 
-    bool operator()(Target &v, T &&t) const {
+    static bool dump(Target &v, T &&t) {
         auto idx = std::make_index_sequence<std::tuple_size_v<T>>();
         // Tuple, if copy constructible
         if constexpr(std::is_move_constructible_v<T>) {
@@ -97,7 +97,7 @@ struct LoadTuple {
     //     }
     // }
 
-    std::optional<V> operator()(Ref &r) const {
+    static std::optional<V> load(Ref &r) {
         std::optional<V> out;
         // Span
         // View
@@ -126,10 +126,7 @@ struct LoadTuple {
 
 // Coverage of std::pair, std::array, and std::tuple. *Not* C arrays.
 template <class T>
-struct Loadable<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : LoadTuple<T> {};
-
-template <class T>
-struct Dumpable<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : DumpTuple<T> {};
+struct Impl<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : LoadTuple<T>, DumpTuple<T> {};
 
 /******************************************************************************/
 

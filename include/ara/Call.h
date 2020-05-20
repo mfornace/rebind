@@ -73,8 +73,8 @@ template <class T>
 struct Arg<T&&> {
     storage_like<T> storage;
 
-    Arg(T&& t) noexcept {allocate_in_place<T>(&storage, std::move(t));}
-    Ref ref() noexcept {return Ref(Index::of<T>(), Tag::Stack, Pointer::from(&storage));}
+    Arg(T&& t) noexcept {Allocator<T>::stack(&storage, std::move(t));}
+    Ref ref() noexcept {return Ref(Index::of<T>(), Mode::Stack, Pointer::from(&storage));}
 };
 
 [[noreturn]] void call_throw(Target &&target, Call::stat c);
@@ -83,7 +83,7 @@ struct Arg<T&&> {
 
 template <class T>
 struct CallReturn {
-    static std::optional<T> get(Index i, Tag qualifier, Pointer self, ArgView &args) {
+    static std::optional<T> get(Index i, Mode qualifier, Pointer self, ArgView &args) {
         std::aligned_union_t<0, T, void*> buffer;
         Target target(Index::of<T>(), &buffer, sizeof(buffer), Target::constraint<T>);
         auto const stat = Call::call(i, target, self, qualifier, args);
@@ -91,7 +91,7 @@ struct CallReturn {
         std::optional<T> out;
         switch (stat) {
             case Call::Stack: {
-                DestructGuard<T, false> raii{storage_cast<T>(buffer)};
+                Destruct::RAII<T> raii{storage_cast<T>(buffer)};
                 out.emplace(std::move(raii.held));
                 break;
             }
@@ -105,14 +105,14 @@ struct CallReturn {
     }
 
     template <class ...Ts>
-    static T call(Index i, Tag qualifier, Pointer self, ArgView &args) {
+    static T call(Index i, Mode qualifier, Pointer self, ArgView &args) {
         std::aligned_union_t<0, T, void*> buffer;
         Target target(Index::of<T>(), &buffer, sizeof(buffer), Target::constraint<T>);
         auto const stat = Call::call(i, target, self, qualifier, args);
 
         switch (stat) {
             case Call::Stack: {
-                DestructGuard<T, false> raii{storage_cast<T>(buffer)};
+                Destruct::RAII<T> raii{storage_cast<T>(buffer)};
                 return std::move(raii.held);
             }
             default: call_throw(std::move(target), stat);
@@ -124,15 +124,15 @@ struct CallReturn {
 
 template <class T>
 struct CallReturn<T &> {
-    static T * get(Index i, Tag qualifier, Pointer self, ArgView &args) {
+    static T * get(Index i, Mode qualifier, Pointer self, ArgView &args) {
         DUMP("calling something that returns reference ...");
         Target target(Index::of<std::remove_cv_t<T>>(), nullptr, 0,
-            std::is_const_v<T> ? Target::Const : Target::Mutable);
+            std::is_const_v<T> ? Target::Read : Target::Write);
 
         auto const stat = Call::call(i, target, self, qualifier, args);
         DUMP("got stat", stat);
         switch (stat) {
-            case (std::is_const_v<T> ? Call::Const : Call::Mutable): return *reinterpret_cast<T *>(target.output());
+            case (std::is_const_v<T> ? Call::Read : Call::Write): return *reinterpret_cast<T *>(target.output());
             case Call::Impossible:  {return nullptr;}
             case Call::WrongType:   {return nullptr;}
             case Call::WrongNumber: {return nullptr;}
@@ -141,15 +141,15 @@ struct CallReturn<T &> {
         }
     }
 
-    static T & call(Index i, Tag qualifier, Pointer self, ArgView &args) {
+    static T & call(Index i, Mode qualifier, Pointer self, ArgView &args) {
         DUMP("calling something that returns reference ...");
         Target target(Index::of<std::remove_cv_t<T>>(), nullptr, 0,
-            std::is_const_v<T> ? Target::Const : Target::Mutable);
+            std::is_const_v<T> ? Target::Read : Target::Write);
 
         auto const stat = Call::call(i, target, self, qualifier, args);
         DUMP("got stat", stat);
         switch (stat) {
-            case (std::is_const_v<T> ? Call::Const : Call::Mutable): return *reinterpret_cast<T *>(target.output());
+            case (std::is_const_v<T> ? Call::Read : Call::Write): return *reinterpret_cast<T *>(target.output());
             default: call_throw(std::move(target), stat);
         }
     }
@@ -159,7 +159,7 @@ struct CallReturn<T &> {
 
 template <>
 struct CallReturn<void> {
-    static void call(Index i, Tag qualifier, Pointer self, ArgView &args) {
+    static void call(Index i, Mode qualifier, Pointer self, ArgView &args) {
         DUMP("calling something...", args.size());
         Target target(Index(), nullptr, 0, Target::None);
 
@@ -171,7 +171,7 @@ struct CallReturn<void> {
         }
     }
 
-    static void get(Index i, Tag qualifier, Pointer self, ArgView &args) {
+    static void get(Index i, Mode qualifier, Pointer self, ArgView &args) {
         DUMP("calling something...");
         Target target(Index(), nullptr, 0, Target::None);
 
@@ -192,14 +192,14 @@ struct CallReturn<void> {
 
 template <>
 struct CallReturn<Ref> {
-    static Ref call(Index i, Tag qualifier, Pointer self, ArgView &args) {
+    static Ref call(Index i, Mode qualifier, Pointer self, ArgView &args) {
         DUMP("calling something...");
-        Target target(Index(), nullptr, 0, Target::Const | Target::Mutable);
+        Target target(Index(), nullptr, 0, Target::Read | Target::Write);
         auto stat = Call::call(i, target, self, qualifier, args);
 
         switch (stat) {
-            case Call::Const:   return Ref(target.index(), Tag::Const, Pointer::from(target.output()));
-            case Call::Mutable: return Ref(target.index(), Tag::Mutable, Pointer::from(target.output()));
+            case Call::Read:   return Ref(target.index(), Mode::Read, Pointer::from(target.output()));
+            case Call::Write: return Ref(target.index(), Mode::Write, Pointer::from(target.output()));
             // function is noexcept until here, now it is permitted to throw (I think)
             default: return nullptr;
         }
@@ -247,7 +247,7 @@ static_assert(std::is_same_v<typename Reduce< void(double) >::type, void(*)(doub
 /******************************************************************************/
 
 template <class T, int N, class ...Ts>
-T call_args(Index i, Tag qualifier, Pointer self, Caller &c, Arg<Ts &&> ...ts) {
+T call_args(Index i, Mode qualifier, Pointer self, Caller &c, Arg<Ts &&> ...ts) {
     static_assert(N <= sizeof...(Ts));
     ArgStack<N, sizeof...(Ts) - N> args(c, ts.ref()...);
     DUMP(type_name<T>(), " tags=", N, " args=", reinterpret_cast<ArgView &>(args).size());
@@ -256,18 +256,18 @@ T call_args(Index i, Tag qualifier, Pointer self, Caller &c, Arg<Ts &&> ...ts) {
 }
 
 template <class T, int N, class ...Ts>
-T call(Index i, Tag qualifier, Pointer self, Caller &c, Ts &&...ts) {
+T call(Index i, Mode qualifier, Pointer self, Caller &c, Ts &&...ts) {
     return call_args<T, N, typename Reduce<Ts>::type...>(i, qualifier, self, c, static_cast<Ts &&>(ts)...);
 }
 
 template <class T, int N, class ...Ts>
-maybe<T> get_args(Index i, Tag qualifier, Pointer self, Caller &c, Arg<Ts &&> ...ts) {
+maybe<T> get_args(Index i, Mode qualifier, Pointer self, Caller &c, Arg<Ts &&> ...ts) {
     ArgStack<N, sizeof...(Ts) - N> args(c, ts.ref()...);
     return CallReturn<T>::get(i, qualifier, self, reinterpret_cast<ArgView &>(args));
 }
 
 template <class T, int N, class ...Ts>
-maybe<T> get(Index i, Tag qualifier, Pointer self, Caller &c, Ts &&...ts) {
+maybe<T> get(Index i, Mode qualifier, Pointer self, Caller &c, Ts &&...ts) {
     return get_args<T, N, typename Reduce<Ts>::type...>(i, qualifier, self, c, static_cast<Ts &&>(ts)...);
 }
 

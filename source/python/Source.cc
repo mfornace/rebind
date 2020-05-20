@@ -75,7 +75,7 @@ PyObject * c_variable_state(PyObject* self, PyObject*) noexcept {
     return raw_object([=] {
         auto &v = cast_object<Variable>(self);
         if (!v.has_value()) return Shared(Py_None, true);
-        if (v.idx.tag() < 0x2) return as_object(static_cast<Integer>(Tag::Stack));
+        if (v.idx.tag() < 0x2) return as_object(static_cast<Integer>(Mode::Stack));
         else return as_object(static_cast<Integer>(v.storage.address.qualifier));
     });
 }

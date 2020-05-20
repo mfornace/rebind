@@ -67,10 +67,10 @@ template <class Module>
 Schema GlobalSchema<Module>::global_schema{};
 
 template <class T>
-struct Callable<T, std::void_t<decltype(T::global_schema)>> {
+struct Impl<T, std::void_t<decltype(T::global_schema)>> {
     static_assert(std::is_aggregate_v<T>);
 
-    bool operator()(Method m, T) {
+    static bool call(Method m, T) {
         if (!m.args.tags()) {
             DUMP("writing the schema");
             T::write(T::global_schema);
@@ -88,7 +88,7 @@ struct Callable<T, std::void_t<decltype(T::global_schema)>> {
             auto const &value = T::global_schema[*name];
             m.args.c.tags -= 1;
             DUMP("invoking module member! args=", m.args.size(), " tags=", m.args.tags());
-            m.stat = Call::call(value.index(), m.target, value.address(), Tag::Const, m.args);
+            m.stat = Call::call(value.index(), m.target, value.address(), Mode::Read, m.args);
             return true;
         }
         DUMP("not a method!");

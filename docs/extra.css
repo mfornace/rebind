@@ -1,0 +1,118 @@
+/* h1 {
+  overflow: hidden;
+  position: relative;
+}
+
+
+h1::after {
+  content: '';
+  width: 100%;
+  height: 1px;
+  background: black;
+  position: absolute;
+  top: 50%;
+  margin-left: 1rem;
+} */
+
+
+h2 {
+  overflow: hidden;
+  position: relative;
+}
+
+
+h2::after {
+  content: '';
+  width: 100%;
+  height: 1px;
+  background: black;
+  position: absolute;
+  top: 50%;
+  margin-left: 1rem;
+}
+
+
+
+h3 {
+  overflow: hidden;
+  position: relative;
+}
+
+
+h3::after {
+  content: '';
+  width: 100%;
+  height: 1px;
+  background: black;
+  position: absolute;
+  top: 50%;
+  margin-left: 1rem;
+}
+
+
+.tabbed-set {
+  display: flex;
+  position: relative;
+  flex-wrap: wrap;
+}
+
+.tabbed-set .highlight {
+  background: #ddd;
+}
+
+.tabbed-set .tabbed-content {
+  display: none;
+  order: 99;
+  width: 100%;
+}
+
+.tabbed-set label {
+  width: auto;
+  margin: 0 0.5em;
+  padding: 0.25em;
+  font-size: 120%;
+  cursor: pointer;
+}
+
+.tabbed-set input {
+  position: absolute;
+  opacity: 0;
+}
+
+.tabbed-set input:nth-child(n+1) {
+  color: #333333;
+}
+
+.tabbed-set input:nth-child(n+1):checked + label {
+    color: #FF5252;
+}
+
+.tabbed-set input:nth-child(n+1):checked + label + .tabbed-content {
+    display: block;
+}
+
+/*
+body {
+  font-family: Cheltenham;
+  font-size: 162.5%;
+} */
+
+/*
+.navbar {
+  background-image: none;
+  background-repeat: no-repeat;
+  border-bottom: 1px solid orange;
+  filter: none;
+  -webkit-box-shadow: 0 1px 10px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 10px rgba(0, 0, 0, 0.1);
+}
+
+.navbar-default {
+  background-color: orange;
+  border-color: orange;
+}
+
+.navbar-default .navbar-nav>.active>a, .navbar-default .navbar-nav>.active>a:hover, .navbar-default .navbar-nav>.active>a:focus {
+  color: #fff;
+  background-color: orange;
+} */

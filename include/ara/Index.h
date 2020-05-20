@@ -48,12 +48,12 @@ struct Index {
 
 /******************************************************************************************/
 
-template <class Tag>
+template <class Mode>
 struct Tagged {
     Idx base = nullptr;
 
     constexpr Tagged() = default;
-    Tagged(Idx i, Tag t) : base(ara_tag_index(i, static_cast<ara_tag>(t))) {}
+    Tagged(Idx i, Mode t) : base(ara_mode_index(i, static_cast<ara_mode>(t))) {}
 
     // constexpr operator Idx() const {return base;}
     constexpr bool has_value() const {return base;}
@@ -68,7 +68,7 @@ struct Tagged {
     constexpr bool operator!=(Index i) const {return base != i.base;}
     constexpr Idx operator+() const {return base;}
 
-    auto tag() const noexcept {return static_cast<Tag>(ara_get_tag(base));}
+    auto tag() const noexcept {return static_cast<Mode>(ara_get_mode(base));}
     explicit operator Index() const noexcept {return ara_get_index(base);}
 
     // template <class T>
@@ -77,12 +77,12 @@ struct Tagged {
     //     static_assert(std::is_same_v<T, U> || std::is_same_v<T, U const&> || std::is_same_v<T, U&>);
     //     return Tagged(fetch<unqualified<T>>(),
     //         std::is_same_v<T, U> ? Stack :
-    //             (std::is_const_v<std::remove_reference_t<T>> ? Const : Mutable));
+    //             (std::is_const_v<std::remove_reference_t<T>> ? Read : Write));
     // }
 };
 
-// template <class Tag>
-// Tagged(Idx i, Tag t) ->
+// template <class Mode>
+// Tagged(Idx i, Mode t) ->
 
 /******************************************************************************************/
 

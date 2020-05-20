@@ -158,10 +158,10 @@ public:
     Variable copy() const & {return {*this, qualifier() == Rvalue};}
 
     Variable reference() & {return {pointer(), idx.add(Lvalue), act, stack};}
-    Variable reference() const & {return {pointer(), idx.add(Const), act, stack};}
+    Variable reference() const & {return {pointer(), idx.add(Read), act, stack};}
     Variable reference() && {return {pointer(), idx.add(Rvalue), act, stack};}
 
-    Variable request_variable(Dispatch &msg, Index const &t) const & {return request_var(msg, t, add(qualifier(), Const));}
+    Variable request_variable(Dispatch &msg, Index const &t) const & {return request_var(msg, t, add(qualifier(), Read));}
     Variable request_variable(Dispatch &msg, Index const &t) & {return request_var(msg, t, add(qualifier(), Lvalue));}
     Variable request_variable(Dispatch &msg, Index const &t) && {return request_var(msg, t, add(qualifier(), Rvalue));}
 
@@ -231,7 +231,7 @@ public:
     template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
     std::remove_reference_t<T> *target(Type<T> t={}) const & {
         // DUMP(name(), typeid(Type<T>).name(), qual, stack);
-        return target_pointer(t, add(qualifier(), Const));
+        return target_pointer(t, add(qualifier(), Read));
     }
 
     // return pointer to target if it is trivially convertible to requested type
@@ -273,7 +273,7 @@ bool get_response(Variable &out, Index const &target_type, T &&t) {
     // Switch on the runtime value of the qualifier to hit compile-time overloads
     switch (target_type.qualifier()) {
         case (Value): return get_response<Value>(out, target_type, static_cast<T &&>(t));
-        case (Const): return get_response<Const>(out, target_type, static_cast<T &&>(t));
+        case (Read): return get_response<Read>(out, target_type, static_cast<T &&>(t));
         case (Lvalue): return get_response<Lvalue>(out, target_type, static_cast<T &&>(t));
         case (Rvalue): return get_response<Rvalue>(out, target_type, static_cast<T &&>(t));
     }
@@ -296,7 +296,7 @@ struct Action {
     static void response(Variable &v, void *p, RequestData &&r) {
         bool ok = false;
         Dispatch &msg = *r.msg; // r is aliasing v, so save a copy of the reference
-        if (r.source == Const)
+        if (r.source == Read)
             ok = get_response(v, std::move(r.type), *static_cast<T const *>(p));
         else if (r.source == Lvalue)
             ok = get_response(v, std::move(r.type), *static_cast<T *>(p));

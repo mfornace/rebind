@@ -75,7 +75,7 @@ struct Failure : std::exception {
     Failure &operator=(Failure &&e) noexcept {idx = std::exchange(e.idx, Index()); return *this;}
 
     ~Failure() {
-        if (idx) Destruct::call(idx, Pointer::from(ptr), Destruct::Heap);
+        if (idx) Deallocate::call(idx, Pointer::from(ptr));
     }
 };
 

@@ -80,4 +80,9 @@ vec3 = call('vec3', [1,2,3])
 
 assert call('bool', True, out=bool)
 
+from typing import Dict
+call('dict', {}).load(Dict[str, str])
+
+call('dict', {'a': 'a'}).load(dict)
+
 ################################################################################

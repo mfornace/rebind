@@ -28,7 +28,7 @@ impl Index {
 
 /******************************************************************************/
 
-pub enum Qualifier { Const, Lvalue, Rvalue }
+pub enum Qualifier { Read, Lvalue, Rvalue }
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -49,7 +49,7 @@ impl Ref {
 
     pub fn qualifier(&self) -> Qualifier {
         match self.qual {
-            0 => Qualifier::Const,
+            0 => Qualifier::Read,
             1 => Qualifier::Lvalue,
             2 => Qualifier::Rvalue,
             _ => panic!("Invalid qualifier")

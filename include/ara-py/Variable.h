@@ -12,7 +12,7 @@ namespace ara::py {
 struct Variable {
     struct Address {
         void* pointer;
-        Tag qualifier; // Heap, Const, or Mutable
+        Mode qualifier; // Heap, Read, or Write
     };
 
     union Storage {
@@ -33,7 +33,7 @@ struct Variable {
         // <0: one mutable reference
     };
 
-    enum State : ara_tag {Stack, StackAlias, Heap, HeapAlias};
+    enum State : ara_mode {Stack, StackAlias, Heap, HeapAlias};
 
     template <class T>
     static constexpr bool allocated = is_stackable<T>(sizeof(Storage));
@@ -53,7 +53,7 @@ struct Variable {
         idx = Tagged<State>(i, Stack);
     }
 
-    void set_heap(Index i, void *ptr, Tag tag) noexcept {
+    void set_heap(Index i, void *ptr, Mode tag) noexcept {
         storage.address.pointer = ptr;
         storage.address.qualifier = tag;
         this->lock.count = 0;
@@ -103,11 +103,11 @@ inline Ref begin_acquisition(Variable& v, LockType type) {
     } else if (count == 0 && type == LockType::Write) {
         DUMP("write lock");
         count = MutateSentinel;
-        return Ref(v.index(), Tag::Mutable, Pointer::from(v.address()));
+        return Ref(v.index(), Mode::Write, Pointer::from(v.address()));
     } else if (type == LockType::Read) {
         DUMP("read lock");
         ++count;
-        return Ref(v.index(), Tag::Const, Pointer::from(v.address()));
+        return Ref(v.index(), Mode::Read, Pointer::from(v.address()));
     } else {
         throw PythonError(type_error("cannot mutate object which is already referenced"));
     }
@@ -142,10 +142,10 @@ inline void Variable::reset() noexcept {
         return;
     }
     if (state & 0x2) {
-        if (storage.address.qualifier == Tag::Heap)
-            Destruct::call(index(), Pointer::from(storage.address.pointer), Destruct::Heap);
+        if (storage.address.qualifier == Mode::Heap)
+            Deallocate::call(index(), Pointer::from(storage.address.pointer));
     } else {
-        Destruct::call(index(), Pointer::from(&storage), Destruct::Stack);
+        Destruct::call(index(), Pointer::from(&storage));
     }
     if (state & 0x1) {
         --cast_object<Variable>(lock.other).lock.count;
@@ -156,7 +156,7 @@ inline void Variable::reset() noexcept {
 
 /******************************************************************************/
 
-Lifetime call_to_variable(Index self, Pointer address, Tag qualifier, ArgView &args);
+Lifetime call_to_variable(Index self, Pointer address, Mode qualifier, ArgView &args);
 
 /******************************************************************************/
 
@@ -171,10 +171,10 @@ Shared Variable::from(T value, Shared lock) {
     Shared o = new_object();
     auto &v = cast_object<Variable>(+o);
     if constexpr(allocated<T>) {
-        v.storage.address.pointer = allocate<T>(std::move(value));
-        v.storage.address.qualifier = Tag::Heap;
+        v.storage.address.pointer = Allocator<T>::heap(std::move(value));
+        v.storage.address.qualifier = Mode::Heap;
     } else {
-        allocate_in_place<T>(&v.storage.data, std::move(value));
+        Allocator<T>::stack(&v.storage.data, std::move(value));
     }
     if (lock) {
         v.lock.other = +lock;
@@ -193,8 +193,8 @@ inline Shared Variable::from(Ref const &r, Shared ward) {
     auto &v = cast_object<Variable>(+o);
     if (r) {
         switch (r.tag()) {
-            case Tag::Const: {v.storage.address.qualifier = Tag::Const; break;}
-            case Tag::Mutable: {v.storage.address.qualifier = Tag::Mutable; break;}
+            case Mode::Read: {v.storage.address.qualifier = Mode::Read; break;}
+            case Mode::Write: {v.storage.address.qualifier = Mode::Write; break;}
             default: return type_error("cannot create Variable from temporary reference");
         }
         v.storage.address.pointer = r.pointer().base;

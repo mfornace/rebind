@@ -75,10 +75,12 @@ struct Method {
         static_assert(std::is_reference_v<Base>, "T should be a reference type for Method::derive<T>()");
         static_assert(std::is_convertible_v<S &&, Base>);
         static_assert(!std::is_same_v<unqualified<S>, unqualified<Base>>);
-        return Callable<unqualified<Base>>()(*this, std::forward<S>(self));
+        return Impl<unqualified<Base>>::call(*this, std::forward<S>(self));
     }
 };
 
+static_assert(std::is_move_constructible_v<Method>);
+static_assert(std::is_copy_constructible_v<Method>);
 
 /******************************************************************************/
 
@@ -106,55 +108,54 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
     static_assert(std::is_invocable_v<F, Ts...>, "Function is not invokable with designated arguments");
     using O = simplify_result<std::invoke_result_t<F, Ts...>>;
     using U = unqualified<O>;
-    DUMP("invoking function", type_name<F>(), "with output", type_name<O>(), "to tag", int(target.c.tag));
+    DUMP("invoking function", type_name<F>(), "with output", type_name<O>(), "to constraint", int(target.c.mode));
 
-    if (target.c.tag == Target::None || (std::is_void_v<U> && !target.index())) {
-        (void) std::invoke(f, static_cast<Ts &&>(ts)...);
+    if (target.c.mode == Target::None || (std::is_void_v<U> && !target.index())) {
+        (void) std::invoke(f, std::forward<Ts>(ts)...);
         return Call::None;
     }
 
     if constexpr(!std::is_void_v<U>) { // void already handled
         if (target.accepts<U>()) {
 
-            if (std::is_same_v<O, U &> && target.c.tag & Target::Mutable) {
-                target.set_reference(std::invoke(f, static_cast<Ts &&>(ts)...));
-                return Call::Mutable;
+            if (std::is_same_v<O, U &> && target.accepts(Target::Write)) {
+                target.set_reference(std::invoke(f, std::forward<Ts>(ts)...));
+                return Call::Write;
             }
 
-            if (std::is_reference_v<O> && target.c.tag & Target::Const) {
-                target.set_reference(static_cast<U const &>(std::invoke(f, static_cast<Ts &&>(ts)...)));
-                return Call::Const;
+            if (std::is_reference_v<O> && target.accepts(Target::Read)) {
+                target.set_reference(static_cast<U const &>(std::invoke(f, std::forward<Ts>(ts)...)));
+                return Call::Read;
             }
+
             if (std::is_same_v<O, U> || std::is_convertible_v<O, U>) {
-                if (target.c.tag & Target::constraint<U>) {
-                    if (auto p = target.placement<U>()) {
-                        new(p) Alias<U>(std::invoke(f, static_cast<Ts &&>(ts)...));
-                        target.set_index<U>();
-                        if (!std::is_same_v<O, U> && !is_dependent<U>) target.set_lifetime({});
-                        return Call::Stack;
-                    }
-                }
-                if (target.c.tag & Target::Heap) {
-                    target.set_heap(new Alias<U>(std::invoke(f, static_cast<Ts &&>(ts)...)));
+                if (auto p = target.placement<U>()) {
+                    Allocator<U>::invoke_stack(p, f, std::forward<Ts>(ts)...);
+                    target.set_index<U>();
                     if (!std::is_same_v<O, U> && !is_dependent<U>) target.set_lifetime({});
-                    DUMP("returned heap...?", int(target.c.tag));
+                    return Call::Stack;
+                }
+                if (target.accepts(Target::Heap)) {
+                    target.set_heap(Allocator<U>::invoke_heap(f, std::forward<Ts>(ts)...));
+                    if (!std::is_same_v<O, U> && !is_dependent<U>) target.set_lifetime({});
                     return Call::Heap;
                 }
             }
 
         } else {
             if constexpr(std::is_reference_v<O>) {
-                switch (Ref(std::invoke(f, static_cast<Ts &&>(ts)...)).load_to(target)) {
+                switch (Ref(std::invoke(f, std::forward<Ts>(ts)...)).load_to(target)) {
                     case Load::Exception: return Call::Exception;
                     case Load::OutOfMemory: return Call::OutOfMemory;
-                    case std::is_same_v<O, U &> ? Load::Mutable : Load::Const:
-                        return std::is_same_v<O, U &> ? Call::Mutable : Call::Const;
+                    case std::is_same_v<O, U &> ? Load::Write : Load::Read:
+                        return std::is_same_v<O, U &> ? Call::Write : Call::Read;
                     default: {}
                 }
             } else {
                 storage_like<U> storage;
-                new (&storage) U(std::invoke(f, static_cast<Ts &&>(ts)...));
-                switch (Ref(Index::of<U>(), Tag::Stack, Pointer::from(&storage)).load_to(target)) {
+                new (&storage) U(std::invoke(f, std::forward<Ts>(ts)...));
+                Ref out(Index::of<U>(), Mode::Stack, Pointer::from(&storage));
+                switch (out.load_to(target)) {
                     case Load::Exception: return Call::Exception;
                     case Load::OutOfMemory: return Call::OutOfMemory;
                     case Load::Stack: return Call::Stack;
@@ -184,16 +185,16 @@ Call::stat caller_invoke(Target& out, F const &f, Caller &&c, maybe<Ts> &&...ts)
     DUMP("caller_invoke");
     c.enter();
     if constexpr(UseCaller) {
-        return invoke_to(out, f, std::move(c), static_cast<Ts &&>(*ts)...);
+        return invoke_to(out, f, std::move(c), std::forward<Ts>(*ts)...);
     } else {
-        return invoke_to(out, f, static_cast<Ts &&>(*ts)...);
+        return invoke_to(out, f, std::forward<Ts>(*ts)...);
     }
 }
 
 /******************************************************************************/
 
 template <class F>
-struct Callable<Functor<F>> {
+struct Impl<Functor<F>> {
     using Signature = simplify_signature<F>;
     using Return = decltype(first_type(Signature()));
     using UseCaller = decltype(second_is_convertible<Caller>(Signature()));
@@ -203,7 +204,7 @@ struct Callable<Functor<F>> {
      Interface implementation for a function with no optional arguments.
      - Returns WrongNumber if args is not the right length
      */
-    bool operator()(Method m, Functor<F> const &f) const noexcept {
+    static bool call(Method m, Functor<F> const &f) noexcept {
         DUMP("call_to function adapter", type_name<F>(), std::addressof(f), "args=", m.args.size());
         if (m.args.tags())
             return Call::wrong_number(m.target, m.args.tags(), 0);
@@ -304,7 +305,7 @@ auto make_functor(F f, Lifetime const lifetime={}) {
 
 // N is the number of trailing optional arguments
 template <int N, class F>
-struct Callable<DefaultFunctor<N, F>> {
+struct Impl<DefaultFunctor<N, F>> {
     using Signature = simplify_signature<F>;
     using Return = decltype(first_type(Signature()));
     using UsesCaller = decltype(second_is_convertible<Caller>(Signature()));

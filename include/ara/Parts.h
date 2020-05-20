@@ -49,10 +49,10 @@ using maybe = typename Maybe<T>::type;
 namespace parts {
 
 template <class T, int N, class ...Ts>
-T call(Index i, Tag qualifier, Pointer self, Caller &c, Ts &&...ts);
+T call(Index i, Mode qualifier, Pointer self, Caller &c, Ts &&...ts);
 
 template <class T, int N, class ...Ts>
-maybe<T> get(Index i, Tag qualifier, Pointer self, Caller &c, Ts &&...ts);
+maybe<T> get(Index i, Mode qualifier, Pointer self, Caller &c, Ts &&...ts);
 
 }
 

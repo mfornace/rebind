@@ -16,6 +16,7 @@ struct BytesType;
 struct FunctionType;
 struct ListType;
 struct UnionType;
+struct OptionType;
 struct DictType;
 struct TupleType;
 struct MemoryViewType;
@@ -137,22 +138,11 @@ struct Output<MemoryViewType> {
 
 /******************************************************************************/
 
-// // condition: PyType_CheckExact(type) is false
-// bool is_structured_type(PyObject *type, PyObject *origin) {
-//     if constexpr(Version >= decltype(Version)(3, 7, 0)) {
-//         DUMP("is_structure_type 3.7A");
-//         // in this case, origin may or may not be a PyTypeObject *
-//         return origin == +getattr(type, "__origin__");
-//     } else {
-//         // case like typing.UnionType: type(typing.UnionType[int, float] == typing.UnionType)
-//         return (+type)->ob_type == reinterpret_cast<PyTypeObject *>(origin);
-//     }
-// }
-
 bool is_structured_type(Instance<> type, PyTypeObject *origin) {
+    if (+type == reinterpret_cast<PyObject*>(origin)) return true;
     if constexpr(Version >= decltype(Version)(3, 7, 0)) {
-        DUMP("is_structure_type 3.7B");
-        // return reinterpret_cast<PyObject *>(origin) == +getattr(type, "__origin__");
+        Shared attr(PyObject_GetAttrString(+type, "__origin__"), false);
+        return reinterpret_cast<PyObject *>(origin) == +attr;
     } else {
         // case like typing.TupleType: issubclass(typing.TupleType[int, float], tuple)
         // return is_subclass(reinterpret_cast<PyTypeObject *>(type), reinterpret_cast<PyTypeObject *>(origin));
@@ -164,39 +154,99 @@ template <>
 struct Output<ListType> {
     static bool matches(Instance<> p) {return is_structured_type(p, &PyList_Type);}
 
-    static Shared load(Ref &ref, Instance<> p, Shared root) {return {};}
+    static Shared load(Ref &ref, Instance<> p, Shared root) {
+        // Load Array.
+        // For each, load value type.
+        return {};
+    }
 };
 
 template <>
 struct Output<DictType> {
     static bool matches(Instance<> p) {return is_structured_type(p, &PyDict_Type);}
 
-    static Shared load(Ref &ref, Instance<> p, Shared root) {return {};}
+    static Shared load(Ref &ref, Instance<> p, Shared root) {
+        DUMP("loading Dict[]", ref.name());
+        if (auto a = ref.load<Array>()) {
+            Span &s = *a;
+            if (s.rank() == 1) {
+                auto out = Shared::from(PyDict_New());
+                s.map([&](Ref &r) {
+                    if (auto v = r.load<View>()) {
+                        if (v->size() != 2) return false;
+                        Shared key, value;
+                        PyDict_SetItem(+out, +key, +value);
+                        return true;
+                    }
+                    return false;
+                });
+            } else if (s.rank() == 2 && s.length(1) == 2) {
+                auto out = Shared::from(PyDict_New());
+                Shared key;
+                s.map([&](Ref &r) {
+                    if (key) {
+                        auto value = Shared::from(PyDict_New());
+                        PyDict_SetItem(+out, +key, +value);
+                        key = {};
+                    } else {
+                        // key = r.load<>
+                    }
+                    return true;
+                });
+            }
+        }
+        // -
+        // strategy: load Array --> gives pair<K, V>[n] --> then load each value as View --> then load each element as Key, Value
+        // strategy: load Tuple --> gives Ref[n] --> then load each ref to a View --> then load each element as Key, Value
+        // these are similar... main annoyance is the repeated allocation for a 2-length View...
+        // strategy: load Array --> gives variant<K, V>[n, 2] --> then load each value. hmm. not great for compile time. // bad
+        // hmm, this seems unfortunate. Maybe Tuple[] should actually have multiple dimensions?:
+        // then: load Tuple --> gives Ref[n, 2] --> load each element as Key, Value
+        // problem with this is that load Tuple, should it return ref(pair)[N] or ref[N, 2] ... depends on the context which is better.
+        // other possibility is to just declare different dimension types ... sigh, gets nasty.
+        // other alternative is to make a map type which is like Tuple[N, 2].
+        return {};
+    }
 };
 
 template <>
 struct Output<TupleType> {
     static bool matches(Instance<> p) {return is_structured_type(p, &PyTuple_Type);}
 
-    static Shared load(Ref &ref, Instance<> p, Shared root) {return {};}
+    static Shared load(Ref &ref, Instance<> p, Shared root) {
+        // load Tuple or View, go through and load each type. straightforward.
+        return {};
+    }
 };
 
 template <>
 struct Output<UnionType> {
     static bool matches(Instance<> p) {return false;}// is_structured_type(p, &PyUnion_Type);}
 
-    static Shared load(Ref &ref, Instance<> p, Shared root) {return {};}
+    static Shared load(Ref &ref, Instance<> p, Shared root) {
+        // try loading each possibility. straightforward.
+        return {};
+    }
+};
+
+template <>
+struct Output<OptionType> {
+    static bool matches(Instance<> p) {return false;}// is_structured_type(p, &PyUnion_Type);}
+
+    static Shared load(Ref &ref, Instance<> p, Shared root) {
+        // if !ref return none
+        // else return load .. hmm needs some thinking
+        return {};
+    }
 };
 
 
 template <>
 struct Output<Variable> {
-    static bool matches(Instance<PyTypeObject> p) {return +p == &PyBool_Type;}
+    static bool matches(Instance<PyTypeObject> p) {return false;}
 
     static Shared load(Ref &ref, Ignore, Ignore) {
-        DUMP("load_bool");
-        // if (auto p = ref.load<bool>()) return as_object(*p);
-        return {};//return type_error("could not convert to bool");
+        return {};
     }
 };
 

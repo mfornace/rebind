@@ -107,7 +107,7 @@ static_assert(std::is_destructible_v<Bin>);
 union String {
     static void deallocate(char *p, std::size_t) noexcept {delete[] p;}
 
-    void allocate_in_place(char const *start, std::size_t n) {
+    void allocate_stack(char const *start, std::size_t n) {
         if (n) std::memcpy(c.sbo.storage, start, n);
         c.sbo.storage[n] = '\0';
         c.size = n;
@@ -122,7 +122,7 @@ union String {
     }
 
     void overwrite(char const *data, std::size_t n) {
-        if (n < sizeof(c.sbo)) allocate_in_place(data, n);
+        if (n < sizeof(c.sbo)) allocate_stack(data, n);
         else allocate(data, n);
         DUMP("new string", size(), this->data());
     }
@@ -139,7 +139,7 @@ union String {
 
     // template <class Alloc>
     // String(std::basic_string<char, std::char_traits<char>, Alloc> &&t) {
-    //     if (t.size() < sizeof(c.sbo)) allocate_in_place(t.data(), t.size());
+    //     if (t.size() < sizeof(c.sbo)) allocate_stack(t.data(), t.size());
     //     else {
 
     //     }
@@ -231,25 +231,32 @@ T zero_product(T const* t, std::size_t n) {
     return out;
 }
 
-union Span {
-    static void deallocate(std::size_t* p, std::uint32_t rank) noexcept {delete[] p;}
+/******************************************************************************/
 
+// The only resource management to do is that for objects of > 2 dimensions,
+// the shape is stored on the heap
+union Span {
     ara_span c;
+
+    /**************************************************************************/
+
     Span() noexcept : c{{0, 0}, nullptr, nullptr, 0, 0} {}
 
     Span(Span &&s) noexcept : Span() {std::swap(c, s.c);}
     Span& operator=(Span &&s) noexcept {std::swap(c, s.c); return *this;}
 
-    Span(void* data, std::size_t size, Tagged<Tag> i, std::uint32_t item) noexcept
+    // One dimensional raw constructor
+    Span(void* data, std::size_t size, Tagged<Mode> i, std::uint32_t item) noexcept
         : c{{size, 0}, i.base, data, 1, item} {}
 
-    Span(void* data, std::size_t* size, Tagged<Tag> i, std::uint32_t item, std::uint32_t rank)
+    // N-dimensional raw constructor
+    Span(void* data, std::size_t* size, Tagged<Mode> i, std::uint32_t item, std::uint32_t rank)
         : c{{}, i.base, data, rank, item} {
             if (rank < 3) {
                 std::copy(size, size+rank, c.shape.stack);
             } else {
                 c.shape.alloc.dimensions = new std::size_t[rank];
-                c.shape.alloc.destructor = &deallocate;
+                c.shape.alloc.destructor = &deallocate_shape;
                 std::copy(size, size+rank, c.shape.alloc.dimensions);
             }
         }
@@ -257,7 +264,7 @@ union Span {
     template <class T, std::size_t N, std::enable_if_t<N <= 2, int> = 0>
     Span(T* data, std::array<std::size_t, N> size) noexcept
         : c{{N >= 1 ? size[0] : 0, N >= 2 ? size[1] : 0},
-            Tagged<Tag>(Index::of<T>(), std::is_const_v<T> ? Tag::Const : Tag::Mutable).base,
+            Tagged<Mode>(Index::of<T>(), std::is_const_v<T> ? Mode::Read : Mode::Write).base,
             const_cast<void*>(static_cast<void const *>(data)),
             1, sizeof(T)} {}
 
@@ -270,6 +277,8 @@ union Span {
     ~Span() noexcept {
         if (c.rank > 2) c.shape.alloc.destructor(c.shape.alloc.dimensions, c.rank);
     }
+
+    /**************************************************************************/
 
     auto rank() const {return c.rank;}
 
@@ -298,7 +307,7 @@ union Span {
         auto p = static_cast<char*>(c.data);
         auto const end = p + size() * c.item;
         Ref ref;
-        ref.c.tag_index = c.index;
+        ref.c.mode_index = c.index;
         for (; p != end; p += c.item) {
             DUMP("map element");
             ref.c.pointer = p;
@@ -312,23 +321,28 @@ union Span {
 
     explicit operator ara_span() && noexcept {return move_slice(*this);}
     // explicit operator ara_span() const & {return const_slice(*this);}
+
+    static void deallocate_shape(std::size_t* p, std::uint32_t rank) noexcept {delete[] p;}
 };
 
 /******************************************************************************/
 
+// Array manages both the possibly allocated shape (like Span) but also the array allocation itself
 union Array {
-    struct Deleter {
-        void* storage;
-        void (*function)(ara_index, void*);
-    };
     ara_array c;
 
-    template <class T>
-    Array(T* data, std::size_t size, Deleter del) noexcept
+    /**************************************************************************/
+
+    template <class T, class S, class Alloc>
+    Array(T* data, std::size_t size, std::unique_ptr<S, Alloc> storage) noexcept
         : c{{{size, 0},
-            Tagged<Tag>(Index::of<T>(), std::is_const_v<T> ? Tag::Const : Tag::Mutable).base,
+            Tagged<Mode>(Index::of<T>(), std::is_const_v<T> ? Mode::Read : Mode::Write).base,
             const_cast<void*>(static_cast<void const *>(data)),
-            1, sizeof(T)}, del.storage, del.function} {}
+            1, sizeof(T)}, storage.release(), &drop<S, Alloc>} {}
+
+    template <class T, class S, class Alloc>
+    Array(T* data, std::array<std::size_t, 2> size, std::unique_ptr<S, Alloc> storage) noexcept
+        : Array(data, size[0], std::move(storage)) {c.span.shape.stack[1] = size[1]; c.span.rank = 2;}
 
     Array() noexcept : c{{{0, 0}, nullptr, nullptr, 1, 0}, nullptr, nullptr} {}
 
@@ -338,26 +352,52 @@ union Array {
     Array(Array const &s) = delete;
     Array& operator=(Array const &) = delete;
 
-    ~Array() noexcept {if (c.destructor) c.destructor(c.span.index, c.span.data);}
+    ~Array() noexcept {
+        if (c.destructor) c.destructor(c.span.index, c.span.data);
+        reinterpret_cast<Span&>(c.span).~Span();
+    }
+
+    /**************************************************************************/
 
     operator Span&() {return reinterpret_cast<Span&>(c.span);}
     operator Span const&() const {return reinterpret_cast<Span const&>(c.span);}
 
     explicit operator ara_array() && noexcept {return move_slice(*this);}
+
+    template <class S, class Alloc>
+    static void drop(ara_index, void* storage) {std::unique_ptr<S, Alloc>(static_cast<S*>(storage));}
 };
 
 /******************************************************************************/
 
+// View is basically like a std::vector<Ref>, so it manages a static Ref allocation
 union View {
-    template <class T>
-    static void drop(ara_ref* ptr, std::size_t) {T(reinterpret_cast<Ref*>(ptr));}
-
     ara_view c;
+
+    /**************************************************************************/
+
+    using Drop = void (*)(ara_ref*, std::size_t);
+
+    // Simple move-only heap allocation to use in View constructor
+    struct Alloc {
+        std::unique_ptr<Ref[]> data;
+        std::size_t size;
+
+        Alloc() noexcept = default;
+        Alloc(std::size_t n) : data(std::make_unique<Ref[]>(n)) {}
+
+        static void drop(ara_ref* ptr, std::size_t) {std::unique_ptr<Ref[]>(reinterpret_cast<Ref*>(ptr));}
+        std::pair<Ref*, std::size_t> release() noexcept {return {data.release(), size};}
+    };
+
+    /**************************************************************************/
 
     constexpr View() noexcept : c{nullptr, 0, nullptr} {}
 
-    View(std::unique_ptr<Ref[]> refs, std::size_t n) noexcept
-        : c{reinterpret_cast<ara_ref*>(refs.release()), n, drop<std::unique_ptr<Ref[]>>} {}
+    explicit View(std::pair<Ref*, std::size_t> alloc, Drop del) noexcept
+        : c{reinterpret_cast<ara_ref*>(alloc.first), alloc.second, del} {}
+
+    View(Alloc alloc) noexcept : View(alloc.release(), &Alloc::drop) {}
 
     View(View &&s) noexcept : View() {std::swap(c, s.c);}
     View& operator=(View &&s) noexcept {std::swap(c, s.c); return *this;}
@@ -366,6 +406,8 @@ union View {
     View& operator=(View const &) = delete;
 
     ~View() noexcept {if (c.destructor) c.destructor(c.data, c.size);}
+
+    /**************************************************************************/
 
     std::size_t size() const {return c.size;}
 
@@ -377,19 +419,14 @@ union View {
 
 /******************************************************************************/
 
+// Tuple is like View but also manages the underlying object lifetime
 union Tuple {
-    template <class T, class F>
-    static void drop(ara_ref* ptr, std::size_t n, void* storage) {
-        F()(reinterpret_cast<Ref*>(ptr), n, storage);
-        T(reinterpret_cast<Ref*>(ptr));
-    }
-
     ara_tuple c;
     constexpr Tuple() noexcept : c{nullptr, 0, nullptr, nullptr} {}
 
-    template <class F>
-    Tuple(std::unique_ptr<Ref[]> refs, std::size_t n, void* storage, Type<F>) noexcept
-        : c{reinterpret_cast<ara_ref*>(refs.release()), n, storage, drop<std::unique_ptr<Ref[]>, F>} {}
+    template <class S, class Alloc>
+    Tuple(std::unique_ptr<Ref[]> refs, std::size_t n, std::unique_ptr<S, Alloc> storage) noexcept
+        : c{reinterpret_cast<ara_ref*>(refs.release()), n, storage.release(), &drop<S, Alloc>} {}
 
     Tuple(Tuple &&s) noexcept : Tuple() {std::swap(c, s.c);}
     Tuple& operator=(Tuple &&s) noexcept {std::swap(c, s.c); return *this;}
@@ -400,6 +437,12 @@ union Tuple {
     ~Tuple() noexcept {if (c.destructor) c.destructor(c.data, c.size, c.storage);}
 
     explicit operator ara_tuple() && noexcept {return move_slice(*this);}
+
+    template <class S, class Alloc>
+    static void drop(ara_ref* ptr, std::size_t n, void* storage) {
+        std::unique_ptr<S, Alloc>(static_cast<S*>(storage));
+        std::unique_ptr<Ref[]>(reinterpret_cast<Ref*>(ptr));
+    }
 };
 
 /******************************************************************************/
@@ -418,17 +461,17 @@ template <> struct AliasType<View>   {using type = ara_view;};
 template <class Mod>
 struct Module {
     static void init(Caller caller={}) {
-        parts::call<void, 0>(fetch(Type<Mod>()), Tag::Const, Pointer::from(nullptr), caller);
+        parts::call<void, 0>(fetch(Type<Mod>()), Mode::Read, Pointer::from(nullptr), caller);
     }
 
     template <class T, int N=1, class ...Ts>
     static T call(Str name, Caller caller, Ts&& ...ts) {
-        return parts::call<T, N>(fetch(Type<Mod>()), Tag::Const, Pointer::from(nullptr), caller, name, std::forward<Ts>(ts)...);
+        return parts::call<T, N>(fetch(Type<Mod>()), Mode::Read, Pointer::from(nullptr), caller, name, std::forward<Ts>(ts)...);
     }
 
     template <class T, int N=1, class ...Ts>
     static T get(Str name, Caller caller, Ts&& ...ts) {
-        return parts::get<T, N>(fetch(Type<Mod>()), Tag::Const, Pointer::from(nullptr), caller, name, std::forward<Ts>(ts)...);
+        return parts::get<T, N>(fetch(Type<Mod>()), Mode::Read, Pointer::from(nullptr), caller, name, std::forward<Ts>(ts)...);
     }
 };
 

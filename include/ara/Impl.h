@@ -14,61 +14,112 @@
 
 namespace ara {
 
+template <class T, class SFINAE=void>
+struct Impl;
+
+#define ARA_DETECT_TRAIT(NAME, SIGNATURE) \
+    template <class T, class SFINAE=void> \
+    struct NAME : std::false_type {}; \
+    \
+    template <class T> \
+    struct NAME<T, std::void_t<SIGNATURE>> : std::true_type {}; \
+    \
+    template <class T> \
+    static constexpr bool NAME##_v = NAME<T>::value;
+
 /******************************************************************************************/
 
 // Dont need target here, just:
 // void* output
 // length
 // Pointer source
-// bool move
+// bool relocate / assign
+
 struct Copy {
     enum stat : Stat {Stack, Heap, Impossible, Exception, OutOfMemory};
 
     template <class T>
-    struct Impl {
-        static stat put(void *out, T const &self, Code length) noexcept {
+    struct Put {
+        static stat put(void *out, T const&self, std::uintptr_t length) noexcept {
             // return out.make_noexcept([&] {
                 if constexpr(std::is_copy_constructible_v<T>) {
                     if (is_stackable<T>(length)) {
-                        allocate_in_place<T>(out, self);
+                        Allocator<T>::stack(out, self);
                         return Stack;
                     } else {
-                        *static_cast<void **>(out) = allocate<T>(self);
+                        *static_cast<void **>(out) = Allocator<T>::heap(self);
                         return Heap;
                     }
                 } else return Impossible;
-            // });
+            // }
         }
     };
 
-    static stat call(Idx f, void* out, Pointer source, Code length) noexcept {
-        return static_cast<stat>(f({code::copy, static_cast<Code>(length)}, out, source.base, {}));
+    static stat call(Idx f, void* out, Pointer source, std::uintptr_t length) noexcept {
+        return static_cast<stat>(f({code::copy, {}}, out, source.base, reinterpret_cast<void*>(length)));
     }
 };
 
-/******************************************************************************************/
+/******************************************************************************/
 
 // Relocate an object (construct T in new location and destruct the old one)
 // -- If t was on the Heap, it could have been trivially relocated; thus we can assume it is on the Stack
-// -- We also assume that the type is nothrow move constructible currently
+// -- We also assume that the type is nothrow move constructible currently... this can change.
+
 struct Relocate {
     enum stat : Stat {OK, Impossible};
 
     template <class T>
-    struct Impl {
-        static stat put(void* out, T&& t) noexcept {
+    struct Put {
+        static stat put(void* out, T&& self) noexcept {
             if constexpr(std::is_nothrow_move_constructible_v<T> && std::is_destructible_v<T>) {
-                allocate_in_place<T>(out, std::move(t));
-                t.~T();
+                Allocator<T>::stack(out, std::move(self));
+                self.~T();
                 return OK;
-            } else {
-                return Impossible;
-            }
+            } else return Impossible;
         }
     };
 
-    static stat call(Idx f, void* out, void*t) noexcept {
-        return static_cast<stat>(f({code::relocate, {}}, out, t, {}));
+    static stat call(Idx f, void* out, void* source) noexcept {
+        return static_cast<stat>(f({code::relocate, {}}, out, source, {}));
+    }
+};
+
+/******************************************************************************/
+
+struct Assign {
+    enum stat : Stat {OK, Impossible, Exception, OutOfMemory};
+
+    template <class T>
+    struct Put {
+        static stat put(T&out, Pointer self, Mode mode) noexcept {
+            return Impossible;
+        }
+    };
+
+    static stat call(Idx f, Pointer out, Pointer source, Mode mode) noexcept {
+        return static_cast<stat>(f({code::assign, static_cast<Code>(mode)}, out.base, source.base, {}));
+    }
+};
+
+/******************************************************************************/
+
+struct Swap {
+    enum stat : Stat {OK, Impossible, Exception, OutOfMemory};
+
+    template <class T>
+    struct Put {
+        static stat put(T& first, T& second) noexcept {
+            using std::swap;
+            if constexpr(std::is_nothrow_swappable_v<T>) {
+                swap(first, second);
+                return OK;
+            } else return Impossible;
+        }
+    };
+
+    static stat call(Idx f, Pointer first, Pointer second) noexcept {
+        return static_cast<stat>(f({code::swap, {}}, first.base, second.base, {}));
     }
 };
 
@@ -77,44 +128,64 @@ struct Relocate {
 /// Delete the held object, on Stack or on Heap.
 // -- Always natively noexcept. If Impossible is returned, likely a programmer error.
 struct Destruct {
-    enum storage : Code {Stack, Heap};
     enum stat : Stat {OK, Impossible};
 
     template <class T>
-    struct Impl {
-        static stat put(T& t, storage s) noexcept {
-            if constexpr(std::is_destructible_v<T>) {
-                if (s == Heap) delete std::addressof(t);
-                else t.~T();
-                return OK;
-            } else {
-                return Impossible;
-            }
+    struct Put {
+        static stat put(T& t) noexcept {
+            if constexpr(std::is_destructible_v<T>) {t.~T(); return OK;}
+            else return Impossible;
         }
     };
 
-    static stat call(Idx f, Pointer t, storage s) noexcept {
-        return static_cast<stat>(f({code::destruct, s}, t.base, {}, {}));
+    static stat call(Idx f, Pointer t) noexcept {
+        return static_cast<stat>(f({code::destruct, {}}, t.base, {}, {}));
     }
+
+    template <class T>
+    struct RAII {
+        T&held;
+        ~RAII() noexcept {Put<T>::put(held);}
+    };
 };
 
 /******************************************************************************/
 
-template <class T, bool Heap>
-struct DestructGuard {
-    T &held;
-    ~DestructGuard() noexcept {Destruct::Impl<T>::put(held, Heap ? Destruct::Heap : Destruct::Stack);}
+struct Deallocate {
+    enum stat : Stat {OK, Impossible};
+
+    template <class T>
+    struct Put {
+        static stat put(T& t) noexcept {
+            if constexpr(std::is_destructible_v<T>) {
+                t.~T();
+                Allocator<T>::deallocate(std::addressof(t));
+                return OK;
+            } else return Impossible;
+        }
+    };
+
+    static stat call(Idx f, Pointer t) noexcept {
+        return static_cast<stat>(f({code::deallocate, {}}, t.base, {}, {}));
+    }
+
+    template <class T>
+    struct RAII {
+        T&held;
+        ~RAII() noexcept {Put<T>::put(held);}
+    };
 };
 
 /******************************************************************************/
 
 // Return a handle to std::type_info or some language-specific equivalent
 // -- Should be done in a noexcept way and should always succeed
+// -- Should always succeed and return a ara_str (basically like std::string_view)
 struct Info {
     enum stat : Stat {OK};
 
     template <class T>
-    struct Impl {
+    struct Put {
         static stat put(Idx& out, void const*& t) noexcept {
             t = &typeid(T);
             out = fetch(Type<std::type_info>());
@@ -129,14 +200,15 @@ struct Info {
 
 /******************************************************************************/
 
-// Return a reasonable *type* name
+// Return a handle to std::type_info or some language-specific equivalent
+// -- Should be done in a noexcept way and should always succeed
 // -- Should always succeed and return a ara_str (basically like std::string_view)
 struct Name {
     enum stat : Stat {OK};
 
     template <class T>
-    struct Impl {
-        static stat put(ara_str &s) noexcept {
+    struct Put {
+        static stat put(ara_str& s) noexcept {
             s.data = TypeName<T>::name.data();
             s.size = TypeName<T>::name.size();
             return OK;
@@ -150,35 +222,75 @@ struct Name {
 
 /******************************************************************************/
 
-template <class T, class SFINAE=void>
-struct Dumpable;
+ARA_DETECT_TRAIT(has_element, decltype(Impl<T>::index(std::declval<Target&>(), std::declval<T const&>(), std::intptr_t())));
+
+struct Element {
+    enum stat : Stat {OK, Impossible};
+
+    template <class T>
+    struct Put {
+        static stat put(Target& out, Pointer self, std::intptr_t i, Mode qualifier) noexcept {
+            return Impossible;
+        }
+    };
+
+    static stat call(Idx f, Target& out, Pointer self, std::intptr_t i, Mode qualifier) noexcept {
+        return static_cast<stat>(f({code::element, static_cast<Code>(qualifier)},
+            &out, self.base, reinterpret_cast<void*>(i)));
+    }
+};
+
+/******************************************************************************/
+
+ARA_DETECT_TRAIT(has_attribute, decltype(Impl<T>::index(std::declval<Target&>(), std::declval<T const&>(), std::string_view())));
+
+struct Attribute {
+    enum stat : Stat {OK, Missing, Impossible};
+
+    template <class T>
+    struct Put {
+        static stat put(Target &out, Pointer self, ara_str const &name, Mode qualifier) noexcept {
+            return Impossible;
+        }
+    };
+
+    static stat call(Idx f, Target &out, Pointer self, ara_str name, Mode qualifier) noexcept {
+        return static_cast<stat>(f({code::attribute, static_cast<Code>(qualifier)}, &out, self.base, &name));
+    }
+};
+
+/******************************************************************************/
+
 // bool operator()(Target &target, T source)
 // exception -> Exception
 // bad_alloc -> OutOfMemory
 // false -> None
 // true ->
 
+
+ARA_DETECT_TRAIT(has_dump, decltype(Impl<T>::dump(std::declval<Target&>(), std::declval<T&&>())));
+
 // Dump the held object to a less constrained type that has been requested
 // -- Exceptions should be very rare. Prefer to return None.
 struct Dump {
-    enum stat : Stat {None, Mutable, Const, Stack, Heap, Exception, OutOfMemory};
+    enum stat : Stat {None, Write, Read, Stack, Heap, Exception, OutOfMemory};
 
     template <class T>
-    struct Impl {
-        static stat put(Target &out, Pointer source, Tag qualifier) noexcept {
-            if constexpr(is_complete_v<Dumpable<T>>) {
+    struct Put {
+        static stat put(Target &out, Pointer source, Mode qualifier) noexcept {
+            if constexpr(has_dump_v<T>) {
                 return out.make_noexcept([&] {
                     switch (qualifier) {
-                        case Tag::Stack:   {if (!Dumpable<T>()(out, source.load<T &&>())) return None; break;}
-                        case Tag::Heap:    {if (!Dumpable<T>()(out, source.load<T &&>())) return None; break;}
-                        case Tag::Mutable: {if (!Dumpable<T>()(out, source.load<T &>())) return None; break;}
-                        case Tag::Const:   {if (!Dumpable<T>()(out, source.load<T const &>())) return None; break;}
+                        case Mode::Stack: {if (!Impl<T>::dump(out, source.load<T&&>())) return None; break;}
+                        case Mode::Heap:  {if (!Impl<T>::dump(out, source.load<T&&>())) return None; break;}
+                        case Mode::Write: {if (!Impl<T>::dump(out, source.load<T&>())) return None; break;}
+                        case Mode::Read:  {if (!Impl<T>::dump(out, source.load<T const&>())) return None; break;}
                     }
-                    switch (out.returned_tag()) {
-                        case Tag::Mutable: return Mutable;
-                        case Tag::Const: return Const;
-                        case Tag::Stack: return Stack;
-                        case Tag::Heap: return Heap;
+                    switch (out.returned_mode()) {
+                        case Mode::Write: return Write;
+                        case Mode::Read: return Read;
+                        case Mode::Stack: return Stack;
+                        case Mode::Heap: return Heap;
                         default: return None;
                     }
                 });
@@ -186,37 +298,37 @@ struct Dump {
         }
     };
 
-    static stat call(Idx f, Target &out, Pointer source, Tag qualifier) noexcept {
+    static stat call(Idx f, Target &out, Pointer source, Mode qualifier) noexcept {
         return static_cast<stat>(f({code::dump, static_cast<Code>(qualifier)}, &out, source.base, {}));
     }
 };
 
 /******************************************************************************/
 
-template <class T, class SFINAE=void>
-struct Loadable;
+ARA_DETECT_TRAIT(has_load, decltype(Impl<T>::load(std::declval<Ref&>())));
 
 // Load T from a less constrained type
 // -- Prefer to return None
 // -- More likely to encounter exceptions when preconditions are not met
 // -- Note that Dump is not called by Load
+// Seems like could be combined with Assign... just make Target.out non-null on input.
 struct Load {
-    enum stat : Stat {None, Mutable, Const, Stack, Heap, Exception, OutOfMemory};
+    enum stat : Stat {None, Write, Read, Stack, Heap, Exception, OutOfMemory};
 
     template <class T>
-    struct Impl {
+    struct Put {
         // currently not planned that out can be a reference, I think
-        static stat put(Target &out, Pointer source, Tag qualifier) noexcept {
-            if constexpr(is_complete_v<Loadable<T>>) {
+        static stat put(Target &out, Pointer source, Mode qualifier) noexcept {
+            if constexpr(has_load_v<T>) {
                 return out.make_noexcept([&] {
-                    ara_ref r{ara_tag_index(out.index(), static_cast<ara_tag>(qualifier)), source.base};
-                    if (std::optional<T> o = Loadable<T>()(reinterpret_cast<Ref &>(r))) {
-                        out.emplace<T>(std::move(*o));
-                        switch (out.returned_tag()) {
-                            case Tag::Mutable: return Mutable;
-                            case Tag::Const: return Const;
-                            case Tag::Stack: return Stack;
-                            case Tag::Heap: return Heap;
+                    ara_ref r{ara_mode_index(out.index(), static_cast<ara_mode>(qualifier)), source.base};
+                    if (std::optional<T> o = Impl<T>::load(reinterpret_cast<Ref &>(r))) {
+                        out.emplace<T>(std::move(*o)); // <-- here, change if output is already present
+                        switch (out.returned_mode()) {
+                            case Mode::Write: return Write;
+                            case Mode::Read: return Read;
+                            case Mode::Stack: return Stack;
+                            case Mode::Heap: return Heap;
                             default: return None;
                         }
                     } else return None;
@@ -225,54 +337,18 @@ struct Load {
         }
     };
 
-    static stat call(Idx f, Target &out, Pointer source, Tag qualifier) noexcept {
+    static stat call(Idx f, Target &out, Pointer source, Mode qualifier) noexcept {
         return static_cast<stat>(f({code::load, static_cast<Code>(qualifier)}, &out, source.base, {}));
-    }
-};
-
-/******************************************************************************************/
-
-// Similar to Load except
-struct Assign {
-    enum stat : Stat {OK, NoConversion, Impossible, Exception, OutOfMemory};
-
-    template <class T>
-    struct Impl {
-        static stat put(Target &out, T &self, Pointer source, Tag qualifier) noexcept {
-            return out.make_noexcept([&] {
-                if constexpr(std::is_move_assignable_v<T>) {
-                    if (out.index() == Index::of<T>()) {
-                        if (qualifier == Tag::Stack || qualifier == Tag::Heap) {
-                            self = std::move(source.load<T &&>());
-                            return OK;
-                        } else {
-                            if constexpr(std::is_copy_assignable_v<T>) self = source.load<T const &>();
-                            else return NoConversion;
-                        }
-                    }
-
-                    if constexpr(is_complete_v<Loadable<T>>) {
-                        ara_ref r{ara_tag_index(out.index(), static_cast<ara_tag>(qualifier)), source.base};
-                        if (std::optional<T> o = Loadable<T>()(reinterpret_cast<Ref &>(r))) {
-                            self = std::move(*o);
-                            return OK;
-                        } else return NoConversion;
-                    }
-                }
-                return Impossible;
-            });
-        }
-    };
-
-    static stat call(Idx f, Target &out, Pointer source, Tag qualifier) noexcept {
-        return static_cast<stat>(f({code::copy, static_cast<Code>(qualifier)}, &out, source.base, {}));
     }
 };
 
 /******************************************************************************/
 
-template <class T, class SFINAE=void>
-struct Callable;
+struct DeclAny {
+    template <class T>
+    operator T() const;
+};
+ARA_DETECT_TRAIT(has_call, decltype(Impl<T>::call(DeclAny(), std::declval<T&&>())));
 // stat operator()(Target *out, T, ArgView &args)
 
 // Call an object
@@ -285,28 +361,28 @@ struct Callable;
 // -- Exception: Exception while executing the function
 struct Call {
     enum stat : Stat {Impossible, WrongNumber, WrongType, WrongReturn,
-                      None, Stack, Heap, Mutable, Const,
+                      None, Stack, Heap, Write, Read,
                       Exception, OutOfMemory};
 
     static constexpr bool was_invoked(stat s) {return 3 < s;}
 
     template <class T>
-    struct Impl {
-        static stat put(Target &out, Pointer self, ArgView &args, Tag qualifier) noexcept {
+    struct Put {
+        static stat put(Target &out, Pointer self, ArgView &args, Mode qualifier) noexcept {
             stat s = Impossible;
-            if constexpr(is_complete_v<Callable<T>>) {
+            if constexpr(has_call_v<T>) {
                 switch (qualifier) {
-                    case Tag::Stack:   {Callable<T>()({out, args, s}, self.load<T &&>()); break;}
-                    case Tag::Heap:    {Callable<T>()({out, args, s}, self.load<T &&>()); break;}
-                    case Tag::Mutable: {Callable<T>()({out, args, s}, self.load<T &>()); break;}
-                    case Tag::Const:   {Callable<T>()({out, args, s}, self.load<T const &>()); break;}
+                    case Mode::Stack: {Impl<T>::call({out, args, s}, self.load<T&&>()); break;}
+                    case Mode::Heap:  {Impl<T>::call({out, args, s}, self.load<T&&>()); break;}
+                    case Mode::Write: {Impl<T>::call({out, args, s}, self.load<T&>()); break;}
+                    case Mode::Read:  {Impl<T>::call({out, args, s}, self.load<T const&>()); break;}
                 }
             }
             return s;
         }
     };
 
-    static stat call(Idx f, Target &out, Pointer self, Tag qualifier, ArgView &args) noexcept {
+    static stat call(Idx f, Target &out, Pointer self, Mode qualifier, ArgView &args) noexcept {
         return static_cast<stat>(f({code::call, static_cast<Code>(qualifier)}, &out, self.base, reinterpret_cast<ara_args *>(&args)));
     }
 
@@ -319,17 +395,17 @@ struct Call {
 
 template <class Op, class T, class ...Ts>
 Stat impl_put(Ts &&...ts) {
-    typename Op::stat out = Op::template Impl<T>::put(static_cast<Ts &&>(ts)...);
-    DUMP("Impl output", static_cast<Stat>(out));
+    typename Op::stat out = Op::template Put<T>::put(static_cast<Ts &&>(ts)...);
+    DUMP("Put output", static_cast<Stat>(out));
     return static_cast<Stat>(out);
 }
 
 /******************************************************************************************/
 
-template <class T, std::enable_if_t<is_complete_v<Callable<T>> || is_complete_v<Loadable<T>> || is_complete_v<Dumpable<T>> || is_complete_v<Callable<T>>, int> = 0>
+template <class T, std::enable_if_t<is_complete_v<Impl<T>>, int> = 0>
 void warn_unimplemented() {}
 
-template <class T, std::enable_if_t<!(is_complete_v<Callable<T>> || is_complete_v<Loadable<T>> || is_complete_v<Dumpable<T>> || is_complete_v<Callable<T>>), int> = 0>
+template <class T, std::enable_if_t<!is_complete_v<Impl<T>>, int> = 0>
 // [[deprecated]]
 void warn_unimplemented() {}
 
@@ -347,43 +423,55 @@ struct Switch {
         static_assert(sizeof(T) >= 0, "Type should be complete");
         warn_unimplemented<T>();
 
-        if (i.code != code::name) DUMP("Impl<", type_name<T>(), ">: ", code_name(i.code));
+        if (i.code != code::name) DUMP("Put<", type_name<T>(), ">: ", code_name(i.code));
+        if (i.code >= 14) return -1; // ?
 
-        switch(i.code) {
-            case code::destruct: {
-                return impl_put<Destruct, T>(Pointer::from(o).load<T &>(), static_cast<Destruct::storage>(i.tag));
-            }
-            case code::copy: {
-                return impl_put<Copy, T>(o, Pointer::from(s).load<T const &>(), i.tag);
-            }
-            case code::relocate: {
-                return impl_put<Relocate, T>(o, Pointer::from(s).load<T &&>());
-            }
-            case code::assign: {
-                return impl_put<Assign, T>(*static_cast<Target *>(o), Pointer::from(s).load<T &>(), Pointer::from(args), static_cast<Tag>(i.tag));
-            }
-            case code::load: {
-                return impl_put<Load, T>(*static_cast<Target *>(o), Pointer::from(s), static_cast<Tag>(i.tag));
-            }
-            case code::dump: {
-                return impl_put<Dump, T>(*static_cast<Target *>(o), Pointer::from(s), static_cast<Tag>(i.tag));
-            }
-            case code::call: {
-                return impl_put<Call, T>(*static_cast<Target *>(o), Pointer::from(s), *reinterpret_cast<ArgView *>(args), static_cast<Tag>(i.tag));
-            }
-            case code::name: {
+        switch (static_cast<code::codes>(i.code)) {
+            case code::destruct:
+                return impl_put<Destruct, T>(Pointer::from(o).load<T&>());
+
+            case code::deallocate:
+                return impl_put<Deallocate, T>(Pointer::from(o).load<T&>());
+
+            case code::copy:
+                return impl_put<Copy, T>(o, Pointer::from(s).load<T const&>(), i.tag);
+
+            case code::relocate:
+                return impl_put<Relocate, T>(o, Pointer::from(s).load<T&&>());
+
+            case code::swap:
+                return impl_put<Swap, T>(Pointer::from(o).load<T&>(), Pointer::from(s).load<T&>());
+
+            case code::assign:
+                return impl_put<Assign, T>(Pointer::from(o).load<T&>(), Pointer::from(s), static_cast<Mode>(i.tag));
+
+            case code::element:
+                return impl_put<Element, T>(*static_cast<Target*>(o), Pointer::from(s), reinterpret_cast<std::uintptr_t>(args), static_cast<Mode>(i.tag));
+
+            case code::attribute:
+                return impl_put<Attribute, T>(*static_cast<Target*>(o), Pointer::from(s), *static_cast<ara_str*>(args), static_cast<Mode>(i.tag));
+
+            case code::load:
+                return impl_put<Load, T>(*static_cast<Target *>(o), Pointer::from(s), static_cast<Mode>(i.tag));
+
+            case code::dump:
+                return impl_put<Dump, T>(*static_cast<Target *>(o), Pointer::from(s), static_cast<Mode>(i.tag));
+
+            case code::call:
+                return impl_put<Call, T>(*static_cast<Target *>(o), Pointer::from(s), *reinterpret_cast<ArgView *>(args), static_cast<Mode>(i.tag));
+
+            case code::name:
                 return impl_put<Name, T>(*static_cast<ara_str *>(o));
-            }
-            case code::info: {
+
+            case code::info:
                 return impl_put<Info, T>(*static_cast<Idx *>(o), *static_cast<void const **>(s));
-            }
+
             // repr?
             // traits?
             case code::check: {
-                return i.code < 12;
+                return i.code < 14;
             }
         }
-        return -1; // ?
     }
 };
 

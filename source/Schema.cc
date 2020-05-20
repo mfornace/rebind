@@ -2,7 +2,7 @@
 
 namespace ara {
 
-Value CallReturn<Value>::call(Index i, Tag qualifier, Pointer self, ArgView &args) {
+Value CallReturn<Value>::call(Index i, Mode qualifier, Pointer self, ArgView &args) {
     DUMP("calling to get Value");
     Value out;
     Target target(Index(), &out.storage, sizeof(out.storage),
@@ -26,7 +26,7 @@ Value CallReturn<Value>::call(Index i, Tag qualifier, Pointer self, ArgView &arg
     return out;
 }
 
-Value CallReturn<Value>::get(Index i, Tag qualifier, Pointer self, ArgView &args) {
+Value CallReturn<Value>::get(Index i, Mode qualifier, Pointer self, ArgView &args) {
     DUMP("calling to get Value");
     Value out;
     Target target(Index(), &out.storage, sizeof(out.storage),

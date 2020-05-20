@@ -119,12 +119,12 @@ Call::stat Call::wrong_number(Target &target, Code got, Code expected) noexcept 
 }
 
 Call::stat Call::wrong_type(Target &target, Code n, Index i, Qualifier q) noexcept {
-    // target.emplace<ara_index>(ara_tag_index(i, static_cast<ara_tag>(q)), n);
+    // target.emplace<ara_index>(ara_mode_index(i, static_cast<ara_mode>(q)), n);
     return WrongType;
 }
 
 Call::stat Call::wrong_return(Target &target, Index i, Qualifier q) noexcept {
-    target.emplace<ara_index>(ara_tag_index(i, static_cast<ara_tag>(q)));
+    target.emplace<ara_index>(ara_mode_index(i, static_cast<ara_mode>(q)));
     return WrongReturn;
 }
 
@@ -134,8 +134,8 @@ Call::stat Call::wrong_return(Target &target, Index i, Qualifier q) noexcept {
         case Call::Stack:   {throw InvalidStatus("Call: InvalidStatus: Stack", stat);}
         case Call::Heap:    {throw InvalidStatus("Call: InvalidStatus: Heap", stat);}
         case Call::None:    {throw InvalidStatus("Call: InvalidStatus: None", stat);}
-        case Call::Const:   {throw InvalidStatus("Call: InvalidStatus: Const", stat);}
-        case Call::Mutable: {throw InvalidStatus("Call: InvalidStatus: Mutable", stat);}
+        case Call::Read:   {throw InvalidStatus("Call: InvalidStatus: Read", stat);}
+        case Call::Write: {throw InvalidStatus("Call: InvalidStatus: Write", stat);}
 
         case Call::Impossible:  {throw NotImplemented("Call: Impossible", stat);}
         case Call::WrongType:   {throw WrongType("WrongType");}
@@ -152,7 +152,7 @@ Call::stat Call::wrong_return(Target &target, Index i, Qualifier q) noexcept {
 //     char const *s = "could not convert to lvalue reference";
 //     if (v.type() == t) {
 //         if (v.qualifier() == Rvalue) s = "could not convert rvalue to lvalue reference";
-//         if (v.qualifier() == Const) s = "could not convert const value to lvalue reference";
+//         if (v.qualifier() == Read) s = "could not convert const value to lvalue reference";
 //         if (v.qualifier() == Value) s = "could not convert value to lvalue reference";
 //     }
 //     msg.error(s, t);
@@ -163,7 +163,7 @@ Call::stat Call::wrong_return(Target &target, Index i, Qualifier q) noexcept {
 //     char const *s = "could not convert to rvalue reference";
 //     if (v.type() == t) {
 //         if (v.qualifier() == Lvalue) s = "could not convert lvalue to rvalue reference";
-//         if (v.qualifier() == Const) s = "could not convert const value to rvalue reference";
+//         if (v.qualifier() == Read) s = "could not convert const value to rvalue reference";
 //     }
 //     msg.error(s, t);
 // }
@@ -188,7 +188,7 @@ Call::stat Call::wrong_return(Target &target, Index i, Qualifier q) noexcept {
 //             act((v.qualifier() == Rvalue) ? ActionType::move : ActionType::copy, v.pointer(), this);
 //             // DUMP(stack, v.stack);
 //         }
-//     } else if (qualifier() == Const) {
+//     } else if (qualifier() == Read) {
 //         DUMP("assign bad");
 //         throw std::invalid_argument("Cannot assign to const Variable");
 //     } else { // qual == Lvalue or Rvalue
@@ -214,7 +214,7 @@ Call::stat Call::wrong_return(Target &target, Index i, Qualifier q) noexcept {
 //             v.act = act;
 //             v.stack = stack;
 //             act((q == Rvalue) ? ActionType::move : ActionType::copy, pointer(), &v);
-//         } else if (t.qualifier() == Const || t.qualifier() == q) { // Bind a reference
+//         } else if (t.qualifier() == Read || t.qualifier() == q) { // Bind a reference
 //             DUMP("yope", t, type(), q);
 //             reinterpret_cast<void *&>(v.buff) = pointer();
 //             v.idx = t;

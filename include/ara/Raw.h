@@ -15,7 +15,7 @@
 namespace ara {
 
 // C++ version of ara_tags enum
-enum class Tag : ara_tag {Stack=ara_stack, Heap=ara_heap, Const=ara_const, Mutable=ara_mutable};
+enum class Mode : ara_mode {Stack=ara_stack, Heap=ara_heap, Read=ara_read, Write=ara_write};
 
 static char const * TagNames[4] = {"stack", "heap", "const", "mutable"};
 
@@ -53,17 +53,24 @@ static constexpr bool is_dependent = Dependent<T>::value;
 static_assert(sizeof(ara_input) == 2 * sizeof(ara_code));
 
 namespace code {
-    static constexpr Code const
-        check            {0},
-        destruct         {1},
-        copy             {2},
-        name             {3},
-        info             {4},
-        relocate         {5},
-        call             {6},
-        dump             {7},
-        load             {8},
-        assign           {9};
+
+enum codes {
+    check      =  0,
+    destruct   =  1,
+    deallocate =  2,
+    copy       =  3,
+    swap       =  4,
+    assign     =  5,
+    name       =  6,
+    info       =  7,
+    relocate   =  8,
+    call       =  9,
+    attribute  =  10,
+    element    =  11,
+    dump       =  12,
+    load       =  13
+};
+
 }
 
 inline char const * code_name(Code t) {

@@ -89,7 +89,7 @@ int array_data_buffer(PyObject *self, Py_buffer *view, int flags) {
     else view->obj = nullptr;
     // view->itemsize = Buffer::itemsize(p.data.index());
     // view->len = p.n_elem;
-    // view->readonly = p.data.qualifier() == Const;
+    // view->readonly = p.data.qualifier() == Read;
     // view->format = const_cast<char *>(Buffer::format(p.data.index()).data());
     view->ndim = p.shape_stride.size() / 2;
     view->shape = p.shape_stride.data();

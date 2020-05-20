@@ -21,7 +21,7 @@ struct Value {
         char data[24];
     };
 
-    enum Loc : ara_tag {Trivial, Stack, Heap};
+    enum Loc : ara_mode {Trivial, Stack, Heap};
 
     template <class T>
     static constexpr Loc loc_of = is_stackable<T>(sizeof(Storage))
@@ -96,8 +96,8 @@ struct Value {
         else return Pointer::from(const_cast<void *>(static_cast<void const *>(&storage)));
     }
 
-    Ref as_ref() const & noexcept {return *this ? Ref(index(), Tag::Const, address()) : Ref();}
-    Ref as_ref() & noexcept {return *this ? Ref(index(), Tag::Mutable, address()) : Ref();}
+    Ref as_ref() const & noexcept {return *this ? Ref(index(), Mode::Read, address()) : Ref();}
+    Ref as_ref() & noexcept {return *this ? Ref(index(), Mode::Write, address()) : Ref();}
 
     template <class T>
     std::optional<T> load(Type<T> t={}) const {return as_ref().load(t);}
@@ -106,17 +106,17 @@ struct Value {
 
     template <class T=Value, int N=0, class ...Ts>
     T call(Caller c, Ts &&...ts) const {
-        return parts::call<T, N>(index(), Tag::Const, address(), c, static_cast<Ts &&>(ts)...);
+        return parts::call<T, N>(index(), Mode::Read, address(), c, static_cast<Ts &&>(ts)...);
     }
 
     template <class T=Value, int N=0, class ...Ts>
     T mutate(Caller c, Ts &&...ts) {
-        return parts::call<T, N>(index(), Tag::Mutable, address(), c, static_cast<Ts &&>(ts)...);
+        return parts::call<T, N>(index(), Mode::Write, address(), c, static_cast<Ts &&>(ts)...);
     }
 
     template <class T=Value, int N=0, class ...Ts>
     T move(Caller c, Ts &&...ts) {
-        Ref ref(index(), location() == Heap ? Tag::Heap : Tag::Stack, address());
+        Ref ref(index(), location() == Heap ? Mode::Heap : Mode::Stack, address());
         release();
         return parts::call<T, N>(ref.index(), ref.tag(), ref.pointer(), c, static_cast<Ts &&>(ts)...);
     }
@@ -124,7 +124,7 @@ struct Value {
     template <class T=Value, int N=0, class ...Ts>
     maybe<T> get(Caller c, Ts &&...ts) const {
         if (!has_value()) return Maybe<T>::none();
-        return parts::get<T, N>(index(), Tag::Const, address(), c, static_cast<Ts &&>(ts)...);
+        return parts::get<T, N>(index(), Mode::Read, address(), c, static_cast<Ts &&>(ts)...);
     }
 
     // bool assign_if(Ref const &p) {return stat::assign_if::ok == parts::assign_if(index(), address(), p);}
@@ -162,9 +162,9 @@ template <class T, class ...Args, std::enable_if_t<is_manageable<T>, int>>
 Value::Value(Type<T>, Args&& ...args) {
     static_assert(std::is_constructible_v<T, Args &&...>);
     if constexpr(loc_of<T> == Loc::Heap) {
-        storage.pointer = allocate<T>(static_cast<Args &&>(args)...);
+        storage.pointer = Allocator<T>::heap(static_cast<Args &&>(args)...);
     } else {
-        allocate_in_place<T>(&storage.data, static_cast<Args &&>(args)...);
+        Allocator<T>::stack(&storage.data, static_cast<Args &&>(args)...);
     }
     idx = Tagged(Index::of<T>(), loc_of<T>);
     // DUMP("construct! ", idx, index().name());
@@ -178,9 +178,9 @@ T & Value::emplace(Type<T>, Args &&...args) {
     reset();
     T *out;
     if constexpr(loc_of<T> == Loc::Heap) {
-        storage.pointer = out = allocate<T>(static_cast<Args &&>(args)...);
+        storage.pointer = out = Allocator<T>::heap(static_cast<Args &&>(args)...);
     } else {
-        out = allocate_in_place<T>(&storage.data, static_cast<Args &&>(args)...);
+        out = Allocator<T>::stack(&storage.data, static_cast<Args &&>(args)...);
     }
     idx = Tagged(Index::of<T>(), loc_of<T>);
     // DUMP("emplace! ", idx, index().name(), Index::of<T>().name());
@@ -210,8 +210,8 @@ inline bool Value::destruct() noexcept {
     if (!has_value()) return false;
     switch (location()) {
         case Loc::Trivial: break;
-        case Loc::Heap: {Destruct::call(index(), Pointer::from(storage.pointer), Destruct::Heap); break;}
-        default: {Destruct::call(index(), Pointer::from(&storage), Destruct::Stack); break;}
+        case Loc::Heap: {Deallocate::call(index(), Pointer::from(storage.pointer)); break;}
+        default: {Destruct::call(index(), Pointer::from(&storage)); break;}
     }
     return true;
 }
@@ -220,9 +220,9 @@ inline bool Value::destruct() noexcept {
 
 template <>
 struct CallReturn<Value> {
-    static Value call(Index i, Tag qualifier, Pointer self, ArgView &args);
+    static Value call(Index i, Mode qualifier, Pointer self, ArgView &args);
 
-    static Value get(Index i, Tag qualifier, Pointer self, ArgView &args);
+    static Value get(Index i, Mode qualifier, Pointer self, ArgView &args);
 };
 
 // struct Copyable : Value {

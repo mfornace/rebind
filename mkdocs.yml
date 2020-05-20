@@ -1,0 +1,41 @@
+docs_dir: ./docs
+nav:
+- Overview: notes.md
+- C++: c++.md
+- Python: python.md
+- Rust: rust.md
+- Traits: traits.md
+- Types: types.md
+site_dir: _build/site
+site_name: ara
+
+theme:
+  name: material
+  language: en
+
+plugins:
+  - search
+
+markdown_extensions:
+  - pymdownx.arithmatex
+  - pymdownx.superfences
+  - pymdownx.details
+  - pymdownx.tabbed
+  - footnotes
+  - sane_lists
+  - smarty
+  - admonition
+  # - codehilite
+  # - abbr
+  - pymdownx.betterem:
+      smart_enable: all
+  - toc:
+      permalink: true
+
+extra_javascript:
+  - 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-MML-AM_CHTML'
+
+
+extra_css:
+  - extra.css
+

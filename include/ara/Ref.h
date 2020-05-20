@@ -15,16 +15,16 @@ union Ref {
     template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
     explicit Ref(T &&t) noexcept
         : Ref(Index::of<unqualified<T>>(),
-          std::is_const_v<std::remove_reference_t<T>> ? Tag::Const : Tag::Mutable,
+          std::is_const_v<std::remove_reference_t<T>> ? Mode::Read : Mode::Write,
           Pointer::from(const_cast<void*>(static_cast<void const*>(std::addressof(t))))) {}
 
-    Ref(Tagged<Tag> i, Pointer p) noexcept : c{i.base, p.base} {}
-    Ref(Index i, Tag t, Pointer p) noexcept : Ref{{i, t}, p} {}
+    Ref(Tagged<Mode> i, Pointer p) noexcept : c{i.base, p.base} {}
+    Ref(Index i, Mode t, Pointer p) noexcept : Ref{{i, t}, p} {}
 
-    Ref(Ref &&r) noexcept : c{std::exchange(r.c.tag_index, nullptr), r.c.pointer} {}
+    Ref(Ref &&r) noexcept : c{std::exchange(r.c.mode_index, nullptr), r.c.pointer} {}
 
     Ref &operator=(Ref &&r) noexcept {
-        c.tag_index = std::exchange(r.c.tag_index, nullptr);
+        c.mode_index = std::exchange(r.c.mode_index, nullptr);
         c.pointer = r.c.pointer;
         return *this;
     }
@@ -36,11 +36,11 @@ union Ref {
 
     /**********************************************************************************/
 
-    Index index() const noexcept {return ara_get_index(c.tag_index);}
-    Tag tag() const noexcept {return static_cast<Tag>(ara_get_tag(c.tag_index));}
+    Index index() const noexcept {return ara_get_index(c.mode_index);}
+    Mode tag() const noexcept {return static_cast<Mode>(ara_get_mode(c.mode_index));}
     Pointer pointer() const noexcept {return bit_cast<Pointer>(c.pointer);}
 
-    constexpr bool has_value() const noexcept {return c.tag_index;}
+    constexpr bool has_value() const noexcept {return c.mode_index;}
     explicit constexpr operator bool() const noexcept {return has_value();}
 
     std::string_view name() const noexcept {return index().name();}
@@ -48,8 +48,8 @@ union Ref {
     void destroy_if_managed() {
         if (!has_value()) return;
         switch (tag()) {
-            case Tag::Stack: {Destruct::call(index(), pointer(), Destruct::Stack); c.tag_index = nullptr; return;}
-            case Tag::Heap:  {Destruct::call(index(), pointer(), Destruct::Heap); c.tag_index = nullptr; return;}
+            case Mode::Stack: {Destruct::call(index(), pointer()); c.mode_index = nullptr; return;}
+            case Mode::Heap:  {Deallocate::call(index(), pointer()); c.mode_index = nullptr; return;}
             default: {return;}
         }
     }
@@ -73,7 +73,7 @@ union Ref {
     template <class T, int N=0, class ...Ts>
     maybe<T> get(Caller c, Ts &&...ts) const {
         if (!has_value()) return Maybe<T>::none();
-        return parts::get<T, N>(index(), Tag::Const, pointer().base, c, static_cast<Ts &&>(ts)...);
+        return parts::get<T, N>(index(), Mode::Read, pointer().base, c, static_cast<Ts &&>(ts)...);
     }
 
     /**************************************************************************************/
@@ -105,16 +105,16 @@ bool Ref::binds_to(Qualifier q) const {
     if (!index().equals<T>()) return false;
     if (q == Qualifier::C) return true;
     switch (tag()) {
-        case Tag::Const: return false;
-        case Tag::Mutable: return q == Qualifier::L;
+        case Mode::Read: return false;
+        case Mode::Write: return q == Qualifier::L;
         default: return q == Qualifier::R;
     }
 }
 
-inline Load::stat dump_or_load(Target &target, Index source, Pointer p, Tag t) noexcept {
+inline Load::stat dump_or_load(Target &target, Index source, Pointer p, Mode t) noexcept {
     switch (Dump::call(source, target, p, t)) {
-        case Dump::Mutable: {DUMP("OK"); return Load::Mutable;}
-        case Dump::Const: {DUMP("OK"); return Load::Const;}
+        case Dump::Write: {DUMP("OK"); return Load::Write;}
+        case Dump::Read: {DUMP("OK"); return Load::Read;}
         case Dump::Heap: {DUMP("OK"); return Load::Heap;}
         case Dump::Stack: {DUMP("OK"); return Load::Stack;}
         case Dump::OutOfMemory: {return Load::OutOfMemory;}
@@ -142,10 +142,10 @@ std::optional<T> Ref::load(Type<T>) {
     } else if (index().equals<T>()) {
         DUMP("load exact match");
         switch (tag()) {
-            case Tag::Stack:   {if constexpr(std::is_constructible_v<T, T&&>) {out.emplace(pointer().load<T &&>()); destroy_if_managed();} break;}
-            case Tag::Heap:    {if constexpr(std::is_constructible_v<T, T&&>) {out.emplace(pointer().load<T &&>()); destroy_if_managed();} break;}
-            case Tag::Const:   {if constexpr(is_copy_constructible_v<T>) out.emplace(pointer().load<T const &>()); break;}
-            case Tag::Mutable: {if constexpr(is_copy_constructible_v<T>) out.emplace(pointer().load<T &>()); break;}
+            case Mode::Stack:   {if constexpr(std::is_constructible_v<T, T&&>) {out.emplace(pointer().load<T &&>()); destroy_if_managed();} break;}
+            case Mode::Heap:    {if constexpr(std::is_constructible_v<T, T&&>) {out.emplace(pointer().load<T &&>()); destroy_if_managed();} break;}
+            case Mode::Read:   {if constexpr(is_copy_constructible_v<T>) out.emplace(pointer().load<T const &>()); break;}
+            case Mode::Write: {if constexpr(is_copy_constructible_v<T>) out.emplace(pointer().load<T &>()); break;}
         }
     } else {
         storage_like<T> storage;
@@ -153,13 +153,13 @@ std::optional<T> Ref::load(Type<T>) {
         switch (load_to(target)) {
             case Load::Stack: {
                 DUMP("load succeeded");
-                DestructGuard<T, false> raii{storage_cast<T>(storage)};
+                Destruct::RAII<T> raii{storage_cast<T>(storage)};
                 out.emplace(std::move(raii.held));
                 break;
             }
             case Load::Heap: {
                 DUMP("load succeeded");
-                DestructGuard<T, true> raii{*static_cast<T *>(target.output())};
+                Deallocate::RAII<T> raii{*static_cast<T *>(target.output())};
                 out.emplace(std::move(raii.held));
                 break;
             }

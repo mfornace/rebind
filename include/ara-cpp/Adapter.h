@@ -47,7 +47,7 @@ Streamable<T> streamable(Type<T> = {}) {return {};}
 */
 
 // struct Overload {
-//     bool operator()(Value *, Ref *, ArgView const &, Tag) const;
+//     bool operator()(Value *, Ref *, ArgView const &, Mode) const;
 
 //     // Value operator()(ArgView const &v) const noexcept;
 //     // Ref ref(ArgView const &v) const; // optional

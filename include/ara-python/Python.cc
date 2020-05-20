@@ -218,7 +218,7 @@ bool dump_object(Target &v, Object o) {
                 DUMP("layout", lay, reference_count(o));
                 DUMP("depth", lay.depth());
 #warning "fix"
-                // Ref data{buff.view.format ? Buffer::format(buff.view.format) : fetch<void>(), buff.view.buf, buff.view.readonly ? Const : Lvalue};
+                // Ref data{buff.view.format ? Buffer::format(buff.view.format) : fetch<void>(), buff.view.buf, buff.view.readonly ? Read : Lvalue};
                 // return v.emplace_if<ArrayView>(std::move(data), std::move(lay));
             } else throw python_error(type_error("C++: could not get buffer from Python obhect"));
         } else return false;

@@ -17,7 +17,7 @@ using unqualified = std::remove_cv_t<std::remove_reference_t<T>>;
 enum class Qualifier {C, L, R};
 
 // template <class T, Qualifier Q>
-// using qualified = std::conditional_t<Q == Const, T const &,
+// using qualified = std::conditional_t<Q == Read, T const &,
 //     std::conditional_t<Q == Lvalue, T &, T &&>>;
 
 template <class T>
@@ -28,7 +28,7 @@ static constexpr Qualifier qualifier_of =
 //     // from = const: {const yes, rvalue no, lvalue no}
 //     // from = rvalue: {const yes, rvalue yes, lvalue no}
 //     // from = lvalue: {const yes, rvalue no, lvalue yes}
-//     return to == Const || from == to;
+//     return to == Read || from == to;
 // }
 
 /******************************************************************************************/

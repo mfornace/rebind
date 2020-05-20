@@ -29,7 +29,7 @@ template <class T>
 PyObject *c_new(PyTypeObject* subtype, PyObject*, PyObject*) noexcept {
     static_assert(noexcept(T{}), "Default constructor should be noexcept");
     PyObject *o = subtype->tp_alloc(subtype, 0); // 0 unused
-    if (o) new (&cast_object_unsafe<T>(o)) T; // Default construct the C++ type
+    if (o) new(&cast_object_unsafe<T>(o)) T; // Default construct the C++ type
     return o;
 }
 

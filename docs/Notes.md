@@ -1,3 +1,93 @@
+## Current questions
+
+### Runtime type information?
+
+i.e. it would be nice to request a `Array` which is
+
+- number of dimensions `M`
+- exactly shape `N1, N2 ... NM`
+- exactly of type `T`
+
+or a `Tuple` which is:
+
+- length `N`
+- of types `T1, T2, ... TN`
+
+Otherwise in Python we could also use run time type `Index, void*`.
+But I would say honestly this is not really that useful compared to the current approach.
+
+Because we take an optimistic approach, there is not a logical difference to doing `Array` vs `Array<T>` because we always assume our type can be convertible. The main advantage is for eliminating temporaries.
+
+That is `std::vector<int> -> std::vector<double>` can go straight to:
+- `Array<double>` -- this actually doesn't have much advantage.
+- `Span<double>` aliasing the vector's storage. this would eliminate the temporary allocation.
+
+(This is sort of a dumb example...would be more useful for structured types.)
+
+I would say constraining the length of `Array` is a pretty minor gain. On the other hand constraining the rank may be moderately useful. Constraining the type is also only a minor gain.
+
+Hmm ... seems actually like most of the constraints are not that useful given the optimistic assumptions.
+
+The main thing which would be nice is to be able to do `std::pair<int, double> -> rust::pair<int, double>` without doing a whole allocation cycle through `Tuple`.
+
+Another nicety would be to be able to reuse allocations within `Array` ... mm but this is pretty hard to be useful if structured types are used, because the destructor has to be run.
+
+With these objectives, seems like maybe a good approach is just to enable the following:
+
+```c++
+ref = std::pair<std::string, unsigned>();
+std::array<Ref, 2> key_value = ref.splat<2>();
+std::pair<std::string, int> out;
+key_value[0].load_to(out.first);
+key_value[1].load_to(out.second);
+```
+
+There are problems here. Mainly, the storage of key_value is unclear if it's supposed to give an rvalue.
+
+Well, if `ref` is an rvalue, it has control over the destruction of its value.
+Let's say `ref` contains `std::string`.
+We know this allocation is on `char[]`-like storage because of the destructor use...well do we?
+If we do, then we could just give the reference to `key_value` and `key_value` will delete stuff appropriately.
+Problem is...we really don't know this because of `heap`.
+
+An easier option is maybe to allow
+
+```c++
+ref.splat<std::string, int>();
+```
+
+But this is actually sort of hard too. You'd be destructively moving out of a `std::pair` which is not really allowed.
+
+Hmm. How hard is it to get the destructive move to work?
+- Let's say we have `std::pair<std::string, int>` in `Ref` with `stack`.
+- Because it's `stack` we know we're actually sitting on `char[]` storage. Otherwise we couldn't have made `stack`.
+- So if we change `ref.index` to `null`, no destructor will be run automatically.
+- So we could do:
+
+```c++
+auto splat(Ref &ref, std::pair<std::string, int> &self) noexcept {
+    // if not aggregate-like like pair, have to cast to something that does not run any destructor except members
+    if (ref.mode() == stack) {
+        std::array<Ref, 2> refs{self.first, self.second}; // pseudocode
+        ref.index = nullptr;
+        return refs;
+    }
+    if (ref.mode() == heap) {
+        // here this is difficult. I think we just have to change the allocation so it's done with storage. then it's fine.
+        std::array<Ref, 2> refs{self.first, self.second};
+        ref.index = Index::of<storage_like<self>>(); // so deallocation occurs.
+    }
+    if (ref.mode() == other) return lvalue refs;
+}
+```
+
+The key is that the number of `Ref`s must exactly replicate the type, otherwise it's bad news. (Could destruct trailing members, but this seems...not obviously a good idea.)
+
+I think this is actually very feasible. What about for a Python `tuple` type thing?
+First, we really wouldn't need it, because map already going through array currently.
+
+Pyhton objects can go to lvalue easily so this actually not too hard.
+
 ## Avoiding rvalue references
 
 there are 5 possible tags: 0=const, 1=lvalue, 2=rvalue, 3=heap, 4=stack
@@ -54,14 +144,14 @@ in this case, there are no rvalue references needed!
 ## Load, Dump
 
 `Load` takes a reference and returns a `std::optional<T>`. The reference could be
-- `Mutable`
-- `Const`
+- `Write`
+- `Read`
 - `Temporary`
 - `None`
 
 Example:
-`Mutable<string>` could convert to `string &`, `string const &`, `string_view`, `mutable_string_view`.
-`Const<string>` could convert to `string const &`, `string_view`.
+`Write<string>` could convert to `string &`, `string const &`, `string_view`, `mutable_string_view`.
+`Read<string>` could convert to `string const &`, `string_view`.
 `Temporary<string>` could convert to `std::vector<char>`
 
 
@@ -74,11 +164,11 @@ Example:
 Note that allocation is avoided in `Dump` because `Dump` is called by `Load` which can allocate space on the stack ahead of time.
 
 Function call
-`Call` takes sequence of references which are `Mutable`, `Const`, or `Temporary`.
+`Call` takes sequence of references which are `Write`, `Read`, or `Temporary`.
 
 It has to be able to return
-- `Mutable`: a mutable reference
-- `Const`: a const reference
+- `Write`: a mutable reference
+- `Read`: a const reference
 - `None`: nothing
 - `Exception`: an exception
 - `Value`: a value
@@ -176,7 +266,7 @@ stat call(Index &out, void *r, F const &self, ArgView args) {
     try {
         new(r) Out(invoke(self, *args));
         out = Index::of<Out>();
-        return stat::Const;
+        return stat::Read;
     } catch (...) { /* same as for void */ }
 ```
 
@@ -208,7 +298,7 @@ stat call(Index &out, void *r, unsigned size, F const &self, ArgView args) {
         } else {
             new(r) Out(invoke(self, *args));
             out = Index::of<Out>();
-            return stat::Const;
+            return stat::Read;
         }
     } catch (...) { /* same as for void */ }
 ```

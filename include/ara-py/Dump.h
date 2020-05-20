@@ -79,52 +79,60 @@ inline bool dump_span(Target &target, Instance<> o) {
 
 /******************************************************************************/
 
-static void dump_array_deleter(ara_index, void* storage) {Py_DECREF(static_cast<PyObject*>(storage));}
+struct ObjectGuard {
+    void operator()(PyObject* object) {Py_DECREF(object);}
+
+    static auto make_unique(Instance<> o) noexcept {
+        Py_INCREF(+o);
+        return std::unique_ptr<PyObject, ObjectGuard>(+o);
+    }
+};
 
 inline bool dump_array(Target &target, Instance<> o) {
     DUMP("dump_array");
     if (PyTuple_Check(+o)) {
         PyObject** start = reinterpret_cast<PyTupleObject*>(+o)->ob_item;
         std::size_t size = PyTuple_GET_SIZE(+o);
-        if (auto p = target.emplace_if<Array>(reinterpret_cast<Export**>(start), size, Array::Deleter{+o, &dump_array_deleter})) {
-            Py_INCREF(static_cast<PyObject*>(p->c.storage));
-            return true;
-        }
+        return target.emplace_if<Array>(reinterpret_cast<Export**>(start), size, ObjectGuard::make_unique(o));
     }
     if (PyList_Check(+o)) {
         PyObject** start = reinterpret_cast<PyListObject*>(+o)->ob_item;
         std::size_t size = PyList_GET_SIZE(+o);
-        if (auto p = target.emplace_if<Array>(reinterpret_cast<Export**>(start), size, Array::Deleter{+o, &dump_array_deleter})) {
-            Py_INCREF(static_cast<PyObject*>(p->c.storage));
-            return true;
-        }
+        return target.emplace_if<Array>(reinterpret_cast<Export**>(start), size, ObjectGuard::make_unique(o));
     }
     if (PyDict_Check(+o)) {
-        std::size_t len = PyDict_Size(+o);
-        auto a = std::make_unique<Export*[]>(2 * len);
-        // if (auto p = target.emplace_if<Array>(a, std::array<std::size_t, 2>{len, 2})) {
-        //     return true;
-        // }
+        std::size_t const len = PyDict_Size(+o);
+        auto a = Shared::from(PyTuple_New(len));
+
+        Py_ssize_t pos = 0;
+        for (std::size_t i = 0; i != len; ++i) {
+            PyObject *key, *value;
+            PyDict_Next(+o, &pos, &key, &value);
+            Py_INCREF(key);
+            Py_INCREF(value);
+            PyTuple_SET_ITEM(+a, 2 * i, key);
+            PyTuple_SET_ITEM(+a, 2 * i + 1, value);
+        }
+        return target.emplace_if<Array>(reinterpret_cast<PyTupleObject*>(+a)->ob_item,
+            std::array<std::size_t, 2>{len, 2}, ObjectGuard::make_unique(instance(+a)));
     }
     return false;
 }
 
 /******************************************************************************/
 
-inline std::pair<std::unique_ptr<Ref[]>, std::size_t> allocated_view(Instance<> o) {
+inline View::Alloc allocated_view(Instance<> o) {
     if (PyList_Check(+o)) {
-        auto const size = PyList_GET_SIZE(+o);
-        auto refs = std::make_unique<Ref[]>(size);
-        for (Py_ssize_t i = 0; i !=  size; ++i)
-            refs[i] = Ref(reinterpret_cast<Export&>(*PyList_GET_ITEM(+o, i)));
-        return {std::move(refs), size};
+        View::Alloc alloc(PyList_GET_SIZE(+o));
+        for (Py_ssize_t i = 0; i != alloc.size; ++i)
+            alloc.data[i] = Ref(reinterpret_cast<Export&>(*PyList_GET_ITEM(+o, i)));
+        return alloc;
     }
     if (PyTuple_Check(+o)) {
-        auto const size = PyTuple_GET_SIZE(+o);
-        auto refs = std::make_unique<Ref[]>(size);
-        for (Py_ssize_t i = 0; i !=  size; ++i)
-            refs[i] = Ref(reinterpret_cast<Export&>(*PyTuple_GET_ITEM(+o, i)));
-        return {std::move(refs), size};
+        View::Alloc alloc(PyTuple_GET_SIZE(+o));
+        for (Py_ssize_t i = 0; i != alloc.size; ++i)
+            alloc.data[i] = Ref(reinterpret_cast<Export&>(*PyTuple_GET_ITEM(+o, i)));
+        return alloc;
     }
 
     Shared iter(PyObject_GetIter(+o), true);
@@ -137,29 +145,21 @@ inline std::pair<std::unique_ptr<Ref[]>, std::size_t> allocated_view(Instance<> 
     while ((item = {PyIter_Next(+iter), true}))
         v.emplace_back(reinterpret_cast<Export&>(*(+o)));
 
-    auto const size = v.size();
-    auto refs = std::make_unique<Ref[]>(size);
-    std::copy(std::make_move_iterator(v.begin()), std::make_move_iterator(v.end()), refs.get());
-    return {std::move(refs), size};
+    View::Alloc alloc(v.size());
+    std::copy(std::make_move_iterator(v.begin()), std::make_move_iterator(v.end()), alloc.data.get());
+    return alloc;
 }
 
 /******************************************************************************/
 
 inline bool dump_view(Target& target, Instance<> o) {
-    auto p = allocated_view(o);
-    return p.first && target.emplace_if<View>(std::move(p.first), p.second);
+    auto alloc = allocated_view(o);
+    return alloc.data && target.emplace_if<View>(std::move(alloc));
 }
-
-struct DeleteObject {
-    void operator()(Ignore, Ignore, void* p) const noexcept {Py_DECREF(reinterpret_cast<PyObject*>(p));}
-};
 
 inline bool dump_tuple(Target& target, Instance<> o) {
     auto p = allocated_view(o);
-    if (p.first) if (auto t = target.emplace_if<Tuple>(std::move(p.first), p.second, +o, Type<DeleteObject>())) {
-        Py_INCREF(reinterpret_cast<PyObject*>(t->c.storage));
-        return true;
-    }
+    return p.data && target.emplace_if<Tuple>(std::move(p.data), p.size, ObjectGuard::make_unique(o));
     return false;
 }
 
@@ -222,18 +222,18 @@ inline bool dump_object(Target &target, Instance<> o) {
 namespace ara {
 
 template <>
-struct Dumpable<py::Export> {
-    bool operator()(Target &v, py::Export const &o) const {return false;}
+struct Impl<py::Export> {
+    static bool dump(Target &v, py::Export const &o) {return false;}
 
-    bool operator()(Target &v, py::Export &o) const {
+    static bool dump(Target &v, py::Export &o) {
         DUMP("dumping object!");
         return py::dump_object(v, py::instance(reinterpret_cast<PyObject*>(&o)));
     }
 };
 
 template <>
-struct Dumpable<py::Export*> {
-    bool operator()(Target &v, py::Export* o) const {
+struct Impl<py::Export*> {
+    static bool dump(Target &v, py::Export* o) {
         DUMP("dumping object pointer!", bool(o), o, reinterpret_cast<std::uintptr_t>(o));
         return py::dump_object(v, py::instance(reinterpret_cast<PyObject*>(o)));
     }

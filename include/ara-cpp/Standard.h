@@ -10,17 +10,14 @@
 namespace ara {
 
 template <>
-struct Dumpable<std::string_view> {
-    bool operator()(Target &a, std::string_view t) const {
+struct Impl<std::string_view> {
+    static bool dump(Target &a, std::string_view t) {
         if (a.accepts<Str>()) return a.emplace_if<Str>(t);
         if (a.accepts<String>()) return a.emplace_if<String>(t);
         return false;
     }
-};
 
-template <>
-struct Loadable<std::string_view> {
-    std::optional<std::string_view> operator()(Ref &r) const {
+    static auto load(Ref &r) {
         std::optional<std::string_view> out;
         if (auto p = r.load<Str>()) out.emplace(*p);
         return out;
@@ -30,27 +27,22 @@ struct Loadable<std::string_view> {
 /******************************************************************************/
 
 template <class Alloc>
-struct Dumpable<std::basic_string<char, std::char_traits<char>, Alloc>> {
+struct Impl<std::basic_string<char, std::char_traits<char>, Alloc>> {
     using S = std::basic_string<char, std::char_traits<char>, Alloc>;
 
-    bool operator()(Target &a, S &&t) const {
+    static bool dump(Target &a, S &&t) {
         DUMP("dumping std::string");
         if (a.accepts<String>()) return a.emplace_if<String>(std::move(t));
         return false;
     }
-    bool operator()(Target &a, S const &t) const {
+    static bool dump(Target &a, S const &t) {
         DUMP("dumping std::string");
         if (a.accepts<Str>()) return a.emplace_if<Str>(std::string_view(t));
         if (a.accepts<String>()) return a.emplace_if<String>(std::string_view(t));
         return false;
     }
-};
 
-template <class Alloc>
-struct Loadable<std::basic_string<char, std::char_traits<char>, Alloc>> {
-    using S = std::basic_string<char, std::char_traits<char>, Alloc>;
-
-    std::optional<S> operator()(Ref &r) const {
+    static auto load(Ref &r) {
         DUMP("loading std::string");
         std::optional<S> out;
         if (auto p = r.load<Str>()) out.emplace(*p);
@@ -62,21 +54,18 @@ struct Loadable<std::basic_string<char, std::char_traits<char>, Alloc>> {
 /******************************************************************************/
 
 template <class T>
-struct Dumpable<std::optional<T>> {
-    bool operator()(Target &a, std::optional<T> &t) const {
-        return t ? Dumpable<T>()(a, *t) : false;
+struct Impl<std::optional<T>> {
+    static bool dump(Target &a, std::optional<T> &t) {
+        return t ? Impl<T>::dump(a, *t) : false;
     }
-    bool operator()(Target &a, std::optional<T> &&t) const {
-        return t ? Dumpable<T>()(a, std::move(*t)) : false;
+    static bool dump(Target &a, std::optional<T> &&t) {
+        return t ? Impl<T>::dump(a, std::move(*t)) : false;
     }
-    bool operator()(Target &a, std::optional<T> const &t) const {
-        return t ? Dumpable<T>()(a, *t) : false;
+    static bool dump(Target &a, std::optional<T> const &t) {
+        return t ? Impl<T>::dump(a, *t) : false;
     }
-};
 
-template <class T>
-struct Loadable<std::optional<T>> {
-    std::optional<std::optional<T>> operator()(Ref &r) const {
+    static auto load(Ref &r) {
         std::optional<std::optional<T>> out;
         if (!r || r.load<std::nullptr_t>()) {
             out.emplace();
@@ -90,17 +79,14 @@ struct Loadable<std::optional<T>> {
 /******************************************************************************/
 
 template <class T>
-struct Dumpable<std::shared_ptr<T>> {
-    bool operator()(Target &a, std::shared_ptr<T> const &p) const {
+struct Impl<std::shared_ptr<T>> {
+    static bool dump(Target &a, std::shared_ptr<T> const &p) {
         // DUMP("shared_ptr", t, Index::of<T>(), bool(p), Q);
         // return p && get_response<Q>(out, std::move(t), *p);
         return false;
     }
-};
 
-template <class T>
-struct Loadable<std::shared_ptr<T>> {
-    std::optional<std::shared_ptr<T>> operator()(Ref &r) const {
+    static auto load(Ref &r) {
         std::optional<std::shared_ptr<T>> out;
         if (!r || r.load<std::nullptr_t>()) out.emplace();
         else if (auto p = r.load<std::remove_cv_t<T>>())
@@ -112,22 +98,19 @@ struct Loadable<std::shared_ptr<T>> {
 /******************************************************************************/
 
 template <class ...Ts>
-struct Dumpable<std::variant<Ts...>> {
-    bool operator()(Target &a, std::variant<Ts...> const &) const {
+struct Impl<std::variant<Ts...>> {
+    static bool dump(Target &a, std::variant<Ts...> const &) {
         return false;
-    }
         // return std::visit([&](auto &&x) {return get_response<Q>(out, t, static_cast<decltype(x) &&>(x));}, static_cast<V &&>(v));
-};
+    }
 
-template <class ...Ts>
-struct Loadable<std::variant<Ts...>> {
     template <class T>
     static bool put(std::optional<std::variant<Ts...>> &out, Ref &r) {
         if (auto p = r.load<T>()) return out.emplace(std::move(*p)), true;
         return false;
     }
 
-    std::optional<std::variant<Ts...>> operator()(Ref &r) const {
+    static auto load(Ref &r) {
         std::optional<std::variant<Ts...>> out;
         (void) (put<Ts>(out, r) || ...);
         return out;
@@ -150,6 +133,8 @@ struct DumpMap {
         // return range_response<T>(o, t, std::begin(v), std::end(v));
     }
 };
+
+/******************************************************************************/
 
 template <class M>
 struct LoadMap {
@@ -184,16 +169,13 @@ struct LoadMap {
 };
 
 template <class K, class V, class C, class A>
-struct Loadable<std::map<K, V, C, A>> : LoadMap<std::map<K, V, C, A>> {};
-
-template <class K, class V, class C, class A>
-struct Dumpable<std::map<K, V, C, A>> : DumpMap<std::map<K, V, C, A>> {};
+struct Impl<std::map<K, V, C, A>> : LoadMap<std::map<K, V, C, A>>, DumpMap<std::map<K, V, C, A>> {};
 
 /******************************************************************************/
 
 template <class F>
 struct LoadFunction {
-    std::optional<F> operator()(Ref &v) const {
+    static auto load(Ref &v) {
         std::optional<F> out;
         // if (auto p = v.load<Callback<typename F::result_type>>()) out.emplace(std::move(*p));
         return out;
@@ -201,7 +183,7 @@ struct LoadFunction {
 };
 
 template <class R, class ...Ts>
-struct Loadable<std::function<R(Ts...)>> : LoadFunction<std::function<R(Ts...)>> {};
+struct Impl<std::function<R(Ts...)>> : LoadFunction<std::function<R(Ts...)>> {};
 
 /******************************************************************************/
 
