@@ -125,36 +125,47 @@ union Target {
 
     /**************************************************************************/
 
-    Mode returned_mode() const {return static_cast<Mode>(c.mode);}
     Index index() const {return c.index;}
     Code length() const {return c.length;}
     void* output() const {return c.output;}
     auto name() const {return index().name();}
+    Mode returned_mode() const {return static_cast<Mode>(c.mode);}
 
     /**************************************************************************/
 
+    // Return whether a type is accepted
     template <class T>
     bool accepts() const noexcept {return !index() || index() == Index::of<T>();}
 
+    // Return whether a storage class is accepted
     constexpr bool accepts(Constraint in) const noexcept {return c.mode & in;}
 
+    // Return current output, if there is any
+    template <class T>
+    [[nodiscard]] T* get(Type<T> t={}) const {
+        return accepts(Existing) && index() == Index::of<T>() ? static_cast<T*>(c.output) : nullptr;
+    }
+
+    // Return current output, default constructing it if it is not present
+    template <class T>
+    [[nodiscard]] T* set_default(Type<T> t={}) {
+        static_assert(std::is_default_constructible_v<T>);
+        if (auto p = get(t)) return p;
+        else if (accepts<T>()) return emplace<T>();
+        else return nullptr;
+    }
+
     template <class T, class ...Ts>
-    [[nodiscard]] T* emplace_if(Ts &&...ts) {
-        if (accepts<T>()) emplace<T>(static_cast<Ts &&>(ts)...);
+    [[nodiscard]] T* emplace(Ts &&...ts) {
+        if (!accepts<T>()) return nullptr;
+        construct<T>(std::forward<Ts>(ts)...);
         return static_cast<T*>(output());
     }
 
-    template <class T>
-    [[nodiscard]] bool set_if(T &&t) {return emplace_if<unqualified<T>>(std::forward<T>(t));}
-
-    // Return placement new pointer if it is available for type T
-    template <class T>
-    constexpr void* placement() const noexcept {
-        return ((c.mode & constraint<T>) && is_stackable<T>(length())) ? output() : nullptr;
-    }
+    /**************************************************************************/
 
     template <class T, class ...Ts>
-    void emplace(Ts &&...ts) {
+    void construct(Ts &&...ts) {
         if (auto p = placement<T>()) {
             Allocator<T>::stack(p, static_cast<Ts &&>(ts)...);
             c.mode = static_cast<ara_mode>(Mode::Stack);
@@ -165,7 +176,11 @@ union Target {
         set_index<T>();
     }
 
-    /**************************************************************************/
+    // Return placement new pointer if it is available for type T
+    template <class T>
+    constexpr void* placement() const noexcept {
+        return ((c.mode & constraint<T>) && is_stackable<T>(length())) ? output() : nullptr;
+    }
 
     // Set pointer to a heap allocation
     template <class T>
@@ -177,13 +192,13 @@ union Target {
 
     template <class T>
     void set_reference(T const &t) noexcept {
-        c.output = const_cast<T *>(std::addressof(t));
+        c.output = const_cast<T*>(std::addressof(t));
         c.mode = static_cast<ara_mode>(Mode::Read);
         set_index<T>();
     }
 
     template <class T>
-    void set_heap(T *t) noexcept {
+    void set_heap(T* t) noexcept {
         c.output = t;
         c.mode = static_cast<ara_mode>(Mode::Heap);
         set_index<T>();

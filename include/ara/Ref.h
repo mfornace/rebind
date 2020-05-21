@@ -82,7 +82,10 @@ union Ref {
     std::optional<T> load(Type<T> t={});
 
     template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
-    std::remove_reference_t<T> * load(Type<T> t={}) const;
+    std::remove_reference_t<T>* load(Type<T> t={}) const;
+
+    template <class T>
+    bool load(T &t);
 
     template <class T, std::enable_if_t<!std::is_reference_v<T>, int> = 0>
     T cast(Type<T> t={});
@@ -142,9 +145,9 @@ std::optional<T> Ref::load(Type<T>) {
     } else if (index().equals<T>()) {
         DUMP("load exact match");
         switch (tag()) {
-            case Mode::Stack:   {if constexpr(std::is_constructible_v<T, T&&>) {out.emplace(pointer().load<T &&>()); destroy_if_managed();} break;}
-            case Mode::Heap:    {if constexpr(std::is_constructible_v<T, T&&>) {out.emplace(pointer().load<T &&>()); destroy_if_managed();} break;}
-            case Mode::Read:   {if constexpr(is_copy_constructible_v<T>) out.emplace(pointer().load<T const &>()); break;}
+            case Mode::Stack: {if constexpr(std::is_constructible_v<T, T&&>) {out.emplace(pointer().load<T &&>());} break;}
+            case Mode::Heap:  {if constexpr(std::is_constructible_v<T, T&&>) {out.emplace(pointer().load<T &&>());} break;}
+            case Mode::Read:  {if constexpr(is_copy_constructible_v<T>) out.emplace(pointer().load<T const &>()); break;}
             case Mode::Write: {if constexpr(is_copy_constructible_v<T>) out.emplace(pointer().load<T &>()); break;}
         }
     } else {
@@ -171,8 +174,48 @@ std::optional<T> Ref::load(Type<T>) {
     return out;
 }
 
+
+template <class T>
+bool Ref::load(T& t) {
+    if (!has_value()) {
+        DUMP("no value");
+        return false;
+        // nothing
+    }
+    if (index().equals<T>()) {
+        DUMP("load exact match");
+        switch (tag()) {
+            case Mode::Read:  {
+                if constexpr(std::is_copy_assignable_v<T>) {t = pointer().load<T const &>(); return true;}
+                else return false;
+            }
+            case Mode::Write: {
+                if constexpr(std::is_copy_assignable_v<T>) {t = pointer().load<T &>(); return true;}
+                else return false;
+            }
+            default: {
+                if constexpr(std::is_move_assignable_v<T>) {t = pointer().load<T &&>(); return true;}
+                else return false;
+            }
+        }
+    } else {
+        Target target(Index::of<T>(), std::addressof(t), sizeof(T), Target::Existing);
+        switch (load_to(target)) {
+            case Load::Write: {
+                DUMP("load succeeded");
+                c.mode_index = target.c.index;
+                return true;
+            }
+            case Load::Exception: {target.rethrow_exception();}
+            case Load::OutOfMemory: {throw std::bad_alloc();}
+            default: {}
+        }
+    }
+}
+
+
 template <class T, std::enable_if_t<std::is_reference_v<T>, int>>
-std::remove_reference_t<T> * Ref::load(Type<T>) const {
+std::remove_reference_t<T>* Ref::load(Type<T>) const {
     DUMP("load reference", type_name<T>(), name());
     if (auto t = target<T>()) return t;
     return nullptr;

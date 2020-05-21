@@ -11,18 +11,18 @@ namespace ara {
 /******************************************************************************/
 
 template <>
-struct Impl<Str> {
+struct Impl<Str> : Default<Str> {
     static bool dump(Target &v, Str s) {
-        if (v.accepts<String>()) return v.emplace_if<String>(s);
+        if (v.accepts<String>()) return v.emplace<String>(s);
         return false;
     };
 };
 
 
 template <>
-struct Impl<Bin> {
+struct Impl<Bin> : Default<Bin> {
     static bool dump(Target &v, Bin s) {
-        if (v.accepts<Binary>()) return v.emplace_if<Binary>(s);
+        if (v.accepts<Binary>()) return v.emplace<Binary>(s);
         return false;
     };
 };
@@ -38,10 +38,10 @@ struct DumpableString {
 };
 
 template <>
-struct Impl<String> : DumpableString<String, char> {};
+struct Impl<String> : Default<String>, DumpableString<String, char> {};
 
 template <>
-struct Impl<Binary> : DumpableString<Binary, unsigned char> {};
+struct Impl<Binary> : Default<Binary>, DumpableString<Binary, unsigned char> {};
 
 // We don't need Loadable<String> since C++ functionality already covered in Dumpable
 
@@ -49,14 +49,14 @@ struct Impl<Binary> : DumpableString<Binary, unsigned char> {};
 
 // Not sure about the wisdom of including these...?
 template <>
-struct Impl<char const *> {
+struct Impl<char const *> : Default<char const *> {
     static bool dump(Target &v, char const *s) {
         if (v.accepts<Str>())
-            return v.set_if(s ? Str(s) : Str());
+            return v.emplace<Str>(s ? Str(s) : Str());
 
         if (v.accepts<String>()) {
-            if (s) return v.emplace_if<String>(s);
-            return v.emplace_if<String>();
+            if (s) return v.emplace<String>(s);
+            return v.emplace<String>();
         }
         return false;
     }
@@ -74,7 +74,7 @@ struct Impl<char const *> {
 /******************************************************************************/
 
 template <class T>
-struct Impl<T *> {
+struct Impl<T *> : Default<T *> {
     static std::optional<T *> load(Ref &v) {
         std::optional<T *> out;
         if (!v) {
@@ -108,11 +108,11 @@ struct Impl<T *> {
 /******************************************************************************/
 
 template <class T>
-struct Impl<T, std::enable_if_t<(std::is_floating_point_v<T>)>> {
+struct Impl<T, std::enable_if_t<(std::is_floating_point_v<T>)>> : Default<T> {
     /// Default Dumpable for floating point allows conversion to Float or Integer
     static bool dump(Target &v, T t) {
-        if (v.accepts<Float>()) return v.emplace_if<Float>(t);
-        if (v.accepts<Integer>()) return v.emplace_if<Integer>(t);
+        if (v.accepts<Float>()) return v.emplace<Float>(t);
+        if (v.accepts<Integer>()) return v.emplace<Integer>(t);
         return false;
     }
 
@@ -130,11 +130,11 @@ struct Impl<T, std::enable_if_t<(std::is_floating_point_v<T>)>> {
 /******************************************************************************/
 
 template <>
-struct Impl<bool> {
+struct Impl<bool> : Default<bool> {
     static bool dump(Target &v, bool t) {
         DUMP("Dumpable <bool> to ", v.name());
-        if (v.accepts<Bool>()) return v.emplace_if<Bool>(t);
-        if (v.accepts<Integer>()) return v.emplace_if<Integer>(t);
+        if (v.accepts<Bool>()) return v.emplace<Bool>(t);
+        if (v.accepts<Integer>()) return v.emplace<Integer>(t);
         DUMP("Dumpable <bool> to ", v.name(), " failed");
         return false;
     }
@@ -152,11 +152,11 @@ struct Impl<bool> {
 /******************************************************************************/
 
 template <class T>
-struct Impl<T, std::enable_if_t<(std::is_integral_v<T>)>> {
+struct Impl<T, std::enable_if_t<(std::is_integral_v<T>)>> : Default<T> {
     static bool dump(Target &v, T t) {
         DUMP("Dumpable<", type_name<T>(), "> to ", v.name());
-        if (v.accepts<Integer>()) return v.emplace_if<Integer>(t);
-        if (v.accepts<Float>()) return v.emplace_if<Float>(t);
+        if (v.accepts<Integer>()) return v.emplace<Integer>(t);
+        if (v.accepts<Float>()) return v.emplace<Float>(t);
         DUMP("Dumpable<", type_name<T>(), "> to ", v.name(), " failed");
         return false;
     }
@@ -178,9 +178,9 @@ template <class T>
 struct Impl<T, std::enable_if_t<(std::is_enum_v<T>)>> {
     static bool dump(Target &v, T t) {
         if (v.accepts<std::underlying_type_t<T>>())
-            return v.emplace_if<std::underlying_type_t<T>>(t);
+            return v.emplace<std::underlying_type_t<T>>(t);
         if (v.accepts<Integer>())
-            return v.emplace_if<Integer>(t);
+            return v.emplace<Integer>(t);
         return false;
     }
 

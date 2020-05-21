@@ -10,10 +10,10 @@
 namespace ara {
 
 template <>
-struct Impl<std::string_view> {
+struct Impl<std::string_view> : Default<std::string_view> {
     static bool dump(Target &a, std::string_view t) {
-        if (a.accepts<Str>()) return a.emplace_if<Str>(t);
-        if (a.accepts<String>()) return a.emplace_if<String>(t);
+        if (a.accepts<Str>()) return a.emplace<Str>(t);
+        if (a.accepts<String>()) return a.emplace<String>(t);
         return false;
     }
 
@@ -27,18 +27,18 @@ struct Impl<std::string_view> {
 /******************************************************************************/
 
 template <class Alloc>
-struct Impl<std::basic_string<char, std::char_traits<char>, Alloc>> {
+struct Impl<std::basic_string<char, std::char_traits<char>, Alloc>> : Default<std::basic_string<char, std::char_traits<char>, Alloc>> {
     using S = std::basic_string<char, std::char_traits<char>, Alloc>;
 
     static bool dump(Target &a, S &&t) {
         DUMP("dumping std::string");
-        if (a.accepts<String>()) return a.emplace_if<String>(std::move(t));
+        if (a.accepts<String>()) return a.emplace<String>(std::move(t));
         return false;
     }
     static bool dump(Target &a, S const &t) {
         DUMP("dumping std::string");
-        if (a.accepts<Str>()) return a.emplace_if<Str>(std::string_view(t));
-        if (a.accepts<String>()) return a.emplace_if<String>(std::string_view(t));
+        if (a.accepts<Str>()) return a.emplace<Str>(std::string_view(t));
+        if (a.accepts<String>()) return a.emplace<String>(std::string_view(t));
         return false;
     }
 
@@ -54,7 +54,7 @@ struct Impl<std::basic_string<char, std::char_traits<char>, Alloc>> {
 /******************************************************************************/
 
 template <class T>
-struct Impl<std::optional<T>> {
+struct Impl<std::optional<T>> : Default<std::optional<T>> {
     static bool dump(Target &a, std::optional<T> &t) {
         return t ? Impl<T>::dump(a, *t) : false;
     }
@@ -79,7 +79,7 @@ struct Impl<std::optional<T>> {
 /******************************************************************************/
 
 template <class T>
-struct Impl<std::shared_ptr<T>> {
+struct Impl<std::shared_ptr<T>> : Default<std::shared_ptr<T>> {
     static bool dump(Target &a, std::shared_ptr<T> const &p) {
         // DUMP("shared_ptr", t, Index::of<T>(), bool(p), Q);
         // return p && get_response<Q>(out, std::move(t), *p);
@@ -98,7 +98,7 @@ struct Impl<std::shared_ptr<T>> {
 /******************************************************************************/
 
 template <class ...Ts>
-struct Impl<std::variant<Ts...>> {
+struct Impl<std::variant<Ts...>> : Default<std::variant<Ts...>> {
     static bool dump(Target &a, std::variant<Ts...> const &) {
         return false;
         // return std::visit([&](auto &&x) {return get_response<Q>(out, t, static_cast<decltype(x) &&>(x));}, static_cast<V &&>(v));
@@ -169,7 +169,7 @@ struct LoadMap {
 };
 
 template <class K, class V, class C, class A>
-struct Impl<std::map<K, V, C, A>> : LoadMap<std::map<K, V, C, A>>, DumpMap<std::map<K, V, C, A>> {};
+struct Impl<std::map<K, V, C, A>> : Default<std::map<K, V, C, A>>, LoadMap<std::map<K, V, C, A>>, DumpMap<std::map<K, V, C, A>> {};
 
 /******************************************************************************/
 
@@ -183,7 +183,7 @@ struct LoadFunction {
 };
 
 template <class R, class ...Ts>
-struct Impl<std::function<R(Ts...)>> : LoadFunction<std::function<R(Ts...)>> {};
+struct Impl<std::function<R(Ts...)>> : Default<std::function<R(Ts...)>>, LoadFunction<std::function<R(Ts...)>> {};
 
 /******************************************************************************/
 

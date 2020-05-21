@@ -65,27 +65,40 @@ enum codes {
     info       =  7,
     relocate   =  8,
     call       =  9,
-    attribute  =  10,
-    element    =  11,
-    dump       =  12,
-    load       =  13
+    dump       =  10,
+    load       =  11,
+    attribute  =  12,
+    element    =  13,
+    compare    =  14
+    // unary
+    // binary
+    // hash
+    // print
+    // increment/decrement
 };
+
+inline constexpr bool valid(Code c) {return c < 15;}
 
 }
 
-inline char const * code_name(Code t) {
-    switch (t) {
-        case code::check:      return "check";
-        case code::destruct:   return "destruct";
-        case code::copy:       return "copy";
-        case code::name:       return "name";
-        case code::info:       return "info";
-        case code::relocate:   return "relocate";
-        case code::call:       return "call";
-        case code::dump:       return "dump";
-        case code::load:       return "load";
-        case code::assign:     return "assign";
-        default:               return "unknown";
+inline char const * code_name(Code c) {
+    if (!code::valid(c)) return "unknown";
+    switch (static_cast<code::codes>(c)) {
+        case code::check :      return "check";
+        case code::destruct :   return "destruct";
+        case code::deallocate : return "deallocate";
+        case code::copy :       return "copy";
+        case code::swap :       return "swap";
+        case code::assign :     return "assign";
+        case code::name :       return "name";
+        case code::info :       return "info";
+        case code::relocate :   return "relocate";
+        case code::call :       return "call";
+        case code::dump :       return "dump";
+        case code::load :       return "load";
+        case code::attribute :  return "attribute";
+        case code::element :    return "element";
+        case code::compare :    return "compare";
     }
 }
 

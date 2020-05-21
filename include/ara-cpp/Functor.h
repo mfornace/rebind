@@ -194,7 +194,7 @@ Call::stat caller_invoke(Target& out, F const &f, Caller &&c, maybe<Ts> &&...ts)
 /******************************************************************************/
 
 template <class F>
-struct Impl<Functor<F>> {
+struct Impl<Functor<F>> : Default<Functor<F>> {
     using Signature = simplify_signature<F>;
     using Return = decltype(first_type(Signature()));
     using UseCaller = decltype(second_is_convertible<Caller>(Signature()));
@@ -305,7 +305,7 @@ auto make_functor(F f, Lifetime const lifetime={}) {
 
 // N is the number of trailing optional arguments
 template <int N, class F>
-struct Impl<DefaultFunctor<N, F>> {
+struct Impl<DefaultFunctor<N, F>> : Default<DefaultFunctor<N, F>> {
     using Signature = simplify_signature<F>;
     using Return = decltype(first_type(Signature()));
     using UsesCaller = decltype(second_is_convertible<Caller>(Signature()));

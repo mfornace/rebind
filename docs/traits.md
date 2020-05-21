@@ -137,22 +137,22 @@ unary
 
 - `+`
 - `-`
-- `~`
 - `abs`: probably but not sure
+- `~`: only defined for integers usually
 - `log`, `exp`, etc: I don't think so.
 
 binary
 
-- `*`:
 - `%`:
-- `/`:
-- `**`:
 - `//`:
 - `<<`:
 - `>>`:
 - `&`:
 - `|`:
 - `^`:
+- `*`:
+- `/`:
+- `**`:
 
 mutate versions of the binaries
 unlikely:
@@ -285,11 +285,11 @@ stat(Target &out, Pointer source, Mode mode) noexcept;
 - `output`: Output storage address (see Target)
 - `length`: Output storage capacity in bytes (sizeof)
 - `lifetime`: Bit mask for dependent reference argument indices. (I think this can hold the inplace bool).
-- `mode`: Requested qualifier, see Target
+- `mode`: Requested qualifier, including `Existing` for assignment. see Target
 
 If output already exists ...
 
-- Need to add bool somewhere for output being already present. There should be no logical difference (I believe) for output being present or not present. This usage is mostly for optimization of storage and allocations.
+- There should be no logical difference (I believe) for output being present or not present. This usage is mostly for optimization of storage and allocations.
 - Need to figure out what to do with exceptions, because they don't necessarily have an output location now...
 
 **Outputs**:

@@ -176,12 +176,12 @@ struct Goo : GooBase {
 /******************************************************************************/
 
 template <>
-struct ara::Impl<GooBase> {
+struct ara::Impl<GooBase> : ara::Default<GooBase> {
     static bool call(Method, GooBase const &) {return false;}
 };
 
 template <>
-struct ara::Impl<Goo> {
+struct ara::Impl<Goo> : ara::Default<Goo> {
     static bool call(Method method, Goo &self) {
         DUMP("calling Goo");
         return method(self, ".x", &Goo::x, {0})
@@ -206,7 +206,7 @@ struct ara::Impl<Goo> {
 
 /******************************************************************************/
 
-struct Example : ara::GlobalSchema<Example> {
+struct Example : ara::GlobalSchema<Example>, ara::Default<Example> {
     static void write(ara::Schema &s);
 };
 

@@ -144,7 +144,7 @@ bool dump_object(Target &v, Object o) {
     }
 
     if (v.accepts<Index>()) {
-        if (auto p = cast_if<Index>(o)) return v.set_if(*p);
+        if (auto p = cast_if<Index>(o)) return v.emplace<Index>(*p);
         else return false;
     }
 

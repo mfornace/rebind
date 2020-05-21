@@ -95,7 +95,7 @@ bool debug() noexcept {return Debug;}
 
 void Target::set_current_exception() noexcept {
     try {
-        emplace<std::exception_ptr>(std::current_exception());
+        construct<std::exception_ptr>(std::current_exception());
         c.index = Index::of<std::exception_ptr>();
     } catch (...) {
         c.output = nullptr;
@@ -114,17 +114,17 @@ void Target::set_current_exception() noexcept {
 }
 
 Call::stat Call::wrong_number(Target &target, Code got, Code expected) noexcept {
-    target.emplace<ara_input>(got, expected);
+    target.construct<ara_input>(got, expected);
     return WrongNumber;
 }
 
 Call::stat Call::wrong_type(Target &target, Code n, Index i, Qualifier q) noexcept {
-    // target.emplace<ara_index>(ara_mode_index(i, static_cast<ara_mode>(q)), n);
+    // target.construct<ara_index>(ara_mode_index(i, static_cast<ara_mode>(q)), n);
     return WrongType;
 }
 
 Call::stat Call::wrong_return(Target &target, Index i, Qualifier q) noexcept {
-    target.emplace<ara_index>(ara_mode_index(i, static_cast<ara_mode>(q)));
+    target.construct<ara_index>(ara_mode_index(i, static_cast<ara_mode>(q)));
     return WrongReturn;
 }
 

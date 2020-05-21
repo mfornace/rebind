@@ -36,7 +36,7 @@ struct DumpTuple {
 
     template <std::size_t ...Is>
     static bool view(Target &v, T const &t, std::index_sequence<Is...>) {
-        if (auto o = v.emplace_if<View>()) {
+        if (auto o = v.emplace<View>()) {
             // o->size = sizeof...(Is);
             // o->shape = nullptr;
             // o->data = reinterpret_cast<ara_ref *>(new Ref[sizeof...(Is)]{Ref::from_existing(std::get<Is>(t))...});
@@ -126,7 +126,7 @@ struct LoadTuple {
 
 // Coverage of std::pair, std::array, and std::tuple. *Not* C arrays.
 template <class T>
-struct Impl<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : LoadTuple<T>, DumpTuple<T> {};
+struct Impl<T, std::enable_if_t<std::tuple_size<T>::value >= 0>> : Default<T>, LoadTuple<T>, DumpTuple<T> {};
 
 /******************************************************************************/
 

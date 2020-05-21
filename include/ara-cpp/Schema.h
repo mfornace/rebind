@@ -67,7 +67,7 @@ template <class Module>
 Schema GlobalSchema<Module>::global_schema{};
 
 template <class T>
-struct Impl<T, std::void_t<decltype(T::global_schema)>> {
+struct Impl<T, std::void_t<decltype(T::global_schema)>> : Default<T> {
     static_assert(std::is_aggregate_v<T>);
 
     static bool call(Method m, T) {

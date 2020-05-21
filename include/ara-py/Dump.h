@@ -33,16 +33,16 @@ inline Str from_bytes(Instance<PyBytesObject> o) {
 template <class T>
 bool dump_arithmetic(Target &target, Instance<> o) {
     DUMP("cast arithmetic in:", target.name());
-    if (PyFloat_Check(+o)) return target.emplace_if<T>(PyFloat_AsDouble(+o));
-    if (PyLong_Check(+o))  return target.emplace_if<T>(PyLong_AsLongLong(+o));
-    if (PyBool_Check(+o))  return target.emplace_if<T>(+o == Py_True);
+    if (PyFloat_Check(+o)) return target.emplace<T>(PyFloat_AsDouble(+o));
+    if (PyLong_Check(+o))  return target.emplace<T>(PyLong_AsLongLong(+o));
+    if (PyBool_Check(+o))  return target.emplace<T>(+o == Py_True);
     if (PyNumber_Check(+o)) { // This can be hit for e.g. numpy.int64
         if (std::is_integral_v<T>) {
             if (auto i = Shared::from(PyNumber_Long(+o)))
-                return target.emplace_if<T>(PyLong_AsLongLong(+i));
+                return target.emplace<T>(PyLong_AsLongLong(+i));
         } else {
             if (auto i = Shared::from(PyNumber_Float(+o)))
-               return target.emplace_if<T>(PyFloat_AsDouble(+i));
+               return target.emplace<T>(PyFloat_AsDouble(+i));
         }
     }
     DUMP("cast arithmetic out:", target.name());
@@ -65,14 +65,14 @@ inline bool dump_span(Target &target, Instance<> o) {
         PyObject** start = reinterpret_cast<PyTupleObject*>(+o)->ob_item;
         std::size_t size = PyTuple_GET_SIZE(+o);
         DUMP("dumping tuple into span", start, size ? *start : nullptr);
-        return target.emplace_if<Span>(reinterpret_cast<Export**>(start), size);
+        return target.emplace<Span>(reinterpret_cast<Export**>(start), size);
     }
     // depends on the guarantee below...hmmm...probably better to get rid of this approach
     if (PyList_Check(+o)) {
         PyObject** start = reinterpret_cast<PyListObject*>(+o)->ob_item;
         std::size_t size = PyList_GET_SIZE(+o);
         DUMP("dumping list into span", start, size ? *start : nullptr);
-        return target.emplace_if<Span>(reinterpret_cast<Export**>(start), size);
+        return target.emplace<Span>(reinterpret_cast<Export**>(start), size);
     }
     return false;
 }
@@ -93,12 +93,12 @@ inline bool dump_array(Target &target, Instance<> o) {
     if (PyTuple_Check(+o)) {
         PyObject** start = reinterpret_cast<PyTupleObject*>(+o)->ob_item;
         std::size_t size = PyTuple_GET_SIZE(+o);
-        return target.emplace_if<Array>(reinterpret_cast<Export**>(start), size, ObjectGuard::make_unique(o));
+        return target.emplace<Array>(reinterpret_cast<Export**>(start), size, ObjectGuard::make_unique(o));
     }
     if (PyList_Check(+o)) {
         PyObject** start = reinterpret_cast<PyListObject*>(+o)->ob_item;
         std::size_t size = PyList_GET_SIZE(+o);
-        return target.emplace_if<Array>(reinterpret_cast<Export**>(start), size, ObjectGuard::make_unique(o));
+        return target.emplace<Array>(reinterpret_cast<Export**>(start), size, ObjectGuard::make_unique(o));
     }
     if (PyDict_Check(+o)) {
         std::size_t const len = PyDict_Size(+o);
@@ -113,7 +113,7 @@ inline bool dump_array(Target &target, Instance<> o) {
             PyTuple_SET_ITEM(+a, 2 * i, key);
             PyTuple_SET_ITEM(+a, 2 * i + 1, value);
         }
-        return target.emplace_if<Array>(reinterpret_cast<PyTupleObject*>(+a)->ob_item,
+        return target.emplace<Array>(reinterpret_cast<PyTupleObject*>(+a)->ob_item,
             std::array<std::size_t, 2>{len, 2}, ObjectGuard::make_unique(instance(+a)));
     }
     return false;
@@ -154,12 +154,12 @@ inline View::Alloc allocated_view(Instance<> o) {
 
 inline bool dump_view(Target& target, Instance<> o) {
     auto alloc = allocated_view(o);
-    return alloc.data && target.emplace_if<View>(std::move(alloc));
+    return alloc.data && target.emplace<View>(std::move(alloc));
 }
 
 inline bool dump_tuple(Target& target, Instance<> o) {
     auto p = allocated_view(o);
-    return p.data && target.emplace_if<Tuple>(std::move(p.data), p.size, ObjectGuard::make_unique(o));
+    return p.data && target.emplace<Tuple>(std::move(p.data), p.size, ObjectGuard::make_unique(o));
     return false;
 }
 
@@ -174,19 +174,19 @@ inline bool dump_object(Target &target, Instance<> o) {
     }
 
     if (target.accepts<Str>()) {
-        if (auto p = get_unicode(o)) return target.emplace_if<Str>(from_unicode(instance(p)));
-        if (auto p = get_bytes(o)) return target.emplace_if<Str>(from_bytes(instance(p)));
+        if (auto p = get_unicode(o)) return target.emplace<Str>(from_unicode(instance(p)));
+        if (auto p = get_bytes(o)) return target.emplace<Str>(from_bytes(instance(p)));
         return false;
     }
 
     if (target.accepts<String>()) {
-        if (auto p = get_unicode(o)) return target.emplace_if<String>(from_unicode(instance(p)));
-        if (auto p = get_bytes(o)) return target.emplace_if<String>(from_bytes(instance(p)));
+        if (auto p = get_unicode(o)) return target.emplace<String>(from_unicode(instance(p)));
+        if (auto p = get_bytes(o)) return target.emplace<String>(from_bytes(instance(p)));
         return false;
     }
 
     if (target.accepts<Index>()) {
-        if (auto p = cast_if<Index>(+o)) return target.set_if(*p);
+        if (auto p = cast_if<Index>(+o)) return target.emplace<Index>(*p);
         else return false;
     }
 
@@ -209,7 +209,7 @@ inline bool dump_object(Target &target, Instance<> o) {
         return dump_tuple(target, o);
 
     if (target.accepts<Bool>()) {
-        return target.emplace_if<Bool>(Bool{static_cast<bool>(PyObject_IsTrue(+o))});
+        return target.emplace<Bool>(Bool{static_cast<bool>(PyObject_IsTrue(+o))});
     }
 
     return false;
@@ -222,7 +222,7 @@ inline bool dump_object(Target &target, Instance<> o) {
 namespace ara {
 
 template <>
-struct Impl<py::Export> {
+struct Impl<py::Export> : Default<py::Export> {
     static bool dump(Target &v, py::Export const &o) {return false;}
 
     static bool dump(Target &v, py::Export &o) {
@@ -232,7 +232,7 @@ struct Impl<py::Export> {
 };
 
 template <>
-struct Impl<py::Export*> {
+struct Impl<py::Export*> : Default<py::Export*> {
     static bool dump(Target &v, py::Export* o) {
         DUMP("dumping object pointer!", bool(o), o, reinterpret_cast<std::uintptr_t>(o));
         return py::dump_object(v, py::instance(reinterpret_cast<PyObject*>(o)));

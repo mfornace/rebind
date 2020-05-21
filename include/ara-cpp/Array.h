@@ -120,7 +120,7 @@ struct LoadVector {
 /******************************************************************************/
 
 template <class T, class A>
-struct Impl<std::vector<T, A>> : DumpVector<std::vector<T, A>>, LoadVector<std::vector<T, A>> {};
+struct Impl<std::vector<T, A>> : Default<std::vector<T, A>>, DumpVector<std::vector<T, A>>, LoadVector<std::vector<T, A>> {};
 
 /******************************************************************************/
 
