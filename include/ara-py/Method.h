@@ -35,27 +35,6 @@ PyObject *c_new(PyTypeObject* subtype, PyObject*, PyObject*) noexcept {
 
 /******************************************************************************/
 
-template <class T>
-void c_delete(PyObject *o) noexcept {
-    reinterpret_cast<Wrap<T> *>(o)->~Wrap<T>();
-    Py_TYPE(o)->tp_free(o);
-}
-
-/******************************************************************************/
-
-template <class T>
-void define_type(Instance<PyTypeObject> o, char const *name, char const *doc) noexcept {
-    DUMP("define type ", name);
-    (+o)->tp_name = name;
-    (+o)->tp_basicsize = sizeof(Wrap<T>);
-    (+o)->tp_dealloc = c_delete<T>;
-    (+o)->tp_new = c_new<T>;
-    (+o)->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
-    (+o)->tp_doc = doc;
-}
-
-/******************************************************************************/
-
 // move_from is called 1) during init, V.move_from(V), to transfer the object (here just use Var move constructor)
 //                     2) during assignment, R.move_from(L), to transfer the object (here cast V to new object of same type, swap)
 //                     2) during assignment, R.move_from(V), to transfer the object (here cast V to new object of same type, swap)
@@ -128,47 +107,63 @@ PyObject * c_get_index(PyObject* self, PyObject*) noexcept {
 // }
 // template <class Self>
 
-template <class Self>
-PyObject * c_set_ward(PyObject* self, PyObject *arg) noexcept {
-    return raw_object([=]() -> Shared {
-        Shared root{arg, true};
-        while (true) { // recurse upwards to find the governing lifetime
-            auto p = cast_if<Self>(root);
-            if (!p || !p->ward) break;
-            root = p->ward;
-        }
-        cast_object<Self>(self).ward = std::move(root);
-        return {self, true};
-    });
-}
-
 /******************************************************************************/
 
-template <class Self>
-PyObject* c_method(PyObject* s, PyObject* args, PyObject* kws) noexcept {
-    return raw_object([=]() -> Shared {
+
+struct BoundMethod {
+    PyObject *method;
+    PyObject *self;
+    BoundMethod(Shared m, Shared s) noexcept : method(m.leak()), self(s.leak()) {}
+    ~BoundMethod() noexcept {Py_DECREF(method); Py_DECREF(self);}
+};
+
+
+struct Method {
+    PyObject* signature;
+    PyObject* docstring;
+    PyObject* doc;
+    std::string name;
+
+    ~Method() noexcept {Py_DECREF(signature); Py_DECREF(docstring); Py_DECREF(doc);}
+
+    static Shared repr(Always<Method> self) {return {self->doc, true};}
+
+    static Shared str(Always<Method> self) {return {self->docstring, true};}
+
+    static Shared get(Always<Method> self, PyObject* instance, PyObject* cls) {
+        if (instance) {
+            BoundMethod({self, true}, {instance, true});
+            return {};
+        } else return {self, true};
+    }
+
+    static Shared call(PyObject*self, PyObject* args, PyObject* kws) {
         return {};
-        // auto argv = objects_from_argument_tuple(args);
-        // auto const [tag, out, gil] = function_call_keywords(kws);
+    }
+};
 
-        // if (!PyUnicode_Check(argv[0])) return type_error("expected instance of str for method name");
-        // std::string_view name = from_unicode(argv[0]);
 
-        // auto &self = cast_object<Self>(s);
-        // if (!self) return type_error("cannot lookup method on a null object");
+#define ARA_WRAP_OFFSET(type, member) offsetof(Wrap< type >, value) + offsetof(Method, member)
 
-        // auto lk = std::make_shared<PythonFrame>(!gil);
-        // Caller c(lk);
+PyMemberDef MethodMembers[] = {
+    const_cast<char*>("__signature__"), T_OBJECT_EX, ARA_WRAP_OFFSET(Method, signature), READONLY, const_cast<char*>("method signature"),
+    const_cast<char*>("docstring"), T_OBJECT_EX, ARA_WRAP_OFFSET(Method, docstring), READONLY, const_cast<char*>("doc string"),
+    const_cast<char*>("doc"), T_OBJECT_EX, ARA_WRAP_OFFSET(Method, doc), READONLY, const_cast<char*>("doc"),
+    nullptr
+};
 
-        // auto v = arguments_from_objects(c, name, Ref(tag), argv.begin()+1, argv.end());
-        // return {};
-        // return function_call_impl(out, Ref(self), ArgView(v.data(), argv.size()-1), is_value);
 
-        // return function_call_impl(out, Ref(std::as_const(it->second)), std::move(refs), is_value, gil, tag);
-        // return type_error("not implemented");
-    });
-}
+template <>
+void Wrap<Method>::initialize(Instance<PyTypeObject> o) noexcept {
+    define_type<Method>(o, "ara.Method", "ara Method type");
+    (+o)->tp_repr = Method::repr;
+    (+o)->tp_str = api<Method::str>;
+    (+o)->tp_descr_get = api<Method::get>;
+    (+o)->tp_call = Method::call;
+    (+o)->tp_members = MethodMembers;
+    // tp_traverse, tp_clear
+    // PyMemberDef, tp_members
+};
 
-/******************************************************************************/
 
 }

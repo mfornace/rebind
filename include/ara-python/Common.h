@@ -79,10 +79,6 @@ struct ArrayBuffer {
 
 /******************************************************************************/
 
-std::string_view from_unicode(PyObject *o);
-
-/******************************************************************************/
-
 template <class V, class F>
 Object map_as_tuple(V &&v, F &&f) noexcept {
     auto out = Object::from(PyTuple_New(std::size(v)));

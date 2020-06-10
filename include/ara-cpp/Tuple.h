@@ -82,7 +82,7 @@ struct LoadTuple {
     // template <class T, std::size_t ...Is>
     // static void request_each(std::optional<V> &out, T &&t, std::index_sequence<Is...>) {
     //     DUMP("trying LoadTuple load");
-    //     combine(out, std::move(t[Is]).load(Type<std::tuple_element_t<Is, V>>())...);
+    //     combine(out, std::move(t[Is]).get(Type<std::tuple_element_t<Is, V>>())...);
     // }
 
     // template <class T>
@@ -105,13 +105,13 @@ struct LoadTuple {
         // Tuple
         // DUMP("trying LoadTuple", r.name());
         // if constexpr(!std::is_same_v<V, Array>) {
-        //     if (auto p = r.load<std::array<Value, std::tuple_size_v<V>>>()) {
+        //     if (auto p = r.get<std::array<Value, std::tuple_size_v<V>>>()) {
         //         DUMP("trying array CompiledSequenceRequest2", r.name());
         //         load(out, std::move(*p));
         //     }
         //     return out;
         // }
-        // if (auto p = r.load<Sequence>()) {
+        // if (auto p = r.get<Sequence>()) {
         //     DUMP("trying CompiledSequenceRequest2", r.name());
         //     load(out, std::move(*p));
         // } else {

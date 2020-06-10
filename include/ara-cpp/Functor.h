@@ -58,7 +58,7 @@ struct Method {
     template <class S, class F>
     [[nodiscard]] bool operator()(S &&self, std::string_view name, F const functor, Lifetime life={}) {
         DUMP("Method::operator()", args.tags(), args.size());
-        if (args.tags() == 1) if (auto given = args.tag(0).load<Str>()) {
+        if (args.tags() == 1) if (auto given = args.tag(0).get<Str>()) {
             std::string_view s(*given);
             DUMP("Checking for method", name, "from", s);
             if (s == name) {
@@ -97,7 +97,7 @@ template <class T>
 maybe<T> cast_index(ArgView &v, IndexedType<T> i) {
     DUMP(i.index);
     DUMP(v[i.index].name());
-    return v[i.index].load(Type<T>());
+    return v[i.index].get(Type<T>());
 }
 
 /******************************************************************************/
@@ -116,14 +116,14 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
     }
 
     if constexpr(!std::is_void_v<U>) { // void already handled
-        if (target.accepts<U>()) {
+        if (target.matches<U>()) { // exact type match, excluding qualifiers
 
-            if (std::is_same_v<O, U &> && target.accepts(Target::Write)) {
+            if (std::is_same_v<O, U &> && target.can_yield(Target::Write)) {
                 target.set_reference(std::invoke(f, std::forward<Ts>(ts)...));
                 return Call::Write;
             }
 
-            if (std::is_reference_v<O> && target.accepts(Target::Read)) {
+            if (std::is_reference_v<O> && target.can_yield(Target::Read)) {
                 target.set_reference(static_cast<U const &>(std::invoke(f, std::forward<Ts>(ts)...)));
                 return Call::Read;
             }
@@ -135,7 +135,7 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
                     if (!std::is_same_v<O, U> && !is_dependent<U>) target.set_lifetime({});
                     return Call::Stack;
                 }
-                if (target.accepts(Target::Heap)) {
+                if (target.can_yield(Target::Heap)) {
                     target.set_heap(Allocator<U>::invoke_heap(f, std::forward<Ts>(ts)...));
                     if (!std::is_same_v<O, U> && !is_dependent<U>) target.set_lifetime({});
                     return Call::Heap;
@@ -144,7 +144,7 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
 
         } else {
             if constexpr(std::is_reference_v<O>) {
-                switch (Ref(std::invoke(f, std::forward<Ts>(ts)...)).load_to(target)) {
+                switch (Ref(std::invoke(f, std::forward<Ts>(ts)...)).get_to(target)) {
                     case Load::Exception: return Call::Exception;
                     case Load::OutOfMemory: return Call::OutOfMemory;
                     case std::is_same_v<O, U &> ? Load::Write : Load::Read:
@@ -155,7 +155,7 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
                 storage_like<U> storage;
                 new (&storage) U(std::invoke(f, std::forward<Ts>(ts)...));
                 Ref out(Index::of<U>(), Mode::Stack, Pointer::from(&storage));
-                switch (out.load_to(target)) {
+                switch (out.get_to(target)) {
                     case Load::Exception: return Call::Exception;
                     case Load::OutOfMemory: return Call::OutOfMemory;
                     case Load::Stack: return Call::Stack;

@@ -1,5 +1,5 @@
 import logging
-from .cpp import call, Variable
+from .cpp import call, Variable, Meta, Index
 
 print(dir(cpp))
 # print(call(None,'easy').load(Variable).load(float))
@@ -15,6 +15,13 @@ set_logger(log)
 
 # from .cpp import schema
 # schema = Schema('example', schema)
+import inspect
+print(type(Variable))
+print(Variable.mro())
+print(type(Variable).mro(type(Variable)))
+assert isinstance(Variable, type)
+assert isinstance(Meta, type)
+assert issubclass(Meta, type)
 
 ################################################################################
 
@@ -22,14 +29,33 @@ def easy():
     return call('easy', out=Variable)
 
 class Float(Variable):
+    hmm: float = 'Doc string'
+
     def __init__(self):
-        raise NotImplementedError
+        # raise NotImplementedError
+        pass
 
     def value(self):
         return self.load(float)
 
     def __repr__(self):
         return 'Float({})'.format(self.value())
+
+# Index.__hash__.__text_signature__ = ''
+print(inspect.signature(Variable.index))
+print(Variable.state(1))
+print(repr(inspect.signature(Variable.index)))
+# print(help(Variable))
+
+# input('hmm')
+# print(help(Variable.method))
+
+f = Float()
+print('instance_method', Float.instance_method)
+print('hash', Float.__hash__)
+print(Float.mro())
+print('hash', hash(Float()))
+print('set', set([Float()]))
 
 
 class Goo(Variable):
@@ -39,20 +65,27 @@ class Goo(Variable):
     def get_x(self):
         return self.method('get_x', out=Float, mode='r')
 
+    # def __hash__(self):
+    #     return 123
+
     @property
     def x(self):
-        return self.method('.x', out=float)
+        return self.attribute('x', out=float)
 
     @x.setter
     def x(self, value):
         self.method('.x=', value, out=None, mode='w')
 
+print('Goo name:', Goo.__name__)
+print('Goo mro:', Goo.mro())
+print('Goo type:', type(Goo))
 
 print('running easy()')
 print(easy())
 print('making Goo()')
 goo = Goo(1.5)
 print('goo', goo)
+print('goo.x', goo.x)
 print('get_x()', goo.get_x())
 print('get_x().lock()', goo.get_x().lock())
 print('get_x', goo.get_x().load(float))

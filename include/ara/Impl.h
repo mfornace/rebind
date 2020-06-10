@@ -34,34 +34,31 @@ struct DeclAny {
 
 /******************************************************************************************/
 
-// Dont need target here, just:
-// void* output
-// length
-// Pointer source
-// bool relocate / assign
-
 struct Copy {
-    enum stat : Stat {Stack, Heap, Impossible, Exception, OutOfMemory};
+    enum stat : Stat {Assign, Stack, Heap, Impossible, Exception, OutOfMemory};
 
     template <class T>
     struct Default {
-        static stat copy(void *out, T const&self, std::uintptr_t length) noexcept {
-            // return out.make_noexcept([&] {
-                if constexpr(std::is_copy_constructible_v<T>) {
-                    if (is_stackable<T>(length)) {
-                        Allocator<T>::stack(out, self);
-                        return Stack;
-                    } else {
-                        *static_cast<void **>(out) = Allocator<T>::heap(self);
-                        return Heap;
+        static stat copy(Target& out, T const& self) noexcept {
+            return out.make_noexcept([&] {
+                if constexpr(std::is_copy_assignable_v<T>) {
+                    if (out.can_yield(Target::Existing)) {
+                        *static_cast<T*>(out.output()) = self;
+                        return Assign;
                     }
-                } else return Impossible;
-            // }
+                }
+                if constexpr(is_copy_constructible_v<T>) {
+                    if (out.can_yield(Target::constraint<T> | Target::Heap)) {
+                        return out.construct<T>(self) ? Stack : Heap;
+                    }
+                }
+                return Impossible;
+            });
         }
     };
 
-    static stat call(Idx f, void* out, Pointer source, std::uintptr_t length) noexcept {
-        return static_cast<stat>(f({code::copy, {}}, out, source.base, reinterpret_cast<void*>(length)));
+    static stat call(Idx f, Target& out, Pointer self) noexcept {
+        return static_cast<stat>(f({code::copy, {}}, &out, self.base, {}));
     }
 };
 
@@ -69,8 +66,8 @@ struct Copy {
 
 // Relocate an object (construct T in new location and destruct the old one)
 // -- If t was on the Heap, it could have been trivially relocated; thus we can assume it is on the Stack
-// -- We also assume that the type is nothrow move constructible currently... this can change.
-
+// -- We also assume that the type is nothrow move constructible currently... this might change.
+// Need to add move assignment ...
 struct Relocate {
     enum stat : Stat {OK, Impossible};
 
@@ -87,23 +84,6 @@ struct Relocate {
 
     static stat call(Idx f, void* out, void* source) noexcept {
         return static_cast<stat>(f({code::relocate, {}}, out, source, {}));
-    }
-};
-
-/******************************************************************************/
-
-struct Assign {
-    enum stat : Stat {OK, Impossible, Exception, OutOfMemory};
-
-    template <class T>
-    struct Default {
-        static stat assign(T&out, Pointer self, Mode mode) noexcept {
-            return Impossible;
-        }
-    };
-
-    static stat call(Idx f, Pointer out, Pointer source, Mode mode) noexcept {
-        return static_cast<stat>(f({code::assign, static_cast<Code>(mode)}, out.base, source.base, {}));
     }
 };
 
@@ -263,15 +243,22 @@ struct Attribute {
 
     template <class T>
     struct Default {
-        static stat attribute_nothrow(Target& out, Pointer self, ara_str s, Mode mode) noexcept {
+        static stat attribute_nothrow(Target& out, Pointer self, ara_str name, Mode mode) noexcept {
             if constexpr(has_attribute_v<T>) {
-                std::string_view const name(s.data, s.size);
+                std::string_view const s(name.data, name.size);
                 return out.make_noexcept([&] {
                     switch (mode) {
-                        case Mode::Stack: {return Impl<T>::attribute(out, self.load<T&&>(), name);}
-                        case Mode::Heap:  {return Impl<T>::attribute(out, self.load<T&&>(), name);}
-                        case Mode::Write: {return Impl<T>::attribute(out, self.load<T&>(), name);}
-                        case Mode::Read:  {return Impl<T>::attribute(out, self.load<T const&>(), name);}
+                        case Mode::Stack: {if (!Impl<T>::attribute(out, self.load<T&&>(), s)) return None; break;}
+                        case Mode::Heap:  {if (!Impl<T>::attribute(out, self.load<T&&>(), s)) return None; break;}
+                        case Mode::Write: {if (!Impl<T>::attribute(out, self.load<T&>(), s)) return None; break;}
+                        case Mode::Read:  {if (!Impl<T>::attribute(out, self.load<T const&>(), s)) return None; break;}
+                    }
+                    switch (out.returned_mode()) {
+                        case Mode::Write: return Write;
+                        case Mode::Read: return Read;
+                        case Mode::Stack: return Stack;
+                        case Mode::Heap: return Heap;
+                        default: return None;
                     }
                 });
             } else return None;
@@ -285,25 +272,98 @@ struct Attribute {
 
 /******************************************************************************/
 
-ARA_DETECT_TRAIT(has_compare, decltype(Impl<T>::compare(std::declval<T const&>(), std::declval<T const&>(), DeclAny())));
+ARA_DETECT_TRAIT(has_operator_equal, decltype(true || std::declval<T const&>() == std::declval<T const&>()));
+ARA_DETECT_TRAIT(has_equal, decltype(Impl<T>::equal(std::declval<T const&>(), std::declval<T const&>(), DeclAny())));
 
-struct Compare {
-    enum operation : Code {Ternary, Eq, Ne, Lt, Gt, Le, Ge};
-    enum stat : Stat {Less, Equal, Greater, False, True, Incomparable};
+struct Equal {
+    enum stat : Stat {Impossible, False, True};
 
     template <class T>
     struct Default {
-        static stat compare_nothrow(T const& self, T const& other, operation op) noexcept {
-            if constexpr(has_compare_v<T>) {
+        static stat equal(T const& lhs, T const& rhs) {
+            if constexpr(has_operator_equal_v<T>) {
+                return (lhs == rhs) ? True : False;
+            } else return Impossible;
+        }
+
+        static stat equal_nothrow(T const& lhs, T const& rhs) noexcept {
+            if constexpr(has_equal_v<T>) {
                 // return out.make_noexcept([&] {
-                return Impl<T>::compare(self, other, op);
+                return Impl<T>::equal(lhs, rhs);
                 // });
-            } else return Incomparable;
+            } else return Impossible;
         }
     };
 
-    static stat call(Idx f, Pointer self, Pointer other, operation op) noexcept {
-        return static_cast<stat>(f({code::compare, static_cast<Code>(op)}, self.base, other.base, {}));
+    static stat call(Idx f, Pointer lhs, Pointer rhs) noexcept {
+        return static_cast<stat>(f({code::equal, {}}, lhs.base, rhs.base, {}));
+    }
+};
+
+/******************************************************************************/
+
+ARA_DETECT_TRAIT(has_compare, decltype(Impl<T>::compare(std::declval<T const&>(), std::declval<T const&>(), DeclAny())));
+ARA_DETECT_TRAIT(has_operator_less, decltype(true || std::declval<T const&>() < std::declval<T const&>()));
+
+struct Compare {
+    enum stat : Stat {Less, Equal, Equivalent, Greater, Unordered};
+
+    template <class T>
+    struct Default {
+        // If < and == are provided, assume strongly ordered
+        // If only < is provided, assume partially ordered
+        // Override to customize this behavior. Will improve with proper C++20 <=>.
+        static stat compare(T const& lhs, T const& rhs) {
+            if constexpr(has_operator_equal_v<T> && has_operator_less_v<T>) {
+                if (lhs == rhs) return Equal;
+                else if (lhs < rhs) return Less;
+                else return Greater;
+            } else if constexpr(has_operator_less_v<T>) {
+                if (lhs < rhs) return Less;
+                else if (rhs < lhs) return Greater;
+                else return Equivalent;
+            } else return Unordered;
+        }
+
+        static stat compare_nothrow(T const& lhs, T const& rhs) noexcept {
+            if constexpr(has_compare_v<T>) {
+                // return out.make_noexcept([&] {
+                return Impl<T>::compare(lhs, rhs);
+                // });
+            } else return Unordered;
+        }
+    };
+
+    static stat call(Idx f, Pointer lhs, Pointer rhs) noexcept {
+        return static_cast<stat>(f({code::compare, {}}, lhs.base, rhs.base, {}));
+    }
+};
+
+/******************************************************************************/
+
+ARA_DETECT_TRAIT(has_hash, decltype(std::size_t() + std::hash<T>()(std::declval<T const&>())));
+
+struct Hash {
+    enum stat : Stat {OK, Impossible};
+
+    template <class T>
+    struct Default {
+        static stat hash(std::size_t& out, T const& self) {
+            if constexpr(has_hash_v<T>) {
+                out = std::hash<T>()(self);
+                return OK;
+            } else return Impossible;
+        }
+
+        static stat hash_nothrow(std::size_t& out, T const& self) noexcept {
+            // return out.make_noexcept([&] {
+            return Impl<T>::hash(out, self);
+            // });
+        }
+    };
+
+    static stat call(Idx f, std::size_t& out, Pointer self) noexcept {
+        return static_cast<stat>(f({code::hash, {}}, &out, self.base, {}));
     }
 };
 
@@ -457,7 +517,6 @@ template <class T>
 struct Default :
     Copy::Default<T>,
     Relocate::Default<T>,
-    Assign::Default<T>,
     Swap::Default<T>,
     Destruct::Default<T>,
     Deallocate::Default<T>,
@@ -465,6 +524,8 @@ struct Default :
     Name::Default<T>,
     Element::Default<T>,
     Attribute::Default<T>,
+    Hash::Default<T>,
+    Equal::Default<T>,
     Compare::Default<T>,
     Dump::Default<T>,
     Load::Default<T>,
@@ -505,7 +566,7 @@ struct Switch {
                 return Impl<T>::deallocate(Pointer::from(o).load<T&>());
 
             case code::copy:
-                return Impl<T>::copy(o, Pointer::from(s).load<T const&>(), i.tag);
+                return Impl<T>::copy(*static_cast<Target*>(o), Pointer::from(s).load<T const&>());
 
             case code::relocate:
                 return Impl<T>::relocate(o, Pointer::from(s).load<T&&>());
@@ -513,8 +574,8 @@ struct Switch {
             case code::swap:
                 return Impl<T>::swap(Pointer::from(o).load<T&>(), Pointer::from(s).load<T&>());
 
-            case code::assign:
-                return Impl<T>::assign(Pointer::from(o).load<T&>(), Pointer::from(s), static_cast<Mode>(i.tag));
+            case code::hash:
+                return Impl<T>::hash_nothrow(*static_cast<std::size_t*>(o), Pointer::from(s).load<T const&>());
 
             case code::element:
                 return Impl<T>::element_nothrow(*static_cast<Target*>(o), Pointer::from(s), reinterpret_cast<std::uintptr_t>(args), static_cast<Mode>(i.tag));
@@ -523,7 +584,10 @@ struct Switch {
                 return Impl<T>::attribute_nothrow(*static_cast<Target*>(o), Pointer::from(s), *static_cast<ara_str*>(args), static_cast<Mode>(i.tag));
 
             case code::compare:
-                return Impl<T>::compare_nothrow(Pointer::from(o).load<T const&>(), Pointer::from(s).load<T const&>(), static_cast<Compare::operation>(i.tag));
+                return Impl<T>::compare_nothrow(Pointer::from(o).load<T const&>(), Pointer::from(s).load<T const&>());
+
+            case code::equal:
+                return Impl<T>::equal_nothrow(Pointer::from(o).load<T const&>(), Pointer::from(s).load<T const&>());
 
             case code::load:
                 return Impl<T>::load_nothrow(*static_cast<Target *>(o), Pointer::from(s), static_cast<Mode>(i.tag));

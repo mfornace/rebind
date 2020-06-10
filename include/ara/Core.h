@@ -12,8 +12,8 @@ namespace ara {
 
 template <>
 struct Impl<Str> : Default<Str> {
-    static bool dump(Target &v, Str s) {
-        if (v.accepts<String>()) return v.emplace<String>(s);
+    static bool dump(Target& v, Str s) {
+        if (v.accepts<String>()) return v.assign<String>(s);
         return false;
     };
 };
@@ -21,8 +21,8 @@ struct Impl<Str> : Default<Str> {
 
 template <>
 struct Impl<Bin> : Default<Bin> {
-    static bool dump(Target &v, Bin s) {
-        if (v.accepts<Binary>()) return v.emplace<Binary>(s);
+    static bool dump(Target& v, Bin s) {
+        if (v.accepts<Binary>()) return v.assign<Binary>(s);
         return false;
     };
 };
@@ -32,16 +32,16 @@ struct Impl<Bin> : Default<Bin> {
 /******************************************************************************/
 
 template <class S, class T>
-struct DumpableString {
-    static bool dump(Target &v, S const &s) {return false;};
-    static bool dump(Target &v, S &&s) {return false;};
+struct DumpString {
+    static bool dump(Target& v, S const &s) {return false;};
+    static bool dump(Target& v, S &&s) {return false;};
 };
 
 template <>
-struct Impl<String> : Default<String>, DumpableString<String, char> {};
+struct Impl<String> : Default<String>, DumpString<String, char> {};
 
 template <>
-struct Impl<Binary> : Default<Binary>, DumpableString<Binary, unsigned char> {};
+struct Impl<Binary> : Default<Binary>, DumpString<Binary, unsigned char> {};
 
 // We don't need Loadable<String> since C++ functionality already covered in Dumpable
 
@@ -49,24 +49,23 @@ struct Impl<Binary> : Default<Binary>, DumpableString<Binary, unsigned char> {};
 
 // Not sure about the wisdom of including these...?
 template <>
-struct Impl<char const *> : Default<char const *> {
-    static bool dump(Target &v, char const *s) {
+struct Impl<char const*> : Default<char const*> {
+    static bool dump(Target& v, char const* s) {
         if (v.accepts<Str>())
-            return v.emplace<Str>(s ? Str(s) : Str());
+            return v.assign<Str>(s ? Str(s) : Str());
 
-        if (v.accepts<String>()) {
-            if (s) return v.emplace<String>(s);
-            return v.emplace<String>();
-        }
+        if (v.accepts<String>())
+            return v.assign<String>(s);
+
         return false;
     }
 
-    static std::optional<char const *> load(Ref &v) {
-        DUMP("loading char const *");
-        std::optional<char const *> out;
+    static auto load(Ref &v) {
+        DUMP("loading char const*");
+        std::optional<char const*> out;
         if (!v) out.emplace(nullptr);
-        else if (auto p = v.load<Str>()) out.emplace(p->data());
-        // else if (auto p = v.load<char const &>()) out.emplace(std::addressof(*p));
+        else if (auto p = v.get<Str>()) out.emplace(p->data());
+        // else if (auto p = v.get<char const &>()) out.emplace(std::addressof(*p));
         return out;
     }
 };
@@ -74,14 +73,14 @@ struct Impl<char const *> : Default<char const *> {
 /******************************************************************************/
 
 template <class T>
-struct Impl<T *> : Default<T *> {
-    static std::optional<T *> load(Ref &v) {
-        std::optional<T *> out;
+struct Impl<T*> : Default<T*> {
+    static auto load(Ref &v) {
+        std::optional<T*> out;
         if (!v) {
             out.emplace(nullptr);
         } else {
             if constexpr(!std::is_function_v<T>) {
-                if (auto p = v.load<T &>()) out.emplace(std::addressof(*p));
+                if (auto p = v.get<T &>()) out.emplace(std::addressof(*p));
             }
         }
         return out;
@@ -110,9 +109,9 @@ struct Impl<T *> : Default<T *> {
 template <class T>
 struct Impl<T, std::enable_if_t<(std::is_floating_point_v<T>)>> : Default<T> {
     /// Default Dumpable for floating point allows conversion to Float or Integer
-    static bool dump(Target &v, T t) {
-        if (v.accepts<Float>()) return v.emplace<Float>(t);
-        if (v.accepts<Integer>()) return v.emplace<Integer>(t);
+    static bool dump(Target& v, T t) {
+        if (v.accepts<Float>()) return v.assign<Float>(t);
+        if (v.accepts<Integer>()) return v.assign<Integer>(t);
         return false;
     }
 
@@ -120,10 +119,11 @@ struct Impl<T, std::enable_if_t<(std::is_floating_point_v<T>)>> : Default<T> {
     Default Loadable for integer type tries to go through double precision
     long double is not expected to be a useful route (it's assumed there are not multiple floating types larger than Float)
     */
-    static std::optional<T> load(Ref &v) {
+    static auto load(Ref &v) {
+        std::optional<T> out;
         DUMP("convert to floating");
-        if (!std::is_same_v<Float, T>) if (auto p = v.load<Float>()) return static_cast<T>(*p);
-        return {}; //s.error("not convertible to floating point", Index::of<T>());
+        if (!std::is_same_v<Float, T>) if (auto p = v.get<Float>()) out.emplace(*p);
+        return out;
     }
 };
 
@@ -131,21 +131,21 @@ struct Impl<T, std::enable_if_t<(std::is_floating_point_v<T>)>> : Default<T> {
 
 template <>
 struct Impl<bool> : Default<bool> {
-    static bool dump(Target &v, bool t) {
+    static bool dump(Target& v, bool t) {
         DUMP("Dumpable <bool> to ", v.name());
-        if (v.accepts<Bool>()) return v.emplace<Bool>(t);
-        if (v.accepts<Integer>()) return v.emplace<Integer>(t);
+        if (v.accepts<Bool>()) return v.assign<Bool>(t);
+        if (v.accepts<Integer>()) return v.assign<Integer>(t);
         DUMP("Dumpable <bool> to ", v.name(), " failed");
         return false;
     }
 
     /// Default Loadable for integer type tries to go through Integer
-    static std::optional<bool> load(Ref &v) {
+    static auto load(Ref &v) {
+        std::optional<bool> out;
         DUMP("trying convert to bool ", v.name());
-        if (auto p = v.load<Bool>()) return static_cast<bool>(p->value);
-        if (auto p = v.load<Integer>()) return static_cast<bool>(*p);
-        DUMP("failed to convert to bool", v.name());
-        return {}; //s.error("not convertible to integer", Index::of<T>());
+        if (auto p = v.get<Bool>()) out.emplace(p);
+        else if (auto p = v.get<Integer>()) out.emplace(*p);
+        return out;
     }
 };
 
@@ -153,20 +153,20 @@ struct Impl<bool> : Default<bool> {
 
 template <class T>
 struct Impl<T, std::enable_if_t<(std::is_integral_v<T>)>> : Default<T> {
-    static bool dump(Target &v, T t) {
+    static bool dump(Target& v, T t) {
         DUMP("Dumpable<", type_name<T>(), "> to ", v.name());
-        if (v.accepts<Integer>()) return v.emplace<Integer>(t);
-        if (v.accepts<Float>()) return v.emplace<Float>(t);
+        if (v.accepts<Integer>()) return v.assign<Integer>(t);
+        if (v.accepts<Float>()) return v.assign<Float>(t);
         DUMP("Dumpable<", type_name<T>(), "> to ", v.name(), " failed");
         return false;
     }
 
     /// Default Loadable for integer type tries to go through Integer
-    static std::optional<T> load(Ref &v) {
+    static auto load(Ref &v) {
+        std::optional<T> out;
         DUMP("trying convert to integer ", v.name(), Index::of<T>());
-        if (!std::is_same_v<Integer, T>) if (auto p = v.load<Integer>()) return static_cast<T>(*p);
-        DUMP("failed to convert to integer", v.name(), Index::of<T>());
-        return {}; //s.error("not convertible to integer", Index::of<T>());
+        if (!std::is_same_v<Integer, T>) if (auto p = v.get<Integer>()) out.emplace(*p);
+        return out;
     }
 };
 
@@ -176,19 +176,20 @@ struct Impl<T, std::enable_if_t<(std::is_integral_v<T>)>> : Default<T> {
 /// Default Dumpable for enum permits conversion to integer types
 template <class T>
 struct Impl<T, std::enable_if_t<(std::is_enum_v<T>)>> {
-    static bool dump(Target &v, T t) {
+    static bool dump(Target& v, T t) {
         if (v.accepts<std::underlying_type_t<T>>())
-            return v.emplace<std::underlying_type_t<T>>(t);
+            return v.assign<std::underlying_type_t<T>>(t);
         if (v.accepts<Integer>())
-            return v.emplace<Integer>(t);
+            return v.assign<Integer>(t);
         return false;
     }
 
     // Default Loadable for enum permits conversion from integer types
-    static std::optional<T> load(Ref &v) {
+    static auto load(Ref& v) {
+        std::optional<T> out;
         DUMP("trying convert to enum", v.name(), Index::of<T>());
-        if (auto p = v.load<std::underlying_type_t<T>>()) return static_cast<T>(*p);
-        return {}; //s.error("not convertible to enum", Index::of<T>());
+        if (auto p = v.get<std::underlying_type_t<T>>()) out.emplace(*p);
+        return out;
     }
 };
 

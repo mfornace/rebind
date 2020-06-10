@@ -12,6 +12,18 @@ namespace ara {
 
 /******************************************************************************/
 
+union Bool {
+    ara_bool c;
+    explicit constexpr Bool(bool b) : c{b} {}
+
+    Bool& operator=(bool b) noexcept {c.value = b; return *this;}
+
+    explicit operator ara_bool() const noexcept {return c;}
+    explicit operator bool() const noexcept {return c.value;}
+};
+
+/******************************************************************************/
+
 // Release the given type into the raw C representation
 template <class T>
 auto const_slice(T const &t) {
@@ -48,8 +60,9 @@ union Str {
     std::size_t size() const {return c.size;}
     char const* data() const {return c.data;}
 
-    explicit operator ara_str() && noexcept {return move_slice(*this);}
-    explicit operator ara_str() const & {return const_slice(*this);}
+    operator ara_str() const & noexcept {return c;}
+
+    friend std::ostream& operator<<(std::ostream& os, Str const& s) {return os << s.view();}
 };
 
 static_assert(std::is_default_constructible_v<Str>);
@@ -63,8 +76,8 @@ static_assert(std::is_destructible_v<Str>);
 
 // target.emplace<Str>(...): can actually emplace CStr I guess? Then it returns CStr* instead...not too bad I guess
 // object.target<Str>(): ? could also return CStr*
-// object.load<Str>(): would return Str
-// object.load<Str &>(): probably disallow
+// object.get<Str>(): would return Str
+// object.get<Str &>(): probably disallow
 // dump(T &, Target, Index::of<Str>()): would put CStr into Target
 // dump(CStr &, Target, Index::of<T>()): acts normally
 // Index::of<Str>() same as Index::of<CStr>() same as Index::of<ara_str>()
@@ -91,8 +104,7 @@ union Bin {
             : std::basic_string_view<unsigned char>(c.data, c.size);
     }
 
-    explicit operator ara_bin() && noexcept {return move_slice(*this);}
-    explicit operator ara_bin() const & {return const_slice(*this);}
+    operator ara_bin() const & {return c;}
 };
 
 static_assert(std::is_default_constructible_v<Bin>);
@@ -447,6 +459,7 @@ union Tuple {
 
 /******************************************************************************/
 
+template <> struct AliasType<Bool>    {using type = ara_bool;};
 template <> struct AliasType<Str>    {using type = ara_str;};
 template <> struct AliasType<Bin>    {using type = ara_bin;};
 template <> struct AliasType<String> {using type = ara_string;};
@@ -461,17 +474,17 @@ template <> struct AliasType<View>   {using type = ara_view;};
 template <class Mod>
 struct Module {
     static void init(Caller caller={}) {
-        parts::call<void, 0>(fetch(Type<Mod>()), Mode::Read, Pointer::from(nullptr), caller);
+        parts::call<void, 0>(fetch(Type<Mod>()), Pointer::from(nullptr), Mode::Read, caller);
     }
 
     template <class T, int N=1, class ...Ts>
     static T call(Str name, Caller caller, Ts&& ...ts) {
-        return parts::call<T, N>(fetch(Type<Mod>()), Mode::Read, Pointer::from(nullptr), caller, name, std::forward<Ts>(ts)...);
+        return parts::call<T, N>(fetch(Type<Mod>()), Pointer::from(nullptr), Mode::Read, caller, name, std::forward<Ts>(ts)...);
     }
 
     template <class T, int N=1, class ...Ts>
-    static T get(Str name, Caller caller, Ts&& ...ts) {
-        return parts::get<T, N>(fetch(Type<Mod>()), Mode::Read, Pointer::from(nullptr), caller, name, std::forward<Ts>(ts)...);
+    static T attempt(Str name, Caller caller, Ts&& ...ts) {
+        return parts::attempt<T, N>(fetch(Type<Mod>()), Pointer::from(nullptr), Mode::Read, caller, name, std::forward<Ts>(ts)...);
     }
 };
 

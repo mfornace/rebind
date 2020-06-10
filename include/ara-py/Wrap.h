@@ -1,48 +1,98 @@
 #pragma once
 #include "Raw.h"
 // #include "Common.h"
-// #include "Variable.h"
 #include <ara/Common.h>
 
 namespace ara::py {
 
 /******************************************************************************/
 
+union pyType {
+    PyTypeObject object;
+    using builtin = PyTypeObject;
+    static Always<pyType> def() {return PyType_Type;}
+
+    static bool check(Always<> o) {return PyType_Check(+o);}
+    // static bool matches(Always<PyTypeObject> p) {return +p == Py_None->ob_type;}
+
+
+    bool is_subclass(Always<pyType> t) const {
+        if (&object == +t) return true;
+        int x = PyObject_IsSubclass(reinterpret_cast<PyObject*>(&const_cast<pyType&>(*this).object), ~t);
+        return (x < 0) ? throw PythonError() : x;
+    }
+
+    // static Value<> load(Ignore, Ignore, Ignore) {return {Py_None, true};}
+};
+
+/******************************************************************************/
+
 template <class T>
-struct Wrap {
-    PyObject_HEAD // seems to be 16 bytes for the ref count and the type object
-    T value; // stack is OK because this object is only casted to anyway.
-    static PyTypeObject type;
-    static void initialize(Instance<PyTypeObject>) noexcept;
+struct StaticType {
+    using type = T;
+    static PyTypeObject definition;
+    static void initialize(Always<pyType>) noexcept;
+
+    static Always<pyType> def() {return definition;}
+    static bool check(Always<> o) {return PyObject_TypeCheck(+o, &definition);}
 };
 
 template <class T>
-PyTypeObject Wrap<T>::type{PyVarObject_HEAD_INIT(NULL, 0)};
+PyTypeObject StaticType<T>::definition{PyVarObject_HEAD_INIT(NULL, 0)};
+
 
 /******************************************************************************/
 
 template <class T>
-Instance<PyTypeObject> static_type(Type<T> = {}) noexcept {
-    return instance(&Wrap<T>::type);
+PyObject *default_construct(PyTypeObject* subtype, PyObject*, PyObject*) noexcept {
+    PyObject *o = subtype->tp_alloc(subtype, 0); // 0 unused
+    if (o) reinterpret_cast<T*>(o)->init(); // Default construct the C++ type
+    return o;
 }
 
 /******************************************************************************/
 
 template <class T>
-T* cast_if(PyObject* o) {
-    if (!o || !PyObject_TypeCheck(+o, +static_type<T>())) return nullptr;
-    return std::addressof(reinterpret_cast<Wrap<T> *>(+o)->value);
+void call_destructor(PyObject *o) noexcept {
+    reinterpret_cast<T *>(o)->~T();
+    Py_TYPE(o)->tp_free(o);
 }
 
-template <class T>
-T& cast_object_unsafe(PyObject *o) noexcept {return reinterpret_cast<Wrap<T> *>(o)->value;}
+/******************************************************************************/
 
 template <class T>
-T& cast_object(PyObject *o) {
-    if (!PyObject_TypeCheck(o, +static_type<T>()))
-        throw std::invalid_argument("Expected instance of " + std::string(typeid(T).name()));
-    return cast_object_unsafe<T>(o);
+void define_type(Always<pyType> o, char const *name, char const *doc) noexcept {
+    DUMP("define type ", name);
+    (+o)->tp_name = name;
+    (+o)->tp_basicsize = sizeof(T);
+    (+o)->tp_dealloc = call_destructor<T>;
+    (+o)->tp_new = default_construct<T>;
+    (+o)->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
+    (+o)->tp_doc = doc;
 }
+
+/******************************************************************************/
+
+// template <class T>
+// Always<Type> static_type(ara::Type<T> = {}) noexcept {return T::type();}
+
+/******************************************************************************/
+
+// template <class T>
+// T* cast_if(PyObject* o) {
+//     if (!o || !PyObject_TypeCheck(+o, +static_type<T>())) return nullptr;
+//     return std::addressof(reinterpret_cast<Wrap<T> *>(+o)->value);
+// }
+
+// template <class T>
+// T& cast_object_unsafe(PyObject *o) noexcept {return reinterpret_cast<Wrap<T> *>(o)->value;}
+
+// template <class T>
+// T& cast_object(PyObject *o) {
+//     if (!PyObject_TypeCheck(o, +static_type<T>()))
+//         throw std::invalid_argument("Expected instance of " + std::string(typeid(T).name()));
+//     return cast_object_unsafe<T>(o);
+// }
 
 /******************************************************************************/
 

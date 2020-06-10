@@ -135,15 +135,20 @@ union Target {
 
     // Return whether a type is accepted
     template <class T>
-    bool accepts() const noexcept {return !index() || index() == Index::of<T>();}
+    constexpr bool accepts(Type<T> t={}) const noexcept {
+        static_assert(!std::is_rvalue_reference_v<T>);
+        if (!matches<unqualified<T>>()) return false;
+        if constexpr(std::is_reference_v<T>) {
+            return can_yield(std::is_const_v<std::remove_reference_t<T>> ? Read : Write);
+        } else {
+            return can_yield(constraint<T> | Heap | Existing);
+        }
+    }
 
-    // Return whether a storage class is accepted
-    constexpr bool accepts(Constraint in) const noexcept {return c.mode & in;}
-
-    // Return current output, if there is any
+    // If there is currently held (writable) output of the specified type, return its address
     template <class T>
     [[nodiscard]] T* get(Type<T> t={}) const {
-        return accepts(Existing) && index() == Index::of<T>() ? static_cast<T*>(c.output) : nullptr;
+        return can_yield(Existing) && index() == Index::of<T>() ? static_cast<T*>(c.output) : nullptr;
     }
 
     // Return current output, default constructing it if it is not present
@@ -162,24 +167,61 @@ union Target {
         return static_cast<T*>(output());
     }
 
+    // Try to insert a type T which defaults to unqualified<Source>
+    // If the output of that type already exists, assign: `static_cast<T &>(dest) = source`
+    // If the output does not already exist, construct it like `T(source)`
+    // Return whether successful
+    template <class T=void, class Source>
+    [[nodiscard]] bool assign(Source &&s) {
+        using Out = std::conditional_t<std::is_void_v<T>, unqualified<Source>, T>;
+        if (!accepts<Out>()) return false;
+        if constexpr(std::is_reference_v<Out>) {
+            set_reference(s);
+            return true;
+        } else {
+            if (can_yield(Existing)) {
+                *static_cast<Out*>(output()) = std::forward<Source>(s);
+                return true;
+            }
+            if (can_yield(constraint<T> | Heap)) {
+                construct<Out>(std::forward<Source>(s));
+                return true;
+            }
+            return false;
+        }
+    }
+
     /**************************************************************************/
 
+    // Return whether a storage class is accepted
+    constexpr bool can_yield(Constraint in) const noexcept {return c.mode & in;}
+
+    // Return whether the unqualified type is allowed by the target
+    template <class T>
+    bool matches(Type<T> t={}) const noexcept {
+        static_assert(std::is_same_v<T, unqualified<T>>);
+        return !index() || index() == Index::of<T>();
+    }
+
     template <class T, class ...Ts>
-    void construct(Ts &&...ts) {
+    bool construct(Ts &&...ts) {
         if (auto p = placement<T>()) {
             Allocator<T>::stack(p, static_cast<Ts &&>(ts)...);
             c.mode = static_cast<ara_mode>(Mode::Stack);
+            set_index<T>();
+            return true;
         } else {
             c.output = Allocator<T>::heap(static_cast<Ts &&>(ts)...);
             c.mode = static_cast<ara_mode>(Mode::Heap);
+            set_index<T>();
+            return false;
         }
-        set_index<T>();
     }
 
     // Return placement new pointer if it is available for type T
     template <class T>
     constexpr void* placement() const noexcept {
-        return ((c.mode & constraint<T>) && is_stackable<T>(length())) ? output() : nullptr;
+        return can_yield(constraint<T>) && is_stackable<T>(length()) ? output() : nullptr;
     }
 
     // Set pointer to a heap allocation

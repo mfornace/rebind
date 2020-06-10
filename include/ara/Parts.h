@@ -1,6 +1,7 @@
 #pragma once
 #include "Index.h"
 #include "Frame.h"
+#include "Impl.h"
 #include <optional>
 
 /******************************************************************************************/
@@ -49,10 +50,42 @@ using maybe = typename Maybe<T>::type;
 namespace parts {
 
 template <class T, int N, class ...Ts>
-T call(Index i, Mode qualifier, Pointer self, Caller &c, Ts &&...ts);
+T call(Index i, Pointer self, Mode mode, Caller &c, Ts &&...ts);
+
 
 template <class T, int N, class ...Ts>
-maybe<T> get(Index i, Mode qualifier, Pointer self, Caller &c, Ts &&...ts);
+maybe<T> attempt(Index i, Pointer self, Mode mode, Caller &c, Ts &&...ts);
+
+
+inline void swap(Index i, Pointer l, Pointer r) noexcept {
+    Swap::call(i, l, r);
+}
+
+
+inline std::size_t hash(Index i, Pointer self) noexcept {
+    std::size_t out;
+    Hash::call(i, out, self);
+    return out;
+}
+
+
+inline bool equal(Index i, Pointer l, Pointer r) noexcept {
+    return Equal::call(i, l, r) == Equal::True;
+}
+
+
+inline bool less(Index i, Pointer l, Pointer r) noexcept {
+    return Compare::call(i, l, r) == Compare::Less;
+}
+
+
+template <class T>
+T attribute(Index i, Pointer self, Mode mode, std::string_view) noexcept;
+
+
+template <class T>
+T element(Index i, Pointer self, Mode mode, std::intptr_t) noexcept;
+
 
 }
 

@@ -8,7 +8,6 @@
 extern "C" {
 
 ARA_DEFINE(void, void);
-ARA_DEFINE(bool, ara_bool);
 ARA_DEFINE(cpp_bool, bool);
 ARA_DEFINE(char, char);
 ARA_DEFINE(uchar, unsigned char);
@@ -23,6 +22,7 @@ ARA_DEFINE(double, double);
 // ara_define_str() {return }
 // ara::Switch<TYPE>::call
 
+ARA_DEFINE(bool,   ara::Bool);
 ARA_DEFINE(str,    ara::Str);
 ARA_DEFINE(bin,    ara::Bin);
 ARA_DEFINE(string, ara::String);

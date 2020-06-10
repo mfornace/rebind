@@ -1,4 +1,4 @@
-#include <ara-py/Raw.h>
+#include <ara-py/Module.h>
 
 struct Example;
 // #define ARA_CAT_IMPL(s1, s2, s3, s4) s1##s2##s3##s4

@@ -1,6 +1,7 @@
 #pragma once
 #include <ara/Ref.h>
 #include <ara/Call.h>
+#include "Traits.h"
 
 namespace ara {
 
@@ -15,20 +16,34 @@ static constexpr bool is_manageable = is_implementable<T> && !std::is_same_v<T, 
 
 /******************************************************************************/
 
-struct Value {
+struct Base {
+    enum Loc : ara_mode {Trivial, Stack, Heap};
+
+    Tagged<Loc> idx;
+
+    void release() noexcept {idx.reset();}
+    Loc location() const noexcept {return static_cast<Loc>(idx.tag());}
+    Index index() const noexcept {return Index(idx);}
+    std::string_view name() const noexcept {return index().name();}
+    constexpr bool has_value() const noexcept {return idx.has_value();}
+    explicit constexpr operator bool() const noexcept {return has_value();}
+};
+
+/******************************************************************************/
+
+struct Value : Base {
     union Storage {
         void *pointer;
         char data[24];
     };
 
-    enum Loc : ara_mode {Trivial, Stack, Heap};
-
     template <class T>
     static constexpr Loc loc_of = is_stackable<T>(sizeof(Storage))
         && std::is_nothrow_move_constructible_v<T> ? (std::is_trivially_copyable_v<T> ? Trivial : Stack): Heap;
 
-    Tagged<Loc> idx;
     Storage storage;
+
+    /**************************************************************************/
 
     Value() noexcept = default;
 
@@ -51,20 +66,7 @@ struct Value {
     /**************************************************************************/
 
     bool destruct() noexcept;
-
     void reset() noexcept {if (destruct()) release();}
-
-    void release() noexcept {idx.reset();}
-
-    Loc location() const noexcept {return static_cast<Loc>(idx.tag());}
-
-    Index index() const noexcept {return Index(idx);}
-
-    std::string_view name() const noexcept {return index().name();}
-
-    constexpr bool has_value() const noexcept {return idx.has_value();}
-
-    explicit constexpr operator bool() const noexcept {return has_value();}
 
     /**************************************************************************/
 
@@ -77,8 +79,6 @@ struct Value {
     }
 
     /**************************************************************************/
-
-    std::optional<Copyable> clone() const;
 
     template <class T>
     T const *target(Type<T> = {}) const {
@@ -96,36 +96,40 @@ struct Value {
         else return Pointer::from(const_cast<void *>(static_cast<void const *>(&storage)));
     }
 
+    /**************************************************************************/
+
+    std::optional<Copyable> clone() const;
+
     Ref as_ref() const & noexcept {return *this ? Ref(index(), Mode::Read, address()) : Ref();}
     Ref as_ref() & noexcept {return *this ? Ref(index(), Mode::Write, address()) : Ref();}
 
     template <class T>
-    std::optional<T> load(Type<T> t={}) const {return as_ref().load(t);}
-
-    /**************************************************************************/
+    std::optional<T> get(Type<T> t={}) const {return as_ref().get(t);}
 
     template <class T=Value, int N=0, class ...Ts>
     T call(Caller c, Ts &&...ts) const {
-        return parts::call<T, N>(index(), Mode::Read, address(), c, static_cast<Ts &&>(ts)...);
+        return parts::call<T, N>(index(), address(), Mode::Read, c, static_cast<Ts &&>(ts)...);
     }
 
     template <class T=Value, int N=0, class ...Ts>
     T mutate(Caller c, Ts &&...ts) {
-        return parts::call<T, N>(index(), Mode::Write, address(), c, static_cast<Ts &&>(ts)...);
+        return parts::call<T, N>(index(), address(), Mode::Write, c, static_cast<Ts &&>(ts)...);
     }
 
     template <class T=Value, int N=0, class ...Ts>
     T move(Caller c, Ts &&...ts) {
         Ref ref(index(), location() == Heap ? Mode::Heap : Mode::Stack, address());
         release();
-        return parts::call<T, N>(ref.index(), ref.tag(), ref.pointer(), c, static_cast<Ts &&>(ts)...);
+        return parts::call<T, N>(ref.index(), ref.pointer(), ref.mode(), c, static_cast<Ts &&>(ts)...);
     }
 
     template <class T=Value, int N=0, class ...Ts>
-    maybe<T> get(Caller c, Ts &&...ts) const {
+    maybe<T> attempt(Caller c, Ts &&...ts) const {
         if (!has_value()) return Maybe<T>::none();
-        return parts::get<T, N>(index(), Mode::Read, address(), c, static_cast<Ts &&>(ts)...);
+        return parts::attempt<T, N>(index(), Mode::Read, address(), c, static_cast<Ts &&>(ts)...);
     }
+
+    auto get_to(Target &t) const {return as_ref().get_to(t);}
 
     // bool assign_if(Ref const &p) {return stat::assign_if::ok == parts::assign_if(index(), address(), p);}
 
@@ -141,13 +145,6 @@ struct Value {
     // T cast(Type<T> t={}) && {Scope s; return std::move(*this).cast(s, t);}
 
     /**************************************************************************/
-
-    auto load_to(Target &t) const {return as_ref().load_to(t);}
-
-    /**************************************************************************/
-
-    // template <class ...Args>
-    // Value operator()(Args &&...args) const;
 };
 
 template <>
@@ -189,7 +186,7 @@ T & Value::emplace(Type<T>, Args &&...args) {
 
 /******************************************************************************/
 
-inline Value::Value(Value&& v) noexcept : idx(v.idx), storage(v.storage) {
+inline Value::Value(Value&& v) noexcept : Base{v.idx}, storage(v.storage) {
     if (location() == Loc::Stack) Relocate::call(index(), &storage.data, &v.storage.data);
     v.release();
 }
@@ -220,9 +217,9 @@ inline bool Value::destruct() noexcept {
 
 template <>
 struct CallReturn<Value> {
-    static Value call(Index i, Mode qualifier, Pointer self, ArgView &args);
+    static Value call(Index i, Pointer self, Mode qualifier, ArgView &args);
 
-    static Value get(Index i, Mode qualifier, Pointer self, ArgView &args);
+    static Value attempt(Index i, Pointer self, Mode qualifier, ArgView &args);
 };
 
 // struct Copyable : Value {
@@ -246,13 +243,6 @@ struct CallReturn<Value> {
 //     Copyable clone() const {return *this;}
 // };
 
-
-template <class Out, class Module>
-Out global_call();
-
-/******************************************************************************/
-
-// struct {
     // Value(Value const &v) {
     //     if (stat::copy::ok != parts::copy(*this, v.index(), v.address())) throw std::runtime_error("no copy");
     // }
@@ -261,7 +251,6 @@ Out global_call();
     //     if (stat::copy::ok != parts::copy(*this, v.index(), v.address())) throw std::runtime_error("no copy");
     //     return *this;
     // }
-// }
 
 /******************************************************************************/
 

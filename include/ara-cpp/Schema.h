@@ -82,7 +82,7 @@ struct Impl<T, std::void_t<decltype(T::global_schema)>> : Default<T> {
             DUMP(a.name());
         }
 
-        if (auto name = m.args.tag(0).load<Str>()) {
+        if (auto name = m.args.tag(0).get<Str>()) {
             DUMP(name->data());
             DUMP(std::string_view(*name), name->size());
             auto const &value = T::global_schema[*name];

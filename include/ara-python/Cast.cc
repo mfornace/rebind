@@ -32,7 +32,7 @@ Object list_cast(Ref &ref, Object const &o, Object const &root) {
     if (auto args = type_args(o, 1)) {
         DUMP("is list ", PyList_Check(o));
         Scope s;
-        if (auto p = ref.load<Sequence>(s)) {
+        if (auto p = ref.get<Sequence>(s)) {
         //     Object vt{PyTuple_GET_ITEM(+args, 0), true};
         //     auto list = Object::from(PyList_New(v.size()));
         //     for (Py_ssize_t i = 0; i != v.size(); ++i) {
@@ -53,7 +53,7 @@ Object tuple_cast(Ref &ref, Object const &o, Object const &root) {
     if (auto args = type_args(o)) {
         Py_ssize_t const len = PyTuple_GET_SIZE(+args);
         Scope s;
-        if (auto v = ref.load<Sequence>(s)) {
+        if (auto v = ref.get<Sequence>(s)) {
             // if (len == 2 && PyTuple_GET_ITEM(+args, 1) == Py_Ellipsis) {
             //     Object vt{PyTuple_GET_ITEM(+args, 0), true};
             //     auto tup = Object::from(PyTuple_New(v.size()));
@@ -78,7 +78,7 @@ Object dict_cast(Ref &ref, Object const &o, Scope &s, Object const &root) {
         Object val{PyTuple_GET_ITEM(+args, 1), true};
 
         if (+key == SubClass<PyTypeObject>{&PyUnicode_Type}) {
-            if (auto v = ref.load<Dictionary>(s)) {
+            if (auto v = ref.get<Dictionary>(s)) {
                 auto out = Object::from(PyDict_New());
                 for (auto &x : *v) {
                     Object k = as_object(x.first);
@@ -89,7 +89,7 @@ Object dict_cast(Ref &ref, Object const &o, Scope &s, Object const &root) {
             }
         }
 
-        if (auto v = ref.load<Vector<std::pair<Value, Value>>>(s)) {
+        if (auto v = ref.get<Vector<std::pair<Value, Value>>>(s)) {
             auto out = Object::from(PyDict_New());
             for (auto &x : *v) {
                 Object k = cast_to_object(Ref(std::move(x.first)), key, root);

@@ -83,10 +83,10 @@ struct Arg<T&&> {
 
 template <class T>
 struct CallReturn {
-    static std::optional<T> get(Index i, Mode qualifier, Pointer self, ArgView &args) {
+    static std::optional<T> attempt(Index i, Pointer self, Mode mode, ArgView &args) {
         std::aligned_union_t<0, T, void*> buffer;
         Target target(Index::of<T>(), &buffer, sizeof(buffer), Target::constraint<T>);
-        auto const stat = Call::call(i, target, self, qualifier, args);
+        auto const stat = Call::call(i, target, self, mode, args);
 
         std::optional<T> out;
         switch (stat) {
@@ -105,10 +105,10 @@ struct CallReturn {
     }
 
     template <class ...Ts>
-    static T call(Index i, Mode qualifier, Pointer self, ArgView &args) {
+    static T call(Index i, Pointer self, Mode mode, ArgView &args) {
         std::aligned_union_t<0, T, void*> buffer;
         Target target(Index::of<T>(), &buffer, sizeof(buffer), Target::constraint<T>);
-        auto const stat = Call::call(i, target, self, qualifier, args);
+        auto const stat = Call::call(i, target, self, mode, args);
 
         switch (stat) {
             case Call::Stack: {
@@ -124,12 +124,12 @@ struct CallReturn {
 
 template <class T>
 struct CallReturn<T &> {
-    static T * get(Index i, Mode qualifier, Pointer self, ArgView &args) {
+    static T * attempt(Index i, Pointer self, Mode mode, ArgView &args) {
         DUMP("calling something that returns reference ...");
         Target target(Index::of<std::remove_cv_t<T>>(), nullptr, 0,
             std::is_const_v<T> ? Target::Read : Target::Write);
 
-        auto const stat = Call::call(i, target, self, qualifier, args);
+        auto const stat = Call::call(i, target, self, mode, args);
         DUMP("got stat", stat);
         switch (stat) {
             case (std::is_const_v<T> ? Call::Read : Call::Write): return *reinterpret_cast<T *>(target.output());
@@ -141,12 +141,12 @@ struct CallReturn<T &> {
         }
     }
 
-    static T & call(Index i, Mode qualifier, Pointer self, ArgView &args) {
+    static T & call(Index i, Pointer self, Mode mode, ArgView &args) {
         DUMP("calling something that returns reference ...");
         Target target(Index::of<std::remove_cv_t<T>>(), nullptr, 0,
             std::is_const_v<T> ? Target::Read : Target::Write);
 
-        auto const stat = Call::call(i, target, self, qualifier, args);
+        auto const stat = Call::call(i, target, self, mode, args);
         DUMP("got stat", stat);
         switch (stat) {
             case (std::is_const_v<T> ? Call::Read : Call::Write): return *reinterpret_cast<T *>(target.output());
@@ -159,11 +159,11 @@ struct CallReturn<T &> {
 
 template <>
 struct CallReturn<void> {
-    static void call(Index i, Mode qualifier, Pointer self, ArgView &args) {
+    static void call(Index i, Pointer self, Mode mode, ArgView &args) {
         DUMP("calling something...", args.size());
         Target target(Index(), nullptr, 0, Target::None);
 
-        auto const stat = Call::call(i, target, self, qualifier, args);
+        auto const stat = Call::call(i, target, self, mode, args);
         DUMP("got stat", stat);
         switch (stat) {
             case Call::None: {return;}
@@ -171,11 +171,11 @@ struct CallReturn<void> {
         }
     }
 
-    static void get(Index i, Mode qualifier, Pointer self, ArgView &args) {
+    static void attempt(Index i, Pointer self, Mode mode, ArgView &args) {
         DUMP("calling something...");
         Target target(Index(), nullptr, 0, Target::None);
 
-        auto const stat = Call::call(i, target, self, qualifier, args);
+        auto const stat = Call::call(i, target, self, mode, args);
         DUMP("got stat", stat);
         switch (stat) {
             case Call::None: {return;}
@@ -192,10 +192,10 @@ struct CallReturn<void> {
 
 template <>
 struct CallReturn<Ref> {
-    static Ref call(Index i, Mode qualifier, Pointer self, ArgView &args) {
+    static Ref call(Index i, Pointer self, Mode mode, ArgView &args) {
         DUMP("calling something...");
         Target target(Index(), nullptr, 0, Target::Read | Target::Write);
-        auto stat = Call::call(i, target, self, qualifier, args);
+        auto stat = Call::call(i, target, self, mode, args);
 
         switch (stat) {
             case Call::Read:   return Ref(target.index(), Mode::Read, Pointer::from(target.output()));
@@ -247,28 +247,28 @@ static_assert(std::is_same_v<typename Reduce< void(double) >::type, void(*)(doub
 /******************************************************************************/
 
 template <class T, int N, class ...Ts>
-T call_args(Index i, Mode qualifier, Pointer self, Caller &c, Arg<Ts &&> ...ts) {
+T call_args(Index i, Pointer self, Mode mode, Caller &c, Arg<Ts &&> ...ts) {
     static_assert(N <= sizeof...(Ts));
     ArgStack<N, sizeof...(Ts) - N> args(c, ts.ref()...);
     DUMP(type_name<T>(), " tags=", N, " args=", reinterpret_cast<ArgView &>(args).size());
     ((std::cout << type_name<Ts>() << std::endl), ...);
-    return CallReturn<T>::call(i, qualifier, self, reinterpret_cast<ArgView &>(args));
+    return CallReturn<T>::call(i, self, mode, reinterpret_cast<ArgView &>(args));
 }
 
 template <class T, int N, class ...Ts>
-T call(Index i, Mode qualifier, Pointer self, Caller &c, Ts &&...ts) {
-    return call_args<T, N, typename Reduce<Ts>::type...>(i, qualifier, self, c, static_cast<Ts &&>(ts)...);
+T call(Index i, Pointer self, Mode mode, Caller &c, Ts &&...ts) {
+    return call_args<T, N, typename Reduce<Ts>::type...>(i, self, mode, c, static_cast<Ts &&>(ts)...);
 }
 
 template <class T, int N, class ...Ts>
-maybe<T> get_args(Index i, Mode qualifier, Pointer self, Caller &c, Arg<Ts &&> ...ts) {
+maybe<T> attempt_args(Index i, Pointer self, Mode mode, Caller &c, Arg<Ts &&> ...ts) {
     ArgStack<N, sizeof...(Ts) - N> args(c, ts.ref()...);
-    return CallReturn<T>::get(i, qualifier, self, reinterpret_cast<ArgView &>(args));
+    return CallReturn<T>::attempt(i, self, mode, reinterpret_cast<ArgView &>(args));
 }
 
 template <class T, int N, class ...Ts>
-maybe<T> get(Index i, Mode qualifier, Pointer self, Caller &c, Ts &&...ts) {
-    return get_args<T, N, typename Reduce<Ts>::type...>(i, qualifier, self, c, static_cast<Ts &&>(ts)...);
+maybe<T> attempt(Index i, Pointer self, Mode mode, Caller &c, Ts &&...ts) {
+    return attempt_args<T, N, typename Reduce<Ts>::type...>(i, self, mode, c, static_cast<Ts &&>(ts)...);
 }
 
 /******************************************************************************/

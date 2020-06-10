@@ -25,7 +25,6 @@ using Stat    = ara_stat;
 using Idx     = ara_index;
 using Integer = ara_integer;
 using Float   = ara_float;
-using Bool    = ara_bool;
 
 /******************************************************************************************/
 
@@ -55,29 +54,29 @@ static_assert(sizeof(ara_input) == 2 * sizeof(ara_code));
 namespace code {
 
 enum codes {
-    check      =  0,
-    destruct   =  1,
-    deallocate =  2,
-    copy       =  3,
-    swap       =  4,
-    assign     =  5,
-    name       =  6,
-    info       =  7,
-    relocate   =  8,
-    call       =  9,
-    dump       =  10,
-    load       =  11,
-    attribute  =  12,
-    element    =  13,
-    compare    =  14
+    check      = 0,
+    destruct   = 1,
+    deallocate = 2,
+    copy       = 3,
+    swap       = 4,
+    name       = 5,
+    info       = 6,
+    relocate   = 7,
+    call       = 8,
+    dump       = 9,
+    load       = 10,
+    attribute  = 11,
+    element    = 12,
+    hash       = 13,
+    compare    = 14,
+    equal      = 15
     // unary
     // binary
-    // hash
     // print
     // increment/decrement
 };
 
-inline constexpr bool valid(Code c) {return c < 15;}
+inline constexpr bool valid(Code c) {return c < 16;}
 
 }
 
@@ -89,7 +88,7 @@ inline char const * code_name(Code c) {
         case code::deallocate : return "deallocate";
         case code::copy :       return "copy";
         case code::swap :       return "swap";
-        case code::assign :     return "assign";
+        case code::hash :       return "hash";
         case code::name :       return "name";
         case code::info :       return "info";
         case code::relocate :   return "relocate";
@@ -99,6 +98,7 @@ inline char const * code_name(Code c) {
         case code::attribute :  return "attribute";
         case code::element :    return "element";
         case code::compare :    return "compare";
+        case code::equal :      return "equal";
     }
 }
 

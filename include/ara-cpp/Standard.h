@@ -19,7 +19,7 @@ struct Impl<std::string_view> : Default<std::string_view> {
 
     static auto load(Ref &r) {
         std::optional<std::string_view> out;
-        if (auto p = r.load<Str>()) out.emplace(*p);
+        if (auto p = r.get<Str>()) out.emplace(*p);
         return out;
     }
 };
@@ -45,8 +45,8 @@ struct Impl<std::basic_string<char, std::char_traits<char>, Alloc>> : Default<st
     static auto load(Ref &r) {
         DUMP("loading std::string");
         std::optional<S> out;
-        if (auto p = r.load<Str>()) out.emplace(*p);
-        if (auto p = r.load<String>()) out.emplace(std::move(*p));
+        if (auto p = r.get<Str>()) out.emplace(*p);
+        if (auto p = r.get<String>()) out.emplace(std::move(*p));
         return out;
     }
 };
@@ -67,9 +67,9 @@ struct Impl<std::optional<T>> : Default<std::optional<T>> {
 
     static auto load(Ref &r) {
         std::optional<std::optional<T>> out;
-        if (!r || r.load<std::nullptr_t>()) {
+        if (!r || r.get<std::nullptr_t>()) {
             out.emplace();
-        } else if (auto p = r.load<std::remove_cv_t<T>>()) {
+        } else if (auto p = r.get<std::remove_cv_t<T>>()) {
             out.emplace(std::move(*p));
         }
         return out;
@@ -88,8 +88,8 @@ struct Impl<std::shared_ptr<T>> : Default<std::shared_ptr<T>> {
 
     static auto load(Ref &r) {
         std::optional<std::shared_ptr<T>> out;
-        if (!r || r.load<std::nullptr_t>()) out.emplace();
-        else if (auto p = r.load<std::remove_cv_t<T>>())
+        if (!r || r.get<std::nullptr_t>()) out.emplace();
+        else if (auto p = r.get<std::remove_cv_t<T>>())
             out.emplace(std::make_shared<T>(std::move(*p)));
         return out;
     }
@@ -106,7 +106,7 @@ struct Impl<std::variant<Ts...>> : Default<std::variant<Ts...>> {
 
     template <class T>
     static bool put(std::optional<std::variant<Ts...>> &out, Ref &r) {
-        if (auto p = r.load<T>()) return out.emplace(std::move(*p)), true;
+        if (auto p = r.get<T>()) return out.emplace(std::move(*p)), true;
         return false;
     }
 
@@ -148,13 +148,13 @@ struct LoadMap {
         std::optional<K> key;
         span.map([&](Ref &ref) {
             if (key) {
-                if (auto v = ref.load<V>()) {
+                if (auto v = ref.get<V>()) {
                     o->emplace(std::move(*key), std::move(*v));
                     key.reset();
                     return true;
                 } else return false;
             } else {
-                key = ref.load<K>();
+                key = ref.get<K>();
                 return bool(key);
             }
         });
@@ -162,8 +162,8 @@ struct LoadMap {
 
     std::optional<M> operator()(Ref &r) const {
         std::optional<M> o;
-        if (auto p = r.load<Span>()) load_span(o, *p);
-        else if (auto p = r.load<Array>()) load_span(o, *p);
+        if (auto p = r.get<Span>()) load_span(o, *p);
+        else if (auto p = r.get<Array>()) load_span(o, *p);
         return o;
     }
 };
@@ -177,7 +177,7 @@ template <class F>
 struct LoadFunction {
     static auto load(Ref &v) {
         std::optional<F> out;
-        // if (auto p = v.load<Callback<typename F::result_type>>()) out.emplace(std::move(*p));
+        // if (auto p = v.get<Callback<typename F::result_type>>()) out.emplace(std::move(*p));
         return out;
     }
 };

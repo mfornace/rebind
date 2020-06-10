@@ -37,7 +37,7 @@ union Ref {
     /**********************************************************************************/
 
     Index index() const noexcept {return ara_get_index(c.mode_index);}
-    Mode tag() const noexcept {return static_cast<Mode>(ara_get_mode(c.mode_index));}
+    Mode mode() const noexcept {return static_cast<Mode>(ara_get_mode(c.mode_index));}
     Pointer pointer() const noexcept {return bit_cast<Pointer>(c.pointer);}
 
     constexpr bool has_value() const noexcept {return c.mode_index;}
@@ -47,7 +47,7 @@ union Ref {
 
     void destroy_if_managed() {
         if (!has_value()) return;
-        switch (tag()) {
+        switch (mode()) {
             case Mode::Stack: {Destruct::call(index(), pointer()); c.mode_index = nullptr; return;}
             case Mode::Heap:  {Deallocate::call(index(), pointer()); c.mode_index = nullptr; return;}
             default: {return;}
@@ -67,25 +67,25 @@ union Ref {
     template <class T, int N=0, class ...Ts>
     T call(Caller c, Ts &&...ts) const {
         DUMP("Ref::call:", type_name<T>(), "(", sizeof...(Ts), ")");
-        return parts::call<T, N>(index(), tag(), pointer().base, c, static_cast<Ts &&>(ts)...);
+        return parts::call<T, N>(index(), pointer(), mode(), c, static_cast<Ts &&>(ts)...);
     }
 
     template <class T, int N=0, class ...Ts>
-    maybe<T> get(Caller c, Ts &&...ts) const {
+    maybe<T> attempt(Caller c, Ts &&...ts) const {
         if (!has_value()) return Maybe<T>::none();
-        return parts::get<T, N>(index(), Mode::Read, pointer().base, c, static_cast<Ts &&>(ts)...);
+        return parts::attempt<T, N>(index(), pointer(), Mode::Read, c, static_cast<Ts &&>(ts)...);
     }
 
     /**************************************************************************************/
 
     template <class T, std::enable_if_t<!std::is_reference_v<T>, int> = 0>
-    std::optional<T> load(Type<T> t={});
+    std::optional<T> get(Type<T> t={});
 
     template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
-    std::remove_reference_t<T>* load(Type<T> t={}) const;
+    std::remove_reference_t<T>* get(Type<T> t={}) const;
 
     template <class T>
-    bool load(T &t);
+    bool get(T &t);
 
     template <class T, std::enable_if_t<!std::is_reference_v<T>, int> = 0>
     T cast(Type<T> t={});
@@ -95,7 +95,7 @@ union Ref {
 
     /**************************************************************************************/
 
-    Load::stat load_to(Target &t) noexcept;
+    Load::stat get_to(Target &t) noexcept;
 };
 
 /******************************************************************************************/
@@ -107,7 +107,7 @@ template <class T>
 bool Ref::binds_to(Qualifier q) const {
     if (!index().equals<T>()) return false;
     if (q == Qualifier::C) return true;
-    switch (tag()) {
+    switch (mode()) {
         case Mode::Read: return false;
         case Mode::Write: return q == Qualifier::L;
         default: return q == Qualifier::R;
@@ -130,21 +130,21 @@ inline Load::stat dump_or_load(Target &target, Index source, Pointer p, Mode t) 
     }
 }
 
-inline Load::stat Ref::load_to(Target &target) noexcept {
-    DUMP("load_to", has_value(), name(), target.name(), pointer().base);
+inline Load::stat Ref::get_to(Target& target) noexcept {
+    DUMP("get_to", has_value(), name(), target.name(), pointer().base);
     if (!has_value()) return Load::None;
-    return dump_or_load(target, index(), pointer(), tag());
+    return dump_or_load(target, index(), pointer(), mode());
 }
 
 template <class T, std::enable_if_t<!std::is_reference_v<T>, int>>
-std::optional<T> Ref::load(Type<T>) {
+std::optional<T> Ref::get(Type<T>) {
     std::optional<T> out;
     if (!has_value()) {
         DUMP("no value");
         // nothing
     } else if (index().equals<T>()) {
         DUMP("load exact match");
-        switch (tag()) {
+        switch (mode()) {
             case Mode::Stack: {if constexpr(std::is_constructible_v<T, T&&>) {out.emplace(pointer().load<T &&>());} break;}
             case Mode::Heap:  {if constexpr(std::is_constructible_v<T, T&&>) {out.emplace(pointer().load<T &&>());} break;}
             case Mode::Read:  {if constexpr(is_copy_constructible_v<T>) out.emplace(pointer().load<T const &>()); break;}
@@ -153,7 +153,7 @@ std::optional<T> Ref::load(Type<T>) {
     } else {
         storage_like<T> storage;
         Target target(Index::of<T>(), &storage, sizeof(storage), Target::constraint<T>);
-        switch (load_to(target)) {
+        switch (get_to(target)) {
             case Load::Stack: {
                 DUMP("load succeeded");
                 Destruct::RAII<T> raii{storage_cast<T>(storage)};
@@ -176,7 +176,7 @@ std::optional<T> Ref::load(Type<T>) {
 
 
 template <class T>
-bool Ref::load(T& t) {
+bool Ref::get(T& t) {
     if (!has_value()) {
         DUMP("no value");
         return false;
@@ -184,7 +184,7 @@ bool Ref::load(T& t) {
     }
     if (index().equals<T>()) {
         DUMP("load exact match");
-        switch (tag()) {
+        switch (mode()) {
             case Mode::Read:  {
                 if constexpr(std::is_copy_assignable_v<T>) {t = pointer().load<T const &>(); return true;}
                 else return false;
@@ -200,7 +200,7 @@ bool Ref::load(T& t) {
         }
     } else {
         Target target(Index::of<T>(), std::addressof(t), sizeof(T), Target::Existing);
-        switch (load_to(target)) {
+        switch (get_to(target)) {
             case Load::Write: {
                 DUMP("load succeeded");
                 c.mode_index = target.c.index;
@@ -215,7 +215,7 @@ bool Ref::load(T& t) {
 
 
 template <class T, std::enable_if_t<std::is_reference_v<T>, int>>
-std::remove_reference_t<T>* Ref::load(Type<T>) const {
+std::remove_reference_t<T>* Ref::get(Type<T>) const {
     DUMP("load reference", type_name<T>(), name());
     if (auto t = target<T>()) return t;
     return nullptr;

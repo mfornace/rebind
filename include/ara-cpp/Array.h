@@ -91,7 +91,7 @@ struct LoadVector {
             std::copy(data, data + span.size(), std::back_inserter(*o));
         } else {
             bool ok = span.map([&](Ref& r) {
-                if (auto p = r.load<T>()) return o->emplace_back(std::move(*p)), true;
+                if (auto p = r.get<T>()) return o->emplace_back(std::move(*p)), true;
                 else return false;
             });
             if (!ok) o.reset();
@@ -103,16 +103,16 @@ struct LoadVector {
         o->reserve(view.size());
 
         for (auto &ref : view) {
-            if (auto p = ref.load<T>()) o->emplace_back(std::move(*p));
+            if (auto p = ref.get<T>()) o->emplace_back(std::move(*p));
             else {o.reset(); return;}
         }
     }
 
     static std::optional<V> load(Ref& v) {
         std::optional<V> out;
-        if (auto p = v.load<Span>()) load_span(out, *p);
-        else if (auto p = v.load<Array>()) load_span(out, *p);
-        else if (auto p = v.load<View>()) load_view(out, *p);
+        if (auto p = v.get<Span>()) load_span(out, *p);
+        else if (auto p = v.get<Array>()) load_span(out, *p);
+        else if (auto p = v.get<View>()) load_view(out, *p);
         return out;
     }
 };

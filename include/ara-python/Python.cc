@@ -140,7 +140,7 @@ bool dump_object(Target &v, Object o) {
 
     if (auto p = cast_if<Value>(o)) {
         DUMP("object_to_value Value");
-        return p->load_to(v);
+        return p->get_to(v);
     }
 
     if (v.accepts<Index>()) {

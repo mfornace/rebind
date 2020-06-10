@@ -22,7 +22,7 @@ int main() {
     // auto p = v.target<int const &>();
     // DUMP(v.name(), *p);
     // DUMP(v.has_value());
-    // DUMP(v.load<int>(s).value());
+    // DUMP(v.get<int>(s).value());
 {
     DUMP("testing first function fun with args 1, 2.0");
     auto blah = Mod::call<double>("fun", Caller(), 1, 2.0);
@@ -62,12 +62,12 @@ int main() {
 
     }
 
-    auto x = Mod::get<Value>("mutex", Caller(), mut);
+    auto x = Mod::attempt<Value>("mutex", Caller(), mut);
 
 {
     auto v = Value(1);
-    DUMP(bool(v.load<int>()));
-    DUMP(bool(v.load<double>()));
+    DUMP(bool(v.get<int>()));
+    DUMP(bool(v.get<double>()));
 }
 
 {

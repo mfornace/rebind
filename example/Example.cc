@@ -182,20 +182,26 @@ struct ara::Impl<GooBase> : ara::Default<GooBase> {
 
 template <>
 struct ara::Impl<Goo> : ara::Default<Goo> {
+    static auto attribute(Target& target, Goo const& self, std::string_view name) {
+        if (name == "x") return target.assign(self.x); // change to mem fn
+        return false;
+    }
+
     static bool call(Method method, Goo &self) {
         DUMP("calling Goo");
         return method(self, ".x", &Goo::x, {0})
             || method(self, ".x=", [](Goo &s, double x) {s.x = x;});
     }
+
     static bool call(Method, Goo &&) {
         DUMP("calling Goo");
         return false;
     }
+
     static bool call(Method method, Goo const &self) {
         DUMP("calling Goo method", ara::Lifetime({0}).value);
         return method(self, &Goo::x)
             || method(self, "add", [](Goo g, Goo g2, Goo g3) {return g;})
-            || method(self, ".x", &Goo::x, {0})
             // || method(self, "test_throw", &Goo::test_throw)
             || method(self, "get_x", [](Goo const &g) {return g.x;})
             // || method(self, "add", [](Goo &g, double x) {g.x += x;})
