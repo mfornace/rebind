@@ -185,7 +185,7 @@ Lifetime call_to_output(Value<> &out, Always<> output, F&& fun) {
 
     if (auto t = Maybe<pyType>(output)) {
         DUMP("is type");
-        if (t->is_subclass(Variable::def())) {
+        if (is_subclass(*t, Variable::def())) {
             DUMP("is Variable subclass");
             auto v = Value<Variable>::alloc();
             auto life = fun(*v);
@@ -228,12 +228,12 @@ struct TupleLock {
     void lock_default() {
         auto s = start;
         for (auto &ref : view) {
-            Always<> item = args->item(s++);
-            if (auto p = Maybe<Variable>(item)) {
+            Always<> it = item(args, s++);
+            if (auto p = Maybe<Variable>(it)) {
                 DUMP("its variable!");
                 ref = begin_acquisition(*p, LockType::Read);
             } else {
-                ref = Ref(Index::of<Export>(), Mode::Write, Pointer::from(+item));
+                ref = Ref(Index::of<Export>(), Mode::Write, Pointer::from(+it));
             }
         }
     }
@@ -247,12 +247,12 @@ struct TupleLock {
         auto s = start;
         auto c = mode.begin();
         for (auto &ref : view) {
-            Always<> item = args->item(s++);
-            if (auto p = Maybe<Variable>(item)) {
+            Always<> it = item(args, s++);
+            if (auto p = Maybe<Variable>(it)) {
                 DUMP("its variable!", *c);
                 ref = begin_acquisition(*p, *c == 'w' ? LockType::Write : LockType::Read);
             } else {
-                ref = Ref(Index::of<Export>(), Mode::Write, Pointer::from(+item));
+                ref = Ref(Index::of<Export>(), Mode::Write, Pointer::from(+it));
             }
             ++c;
         }
@@ -262,7 +262,7 @@ struct TupleLock {
         auto s = start;
         for (auto &ref : view) {
             if (ref.has_value())
-                if (auto v = Maybe<Variable>(args->item(s)))
+                if (auto v = Maybe<Variable>(item(args, s)))
                     end_acquisition(*v);
             ++s;
         }
@@ -314,15 +314,15 @@ auto call_with_caller(Index self, Pointer address, Mode mode, ArgView& args, Cal
 
 Value<> module_call(Index index, Always<pyTuple> args, CallKeywords const& kws) {
     DUMP("module_call", index.name());
-    auto const total = args->size();
+    auto const total = size(args);
     if (!total) throw PythonError(type_error("ara call: expected at least one argument"));
     ArgAlloc a(total-1, 1);
 
-    Str name = as_string_view(args->item(0));
+    Str name = as_string_view(item(args, 0));
     a.view.tag(0) = Ref(name);
 
     for (Py_ssize_t i = 0; i != total-1; ++i)
-        a.view[i] = Ref(Index::of<Export>(), Mode::Write, Pointer::from(+args->item(i+1)));
+        a.view[i] = Ref(Index::of<Export>(), Mode::Write, Pointer::from(+item(args, i+1)));
 
     return call_with_caller(index, Pointer::from(nullptr), Mode::Read, a.view, kws).first;
 }
@@ -331,23 +331,23 @@ Value<> module_call(Index index, Always<pyTuple> args, CallKeywords const& kws) 
 
 Value<> variable_call(Variable &v, Always<pyTuple> args, CallKeywords const& kws) {
     DUMP("variable_call", v.name());
-    auto const total = args->size();
+    auto const total = size(args);
     ArgAlloc a(total, 0);
 
     for (Py_ssize_t i = 0; i != total; ++i)
-        a.view[i] = Ref(Index::of<Export>(), Mode::Write, Pointer::from(+args->item(i)));
+        a.view[i] = Ref(Index::of<Export>(), Mode::Write, Pointer::from(+item(args, i)));
 
     return call_with_caller(v.index(), Pointer::from(v.address()), Mode::Read, a.view, kws).first;
 }
 
 /******************************************************************************/
 
-Value<> variable_method(Variable &v, Always<pyTuple> args, CallKeywords &&kws) {
-    DUMP("variable_method", v.name());
-    auto const total = args->size();
+Value<> variable_method(Always<Variable> v, Always<pyTuple> args, CallKeywords &&kws) {
+    DUMP("variable_method", v->name());
+    auto const total = size(args);
     ArgAlloc a(total-1, 1);
 
-    Str name = as_string_view(args->item(0));
+    Str name = as_string_view(item(args, 0));
     a.view.tag(0) = Ref(name);
 
     DUMP("mode", kws.mode);
@@ -368,13 +368,13 @@ Value<> variable_method(Variable &v, Always<pyTuple> args, CallKeywords &&kws) {
                 if (life.value & 1) {
                     DUMP("got one", i);
                     if (i) {
-                        DUMP("setting root to argument", i-1, args->size());
-                        if (auto arg = Maybe<Variable>(args->item(i))) {
-                            o->set_lock(arg->current_root());
+                        DUMP("setting root to argument", i-1, size(args));
+                        if (auto arg = Maybe<Variable>(item(args, i))) {
+                            o->set_lock(current_root(*arg));
                         } else throw PythonError::type("Expected instance of Variable");
                     } else {
                         DUMP("setting root to self");
-                        o->set_lock(v.current_root());
+                        o->set_lock(current_root(v));
                     }
                 }
                 life.value >>= 1;
@@ -396,9 +396,9 @@ auto access_with_caller(Index self, Pointer address, I element, Mode mode, CallK
 }
 
 template <class I>
-Value<> variable_access(Variable &v, Always<pyTuple> args, CallKeywords &&kws) {
-    DUMP("variable_attr", v.name());
-    auto element = exact_cast(args->item(0), Type<I>());
+Value<> variable_access(Always<Variable> v, Always<pyTuple> args, CallKeywords &&kws) {
+    DUMP("variable_attr", v->name());
+    auto element = exact_cast(item(args, 0), Type<I>());
 
     DUMP("mode", kws.mode);
     Value<> out;
@@ -412,7 +412,7 @@ Value<> variable_access(Variable &v, Always<pyTuple> args, CallKeywords &&kws) {
     if (life.value) {
         if (auto o = Maybe<Variable>(out)) {
             DUMP("setting root to self");
-            o->set_lock(v.current_root());
+            o->set_lock(current_root(v));
         }
     }
     return out;

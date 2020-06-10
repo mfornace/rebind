@@ -7,28 +7,28 @@ namespace ara::py {
 
 /******************************************************************************/
 
-union pyType {
-    PyTypeObject object;
-    using builtin = PyTypeObject;
+struct pyType : Wrap<pyType> {
+    using type = PyTypeObject;
     static Always<pyType> def() {return PyType_Type;}
 
     static bool check(Always<> o) {return PyType_Check(+o);}
     // static bool matches(Always<PyTypeObject> p) {return +p == Py_None->ob_type;}
 
 
-    bool is_subclass(Always<pyType> t) const {
-        if (&object == +t) return true;
-        int x = PyObject_IsSubclass(reinterpret_cast<PyObject*>(&const_cast<pyType&>(*this).object), ~t);
-        return (x < 0) ? throw PythonError() : x;
-    }
 
     // static Value<> load(Ignore, Ignore, Ignore) {return {Py_None, true};}
 };
 
+bool is_subclass(Always<pyType> s, Always<pyType> t) {
+    if (s == t) return true;
+    int x = PyObject_IsSubclass(~s, ~t);
+    return (x < 0) ? throw PythonError() : x;
+}
+
 /******************************************************************************/
 
 template <class T>
-struct StaticType {
+struct StaticType : Wrap<T> {
     using type = T;
     static PyTypeObject definition;
     static void initialize(Always<pyType>) noexcept;
@@ -45,8 +45,9 @@ PyTypeObject StaticType<T>::definition{PyVarObject_HEAD_INIT(NULL, 0)};
 
 template <class T>
 PyObject *default_construct(PyTypeObject* subtype, PyObject*, PyObject*) noexcept {
+    using type = typename T::type;
     PyObject *o = subtype->tp_alloc(subtype, 0); // 0 unused
-    if (o) reinterpret_cast<T*>(o)->init(); // Default construct the C++ type
+    if (o) new (reinterpret_cast<type*>(o)) type(); // Default construct the C++ type
     return o;
 }
 

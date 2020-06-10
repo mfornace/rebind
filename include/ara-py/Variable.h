@@ -20,8 +20,10 @@ struct Meta : StaticType<Meta> {
 
 /******************************************************************************/
 
+struct pyVariable;
+
 struct Variable : StaticType<Variable> {
-    using builtin = Variable;
+    using type = pyVariable;
 
     struct Address {
         void* pointer;
@@ -44,6 +46,7 @@ struct Variable : StaticType<Variable> {
         // empty: no lock
         // otherwise reference to another Variable
         // may be tuple of Variables? not sure yet.
+        constexpr Lock() noexcept : count(0) {}
     };
 
     enum State : ara_mode {Stack, StackAlias, Heap, HeapAlias};
@@ -51,12 +54,11 @@ struct Variable : StaticType<Variable> {
     template <class T>
     static constexpr bool allocated = is_stackable<T>(sizeof(Storage));
 
-    PyObject_HEAD // seems to be 16 bytes for the ref count and the type object
     Tagged<State> idx;
     Storage storage; // stack storage
     Lock lock;
 
-    Variable() = delete;
+    Variable() noexcept = default;
     ~Variable() noexcept {reset();}
 
     Variable(Variable const &) = delete;
@@ -74,12 +76,8 @@ struct Variable : StaticType<Variable> {
         idx = Tagged<State>(i, Heap);
     }
 
-    void set_lock(Always<> other) {
-        lock.other = other;
-        Py_INCREF(+other);
-        reinterpret_cast<std::uintptr_t &>(idx.base) |= 1;//Tagged<State>(i, idx.state() | 1);
-        ++(Always<Variable>::from(other)->lock.count);
-    }
+    auto & current_lock();
+    void set_lock(Always<> other);
 
     bool has_value() const noexcept {return idx.has_value();}
     ara::Index index() const noexcept {return ara::Index(idx);}
@@ -93,15 +91,6 @@ struct Variable : StaticType<Variable> {
 
     static Value<Variable> from(Ref const &, Value<> ward={});
 
-    Always<> current_root() {
-        return (idx.tag() & 0x1) ? lock.other : Always<Variable>(*this);
-    }
-
-    auto & current_lock() {
-        return (idx.tag() & 0x1 ? Always<Variable>::from(lock.other)->lock.count : lock.count);
-    }
-
-    static Value<> load(Always<Variable> self, Always<> type);
     //  {
     //     DUMP("load");
     //     auto acquired = acquire_ref(self, LockType::Read);
@@ -113,6 +102,27 @@ struct Variable : StaticType<Variable> {
 };
 
 /******************************************************************************/
+
+struct ObjectHead {
+    PyObject_HEAD
+};
+
+struct pyVariable : ObjectHead, Variable {};
+
+inline void Variable::set_lock(Always<> other) {
+    lock.other = other;
+    Py_INCREF(+other);
+    reinterpret_cast<std::uintptr_t &>(idx.base) |= 1;//Tagged<State>(i, idx.state() | 1);
+    ++(Always<Variable>::from(other)->lock.count);
+}
+
+inline Always<> current_root(Always<Variable> v) {return (v->idx.tag() & 0x1) ? v->lock.other : v;}
+
+inline auto & Variable::current_lock() {
+    return (idx.tag() & 0x1 ? Always<Variable>::from(lock.other)->lock.count : lock.count);
+}
+
+Value<> load(Always<Variable> self, Always<> type);
 
 // struct Variable : Object {
 //     static bool matches(Always<Type> p) {return false;}
@@ -281,7 +291,7 @@ Value<pyInt> variable_state(Always<Variable> self, Ignore) {
 
 /******************************************************************************/
 
-Value<> return_self(PyObject* self, Ignore) noexcept {return {self, true};}
+Value<> return_self(Always<> self, Ignore) noexcept {return {self, true};}
 
 Value<> variable_reset(Always<Variable> self, Ignore) {
     self->reset();

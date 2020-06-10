@@ -49,10 +49,12 @@ PyObject* init_module() noexcept;
 
 /******************************************************************************/
 
-union Object {
-    using builtin = PyObject;
-    PyObject object;
+struct Object {
+    using type = PyObject;
 };
+
+template <class T>
+struct Wrap : Object {};
 
 template <class T>
 struct Traits;
@@ -61,7 +63,9 @@ struct Traits;
 
 template <class T=Object>
 struct Ptr {
-    T *base;
+    static_assert(std::is_base_of_v<Object, T>);
+    using type = typename T::type;
+    type *base;
 
     bool operator<(Ptr const &o) const {return base < o.base;}
     bool operator>(Ptr const &o) const {return base > o.base;}
@@ -75,33 +79,33 @@ struct Ptr {
     // Access to raw PyObject*
     PyObject* operator~() const {return reinterpret_cast<PyObject*>(base);}
     // Access to the inner type
-    typename T::builtin* operator+() const {return reinterpret_cast<typename T::builtin*>(base);}
+    type* operator+() const {return base;}
     // Access to the wrapping type
-    T* operator->() const {assert(base); return base;}
-    T& operator*() const {assert(base); return *base;}
+    type* operator->() const {assert(base); return base;}
+    type& operator*() const {assert(base); return *base;}
 };
 
 /******************************************************************************/
 
 template <class T=Object>
 struct Always : Ptr<T> {
-    using builtin = typename T::builtin;
+    using type = typename T::type;
     using Base = Ptr<T>;
     using Base::base;
 
     // Always(T &t) : Base(std::addressof(t)) {}
 
-    // template <bool B=true, std::enable_if_t<B && !std::is_same_v<T, builtin>, int> = 0>
+    // template <bool B=true, std::enable_if_t<B && !std::is_same_v<T, type>, int> = 0>
     template <class U>
-    explicit Always(U *t) noexcept : Base{reinterpret_cast<T*>(t)} {}
-    Always(builtin &t) noexcept : Always(std::addressof(t)) {}
+    explicit Always(U *t) noexcept : Base{reinterpret_cast<type*>(t)} {}
+    Always(type &t) noexcept : Always(std::addressof(t)) {}
 
 
     operator Always<>() const noexcept {return *reinterpret_cast<PyObject*>(base);}
 
-    // builtin& operator*() const {return *base;}
-    // builtin* operator->() const {return base;}
-    operator builtin&() const noexcept {return *base;}
+    // type& operator*() const {return *base;}
+    // type* operator->() const {return base;}
+    operator type&() const noexcept {return *base;}
 
     template <class U>
     static Always from(Always<U>);
@@ -113,17 +117,17 @@ struct Always : Ptr<T> {
 
 template <class T=Object>
 struct Maybe : Ptr<T> {
-    using builtin = typename T::builtin;
+    using type = typename T::type;
     using Ptr<T>::base;
 
-    constexpr Maybe(builtin *t) noexcept : Ptr<T>{reinterpret_cast<T*>(t)} {}
-    constexpr Maybe(Always<T> o) noexcept : Ptr<T>(o.base) {}
+    constexpr Maybe(type *t) noexcept : Ptr<T>{t} {}
+    constexpr Maybe(Always<T> o) noexcept : Ptr<T>{o.base} {}
 
     template <class U>
-    explicit Maybe(Always<U> o) : Ptr<T>{T::check(o) ? reinterpret_cast<T*>(o.base) : nullptr} {}
+    explicit Maybe(Always<U> o) : Ptr<T>{T::check(o) ? reinterpret_cast<type*>(o.base) : nullptr} {}
 
     template <class U>
-    explicit Maybe(Maybe<U> o) : Ptr<T>{o && T::check(o) ? reinterpret_cast<T*>(o.base) : nullptr} {}
+    explicit Maybe(Maybe<U> o) : Ptr<T>{o && T::check(*o) ? reinterpret_cast<type*>(o.base) : nullptr} {}
 
     Always<T> operator*() const {assert(base); return *base;}
 };
@@ -142,19 +146,18 @@ struct Maybe : Ptr<T> {
 // RAII shared pointer interface to a possibly null Object
 template <class T=Object>
 struct Value : Maybe<T> {
-    static_assert(!std::is_empty_v<T>);
     using Base = Maybe<T>;
     using Base::base;
-    using builtin = typename T::builtin;
+    using type = typename T::type;
 
     Value() : Base(nullptr) {}
     Value(std::nullptr_t) : Base(nullptr) {}
 
-    Value(builtin* o, bool increment) : Base{o} {if (increment) Py_XINCREF(base);}
+    Value(type* o, bool increment) : Base{o} {if (increment) Py_XINCREF(base);}
     Value(Always<T> o, bool increment) : Base{+o} {if (increment) Py_INCREF(base);}
 
     template <class U, std::enable_if_t<!std::is_same_v<U, T> && std::is_same_v<T, Object>, int> = 0>
-    Value(Value<U> v) : Base(std::exchange(v.base, nullptr)) {}
+    Value(Value<U> v) : Base(reinterpret_cast<PyObject*>(std::exchange(v.base, nullptr))) {}
 
     static Value from(PyObject* o) {return o ? Value(o, false) : throw PythonError();}
     static Value alloc();
@@ -167,7 +170,7 @@ struct Value : Maybe<T> {
 
     friend void swap(Value &o, Value &p) noexcept {std::swap(o.base, p.base);}
 
-    T* leak() noexcept {return std::exchange(base, nullptr);}
+    type* leak() noexcept {return std::exchange(base, nullptr);}
     Always<T> operator*() const {assert(base); return *base;}
 
     ~Value() {Py_XDECREF(base);}

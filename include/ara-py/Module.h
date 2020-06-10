@@ -26,9 +26,9 @@ namespace ara::py {
 template <class T>
 bool add_module_type(PyObject* mod, char const* name) {
     T::initialize(T::def());
-    if (PyType_Ready(T::def()) < 0) return false;
+    if (PyType_Ready(+T::def()) < 0) return false;
     // incref(t);
-    if (PyModule_AddObject(mod, name, T::def()) < 0) return false;
+    if (PyModule_AddObject(mod, name, ~T::def()) < 0) return false;
     return true;
 }
 
@@ -77,9 +77,9 @@ PyObject* init_module<Example>() noexcept {
     Py_Initialize();
     PyObject* mod = PyModule_Create(&module);
     if (!mod) return nullptr;
-    if (!add_module_type<Index>(mod, "Index")) return nullptr;
+    if (!add_module_type<pyIndex>(mod, "Index")) return nullptr;
     if (!add_module_type<Meta>(mod, "Meta")) return nullptr;
-    if (!add_module_type<Variable>(mod, "Variable")) return nullptr;
+    if (!add_module_type<pyVariable>(mod, "Variable")) return nullptr;
 
     return mod;
 }

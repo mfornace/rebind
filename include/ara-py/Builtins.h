@@ -4,26 +4,23 @@
 
 namespace ara::py {
 
-union pyNone;
-union pyBool;
-union pyInt;
-union pyFloat;
-union pyStr;
-union pyBytes;
-union pyFunction;
-union pyList;
-union pyUnion;
-union pyOption;
-union pyDict;
-union pyTuple;
-union pyMemoryView;
+// struct pyNone;
+// struct pyBool;
+// struct pyInt;
+// struct pyFloat;
+// struct pyStr;
+// struct pyBytes;
+// struct pyFunction;
+// struct pyList;
+// struct pyUnion;
+// struct pyOption;
+// struct pyDict;
+// struct pyTuple;
+// struct pyMemoryView;
 
 /******************************************************************************/
 
-union pyNone {
-    using builtin = PyObject;
-    PyObject object;
-
+struct pyNone : Wrap<pyNone> {
     static Always<pyType> def() {return *Py_None->ob_type;}
 
     static bool matches(Always<pyType> p) {return +p == Py_None->ob_type;}
@@ -35,10 +32,7 @@ union pyNone {
 
 /******************************************************************************/
 
-union pyBool {
-    using builtin = PyObject;
-    PyObject object;
-
+struct pyBool : Wrap<pyBool> {
     static Always<pyType> def() {return PyBool_Type;}
 
     static bool check(Always<> o) {return PyBool_Check(+o);}
@@ -57,10 +51,7 @@ union pyBool {
 
 /******************************************************************************/
 
-union pyInt {
-    using builtin = PyObject;
-    PyObject object;
-
+struct pyInt : Wrap<pyInt> {
     static Always<pyType> def() {return PyLong_Type;}
 
     static bool check(Always<> o) {return PyLong_Check(+o);}
@@ -78,9 +69,7 @@ union pyInt {
 
 /******************************************************************************/
 
-union pyFloat {
-    using builtin = PyObject;
-    PyObject object;
+struct pyFloat : Wrap<pyFloat> {
 
     static Always<pyType> def() {return PyFloat_Type;}
 
@@ -99,9 +88,7 @@ union pyFloat {
 
 /******************************************************************************/
 
-union pyStr {
-    using builtin = PyObject;
-    PyObject object;
+struct pyStr : Wrap<pyStr> {
 
     static Always<pyType> def() {return PyUnicode_Type;}
 
@@ -129,9 +116,7 @@ union pyStr {
 
 /******************************************************************************/
 
-union pyBytes {
-    using builtin = PyObject;
-    PyObject object;
+struct pyBytes : Wrap<pyBytes> {
 
     static bool check(Always<> o) {return PyBytes_Check(+o);}
     static bool matches(Always<pyType> p) {return +p == &PyBytes_Type;}
@@ -171,8 +156,8 @@ inline std::string_view as_string_view(Always<pyBytes> o) {
 
 template <class T>
 inline std::string_view as_string_view(T t) {
-    if (auto s = t.template get<pyStr>()) return as_string_view(*s);
-    if (auto s = t.template get<pyBytes>()) return as_string_view(*s);
+    if (auto s = Maybe<pyStr>(t)) return as_string_view(*s);
+    if (auto s = Maybe<pyBytes>(t)) return as_string_view(*s);
 }
 
 /******************************************************************************/
@@ -188,7 +173,7 @@ inline std::ostream& operator<<(std::ostream& os, Ptr<T> const& o) {
 /******************************************************************************/
 
 
-// union IndexType {
+// struct IndexType {
 //     static bool check(Always<> o) {return PyObject_TypeCheck(+o, +static_type<Index>());}
 //     static bool matches(Always<pyType> p) {return p == static_type<IndexType>();}
 
@@ -203,9 +188,7 @@ inline std::ostream& operator<<(std::ostream& os, Ptr<T> const& o) {
 //     }
 // };
 
-union pyFunction {
-    using builtin = PyObject;
-    PyObject object;
+struct pyFunction : Wrap<pyFunction> {
 
     static bool matches(Always<pyType> p) {return +p == &PyFunction_Type;}
     static bool check(Always<> p) {return PyFunction_Check(+p);}
@@ -217,9 +200,7 @@ union pyFunction {
     }
 };
 
-union pyMemoryView {
-    using builtin = PyObject;
-    PyObject object;
+struct pyMemoryView : Wrap<pyMemoryView> {
 
     static bool matches(Always<pyType> p) {return +p == &PyMemoryView_Type;}
     static bool check(Always<> p) {return PyMemoryView_Check(+p);}
@@ -249,9 +230,7 @@ bool is_structured_type(Always<> def, PyTypeObject *origin) {
     return false;
 }
 
-union pyList {
-    using builtin = PyObject;
-    PyObject object;
+struct pyList : Wrap<pyList> {
 
     static bool matches(Always<> p) {return is_structured_type(p, &PyList_Type);}
 
@@ -262,9 +241,7 @@ union pyList {
     }
 };
 
-union pyDict {
-    using builtin = PyObject;
-    PyObject object;
+struct pyDict : Wrap<pyDict> {
 
     static bool matches(Always<> p) {return is_structured_type(p, &PyDict_Type);}
 
@@ -312,9 +289,7 @@ union pyDict {
     }
 };
 
-union pyTuple {
-    using builtin = PyObject;
-    PyObject object;
+struct pyTuple : Wrap<pyTuple> {
     static bool matches(Always<> p) {return is_structured_type(p, &PyTuple_Type);}
 
     static Value<> load(Ref &ref, Always<> p, Value<> root) {
@@ -322,13 +297,16 @@ union pyTuple {
         return {};
     }
 
-    Always<> item(Py_ssize_t i) {return *PyTuple_GET_ITEM(&object, i);}
-    auto size() const {return PyTuple_GET_SIZE(&object);}
 };
 
-union pyUnion {
-    using builtin = PyObject;
-    PyObject object;
+/******************************************************************************/
+
+inline Always<> item(Always<pyTuple> t, Py_ssize_t i) {return *PyTuple_GET_ITEM(~t, i);}
+inline auto size(Always<pyTuple> t) {return PyTuple_GET_SIZE(~t);}
+
+/******************************************************************************/
+
+struct pyUnion : Wrap<pyUnion> {
     static bool matches(Always<> p) {return false;}// is_structured_type(p, &PyUnion_Type);}
 
     static Value<> load(Ref &ref, Always<> p, Value<> root) {
@@ -337,9 +315,7 @@ union pyUnion {
     }
 };
 
-union pyOption {
-    using builtin = PyObject;
-    PyObject object;
+struct pyOption : Wrap<pyOption> {
     static bool matches(Always<> p) {return false;}// is_structured_type(p, &PyUnion_Type);}
 
     static Value<> load(Ref &ref, Always<> p, Value<> root) {
