@@ -2,6 +2,7 @@
 #include "Call.h"
 #include "Load.h"
 #include "Dump.h"
+#include "Meta.h"
 
 #include <structmember.h>
 #include <unordered_map>
@@ -25,9 +26,9 @@ namespace ara::py {
 
 template <class T>
 bool add_module_type(PyObject* mod, char const* name) {
-    T::initialize(T::def());
+    T::initialize_type(T::def());
     if (PyType_Ready(+T::def()) < 0) return false;
-    // incref(t);
+    Py_INCREF(~T::def());
     if (PyModule_AddObject(mod, name, ~T::def()) < 0) return false;
     return true;
 }
@@ -49,7 +50,7 @@ PyObject* init_module<Example>() noexcept {
 
     DUMP("initializing...done");
     static PyMethodDef methods[] = {
-        {"call", c_function(c_module_call<Example>), METH_VARARGS | METH_KEYWORDS, "Call a function"},
+        {"call", api<module_call<Example>, Ignore, Always<pyTuple>, CallKeywords>, METH_VARARGS | METH_KEYWORDS, "Call a function"},
         {nullptr, nullptr, 0, nullptr}
     };
 
@@ -78,7 +79,7 @@ PyObject* init_module<Example>() noexcept {
     PyObject* mod = PyModule_Create(&module);
     if (!mod) return nullptr;
     if (!add_module_type<pyIndex>(mod, "Index")) return nullptr;
-    if (!add_module_type<Meta>(mod, "Meta")) return nullptr;
+    if (!add_module_type<pyMeta>(mod, "Meta")) return nullptr;
     if (!add_module_type<pyVariable>(mod, "Variable")) return nullptr;
 
     return mod;

@@ -1,5 +1,6 @@
 #pragma once
 #include "Index.h"
+#include "Call.h"
 #include "Load.h"
 #include <ara/Ref.h>
 #include <atomic>
@@ -8,23 +9,7 @@ namespace ara::py {
 
 /******************************************************************************/
 
-struct Meta : StaticType<Meta> {
-    PyTypeObject base;
-
-    Meta() noexcept {
-        DUMP("Meta constructor");
-        base.tp_name = "blah";
-    }
-    // std::string whatever;
-};
-
-/******************************************************************************/
-
-struct pyVariable;
-
-struct Variable : StaticType<Variable> {
-    using type = pyVariable;
-
+struct Variable {
     struct Address {
         void* pointer;
         Mode qualifier; // Heap, Read, or Write
@@ -64,115 +49,302 @@ struct Variable : StaticType<Variable> {
     Variable(Variable const &) = delete;
     Variable(Variable &&) = delete; //default;
 
-    void set_stack(ara::Index i) noexcept {
+    void set_stack(Index i) noexcept {
         this->lock.count = 0;
         idx = Tagged<State>(i, Stack);
     }
 
-    void set_pointer(ara::Index i, void *ptr, Mode tag) noexcept {
+    void set_pointer(Index i, void *ptr, Mode tag) noexcept {
         storage.address.pointer = ptr;
         storage.address.qualifier = tag;
         this->lock.count = 0;
         idx = Tagged<State>(i, Heap);
     }
 
-    auto & current_lock();
+    std::uintptr_t & current_lock();
+
     void set_lock(Always<> other);
 
     bool has_value() const noexcept {return idx.has_value();}
-    ara::Index index() const noexcept {return ara::Index(idx);}
+
+    Index index() const noexcept {return Index(idx);}
+
     void reset() noexcept;
+
     auto name() const noexcept {return index().name();}
 
     void *address() const {return idx.tag() < 2 ? const_cast<Storage *>(&storage) : storage.address.pointer;}
 
-    template <class T>
-    static Value<Variable> from(T value, Value<> ward={});
+    static constexpr auto Mutating = std::numeric_limits<std::uintptr_t>::max();
 
-    static Value<Variable> from(Ref const &, Value<> ward={});
+    Ref begin_acquisition(LockType type) {
+        if (!has_value()) return Ref();
+        auto &count = current_lock();
 
-    //  {
-    //     DUMP("load");
-    //     auto acquired = acquire_ref(self, LockType::Read);
-    //     if (auto out = try_load(acquired.ref, *type, Value<>())) return out;
-    //     return type_error("cannot convert value to type %R from %R", +type, +Index::from(acquired.ref.index()));
-    // }
+        if (count == Mutating) {
+            throw PythonError::type("cannot reference object which is being mutated");
+        } else if (count == 0 && type == LockType::Write) {
+            DUMP("write lock");
+            count = Mutating;
+            return Ref(index(), Mode::Write, Pointer::from(address()));
+        } else if (type == LockType::Read) {
+            DUMP("read lock");
+            ++count;
+            return Ref(index(), Mode::Read, Pointer::from(address()));
+        } else {
+            throw PythonError::type("cannot mutate object which is already referenced");
+        }
+    }
 
-    static void initialize(Always<pyType>) noexcept;
+    void end_acquisition() {
+        if (!has_value()) return;
+        auto &count = current_lock();
+
+        if (count == Mutating) count = 0;
+        else --count;
+        DUMP("restored acquisition!", count);
+    }
+
+    struct AcquiredRef {
+        Ref ref;
+        Variable &v;
+        ~AcquiredRef() noexcept {v.end_acquisition();}
+    };
+
+    AcquiredRef acquire_ref(LockType type) {
+        return AcquiredRef{begin_acquisition(type), *this};
+    }
+
 };
 
 /******************************************************************************/
 
-struct ObjectHead {
-    PyObject_HEAD
+struct VariableObject : ObjectBase, Variable {};
+
+/******************************************************************************/
+
+struct pyVariable : StaticType<pyVariable> {
+    using type = VariableObject;
+
+    static void placement_new(Variable &v) noexcept {new (&v) Variable();}
+
+    static void initialize_type(Always<pyType>) noexcept;
+
+    /**************************************************************************/
+
+    static Value<> return_self(Always<> self, Ignore) noexcept {return self;}
+
+    static Value<pyNone> reset(Always<pyVariable> self, Ignore) {
+        self->reset();
+        return Always<pyNone>(*Py_None);
+    }
+
+    static Value<pyIndex> index(Always<pyVariable> self, Ignore) {
+        DUMP("index", +self, reference_count(self), self, self->index(), self->name());
+        auto i = Value<pyIndex>::new_from(self->index());
+        DUMP("hmm", i->integer(), bool(i), reference_count(i));
+        DUMP("index address", &static_cast<Index&>(*i));
+        DUMP("index address", &**i, &static_cast<Index&>(*i), i->integer());
+        DUMP("index reference count", reference_count(i));
+        return i;
+    }
+
+    static Value<pyInt> use_count(Always<pyVariable> self, Ignore) noexcept {
+        Integer stat = 0;
+        if (self->has_value()) {
+            auto i = self->current_lock();
+            if (i == Variable::Mutating) stat = -1;
+            else stat = i;
+        }
+        return pyInt::from(stat);
+    }
+
+    static int clear(Always<pyVariable> self) noexcept {
+        self->reset();
+        return 0;
+    }
+
+    static int traverse(Always<pyVariable> self, visitproc, void* arg) noexcept {
+        return 0;
+    }
+
+    /******************************************************************************/
+
+    static int as_bool(Always<pyVariable> self) noexcept {return self->has_value();}
+
+    static Value<pyFloat> as_float(Always<pyVariable> self) {
+        return nullptr;
+        // return load<Variable>(self, reinterpret_cast<PyObject*>(&PyFloat_Type));
+    }
+
+
+    static Value<pyInt> as_int(Always<pyVariable> self) {
+        return nullptr;
+        // return load<Variable>(self, reinterpret_cast<PyObject*>(&PyLong_Type));
+    }
+
+    static int compare(Always<pyVariable> l, Always<> other, decltype(Py_EQ) op) noexcept;
+
+    /******************************************************************************/
+
+    static Value<> lock(Always<pyVariable> self, Ignore) noexcept {
+        if (self->has_value() && self->idx.tag() & 0x1) return self->lock.other;
+        else return {Py_None, true};
+    }
+
+    /******************************************************************************/
+
+    static Value<pyInt> state(Always<pyVariable> self, Ignore) {
+        if (!self->has_value()) {
+            return {Py_None, true};
+        } else if (self->idx.tag() < 0x2) {
+            return pyInt::from(static_cast<Integer>(Mode::Stack));
+        } else {
+            return pyInt::from(static_cast<Integer>(self->storage.address.qualifier));
+        }
+    }
+
+    /******************************************************************************/
+
+    static Value<> load(Always<pyVariable> self, Always<> type) {
+        DUMP("load");
+        auto acquired = self->acquire_ref(LockType::Read);
+        if (auto out = try_load(acquired.ref, type, Value<>())) return out;
+        return type_error("cannot convert value to type %R from %R", +type,
+            +Value<pyIndex>::new_from(acquired.ref.index()));
+    }
+
+    static Py_hash_t hash(Always<pyVariable> self) noexcept {
+        DUMP("hash variable", reference_count(self));
+        if (!self->has_value()) {
+            DUMP("return 0 because it is null");
+            return 0;
+        }
+        std::size_t out;
+        DUMP("hashing", self->index().name());
+        auto stat = Hash::call(self->index(), out, Pointer::from(self->address()));
+        DUMP("hashed");
+        switch (stat) {
+            case Hash::OK: {
+                DUMP("ok");
+                return combine_hash(std::hash<Index>()(self->index()), out);
+            }
+            case Hash::Impossible: return -1;
+        }
+    }
+
+    template <class T>
+    static Value<pyVariable> from(T value, Value<> lock) {
+        auto v = Value<pyVariable>::new_from();
+        if constexpr(Variable::allocated<T>) {
+            v->storage.address.pointer = Allocator<T>::heap(std::move(value));
+            v->storage.address.qualifier = Mode::Heap;
+        } else {
+            Allocator<T>::stack(&v->storage.data, std::move(value));
+        }
+        if (lock) {
+            v->lock.other = *lock;
+            Py_INCREF(+v->lock.other);
+            v->idx = Tagged(Index::of<T>(), Variable::allocated<T> ? Variable::HeapAlias : Variable::StackAlias);
+        } else {
+            v->lock.count = 0;
+            v->idx = Tagged(Index::of<T>(), Variable::allocated<T> ? Variable::Heap : Variable::Stack);
+        }
+        return v;
+    }
+
+    static Value<pyVariable> from(Ref const &r, Value<> ward) {
+        DUMP("making reference pyVariable object");
+        auto v = Value<pyVariable>::new_from();
+        if (r) {
+            switch (r.mode()) {
+                case Mode::Read: {v->storage.address.qualifier = Mode::Read; break;}
+                case Mode::Write: {v->storage.address.qualifier = Mode::Write; break;}
+                default: return type_error("cannot create Variable from temporary reference");
+            }
+            v->storage.address.pointer = r.pointer().base;
+            v->idx = Tagged(r.index(), ward ? Variable::HeapAlias : Variable::Heap);
+        }
+        return v;
+    }
+
+    static Value<> method(Always<pyVariable> v, Always<pyTuple> args, CallKeywords &&kws);
+
+    static PyNumberMethods number_methods;
+    static PyMethodDef methods[];
 };
 
-struct pyVariable : ObjectHead, Variable {};
+PyNumberMethods pyVariable::number_methods = {
+    .nb_bool = api<as_bool, Always<pyVariable>>,
+    .nb_int = api<as_int, Always<pyVariable>>,
+    .nb_float = api<as_float, Always<pyVariable>>
+};
+
+/******************************************************************************/
+
+PyMethodDef pyVariable::methods[] = {
+    // {"copy_from", c_function(c_copy_from<Value>),
+    //     METH_O, "assign from other using C++ copy assignment"},
+
+    // {"move_from", c_function(c_move_from<Value>),
+    //     METH_O, "assign from other using C++ move assignment"},
+    // copy
+    // swap
+
+    {"lock", api<lock, Always<pyVariable>, Ignore>, METH_NOARGS,
+        "lock(self)\n--\n\nget lock object"},
+
+    {"__enter__", api<return_self, Always<>, Ignore>, METH_NOARGS,
+        "__enter__(self)\n--\n\nreturn self"},
+
+    {"__exit__", api<reset, Always<pyVariable>, Ignore>, METH_VARARGS,
+        "__exit__(self, *args)\n--\n\nalias for Variable.reset"},
+
+    {"reset", api<reset, Always<pyVariable>, Ignore>, METH_NOARGS,
+        "reset(self)\n--\n\nreset the Variable"},
+
+    {"use_count", api<use_count, Always<pyVariable>, Ignore>, METH_NOARGS,
+        "use_count(self)\n--\n\nuse count or -1"},
+
+    {"state", api<state, Always<pyVariable>, Ignore>, METH_NOARGS,
+        "state(self)\n--\n\nreturn state of object"},
+
+    {"index", api<index, Always<pyVariable>, Ignore>, METH_NOARGS,
+        "index(self)\n--\n\nreturn Index of the held C++ object"},
+
+    // {"as_value", c_function(c_as_value<Variable>),
+    //     METH_NOARGS, "return an equivalent non-reference object"},
+
+    // {"load", c_function(c_load<Variable>),
+    //     METH_O, "load(self, type)\n--\n\ncast to a given Python type"},
+
+    // {"method", c_function(c_variable_method),
+    //     METH_VARARGS | METH_KEYWORDS, "method(self, name, out=None)\n--\n\ncall a method given a name and arguments"},
+
+    // {"attribute", attribute, METH_VARARGS | METH_KEYWORDS,
+    //     "attribute(self, name, out=None)\n--\n\nget a reference to a member variable"},
+
+    // {"from_object", c_function(c_value_from),
+        // METH_CLASS | METH_O, "cast an object to a given Python type"},
+    {nullptr, nullptr, 0, nullptr}
+};
+
+/******************************************************************************/
 
 inline void Variable::set_lock(Always<> other) {
     lock.other = other;
     Py_INCREF(+other);
     reinterpret_cast<std::uintptr_t &>(idx.base) |= 1;//Tagged<State>(i, idx.state() | 1);
-    ++(Always<Variable>::from(other)->lock.count);
+    ++(Always<pyVariable>::from(other)->lock.count);
 }
 
-inline Always<> current_root(Always<Variable> v) {return (v->idx.tag() & 0x1) ? v->lock.other : v;}
+inline Always<> current_root(Always<pyVariable> v) {return (v->idx.tag() & 0x1) ? v->lock.other : v;}
 
-inline auto & Variable::current_lock() {
-    return (idx.tag() & 0x1 ? Always<Variable>::from(lock.other)->lock.count : lock.count);
+inline std::uintptr_t & Variable::current_lock() {
+    return (idx.tag() & 0x1 ? Always<pyVariable>::from(lock.other)->lock.count : lock.count);
 }
 
-Value<> load(Always<Variable> self, Always<> type);
-
-// struct Variable : Object {
-//     static bool matches(Always<Type> p) {return false;}
-
-//     static Value<> load(Ref &ref, Ignore, Ignore) {
-//         return {};
-//     }
-// };
-
-/******************************************************************************/
-
-static constexpr auto MutateSentinel = std::numeric_limits<std::uintptr_t>::max();
-
-inline Ref begin_acquisition(Variable& v, LockType type) {
-    if (!v.has_value()) return Ref();
-    auto &count = v.current_lock();
-
-    if (count == MutateSentinel) {
-        throw PythonError(type_error("cannot reference object which is being mutated"));
-    } else if (count == 0 && type == LockType::Write) {
-        DUMP("write lock");
-        count = MutateSentinel;
-        return Ref(v.index(), Mode::Write, Pointer::from(v.address()));
-    } else if (type == LockType::Read) {
-        DUMP("read lock");
-        ++count;
-        return Ref(v.index(), Mode::Read, Pointer::from(v.address()));
-    } else {
-        throw PythonError(type_error("cannot mutate object which is already referenced"));
-    }
-}
-
-inline void end_acquisition(Variable& v) {
-    if (!v.has_value()) return;
-    auto &count = v.current_lock();
-
-    if (count == MutateSentinel) count = 0;
-    else --count;
-    DUMP("restored acquisition!", count);
-}
-
-struct AcquiredRef {
-    Ref ref;
-    Variable &v;
-    ~AcquiredRef() noexcept {end_acquisition(v);}
-};
-
-inline AcquiredRef acquire_ref(Variable& v, LockType type) {
-    return AcquiredRef{begin_acquisition(v, type), v};
-}
+Value<> load(Always<pyVariable> self, Always<> type);
 
 /******************************************************************************/
 
@@ -190,7 +362,7 @@ inline void Variable::reset() noexcept {
         Destruct::call(index(), Pointer::from(&storage));
     }
     if (state & 0x1) {
-        --Always<Variable>::from(lock.other)->lock.count;
+        --Always<pyVariable>::from(lock.other)->lock.count;
         Py_DECREF(+lock.other);
     }
     idx = {};
@@ -202,160 +374,100 @@ Lifetime call_to_variable(Index self, Pointer address, Mode qualifier, ArgView &
 
 /******************************************************************************/
 
-template <class T>
-Value<Variable> Variable::from(T value, Value<> lock) {
-    auto v = Value<Variable>::alloc();
-    if constexpr(allocated<T>) {
-        v->storage.address.pointer = Allocator<T>::heap(std::move(value));
-        v->storage.address.qualifier = Mode::Heap;
-    } else {
-        Allocator<T>::stack(&v->storage.data, std::move(value));
+template <class F>
+Value<> map_output(Always<> t, F &&f) {
+    // Type objects
+    // return {};
+    if (auto type = Maybe<pyType>(t)) {
+        if (pyNone::matches(*type))  return f(pyNone());
+        if (pyBool::matches(*type))  return f(pyBool());
+        if (pyInt::matches(*type))   return f(pyInt());
+        if (pyFloat::matches(*type)) return f(pyFloat());
+        if (pyStr::matches(*type))   return f(pyStr());
+        if (pyBytes::matches(*type)) return f(pyBytes());
+        if (pyIndex::matches(*type)) return f(pyIndex());
+// //         else if (*type == &PyBaseObject_Type)                  return as_deduced_object(std::move(r));        // object
+//         // if (*type == static_type<VariableType>()) return f(VariableType());           // Value
     }
-    if (lock) {
-        v->lock.other = *lock;
-        Py_INCREF(+v->lock.other);
-        v->idx = Tagged(Index::of<T>(), allocated<T> ? HeapAlias : StackAlias);
-    } else {
-        v->lock.count = 0;
-        v->idx = Tagged(Index::of<T>(), allocated<T> ? Heap : Stack);
-    }
-    return v;
-}
+    // Non type objects
+    DUMP("Not a type");
+//     // if (auto p = instance<Index>(t)) return f(Index());  // Index
 
-/******************************************************************************/
-
-inline Value<Variable> Variable::from(Ref const &r, Value<> ward) {
-    DUMP("making reference Variable object");
-    auto v = Value<Variable>::alloc();
-    if (r) {
-        switch (r.mode()) {
-            case Mode::Read: {v->storage.address.qualifier = Mode::Read; break;}
-            case Mode::Write: {v->storage.address.qualifier = Mode::Write; break;}
-            default: return type_error("cannot create Variable from temporary reference");
-        }
-        v->storage.address.pointer = r.pointer().base;
-        v->idx = Tagged(r.index(), ward ? HeapAlias : Heap);
-    }
-    return v;
-}
-
-// void args_from_python(ArgView &s, Object const &pypack);
-
-// bool object_response(Value &v, Index t, Object o);
-
-// Object ref_to_object(Ref &&v, Object const &t={});
-
-// inline Object args_to_python(ArgView &s, Object const &sig={}) {
-//     if (sig && !PyTuple_Check(+sig))
-//         throw python_error(type_error("expected tuple but got %R", (+sig)->ob_type));
-//     std::size_t len = sig ? PyTuple_GET_SIZE(+sig) : 0;
-//     auto const n = s.size();
-//     auto out = Object::from(PyTuple_New(n));
-//     Py_ssize_t i = 0u;
-//     for (auto &r : s) {
-//         if (i < len) {
-//             PyObject *t = PyTuple_GET_ITEM(+sig, i);
-//             throw python_error(type_error("conversion to python signature not implemented yet"));
-//         } else {
-//             // special case: if given an rvalue reference, make it into a value (not sure if really desirable or not)
-//             // if (r.qualifier() == Rvalue) {
-//             //     if (!set_tuple_item(out, i, value_to_object(r))) return {};
-//             // } else {
-//             //     if (!set_tuple_item(out, i, ref_to_object(r))) return {};
-//             // }
-//         }
-//         ++i;
+//     if (pyUnion::matches(t)) return f(pyUnion());
+//     if (pyList::matches(t))  return f(pyList());       // pyList[T] for some T (compound def)
+//     if (pyTuple::matches(t)) return f(pyTuple());      // pyTuple[Ts...] for some Ts... (compound def)
+//     if (pyDict::matches(t))  return f(pyDict());       // pyDict[K, V] for some K, V (compound def)
+//     DUMP("Not one of the structure types");
+    return {};
+//     DUMP("custom convert ", output_conversions.size());
+//     if (auto p = output_conversions.find(Value<>{t, true}); p != output_conversions.end()) {
+//         DUMP(" conversion ");
+//         Value<> o;// = ref_to_object(std::move(r), {});
+//         if (!o) return type_error("could not cast value to Python object");
+//         DUMP("calling function");
+// //         // auto &obj = cast_object<Variable>(o).ward;
+// //         // if (!obj) obj = root;
+//         return Value<>::from(PyObject_CallFunctionObjArgs(+p->second, +o, nullptr));
 //     }
-//     return out;
-// }
-
-
-/******************************************************************************/
-
-Value<> variable_lock(Always<Variable> self, Ignore) {
-    if (self->has_value() && self->idx.tag() & 0x1) return {self->lock.other, true};
-    else return {Py_None, true};
 }
 
 /******************************************************************************/
 
-Value<pyInt> variable_state(Always<Variable> self, Ignore) {
-    if (!self->has_value()) {
-        return {Py_None, true};
-    } else if (self->idx.tag() < 0x2) {
-        return pyInt::from(static_cast<Integer>(Mode::Stack));
-    } else {
-        return pyInt::from(static_cast<Integer>(self->storage.address.qualifier));
+Value<> try_load(Ref &r, Always<> t, Maybe<> root) {
+    DUMP("try_load", r.name(), "to type", t, "with root", root);
+    return map_output(t, [&](auto T) {
+        return decltype(T)::load(r, t, root);
+    });
+}
+
+/******************************************************************************/
+
+Value<> pyVariable::method(Always<pyVariable> v, Always<pyTuple> args, CallKeywords &&kws) {
+    DUMP("variable_method", v->name());
+    auto const total = size(args);
+    ArgAlloc a(total-1, 1);
+
+    Str name = as_string_view(item(args, 0));
+    a.view.tag(0) = Ref(name);
+
+    DUMP("mode", kws.mode);
+    Value<> out;
+    Lifetime life;
+    {
+        char self_mode = remove_mode(kws.mode);
+        auto self = v->acquire_ref(self_mode == 'w' ? LockType::Write : LockType::Read);
+        TupleLock locking(a.view, args, 1);
+        locking.lock(kws.mode);
+
+        std::tie(out, life) = call_with_caller(self.ref.index(), self.ref.pointer(), self.ref.mode(), a.view, kws);
     }
-}
-
-/******************************************************************************/
-
-Value<> return_self(Always<> self, Ignore) noexcept {return {self, true};}
-
-Value<> variable_reset(Always<Variable> self, Ignore) {
-    self->reset();
-    return {Py_None, true};
-}
-
-Value<pyInt> variable_use_count(Always<Variable> self, Ignore) noexcept {
-    Integer stat = 0;
-    if (self->has_value()) {
-        auto i = self->current_lock();
-        if (i == MutateSentinel) stat = -1;
-        else stat = i;
-    }
-    return pyInt::from(stat);
-}
-
-
-int c_variable_clear(Always<Variable> self) noexcept {
-    self->reset();
-    return 0;
-}
-
-int c_variable_traverse(PyObject* self, visitproc, void* arg) noexcept {
-    return 0;
-}
-
-/******************************************************************************/
-
-PyObject* c_variable_float(PyObject* self) noexcept {
-    return nullptr;
-    // return c_load<Variable>(self, reinterpret_cast<PyObject*>(&PyFloat_Type));
-}
-
-
-PyObject* c_variable_int(PyObject* self) noexcept {
-    return nullptr;
-    // return c_load<Variable>(self, reinterpret_cast<PyObject*>(&PyLong_Type));
-}
-
-constexpr std::size_t combine_hash(std::size_t t, std::size_t u) noexcept {
-    return t ^ (u + 0x9e3779b9 + (t << 6) + (t >> 2));
-}
-
-Py_hash_t c_variable_hash(Always<Variable> self) noexcept {
-    DUMP("hash variable");
-    if (!self->has_value()) {
-        DUMP("return 0");
-        return 0;
-    }
-    std::size_t out;
-    DUMP("hashing", self->index().name());
-    auto stat = Hash::call(self->index(), out, Pointer::from(self->address()));
-    DUMP("hashed");
-    switch (stat) {
-        case Hash::OK: {
-            DUMP("ok");
-            return combine_hash(std::hash<ara::Index>()(self->index()), out);
+    DUMP("lifetime to attach = ", life.value);
+    if (life.value) {
+        if (auto o = Maybe<pyVariable>(out)) {
+            for (unsigned i = 0; life.value; ++i) {
+                if (life.value & 1) {
+                    DUMP("got one", i);
+                    if (i) {
+                        DUMP("setting root to argument", i-1, size(args));
+                        if (auto arg = Maybe<pyVariable>(item(args, i))) {
+                            o->set_lock(current_root(*arg));
+                        } else throw PythonError::type("Expected instance of Variable");
+                    } else {
+                        DUMP("setting root to self");
+                        o->set_lock(current_root(v));
+                    }
+                }
+                life.value >>= 1;
+            }
         }
-        case Hash::Impossible: return -1;
     }
+    return out;
 }
 
-int c_variable_compare_int(Always<Variable> l, Always<> other, decltype(Py_EQ) op) noexcept {
-    if (auto r = Maybe<Variable>(other)) {
+/******************************************************************************/
+
+int pyVariable::compare(Always<pyVariable> l, Always<> other, decltype(Py_EQ) op) noexcept {
+    if (auto r = Maybe<pyVariable>(other)) {
         if (l->index() == r->index()) {
             switch(op) {
                 case(Py_EQ): return false;
@@ -421,6 +533,265 @@ int c_variable_compare_int(Always<Variable> l, Always<> other, decltype(Py_EQ) o
 }
 
 
+Target variable_target(Variable& out) {
+    return {Index(), &out.storage, sizeof(out.storage),
+        Target::Write | Target::Read | Target::Heap | Target::Trivial |
+        Target::Relocatable | Target::MoveNoThrow | Target::Unmovable | Target::MoveThrow};
+}
+
+Lifetime invoke_call(Variable &out, Index self, Pointer address, ArgView &args, Mode mode) {
+    Target target = variable_target(out);
+    auto const stat = Call::call(self, target, address, mode, args);
+    DUMP("Variable got stat and lifetime:", stat, target.c.lifetime);
+
+    switch (stat) {
+        case Call::None:        break;
+        case Call::Stack:       {out.set_stack(target.index()); break;}
+        case Call::Read:        {out.set_pointer(target.index(), target.output(), Mode::Read); break;}
+        case Call::Write:       {out.set_pointer(target.index(), target.output(), Mode::Write); break;}
+        case Call::Heap:        {out.set_pointer(target.index(), target.output(), Mode::Heap); break;}
+        case Call::Impossible:  {throw PythonError(type_error("Impossible"));}
+        case Call::WrongNumber: {throw PythonError(type_error("WrongNumber"));}
+        case Call::WrongType:   {throw PythonError(type_error("WrongType"));}
+        case Call::WrongReturn: {throw PythonError(type_error("WrongReturn"));}
+        case Call::Exception:   {throw PythonError(type_error("Exception"));}
+        case Call::OutOfMemory: {throw std::bad_alloc();}
+    }
+    DUMP("output:", out.name(), "address:", out.address(), target.c.lifetime, target.lifetime().value);
+    return target.lifetime();
+}
+
+/******************************************************************************/
+
+template <class I>
+Lifetime invoke_access(Variable &out, Index self, Pointer address, I element, Mode mode) {
+    Target target = variable_target(out);
+    using A = std::conditional_t<std::is_same_v<I, Integer>, Element, Attribute>;
+    auto const stat = A::call(self, target, address, element, mode);
+    DUMP("Variable got stat and lifetime:", stat, target.c.lifetime);
+
+    switch (stat) {
+        case A::None:        break;
+        case A::Stack:       {out.set_stack(target.index()); break;}
+        case A::Read:        {out.set_pointer(target.index(), target.output(), Mode::Read); break;}
+        case A::Write:       {out.set_pointer(target.index(), target.output(), Mode::Write); break;}
+        case A::Heap:        {out.set_pointer(target.index(), target.output(), Mode::Heap); break;}
+        case A::Exception:   {throw PythonError(type_error("Exception"));}
+        case A::OutOfMemory: {throw std::bad_alloc();}
+    }
+    DUMP("output:", out.name(), "address:", out.address(), target.c.lifetime, target.lifetime().value);
+    return target.lifetime();
+}
+
+/******************************************************************************/
+
+
+template <class F>
+Lifetime call_to_output(Value<> &out, Always<> output, F&& fun) {
+    if (auto v = Maybe<pyVariable>(output)) {
+        DUMP("instance of Variable");
+        out = {Py_None, true};
+        return fun(*v);
+    }
+
+    if (auto t = Maybe<pyType>(output)) {
+        DUMP("is type");
+        if (is_subclass(*t, pyVariable::def())) {
+            DUMP("is Variable subclass");
+            auto v = Value<pyVariable>::new_from();
+            auto life = fun(*v);
+            out = std::move(v);
+            return life;
+        }
+    }
+#warning "aliasing is a problem here"
+    auto v = Value<pyVariable>::new_from();
+    fun(*v);
+    Ref r(v->index(), Mode::Write, Pointer::from(v->address()));
+    if (auto o = try_load(r, output, Value<>())) {out = o; return {};}
+    else throw PythonError(type_error("could not load"));
+}
+
+template <class F>
+Lifetime call_to_output(Value<> &out, Maybe<> output, F&& fun) {
+    if (output) {
+        return call_to_output(out, *output, fun);
+    } else {
+        auto v = Value<pyVariable>::new_from();
+        auto life = fun(*v);
+        out = std::move(v);
+        return life;
+    }
+}
+
+/******************************************************************************/
+
+struct TupleLock {
+    ArgView &view;
+    Always<pyTuple> args;
+    Py_ssize_t start;
+
+    // Prepare a lock on each argument: v[i] <-- a[s+i]
+    // The immediate next step after constructor should be either read_lock() or lock()
+    TupleLock(ArgView &v, Always<pyTuple> a, Py_ssize_t s=0) noexcept
+        : view(v), args(a), start(s) {for (auto &ref : view) ref.c.mode_index = nullptr;}
+
+    void lock_default() {
+        auto s = start;
+        for (auto &ref : view) {
+            Always<> it = item(args, s++);
+            if (auto p = Maybe<pyVariable>(it)) {
+                DUMP("its variable!");
+                ref = p->begin_acquisition(LockType::Read);
+            } else {
+                ref = Ref(Index::of<Export>(), Mode::Write, Pointer::from(+it));
+            }
+        }
+    }
+
+    void lock(std::string_view mode) {
+        if (mode.empty())
+            return lock_default();
+        if (mode.size() != view.size())
+            throw PythonError(type_error("wrong number of modes"));
+
+        auto s = start;
+        auto c = mode.begin();
+        for (auto &ref : view) {
+            Always<> it = item(args, s++);
+            if (auto p = Maybe<pyVariable>(it)) {
+                DUMP("its variable!", *c);
+                ref = p->begin_acquisition(*c == 'w' ? LockType::Write : LockType::Read);
+            } else {
+                ref = Ref(Index::of<Export>(), Mode::Write, Pointer::from(+it));
+            }
+            ++c;
+        }
+    }
+
+    ~TupleLock() noexcept {
+        auto s = start;
+        for (auto &ref : view) {
+            if (ref.has_value())
+                if (auto v = Maybe<pyVariable>(item(args, s)))
+                    v->end_acquisition();
+            ++s;
+        }
+    }
+};
+
+// struct SelfTupleLock : TupleLock {
+//     Variable &self;
+//     SelfTupleLock(Variable &s, ArgView &v, Always<pyTuple> a, std::string_view mode) noexcept : TupleLock(v, a, 1), self(s) {
+//         char const first = mode.empty() ? 'r' : mode[0];
+//         begin_acquisition(self, first == 'w', first == 'r');
+//     }
+
+//     void lock(std::string_view mode) {
+//         if (mode.size() > 2) {
+//            mode.remove_prefix(std::min(mode.size(), std::size_t(2)));
+//             if (mode.size() != view.size())
+//                 throw PythonError(type_error("wrong number of modes"));
+//             lock_arguments(mode);
+//         } else {
+//             lock_arguments();
+//         }
+//     }
+
+//     ~SelfTupleLock() noexcept {end_acquisition(self);}
+// };
+
+char remove_mode(std::string_view &mode) {
+    char const first = mode.empty() ? 'r' : mode[0];
+    mode.remove_prefix(std::min(mode.size(), std::size_t(2)));
+    return first;
+}
+
+/******************************************************************************/
+
+auto call_with_caller(Index self, Pointer address, Mode mode, ArgView& args, CallKeywords const& kws) {
+    auto lk = std::make_shared<PythonFrame>(!kws.gil);
+    Caller caller(lk);
+    args.c.caller_ptr = &caller;
+
+    Value<> out;
+    auto life = call_to_output(out, kws.out, [&](Variable& v){
+        return invoke_call(v, self, address, args, mode);
+    });
+    return std::make_pair(out, life);
+}
+
+/******************************************************************************/
+
+Value<> index_call(Index index, Always<pyTuple> args, CallKeywords const& kws) {
+    DUMP("index_call", index.name());
+    auto const total = size(args);
+    if (!total) throw PythonError(type_error("ara call: expected at least one argument"));
+    ArgAlloc a(total-1, 1);
+
+    Str name = as_string_view(item(args, 0));
+    a.view.tag(0) = Ref(name);
+
+    for (Py_ssize_t i = 0; i != total-1; ++i)
+        a.view[i] = Ref(Index::of<Export>(), Mode::Write, Pointer::from(+item(args, i+1)));
+
+    return call_with_caller(index, Pointer::from(nullptr), Mode::Read, a.view, kws).first;
+}
+
+/******************************************************************************/
+
+template <class Module>
+Value<> module_call(Ignore, Always<pyTuple> args, CallKeywords const &kws) {
+    return index_call(Switch<Module>::call, args, kws);
+}
+
+/******************************************************************************/
+
+Value<> variable_call(Variable &v, Always<pyTuple> args, CallKeywords const& kws) {
+    DUMP("variable_call", v.name());
+    auto const total = size(args);
+    ArgAlloc a(total, 0);
+
+    for (Py_ssize_t i = 0; i != total; ++i)
+        a.view[i] = Ref(Index::of<Export>(), Mode::Write, Pointer::from(+item(args, i)));
+
+    return call_with_caller(v.index(), Pointer::from(v.address()), Mode::Read, a.view, kws).first;
+}
+
+/******************************************************************************/
+
+template <class I>
+auto access_with_caller(Index self, Pointer address, I element, Mode mode, CallKeywords const& kws) {
+    Value<> out;
+    auto life = call_to_output(out, kws.out, [&](Variable& v) {
+        return invoke_access(v, self, address, element, mode);
+    });
+    return std::make_pair(out, life);
+}
+
+template <class I>
+Value<> variable_access(Always<pyVariable> v, Always<pyTuple> args, CallKeywords &&kws) {
+    DUMP("variable_attr", v->name());
+    auto element = Always<I>::from(item(args, 0));
+
+    DUMP("mode", kws.mode);
+    Value<> out;
+    Lifetime life;
+    {
+        char self_mode = remove_mode(kws.mode);
+        auto self = v->acquire_ref(self_mode == 'w' ? LockType::Write : LockType::Read);
+        std::tie(out, life) = access_with_caller(self.ref.index(), self.ref.pointer(), element, self.ref.mode(), kws);
+    }
+    DUMP("lifetime to attach = ", life.value);
+    if (life.value) {
+        if (auto o = Maybe<pyVariable>(out)) {
+            DUMP("setting root to self");
+            o->set_lock(current_root(v));
+        }
+    }
+    return out;
+}
+
 // PyObject* c_variable_compare(PyObject* self, PyObject* other, decltype(Py_EQ) op) noexcept {
 //     switch (c_variable_compare_int(self, other, op)) {
 //         case 0: {Py_INCREF(Py_False); return Py_False;}
@@ -429,11 +800,6 @@ int c_variable_compare_int(Always<Variable> l, Always<> other, decltype(Py_EQ) o
 //     }
 // }
 
-PyNumberMethods VariableNumberMethods = {
-    // .nb_bool = static_cast<inquiry>(c_operator_has_value<Variable>),
-    // .nb_int = c_variable_int,
-    // .nb_float = c_variable_float
-};
 
 /******************************************************************************/
 
@@ -448,69 +814,20 @@ PyNumberMethods VariableNumberMethods = {
 
 /******************************************************************************/
 
-PyMethodDef VariableMethods[] = {
-    // {"copy_from", c_function(c_copy_from<Value>),
-    //     METH_O, "assign from other using C++ copy assignment"},
-
-    // {"move_from", c_function(c_move_from<Value>),
-    //     METH_O, "assign from other using C++ move assignment"},
-    // copy
-    // swap
-
-    {"lock", api<variable_lock, Always<Variable>, Ignore>,
-        METH_NOARGS, "lock(self)\n--\n\nget lock object"},
-
-    {"__enter__", api<return_self, Always<>, Ignore>,
-        METH_NOARGS, "__enter__(self)\n--\n\nreturn self"},
-
-    {"__exit__", api<variable_reset, Always<Variable>, Ignore>,
-        METH_VARARGS, "__exit__(self, *args)\n--\n\nalias for Variable.reset"},
-
-    {"reset", api<variable_reset, Always<Variable>, Ignore>,
-        METH_NOARGS, "reset(self)\n--\n\nreset the Variable"},
-
-    {"use_count", api<variable_use_count, Always<Variable>, Ignore>,
-        METH_NOARGS, "use_count(self)\n--\n\nuse count or -1"},
-
-    {"state", api<variable_state, Always<Variable>, Ignore>,
-        METH_NOARGS, "state(self)\n--\n\nreturn state of object"},
-
-    // {"index", c_function(c_get_index<Variable>),
-    //     METH_NOARGS, "index(self)\n--\n\nreturn Index of the held C++ object"},
-
-    // {"as_value", c_function(c_as_value<Variable>),
-    //     METH_NOARGS, "return an equivalent non-reference object"},
-
-    // {"load", c_function(c_load<Variable>),
-    //     METH_O, "load(self, type)\n--\n\ncast to a given Python type"},
-
-    // {"method", c_function(c_variable_method),
-    //     METH_VARARGS | METH_KEYWORDS, "method(self, name, out=None)\n--\n\ncall a method given a name and arguments"},
-
-    // {"attribute", c_function(c_variable_attribute),
-    //     METH_VARARGS | METH_KEYWORDS, "attribute(self, name, out=None)\n--\n\nget a reference to a member variable"},
-
-    // {"from_object", c_function(c_value_from),
-        // METH_CLASS | METH_O, "cast an object to a given Python type"},
-    {nullptr, nullptr, 0, nullptr}
-};
-
-/******************************************************************************/
-
-void Variable::initialize(Always<pyType> o) noexcept {
+void pyVariable::initialize_type(Always<pyType> o) noexcept {
     DUMP("defining Variable");
-    define_type<Variable>(o, "ara.Variable", "Object class");
-    (~o)->ob_type = +Meta::def();
-    (+o)->tp_as_number = &VariableNumberMethods;
-    (+o)->tp_methods = VariableMethods;
-    // (+o)->tp_call = c_variable_call;
-    // (+o)->tp_clear = c_variable_clear;
-    (+o)->tp_traverse = c_variable_traverse;
-    (+o)->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC;
-    // (+o)->tp_getattro = c_variable_getattr;
-    // (+o)->tp_setattro = c_variable_setattr;
-    (+o)->tp_getset = nullptr;
-    (+o)->tp_hash = PyBaseObject_Type.tp_hash;//c_variable_hash;
+    define_type<pyVariable>(o, "ara.Variable", "Object class");
+    // (~o)->ob_type = +pyMeta::def();
+    o->tp_as_number = &pyVariable::number_methods;
+    o->tp_methods = pyVariable::methods;
+    // o->tp_call = c_variable_call;
+    // o->tp_clear = api<clear, Always<pyVariable>>;
+    // o->tp_traverse = api<traverse, Always<pyVariable>, visitproc, void*>;
+    // o->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC;
+    // o->tp_getattro = c_variable_getattr;
+    // o->tp_setattro = c_variable_setattr;
+    o->tp_getset = nullptr;
+    // o->tp_hash = api<c_variable_hash, Always<pyVariable>>;
     // o->tp_richcompare = c_variable_compare;
     // no init (just use default constructor)
     // PyMemberDef, tp_members

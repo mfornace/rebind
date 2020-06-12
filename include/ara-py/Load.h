@@ -1,6 +1,5 @@
 #pragma once
 #include "Wrap.h"
-#include <ara/Ref.h>
 #include <ara/Structs.h>
 #include <ara-py/Builtins.h>
 #include <ara-py/Variable.h>
@@ -41,45 +40,48 @@ namespace ara::py {
 // First explicit types are checked:
 // None, object, bool, int, float, str, bytes, Index, list, tuple, dict, Value, Overload, memoryview
 // Then, the output_conversions map is queried for Python function callable with the Value
-Value<> try_load(Ref &r, Always<> t, Value<> root);
 
 /******************************************************************************/
 
 
-// template <class Self>
-// PyObject* c_load(PyObject* self, PyObject* type) noexcept {
-//     return raw_object([=]() -> Value {
-//         DUMP("c_load ", typeid(Self).name(), bool(type));
-//         auto acquired = acquire_ref(cast_object<Self>(self), LockType::Read);
-//         if (auto out = try_load(acquired.ref, *type, Value())) return out;
-//         return type_error("cannot convert value to type %R from %R", type, +as_object(acquired.ref.index()));
-//     });
-// }
-
 /******************************************************************************/
 
-std::string repr(Maybe<Object> o) {
-    if (!o) return "null";
-    auto r = Value<>::from(PyObject_Repr(+o));
-#   if PY_MAJOR_VERSION > 2
-        return PyUnicode_AsUTF8(~r); // PyErr_Clear
-#   else
-        return PyString_AsString(~r);
-#   endif
+template <class F>
+Value<> map_output(Always<> t, F &&f) {
+    // Type objects
+    // return {};
+    if (auto type = Maybe<pyType>(t)) {
+        if (pyNone::matches(*type))  return f(pyNone());
+        if (pyBool::matches(*type))  return f(pyBool());
+        if (pyInt::matches(*type))   return f(pyInt());
+        if (pyFloat::matches(*type)) return f(pyFloat());
+        if (pyStr::matches(*type))   return f(pyStr());
+        if (pyBytes::matches(*type)) return f(pyBytes());
+        if (pyIndex::matches(*type)) return f(pyIndex());
+// //         else if (*type == &PyBaseObject_Type)                  return as_deduced_object(std::move(r));        // object
+//         // if (*type == static_type<VariableType>()) return f(VariableType());           // Value
+    }
+    // Non type objects
+    DUMP("Not a type");
+//     // if (auto p = instance<Index>(t)) return f(Index());  // Index
+
+//     if (pyUnion::matches(t)) return f(pyUnion());
+//     if (pyList::matches(t))  return f(pyList());       // pyList[T] for some T (compound def)
+//     if (pyTuple::matches(t)) return f(pyTuple());      // pyTuple[Ts...] for some Ts... (compound def)
+//     if (pyDict::matches(t))  return f(pyDict());       // pyDict[K, V] for some K, V (compound def)
+//     DUMP("Not one of the structure types");
+    return {};
+//     DUMP("custom convert ", output_conversions.size());
+//     if (auto p = output_conversions.find(Value<>{t, true}); p != output_conversions.end()) {
+//         DUMP(" conversion ");
+//         Value<> o;// = ref_to_object(std::move(r), {});
+//         if (!o) return type_error("could not cast value to Python object");
+//         DUMP("calling function");
+// //         // auto &obj = cast_object<Variable>(o).ward;
+// //         // if (!obj) obj = root;
+//         return Value<>::from(PyObject_CallFunctionObjArgs(+p->second, +o, nullptr));
+//     }
 }
-
-/******************************************************************************/
-
-// std::unordered_map<Value, Value> output_conversions;
-
-/******************************************************************************/
-
-// Value try_load(Ref &r, Instance<> t, Value root) {
-//     DUMP("try_load", r.name(), "to type", repr(+t), "with root", repr(+root));
-//     return map_output(t, [&](auto T) {
-//         return decltype(T)::load(r, t, root);
-//     });
-// }
 
 /******************************************************************************/
 

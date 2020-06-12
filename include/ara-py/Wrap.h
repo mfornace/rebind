@@ -27,14 +27,18 @@ bool is_subclass(Always<pyType> s, Always<pyType> t) {
 
 /******************************************************************************/
 
+struct ObjectBase {
+    PyObject_HEAD
+};
+
 template <class T>
 struct StaticType : Wrap<T> {
-    using type = T;
     static PyTypeObject definition;
-    static void initialize(Always<pyType>) noexcept;
 
     static Always<pyType> def() {return definition;}
     static bool check(Always<> o) {return PyObject_TypeCheck(+o, &definition);}
+
+    static bool matches(Always<pyType> o) {return is_subclass(o, def());}
 };
 
 template <class T>
@@ -43,11 +47,24 @@ PyTypeObject StaticType<T>::definition{PyVarObject_HEAD_INIT(NULL, 0)};
 
 /******************************************************************************/
 
+template <class T> template <class ...Args>
+Value<T> Value<T>::new_from(Args &&...args) {
+    DUMP("allocating...");
+    auto out = Value<T>::take(T::def()->tp_alloc(+T::def(), 0)); // 0 unused
+    DUMP("placement_new...");
+    T::placement_new(*out, std::forward<Args>(args)...);
+    DUMP("returning...");
+    DUMP(bool(out), out, reference_count(out));
+    return out;
+}
+
 template <class T>
-PyObject *default_construct(PyTypeObject* subtype, PyObject*, PyObject*) noexcept {
-    using type = typename T::type;
+PyObject* default_construct(PyTypeObject* subtype, PyObject*, PyObject*) noexcept {
+    DUMP("allocating new object");
     PyObject *o = subtype->tp_alloc(subtype, 0); // 0 unused
-    if (o) new (reinterpret_cast<type*>(o)) type(); // Default construct the C++ type
+    DUMP("initializing object");
+    if (o) T::placement_new(*reinterpret_cast<typename T::type*>(o)); // Default construct the C++ type
+    DUMP("returning object", reference_count(Ptr<>{o}))
     return o;
 }
 
@@ -55,6 +72,7 @@ PyObject *default_construct(PyTypeObject* subtype, PyObject*, PyObject*) noexcep
 
 template <class T>
 void call_destructor(PyObject *o) noexcept {
+    DUMP("destroying", type_name<T>(), reference_count(Ptr<>{o}));
     reinterpret_cast<T *>(o)->~T();
     Py_TYPE(o)->tp_free(o);
 }
@@ -63,13 +81,14 @@ void call_destructor(PyObject *o) noexcept {
 
 template <class T>
 void define_type(Always<pyType> o, char const *name, char const *doc) noexcept {
-    DUMP("define type ", name);
-    (+o)->tp_name = name;
-    (+o)->tp_basicsize = sizeof(T);
-    (+o)->tp_dealloc = call_destructor<T>;
-    (+o)->tp_new = default_construct<T>;
-    (+o)->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
-    (+o)->tp_doc = doc;
+    DUMP("define_type", name, type_name<T>());
+    o->tp_name = name;
+    o->tp_basicsize = sizeof(typename T::type);
+    o->tp_itemsize = 0;
+    o->tp_dealloc = call_destructor<typename T::type>;
+    o->tp_new = default_construct<T>;
+    o->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
+    o->tp_doc = doc;
 }
 
 /******************************************************************************/

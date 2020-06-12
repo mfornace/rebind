@@ -1,5 +1,6 @@
 #pragma once
 #include "Raw.h"
+#include "Common.h"
 
 #include <string_view>
 
@@ -36,6 +37,8 @@ struct Index {
     constexpr bool operator==(Index i) const {return base == i.base;}
     constexpr bool operator!=(Index i) const {return base != i.base;}
     constexpr Idx operator+() const {return base;}
+
+    std::uintptr_t integer() const noexcept {return bit_cast<std::uintptr_t>(base);}
 
     template <class T>
     static Index of() noexcept {return {fetch(Type<T>())};}

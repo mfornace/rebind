@@ -4,6 +4,21 @@
 
 namespace ara::py {
 
+
+/******************************************************************************/
+
+struct pyMeta : StaticType<pyMeta> {
+    using type = PyTypeObject;
+
+    static void initialize_type(Always<pyType>) noexcept;
+
+    // static void placement_new(type& t) noexcept {
+    //     DUMP("init meta?");
+    //     // t = type();
+    //     // t.tp_name = "blah";
+    // }
+};
+
 /******************************************************************************/
 
 struct DynamicType {
@@ -11,7 +26,8 @@ struct DynamicType {
         std::string name;
         std::string doc = "doc string";
         Value<> annotation;
-        Member(std::string_view s, Value<> a, Value<Str> doc) : name(s), annotation(std::move(a)) {}
+        Member(std::string_view s, Value<> a, Value<pyStr> doc)
+            : name(s), annotation(std::move(a)) {}
     };
     std::unique_ptr<PyTypeObject> object;
     std::vector<PyGetSetDef> getsets;
@@ -20,45 +36,31 @@ struct DynamicType {
 
     DynamicType() noexcept
         : object(std::make_unique<PyTypeObject>(PyTypeObject{PyVarObject_HEAD_INIT(NULL, 0)})) {
-        define_type<Variable>(*object, "ara.DerivedVariable", "low-level base inheriting from ara.Variable");
+        define_type<pyVariable>(*object, "ara.DerivedVariable", "low-level base inheriting from ara.Variable");
+        // reinterpret_cast<PyObject*>(object.get())->ob_type = +pyMeta::def();
     }
 
-    void finalize(Always<Tuple> args) {
-        auto name = Value<>::from(PyObject_Str(+Value<>::from(PyTuple_GetItem(+args, 0))));
-        if (auto s = get_unicode(*name)) {
-            this->name += as_string_view(*s);
-            object->tp_name = this->name.data();
-        } else throw PythonError(type_error("expected str"));
-
-        object->tp_base = +static_type<Variable>();
+    void finalize(Always<pyTuple> args) {
+        DUMP("finalizing dynamic class");
+        auto s = Value<pyStr>::take(PyObject_Str(+item_at(args, 0)));
+        this->name += as_string_view(*s);
+        object->tp_name = this->name.data();
+        object->tp_base = +pyVariable::def();
 
         if (!getsets.empty()) {
             getsets.emplace_back();
             object->tp_getset = getsets.data();
         }
-        if (PyType_Ready(object.get()) < 0) throw PythonError(nullptr);
+        if (PyType_Ready(object.get()) < 0) throw PythonError();
     }
 };
 
-std::unordered_map<Value<>, DynamicType> dynamic_types;
+std::deque<DynamicType> dynamic_types;
 
-PyObject* get_member(PyObject* self, void* data);
-//  {
-//     return raw_object([=] {
-//         auto annotation = Instance(*reinterpret_cast<PyObject*>(data));
-//         DUMP("get_member", Value<>(annotation, true));
-//         return Value<>(annotation, true);
-//     });
-// }
-
-template <class F>
-void iterate(Always<Dict> o, F &&f) {
-    PyObject *key, *value;
-    Py_ssize_t pos = 0;
-
-    while (PyDict_Next(~o, &pos, &key, &value)) {
-        f(instance(*key), instance(*value));
-    }
+Value<> get_member(Always<> self, Always<> annotation) {
+    return {};
+    // DUMP("get_member", Value<>(annotation, true));
+    // return Value<>(annotation, true);
 }
 
 // PyFunction_GetAnnotations
@@ -83,55 +85,47 @@ void iterate(Always<Dict> o, F &&f) {
 // this is very tricky... we have to go through the properties, find the declarations
 // set the rest of the properties as normal
 // set these properties specially
-PyObject* meta_new(PyTypeObject* type, PyObject* args, PyObject* kwargs) noexcept {
-    DUMP("meta_new", Value<>(args, true), Value<>(kwargs, true));
 
-    // static char const* kws[] = {"name", "bases", "props", nullptr};
-    // char const *name;
-    // PyObject *bases;
-    // PyObject *props;
-    // DUMP("Defining via metaclass", name);
-    // HmmType.tp_hash = c_variable_hash;
-    auto &base = dynamic_types[Value<>(instance(*type).object(), true)];
+/******************************************************************************/
 
-    auto properties = Value<>::from(PyTuple_GetItem(args, 2));
-    if (auto as = PyDict_GetItemString(+properties, "__annotations__")) {
-        DUMP(Value<>(as, true));
-        iterate(instance(*as).as<PyDictObject>(), [&](auto k, auto v) {
-            Value<> doc;
-            if (auto doc_string = PyDict_GetItem(+properties, +k)) {
-                doc = Value<>(doc_string, true);
-                if (0 != PyDict_DelItem(+properties, +k)) throw PythonError();
+Value<pyType> meta_new(Ignore, Always<pyTuple> args, Maybe<pyDict> kwargs) {
+    DUMP("meta_new", args);
+    if (size(args) != 3) throw PythonError::type("Meta.__new__ takes 3 positional arguments");
+
+    auto& base = dynamic_types.emplace_back();
+
+    auto properties = Always<pyDict>::from(item(args, 2));
+    if (auto as = item(properties, "__annotations__")) {
+        DUMP("working on annotations");
+        iterate(Always<pyDict>::from(*as), [&](auto k, auto v) {
+            auto key = Always<pyStr>::from(k);
+
+            Value<pyStr> doc;
+            if (auto doc_string = item(properties, key)) {
+                doc = Always<pyStr>::from(*doc_string);
+                if (0 != PyDict_DelItem(~properties, ~key)) throw PythonError();
             }
 
-            if (auto s = get_unicode(k)) {
-                auto &member = base.members.emplace_back(as_string_view(*s), Value<>(v, true), std::move(doc));
-                base.getsets.emplace_back(PyGetSetDef{member.name.data(), get_member, nullptr, member.doc.data(), +member.annotation});
-            } else throw PythonError(type_error("expected str"));
+            auto &member = base.members.emplace_back(as_string_view(key), v, std::move(doc));
+            // DUMP("ok", as_string_view(*key), member.name, member.doc, +member.annotation);
+            base.getsets.emplace_back(PyGetSetDef{member.name.data(),
+                api<get_member, Always<>, Always<>>, nullptr, member.doc.data(), +member.annotation});
         });
     }
 
+    base.finalize(args);
 
-    base.finalize(*args);
-    DUMP("ok");
-    auto bases = Value<>::from(PyTuple_Pack(1, base.object.get()));
-    DUMP("ok");
-    auto args2 = Value<>::from(PyTuple_Pack(3, PyTuple_GET_ITEM(args, 0), +bases, PyTuple_GET_ITEM(args, 2)));
-    DUMP("ok");
-    // int ok = PyArg_ParseTupleAndKeywords(args, kwargs, "sOO", const_cast<char**>(kws), &name, &bases, &props);
-    // if (!ok) return nullptr;
-    // PyObject* out = PyType_GenericNew(type, args, kwargs);
-    auto new_type = PyType_Type.tp_new(type, +args2, kwargs);
-    DUMP("new type address", new_type, +static_type<Variable>());
-    DUMP("new_type", Value<>(new_type, true));
-    auto t = ((PyTypeObject *)(new_type));
-    DUMP("new_type", t->tp_call, t->tp_call == c_variable_call, bool(t->tp_hash));
+    // auto bases = Value<pyTuple>::take(PyTuple_Pack(1, base.object.get()));
+    auto bases = Value<pyTuple>::take(PyTuple_Pack(1, +pyVariable::def()));
 
-    auto method = Value<>::from(PyInstanceMethod_New(Py_None));
-    DUMP("hmmmmm", PyFunction_Check(+method));
-    PyObject_SetAttrString(new_type, "instance_method", +method);
+    auto args2 = Value<pyTuple>::take(PyTuple_Pack(3, +item(args, 0), +bases, +item(args, 2)));
+    DUMP("Calling type()", args2, kwargs);
+    auto out = Value<pyType>::take(PyObject_Call(~pyType::def(), +args2, +kwargs));
 
-    return new_type;
+    auto method = Value<>::take(PyInstanceMethod_New(Py_None));
+    // PyObject_SetAttrString(~out, "instance_method", +method);
+    DUMP("done");
+    return out;
     // return out;
     // DUMP(type);
     // return PyObject_Call((PyObject*) &PyType_Type, args, kwargs);
@@ -157,14 +151,13 @@ PyObject* meta_new(PyTypeObject* type, PyObject* args, PyObject* kwargs) noexcep
 
 /******************************************************************************/
 
-template <>
-void Wrap<Meta>::initialize(Instance<PyTypeObject> o) noexcept {
-    define_type<Meta>(o, "ara.Meta", "Object metaclass");
-    // (+o)->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
-    (+o)->tp_new = meta_new;
-    (+o)->tp_base = &PyType_Type;
-    // (+o)->tp_call = meta_new;
-    // (+o)->tp_alloc = PyType_GenericAlloc;
+void pyMeta::initialize_type(Always<pyType> o) noexcept {
+    o->tp_name = "ara.Meta";
+    o->tp_basicsize = sizeof(PyTypeObject);
+    o->tp_doc = "Object metaclass";
+    o->tp_new = api<meta_new, Always<pyType>, Always<pyTuple>, Maybe<pyDict>>;
+    o->tp_base = +pyType::def();
+    // o->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
 }
 
 /******************************************************************************/

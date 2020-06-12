@@ -14,25 +14,15 @@ bool dump_arithmetic(Target &target, Always<> o) {
     if (PyBool_Check(+o))  return target.emplace<T>(+o == Py_True);
     if (PyNumber_Check(+o)) { // This can be hit for e.g. numpy.int64
         if (std::is_integral_v<T>) {
-            if (auto i = Value<>::from(PyNumber_Long(+o)))
+            if (auto i = Value<pyInt>::take(PyNumber_Long(+o)))
                 return target.emplace<T>(PyLong_AsLongLong(+i));
         } else {
-            if (auto i = Value<>::from(PyNumber_Float(+o)))
+            if (auto i = Value<pyFloat>::take(PyNumber_Float(+o)))
                return target.emplace<T>(PyFloat_AsDouble(+i));
         }
     }
     DUMP("cast arithmetic out:", target.name());
     return false;
-}
-
-inline ara::Str exact_cast(Always<> o, ara::Type<ara::Str>) {
-    if (auto s = Maybe<pyStr>(o)) return as_string_view(*s);
-    throw PythonError(type_error("expected str"));
-}
-
-inline Integer exact_cast(Always<> o, ara::Type<Integer>) {
-    if (PyLong_Check(+o)) return PyLong_AsLongLong(+o);
-    throw PythonError(type_error("expected int"));
 }
 
 /******************************************************************************/
@@ -80,7 +70,7 @@ inline bool dump_array(Target &target, Always<> o) {
     }
     if (PyDict_Check(+o)) {
         std::size_t const len = PyDict_Size(+o);
-        auto a = Value<>::from(PyTuple_New(len));
+        auto a = Value<pyTuple>::take(PyTuple_New(len));
 
         Py_ssize_t pos = 0;
         for (std::size_t i = 0; i != len; ++i) {
@@ -146,14 +136,14 @@ inline bool dump_tuple(Target& target, Always<> o) {
 inline bool dump_object(Target &target, Always<> o) {
     DUMP("dumping object");
 
-    if (auto v = Maybe<Variable>(o)) {
-        auto acquired = acquire_ref(**v, LockType::Read);
+    if (auto v = Maybe<pyVariable>(o)) {
+        auto acquired = v->acquire_ref(LockType::Read);
         return acquired.ref.get_to(target);
     }
 
     if (target.accepts<Str>()) {
-        if (auto p = Maybe<pyStr>(o)) return target.emplace<ara::Str>(as_string_view(*p));
-        if (auto p = Maybe<pyBytes>(o)) return target.emplace<ara::Str>(as_string_view(*p));
+        if (auto p = Maybe<pyStr>(o)) return target.emplace<Str>(as_string_view(*p));
+        if (auto p = Maybe<pyBytes>(o)) return target.emplace<Str>(as_string_view(*p));
         return false;
     }
 

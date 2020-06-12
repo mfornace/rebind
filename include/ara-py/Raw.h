@@ -9,6 +9,8 @@
 
 #include <ara/API.h>
 #include <ara/Type.h>
+#include <ara/Index.h>
+#include <ara/Common.h>
 #include <utility>
 
 // #define ARA_PY_BEGIN ara::py { inline namespace v37
@@ -17,7 +19,6 @@
 /******************************************************************************/
 
 namespace ara::py {
-
 
 static constexpr auto Version = std::make_tuple(PY_MAJOR_VERSION, PY_MINOR_VERSION, PY_MICRO_VERSION);
 
@@ -64,6 +65,7 @@ struct Traits;
 template <class T=Object>
 struct Ptr {
     static_assert(std::is_base_of_v<Object, T>);
+    static_assert(std::is_empty_v<T>);
     using type = typename T::type;
     type *base;
 
@@ -85,6 +87,9 @@ struct Ptr {
     type& operator*() const {assert(base); return *base;}
 };
 
+template <class T>
+std::size_t reference_count(Ptr<T> o) {return o ? Py_REFCNT(~o) : 0u;}
+
 /******************************************************************************/
 
 template <class T=Object>
@@ -96,10 +101,11 @@ struct Always : Ptr<T> {
     // Always(T &t) : Base(std::addressof(t)) {}
 
     // template <bool B=true, std::enable_if_t<B && !std::is_same_v<T, type>, int> = 0>
-    template <class U>
-    explicit Always(U *t) noexcept : Base{reinterpret_cast<type*>(t)} {}
-    Always(type &t) noexcept : Always(std::addressof(t)) {}
+    // template <class U>
+    // explicit Always(U *t) noexcept : Base{reinterpret_cast<type*>(t)} {}
+    Always(type &t) noexcept : Base{std::addressof(t)} {}
 
+    static Always from_raw(void* t) noexcept {return *static_cast<type*>(t);}
 
     operator Always<>() const noexcept {return *reinterpret_cast<PyObject*>(base);}
 
@@ -108,7 +114,9 @@ struct Always : Ptr<T> {
     operator type&() const noexcept {return *base;}
 
     template <class U>
-    static Always from(Always<U>);
+    static Always from(Always<U> o) {
+        return T::check(o) ? *reinterpret_cast<type*>(o.base) : throw PythonError::type("bad");
+    }
     // template <class U>
     // Maybe<U> get() const;
 };
@@ -143,6 +151,9 @@ struct Maybe : Ptr<T> {
 
 /******************************************************************************/
 
+struct Construct {};
+static constexpr Construct construct{};
+
 // RAII shared pointer interface to a possibly null Object
 template <class T=Object>
 struct Value : Maybe<T> {
@@ -150,17 +161,21 @@ struct Value : Maybe<T> {
     using Base::base;
     using type = typename T::type;
 
-    Value() : Base(nullptr) {}
-    Value(std::nullptr_t) : Base(nullptr) {}
+    Value() noexcept : Base(nullptr) {}
+    Value(std::nullptr_t) noexcept : Base(nullptr) {}
 
-    Value(type* o, bool increment) : Base{o} {if (increment) Py_XINCREF(base);}
-    Value(Always<T> o, bool increment) : Base{+o} {if (increment) Py_INCREF(base);}
+    Value(type* o, bool increment) noexcept : Base{o} {if (increment) Py_XINCREF(base);}
+
+    template <class U, std::enable_if_t<std::is_same_v<U, T> || std::is_same_v<T, Object>, int> = 0>
+    Value(Always<U> o) noexcept : Base{reinterpret_cast<type*>(o.base)} {Py_INCREF(base);}
 
     template <class U, std::enable_if_t<!std::is_same_v<U, T> && std::is_same_v<T, Object>, int> = 0>
-    Value(Value<U> v) : Base(reinterpret_cast<PyObject*>(std::exchange(v.base, nullptr))) {}
+    Value(Value<U> v) noexcept : Base(reinterpret_cast<PyObject*>(std::exchange(v.base, nullptr))) {}
 
-    static Value from(PyObject* o) {return o ? Value(o, false) : throw PythonError();}
-    static Value alloc();
+    static Value take(PyObject* o) {return o ? Value(reinterpret_cast<type*>(o), false) : throw PythonError();}
+
+    template <class ...Args>
+    static Value new_from(Args &&...args);
 
     Value(Value const &o) noexcept : Base{o.base} {Py_XINCREF(base);}
     Value & operator=(Value const &o) noexcept {base = o.base; Py_XINCREF(base); return *this;}
@@ -170,35 +185,54 @@ struct Value : Maybe<T> {
 
     friend void swap(Value &o, Value &p) noexcept {std::swap(o.base, p.base);}
 
-    type* leak() noexcept {return std::exchange(base, nullptr);}
+    PyObject* leak() noexcept {return reinterpret_cast<PyObject*>(std::exchange(base, nullptr));}
     Always<T> operator*() const {assert(base); return *base;}
+
+    template <class U>
+    static Value from(Always<U>);
 
     ~Value() {Py_XDECREF(base);}
 };
 
+static_assert(!std::is_constructible_v<Value<>, bool>);
+
 /******************************************************************************/
 
-char const * unknown_exception_description() noexcept;
-
 template <class T>
-PyObject* leak(Value<T> s) noexcept {return s.leak();}
-
-inline PyObject* leak(PyObject* s) noexcept {Py_INCREF(s); return s;}
+PyObject* leak(Value<T> s) noexcept {
+    if constexpr(std::is_convertible_v<typename T::type, Index>) {
+        DUMP("leaking index", type_name<T>(), "integer=", s->integer());
+    }
+    DUMP(type_name<T>(), "ref count =", reference_count(s));
+    return s.leak();}
 
 template <class T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
-inline T leak(T t) noexcept {return t;}
+inline constexpr T leak(T t) noexcept {return t;}
 
 template <auto F, class T, class ...Casts>
 struct CallNoThrow;
 
+template <class T, class U>
+T argument_cast(U u) noexcept {
+    if constexpr(std::is_constructible_v<T, U>) {
+        return static_cast<T>(u);
+    } else {
+        return T::from_raw(u);
+    }
+}
+
 template <auto F, class Out, class ...Args, class ...Casts>
 struct CallNoThrow<F, Out(*)(Args...), Casts...> {
     static Out call(Args... args) noexcept {
-        if constexpr(noexcept(F(static_cast<Casts>(args)...))) {
-            return leak(F(static_cast<Casts>(args)...));
+        if constexpr(noexcept(F(argument_cast<Casts>(args)...))) {
+            DUMP("return noexcept");
+            return leak(F(argument_cast<Casts>(args)...));
         } else {
             try {
-                return leak(F(static_cast<Casts>(args)...));
+                DUMP("return non-noexcept", type_name<decltype(F(argument_cast<Casts>(args)...))>());
+                auto out = leak(F(argument_cast<Casts>(args)...));
+                DUMP("output reference count", Py_REFCNT(out), type_name<decltype(out)>());
+                return out;
             } catch (PythonError const &) {
                 return nullptr;
             } catch (std::bad_alloc const &e) {
@@ -218,7 +252,14 @@ struct CallNoThrow<F, Out(*)(Args...), Casts...> {
 template <auto F, class ...Casts>
 struct NoThrow {
     template <class T>
-    constexpr operator T() const noexcept {return CallNoThrow<F, T, Casts...>::call;}
+    constexpr operator T() const noexcept {
+        if constexpr(std::is_same_v<T, PyCFunction> && sizeof...(Casts) == 3) {
+            return reinterpret_cast<PyCFunction>(CallNoThrow<F,
+                PyCFunctionWithKeywords, Casts...>::call);
+        } else {
+            return CallNoThrow<F, T, Casts...>::call;
+        }
+    }
 };
 
 template <auto F, class ...Casts>
@@ -278,6 +319,6 @@ using Export = PythonObject<PY_MAJOR_VERSION, PY_MINOR_VERSION>;
 namespace std {
     template <class T>
     struct hash<ara::py::Value<T>> {
-        size_t operator()(ara::py::Value<T> const &o) const {return std::hash<T*>()(o.base);}
+        size_t operator()(ara::py::Value<T> const &o) const {return std::hash<typename T::type*>()(o.base);}
     };
 }

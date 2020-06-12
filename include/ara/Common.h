@@ -24,6 +24,13 @@ void print_arguments(char const *s, int n, Ts const &...ts) {
     std::cout << std::endl;
 }
 
+
+/******************************************************************************/
+
+constexpr std::size_t combine_hash(std::size_t t, std::size_t u) noexcept {
+    return t ^ (u + 0x9e3779b9 + (t << 6) + (t >> 2));
+}
+
 /******************************************************************************/
 
 /// Copy CV and reference qualifier from one type to another

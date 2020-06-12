@@ -156,11 +156,11 @@ PyMemberDef MethodMembers[] = {
 template <>
 void Wrap<Method>::initialize(Instance<PyTypeObject> o) noexcept {
     define_type<Method>(o, "ara.Method", "ara Method type");
-    (+o)->tp_repr = Method::repr;
-    (+o)->tp_str = api<Method::str>;
-    (+o)->tp_descr_get = api<Method::get>;
-    (+o)->tp_call = Method::call;
-    (+o)->tp_members = MethodMembers;
+    o->tp_repr = Method::repr;
+    o->tp_str = api<Method::str>;
+    o->tp_descr_get = api<Method::get>;
+    o->tp_call = Method::call;
+    o->tp_members = MethodMembers;
     // tp_traverse, tp_clear
     // PyMemberDef, tp_members
 };

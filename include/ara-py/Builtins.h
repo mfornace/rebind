@@ -1,22 +1,10 @@
 #pragma once
-#include "Load.h"
-#include "Variable.h"
+#include "Wrap.h"
+#include <ara/Structs.h>
+// #include "Load.h"
+// #include "Variable.h"
 
 namespace ara::py {
-
-// struct pyNone;
-// struct pyBool;
-// struct pyInt;
-// struct pyFloat;
-// struct pyStr;
-// struct pyBytes;
-// struct pyFunction;
-// struct pyList;
-// struct pyUnion;
-// struct pyOption;
-// struct pyDict;
-// struct pyTuple;
-// struct pyMemoryView;
 
 /******************************************************************************/
 
@@ -27,7 +15,7 @@ struct pyNone : Wrap<pyNone> {
 
     static bool check(Always<> o) {return ~o == Py_None;}
 
-    static Value<pyNone> load(Ignore, Ignore, Ignore) {return {*Py_None, true};}
+    static Value<pyNone> load(Ignore, Ignore, Ignore) {return Always<pyNone>(*Py_None);}
 };
 
 /******************************************************************************/
@@ -39,7 +27,6 @@ struct pyBool : Wrap<pyBool> {
     static bool matches(Always<pyType> p) {return +p == &PyBool_Type;}
 
     static Value<pyBool> from(bool b) {return {b ? Py_True : Py_False, true};}
-    // static Value<Bool> from(ara::Bool b) {return from(static_cast<bool>(b));}
 
     static Value<pyBool> load(Ref &ref, Ignore, Ignore) {
         DUMP("load_bool");
@@ -57,7 +44,7 @@ struct pyInt : Wrap<pyInt> {
     static bool check(Always<> o) {return PyLong_Check(+o);}
     static bool matches(Always<pyType> p) {return +p == &PyLong_Type;}
 
-    static Value<pyInt> from(Integer i) {return Value<pyInt>::from(PyLong_FromLongLong(static_cast<long long>(i)));}
+    static Value<pyInt> from(Integer i) {return Value<pyInt>::take(PyLong_FromLongLong(static_cast<long long>(i)));}
 
     static Value<pyInt> load(Ref &ref, Ignore, Ignore) {
         DUMP("loading int");
@@ -76,7 +63,7 @@ struct pyFloat : Wrap<pyFloat> {
     static bool check(Always<> o) {return PyFloat_Check(+o);}
     static bool matches(Always<pyType> p) {return +p == &PyFloat_Type;}
 
-    static Value<pyFloat> from(Float x) {return Value<pyFloat>::from(PyFloat_FromDouble(x));}
+    static Value<pyFloat> from(Float x) {return Value<pyFloat>::take(PyFloat_FromDouble(x));}
 
     static Value<pyFloat> load(Ref &ref, Ignore, Ignore) {
         if (auto p = ref.get<Float>()) return from(*p);
@@ -99,7 +86,7 @@ struct pyStr : Wrap<pyStr> {
     //     return PyUnicode_Check(+o) ? reinterpret_cast<PyUnicodeObject *>(+o) : nullptr;
     // }
 
-    static Value<pyStr> from(Str s) {return Value<pyStr>::from(PyUnicode_FromStringAndSize(s.data(), s.size()));}
+    static Value<pyStr> from(Str s) {return Value<pyStr>::take(PyUnicode_FromStringAndSize(s.data(), s.size()));}
 
     static Value<pyStr> load(Ref &ref, Ignore, Ignore) {
         DUMP("converting", ref.name(), " to str");
@@ -154,10 +141,23 @@ inline std::string_view as_string_view(Always<pyBytes> o) {
 
 /******************************************************************************/
 
+// std::string repr(Maybe<Object> o) {
+//     if (!o) return "<null>";
+//     auto r = Value<pyStr>::take(PyObject_Repr(+o));
+// #   if PY_MAJOR_VERSION > 2
+//         return PyUnicode_AsUTF8(~r); // PyErr_Clear
+// #   else
+//         return PyString_AsString(~r);
+// #   endif
+// }
+
+/******************************************************************************/
+
 template <class T>
 inline std::string_view as_string_view(T t) {
     if (auto s = Maybe<pyStr>(t)) return as_string_view(*s);
     if (auto s = Maybe<pyBytes>(t)) return as_string_view(*s);
+    throw PythonError::type("Expected str or bytes");
 }
 
 /******************************************************************************/
@@ -165,9 +165,8 @@ inline std::string_view as_string_view(T t) {
 template <class T>
 inline std::ostream& operator<<(std::ostream& os, Ptr<T> const& o) {
     if (!o) return os << "null";
-    auto obj = Value<pyStr>::from(PyObject_Str(+o));
-    if (auto u = get_unicode(*obj)) return os << as_string_view(*u);
-    throw PythonError(type_error("Expected str"));
+    auto obj = Value<pyStr>::take(PyObject_Str(~o));
+    return os << as_string_view(*obj);
 }
 
 /******************************************************************************/
@@ -231,6 +230,7 @@ bool is_structured_type(Always<> def, PyTypeObject *origin) {
 }
 
 struct pyList : Wrap<pyList> {
+    static bool check(Always<> p) {return PyList_Check(+p);}
 
     static bool matches(Always<> p) {return is_structured_type(p, &PyList_Type);}
 
@@ -242,6 +242,7 @@ struct pyList : Wrap<pyList> {
 };
 
 struct pyDict : Wrap<pyDict> {
+    static bool check(Always<> p) {return PyDict_Check(+p);}
 
     static bool matches(Always<> p) {return is_structured_type(p, &PyDict_Type);}
 
@@ -250,7 +251,7 @@ struct pyDict : Wrap<pyDict> {
         if (auto a = ref.get<Array>()) {
             Span &s = *a;
             if (s.rank() == 1) {
-                auto out = Value<>::from(PyDict_New());
+                auto out = Value<>::take(PyDict_New());
                 s.map([&](Ref &r) {
                     if (auto v = r.get<View>()) {
                         if (v->size() != 2) return false;
@@ -261,11 +262,11 @@ struct pyDict : Wrap<pyDict> {
                     return false;
                 });
             } else if (s.rank() == 2 && s.length(1) == 2) {
-                auto out = Value<>::from(PyDict_New());
+                auto out = Value<>::take(PyDict_New());
                 Value<> key;
                 s.map([&](Ref &r) {
                     if (key) {
-                        auto value = Value<>::from(PyDict_New());
+                        auto value = Value<>::take(PyDict_New());
                         PyDict_SetItem(+out, +key, +value);
                         key = {};
                     } else {
@@ -289,20 +290,43 @@ struct pyDict : Wrap<pyDict> {
     }
 };
 
+inline Maybe<> item(Always<pyDict> t, char const* s) {return PyDict_GetItemString(~t, s);}
+
+template <class U>
+inline Maybe<> item(Always<pyDict> t, Always<U> key) {return PyDict_GetItem(~t, ~key);}
+
+/******************************************************************************/
+
+template <class F>
+void iterate(Always<pyDict> o, F &&f) {
+    PyObject *key, *value;
+    Py_ssize_t pos = 0;
+
+    while (PyDict_Next(~o, &pos, &key, &value))
+        f(Always<>(*key), Always<>(*value));
+}
+
+/******************************************************************************/
+
 struct pyTuple : Wrap<pyTuple> {
+    static bool check(Always<> p) {return PyTuple_Check(+p);}
+
     static bool matches(Always<> p) {return is_structured_type(p, &PyTuple_Type);}
 
     static Value<> load(Ref &ref, Always<> p, Value<> root) {
         // load pyTuple or View, go through and load each def. straightforward.
         return {};
     }
-
 };
 
 /******************************************************************************/
 
 inline Always<> item(Always<pyTuple> t, Py_ssize_t i) {return *PyTuple_GET_ITEM(~t, i);}
 inline auto size(Always<pyTuple> t) {return PyTuple_GET_SIZE(~t);}
+
+Always<> item_at(Always<pyTuple> t, Py_ssize_t i) {
+    return (i < size(t)) ? item(t, i) : throw PythonError::type("out of bounds");
+}
 
 /******************************************************************************/
 
@@ -339,41 +363,5 @@ struct pyOption : Wrap<pyOption> {
 // }
 
 /******************************************************************************/
-
-template <class F>
-Value<> map_output(Always<> t, F &&f);// {
-    // Type objects
-//     if (auto def = instance<Type>(t)) {
-//         if (pyNone::matches(*def))  return f(pyNone());
-//         if (pyBool::matches(*def))  return f(Bool());
-//         if (pyInt::matches(*def))   return f(pyInt());
-//         if (pyFloat::matches(*def)) return f(Float());
-//         if (pyStr::matches(*def))   return f(Str());
-//         if (pyBytes::matches(*def)) return f(Bytes());
-//         // if (IndexType::matches(*def)) return f(IndexType());
-// // //         else if (*def == &PyBaseObject_Type)                  return as_deduced_object(std::move(r));        // object
-//         // if (*def == static_type<VariableType>()) return f(VariableType());           // Value
-//     }
-//     // Non def objects
-//     DUMP("Not a def");
-//     // if (auto p = instance<Index>(t)) return f(Index());  // Index
-
-//     if (pyUnion::matches(t)) return f(pyUnion());
-//     if (pyList::matches(t))  return f(pyList());       // pyList[T] for some T (compound def)
-//     if (pyTuple::matches(t)) return f(pyTuple());      // pyTuple[Ts...] for some Ts... (compound def)
-//     if (pyDict::matches(t))  return f(pyDict());       // pyDict[K, V] for some K, V (compound def)
-//     DUMP("Not one of the structure types");
-    // return Value<>();
-//     DUMP("custom convert ", output_conversions.size());
-//     if (auto p = output_conversions.find(Value<>{t, true}); p != output_conversions.end()) {
-//         DUMP(" conversion ");
-//         Value<> o;// = ref_to_object(std::move(r), {});
-//         if (!o) return type_error("could not cast value to Python object");
-//         DUMP("calling function");
-// //         // auto &obj = cast_object<Variable>(o).ward;
-// //         // if (!obj) obj = root;
-//         return Value<>::from(PyObject_CallFunctionObjArgs(+p->second, +o, nullptr));
-//     }
-// }
 
 }
