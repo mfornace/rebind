@@ -1,7 +1,6 @@
 #pragma once
 #include "Wrap.h"
 #include <ara/Structs.h>
-// #include "Load.h"
 // #include "Variable.h"
 
 namespace ara::py {
@@ -31,7 +30,7 @@ struct pyBool : Wrap<pyBool> {
     static Value<pyBool> load(Ref &ref, Ignore, Ignore) {
         DUMP("load_bool");
         if (auto p = ref.get<Bool>()) return from(bool(*p));
-        return {};//return type_error("could not convert to bool");
+        return {};
     }
 };
 
@@ -53,6 +52,8 @@ struct pyInt : Wrap<pyInt> {
         return {};
     }
 };
+
+inline Integer view_underlying(Always<pyInt> i) noexcept {return PyLong_AsLongLong(~i);}
 
 /******************************************************************************/
 
@@ -82,10 +83,6 @@ struct pyStr : Wrap<pyStr> {
     static bool check(Always<> o) {return PyUnicode_Check(+o);}
     static bool matches(Always<pyType> p) {return +p == &PyUnicode_Type;}
 
-    // static PyUnicodeObject* get(Always<> o) {
-    //     return PyUnicode_Check(+o) ? reinterpret_cast<PyUnicodeObject *>(+o) : nullptr;
-    // }
-
     static Value<pyStr> from(Str s) {return Value<pyStr>::take(PyUnicode_FromStringAndSize(s.data(), s.size()));}
 
     static Value<pyStr> load(Ref &ref, Ignore, Ignore) {
@@ -103,6 +100,20 @@ struct pyStr : Wrap<pyStr> {
 
 /******************************************************************************/
 
+inline Str view_underlying(Always<pyStr> o) {
+    Py_ssize_t size;
+#   if PY_MAJOR_VERSION > 2
+        char const *c = PyUnicode_AsUTF8AndSize(~o, &size);
+#   else
+        char *c;
+        if (PyString_AsStringAndSize(~o, &c, &size)) throw PythonError();
+#   endif
+    if (!c) throw PythonError();
+    return Str(c, size);
+}
+
+/******************************************************************************/
+
 struct pyBytes : Wrap<pyBytes> {
 
     static bool check(Always<> o) {return PyBytes_Check(+o);}
@@ -117,75 +128,33 @@ struct pyBytes : Wrap<pyBytes> {
 
 /******************************************************************************/
 
-inline std::string_view as_string_view(Always<pyStr> o) {
-    Py_ssize_t size;
-#if PY_MAJOR_VERSION > 2
-    char const *c = PyUnicode_AsUTF8AndSize(~o, &size);
-#else
-    char *c;
-    if (PyString_AsStringAndSize(~o, &c, &size)) throw PythonError();
-#endif
-    if (!c) throw PythonError();
-    return std::string_view(static_cast<char const *>(c), size);
-}
-
-/******************************************************************************/
-
-inline std::string_view as_string_view(Always<pyBytes> o) {
+inline Str view_underlying(Always<pyBytes> o) {
     char *c;
     Py_ssize_t size;
     PyBytes_AsStringAndSize(~o, &c, &size);
     if (!c) throw PythonError();
-    return std::string_view(c, size);
+    return Str(c, size);
 }
-
-/******************************************************************************/
-
-// std::string repr(Maybe<Object> o) {
-//     if (!o) return "<null>";
-//     auto r = Value<pyStr>::take(PyObject_Repr(+o));
-// #   if PY_MAJOR_VERSION > 2
-//         return PyUnicode_AsUTF8(~r); // PyErr_Clear
-// #   else
-//         return PyString_AsString(~r);
-// #   endif
-// }
 
 /******************************************************************************/
 
 template <class T>
 inline std::string_view as_string_view(T t) {
-    if (auto s = Maybe<pyStr>(t)) return as_string_view(*s);
-    if (auto s = Maybe<pyBytes>(t)) return as_string_view(*s);
+    if (auto s = Maybe<pyStr>(t)) return view_underlying(*s);
+    if (auto s = Maybe<pyBytes>(t)) return view_underlying(*s);
     throw PythonError::type("Expected str or bytes");
 }
 
 /******************************************************************************/
 
 template <class T>
-inline std::ostream& operator<<(std::ostream& os, Ptr<T> const& o) {
+std::ostream& operator<<(std::ostream& os, Ptr<T> const& o) {
     if (!o) return os << "null";
     auto obj = Value<pyStr>::take(PyObject_Str(~o));
     return os << as_string_view(*obj);
 }
 
 /******************************************************************************/
-
-
-// struct IndexType {
-//     static bool check(Always<> o) {return PyObject_TypeCheck(+o, +static_type<Index>());}
-//     static bool matches(Always<pyType> p) {return p == static_type<IndexType>();}
-
-//     static Value<IndexType> load(Ref &ref, Ignore, Ignore) {
-//         if (auto p = ref.get<Index>()) return as_object(std::move(*p));
-
-//         // auto c1 = r.name();
-//         // auto c2 = p->name();
-//         // throw PythonError(type_error("could not convert object of def %s to def %s", c1.data(), c2.data()));
-
-//         else return {};
-//     }
-// };
 
 struct pyFunction : Wrap<pyFunction> {
 
@@ -234,7 +203,7 @@ struct pyList : Wrap<pyList> {
 
     static bool matches(Always<> p) {return is_structured_type(p, &PyList_Type);}
 
-    static Value<> load(Ref &ref, Always<> p, Value<> root) {
+    static Value<> load(Ref &ref, Always<> p, Maybe<> root) {
         // Load Array.
         // For each, load value def.
         return {};
@@ -246,7 +215,7 @@ struct pyDict : Wrap<pyDict> {
 
     static bool matches(Always<> p) {return is_structured_type(p, &PyDict_Type);}
 
-    static Value<> load(Ref &ref, Always<> p, Value<> root) {
+    static Value<> load(Ref &ref, Always<> p, Maybe<> root) {
         DUMP("loading pyDict[]", ref.name());
         if (auto a = ref.get<Array>()) {
             Span &s = *a;
@@ -313,7 +282,7 @@ struct pyTuple : Wrap<pyTuple> {
 
     static bool matches(Always<> p) {return is_structured_type(p, &PyTuple_Type);}
 
-    static Value<> load(Ref &ref, Always<> p, Value<> root) {
+    static Value<> load(Ref &ref, Always<> p, Maybe<> root) {
         // load pyTuple or View, go through and load each def. straightforward.
         return {};
     }
@@ -333,7 +302,7 @@ Always<> item_at(Always<pyTuple> t, Py_ssize_t i) {
 struct pyUnion : Wrap<pyUnion> {
     static bool matches(Always<> p) {return false;}// is_structured_type(p, &PyUnion_Type);}
 
-    static Value<> load(Ref &ref, Always<> p, Value<> root) {
+    static Value<> load(Ref &ref, Always<> p, Maybe<> root) {
         // try loading each possibility. straightforward.
         return {};
     }
@@ -342,25 +311,12 @@ struct pyUnion : Wrap<pyUnion> {
 struct pyOption : Wrap<pyOption> {
     static bool matches(Always<> p) {return false;}// is_structured_type(p, &PyUnion_Type);}
 
-    static Value<> load(Ref &ref, Always<> p, Value<> root) {
+    static Value<> load(Ref &ref, Always<> p, Maybe<> root) {
         // if !ref return none
         // else return load .. hmm needs some thinking
         return {};
     }
 };
-
-
-/******************************************************************************/
-
-// template <class T, class S>
-// Maybe<T> instance(Always<S> s) {
-//     return T::check(s) ? s : nullptr;
-// }
-
-// template <class T, class S>
-// Always<T> instance_cast(Always<S> s) {
-//     return T::check(s) ? s : throw PythonError::type("bad cast");
-// }
 
 /******************************************************************************/
 

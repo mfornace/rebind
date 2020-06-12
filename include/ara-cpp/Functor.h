@@ -95,8 +95,7 @@ struct MaybeArg {
 /// Cast element i of v to type T
 template <class T>
 maybe<T> cast_index(ArgView &v, IndexedType<T> i) {
-    DUMP(i.index);
-    DUMP(v[i.index].name());
+    DUMP("try to cast argument", i.index, "from", v[i.index].name(), "to", type_name<T>());
     return v[i.index].get(Type<T>());
 }
 

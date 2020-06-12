@@ -98,27 +98,21 @@ struct Always : Ptr<T> {
     using Base = Ptr<T>;
     using Base::base;
 
-    // Always(T &t) : Base(std::addressof(t)) {}
-
-    // template <bool B=true, std::enable_if_t<B && !std::is_same_v<T, type>, int> = 0>
-    // template <class U>
-    // explicit Always(U *t) noexcept : Base{reinterpret_cast<type*>(t)} {}
     Always(type &t) noexcept : Base{std::addressof(t)} {}
 
     static Always from_raw(void* t) noexcept {return *static_cast<type*>(t);}
 
     operator Always<>() const noexcept {return *reinterpret_cast<PyObject*>(base);}
 
-    // type& operator*() const {return *base;}
-    // type* operator->() const {return base;}
     operator type&() const noexcept {return *base;}
+
+    type* operator->() const {return base;}
+    type& operator*() const {return *base;}
 
     template <class U>
     static Always from(Always<U> o) {
         return T::check(o) ? *reinterpret_cast<type*>(o.base) : throw PythonError::type("bad");
     }
-    // template <class U>
-    // Maybe<U> get() const;
 };
 
 /******************************************************************************/
@@ -139,15 +133,6 @@ struct Maybe : Ptr<T> {
 
     Always<T> operator*() const {assert(base); return *base;}
 };
-
-// template <class T> template <class U>
-// Maybe<U> Always<T>::get() const {
-//     if constexpr(std::is_same_v<T, U>) {
-//         return base;
-//     } else {
-//         return T::check(*this) ? base : nullptr;
-//     }
-// }
 
 /******************************************************************************/
 
@@ -199,18 +184,13 @@ static_assert(!std::is_constructible_v<Value<>, bool>);
 /******************************************************************************/
 
 template <class T>
-PyObject* leak(Value<T> s) noexcept {
-    if constexpr(std::is_convertible_v<typename T::type, Index>) {
-        DUMP("leaking index", type_name<T>(), "integer=", s->integer());
-    }
-    DUMP(type_name<T>(), "ref count =", reference_count(s));
-    return s.leak();}
+PyObject* leak(Value<T> s) noexcept {return s.leak();}
 
 template <class T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
 inline constexpr T leak(T t) noexcept {return t;}
 
 template <auto F, class T, class ...Casts>
-struct CallNoThrow;
+struct ReinterpretCall;
 
 template <class T, class U>
 T argument_cast(U u) noexcept {
@@ -222,17 +202,15 @@ T argument_cast(U u) noexcept {
 }
 
 template <auto F, class Out, class ...Args, class ...Casts>
-struct CallNoThrow<F, Out(*)(Args...), Casts...> {
+struct ReinterpretCall<F, Out(*)(Args...), Casts...> {
     static Out call(Args... args) noexcept {
         if constexpr(noexcept(F(argument_cast<Casts>(args)...))) {
-            DUMP("return noexcept");
             return leak(F(argument_cast<Casts>(args)...));
         } else {
             try {
-                DUMP("return non-noexcept", type_name<decltype(F(argument_cast<Casts>(args)...))>());
-                auto out = leak(F(argument_cast<Casts>(args)...));
-                DUMP("output reference count", Py_REFCNT(out), type_name<decltype(out)>());
-                return out;
+                return leak(F(argument_cast<Casts>(args)...));
+                // DUMP("output:", type_name<T>(), bool(out), "ref count =", reference_count(out));
+                // DUMP("output reference count", Py_REFCNT(out), type_name<decltype(out)>());
             } catch (PythonError const &) {
                 return nullptr;
             } catch (std::bad_alloc const &e) {
@@ -250,51 +228,20 @@ struct CallNoThrow<F, Out(*)(Args...), Casts...> {
 };
 
 template <auto F, class ...Casts>
-struct NoThrow {
+struct Reinterpret {
     template <class T>
     constexpr operator T() const noexcept {
         if constexpr(std::is_same_v<T, PyCFunction> && sizeof...(Casts) == 3) {
-            return reinterpret_cast<PyCFunction>(CallNoThrow<F,
+            return reinterpret_cast<PyCFunction>(ReinterpretCall<F,
                 PyCFunctionWithKeywords, Casts...>::call);
         } else {
-            return CallNoThrow<F, T, Casts...>::call;
+            return ReinterpretCall<F, T, Casts...>::call;
         }
     }
 };
 
 template <auto F, class ...Casts>
-static constexpr NoThrow<F, Casts...> api{};
-
-/******************************************************************************/
-
-// Non null wrapper for Object pointer
-// template <class T=PyObject>
-// struct Instance {
-//     // static_assert(!std::is_pointer_v<T>);
-
-//     T *ptr;
-//     explicit constexpr Instance(T *b) noexcept __attribute__((nonnull (2))) : ptr(b) {}
-//     constexpr Instance(T &t) : ptr(std::addressof(t)) {}
-
-//     constexpr T* operator+() const noexcept __attribute__((returns_nonnull)) {return ptr;}
-//     PyObject* Object() const noexcept __attribute__((returns_nonnull)) {return reinterpret_cast<PyObject*>(ptr);}
-
-//     template <class To>
-//     Instance<To> as() const {return Instance<To>(reinterpret_cast<To *>(ptr));}
-
-//     constexpr bool operator==(Instance const &other) noexcept {return ptr == other.ptr;}
-// };
-
-// // inline constexpr Instance<> instance(PyObject* t) {return Instance<>(t);}
-
-// template <class T>
-// constexpr Instance<T> instance(T& t) noexcept {return t;}
-//     // if (!t) throw std::runtime_error("bad!");
-//     return Instance<T>(t);
-// }
-
-// template <class T>
-// Instance<T> instance(PyObject* t) {return Instance<T>(reinterpret_cast<T*>(t));}
+static constexpr Reinterpret<F, Casts...> reinterpret{};
 
 /******************************************************************************/
 
@@ -314,7 +261,6 @@ using Export = PythonObject<PY_MAJOR_VERSION, PY_MINOR_VERSION>;
 
 
 }
-
 
 namespace std {
     template <class T>

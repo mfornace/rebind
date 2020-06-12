@@ -119,16 +119,16 @@ struct Impl<std::variant<Ts...>> : Default<std::variant<Ts...>> {
 
 /******************************************************************************/
 
-template <class V>
+template <class M>
 struct DumpMap {
-    using T = std::pair<typename V::key_type, typename V::mapped_type>;
+    using T = std::pair<typename M::key_type, typename M::mapped_type>;
 
-    bool operator()(Target &a, V &&v) const {
+    static bool dump(Target &a, M &&v) {
         return false;
         // return range_response<T>(o, t, std::make_move_iterator(std::begin(v)), std::make_move_iterator(std::end(v)));
     }
 
-    bool operator()(Target &o, V const &v) const {
+    static bool dump(Target &o, M const &v) {
         return false;
         // return range_response<T>(o, t, std::begin(v), std::end(v));
     }
@@ -160,7 +160,8 @@ struct LoadMap {
         });
     }
 
-    std::optional<M> operator()(Ref &r) const {
+    static std::optional<M> load(Ref &r) {
+        DUMP("try to load map", type_name<M>());
         std::optional<M> o;
         if (auto p = r.get<Span>()) load_span(o, *p);
         else if (auto p = r.get<Array>()) load_span(o, *p);

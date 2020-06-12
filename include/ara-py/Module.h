@@ -1,6 +1,5 @@
 // #include <ara-py/Variable.h>
 #include "Call.h"
-#include "Load.h"
 #include "Dump.h"
 #include "Meta.h"
 
@@ -50,7 +49,7 @@ PyObject* init_module<Example>() noexcept {
 
     DUMP("initializing...done");
     static PyMethodDef methods[] = {
-        {"call", api<module_call<Example>, Ignore, Always<pyTuple>, CallKeywords>, METH_VARARGS | METH_KEYWORDS, "Call a function"},
+        {"call", reinterpret<module_call<Example>, Ignore, Always<pyTuple>, CallKeywords>, METH_VARARGS | METH_KEYWORDS, "Call a function"},
         {nullptr, nullptr, 0, nullptr}
     };
 

@@ -116,10 +116,10 @@ bool Ref::binds_to(Qualifier q) const {
 
 inline Load::stat dump_or_load(Target &target, Index source, Pointer p, Mode t) noexcept {
     switch (Dump::call(source, target, p, t)) {
-        case Dump::Write: {DUMP("OK"); return Load::Write;}
-        case Dump::Read: {DUMP("OK"); return Load::Read;}
-        case Dump::Heap: {DUMP("OK"); return Load::Heap;}
-        case Dump::Stack: {DUMP("OK"); return Load::Stack;}
+        case Dump::Write: {DUMP("dump succeeded"); return Load::Write;}
+        case Dump::Read: {DUMP("dump succeeded"); return Load::Read;}
+        case Dump::Heap: {DUMP("dump succeeded"); return Load::Heap;}
+        case Dump::Stack: {DUMP("dump succeeded"); return Load::Stack;}
         case Dump::OutOfMemory: {return Load::OutOfMemory;}
         case Dump::Exception: {return Load::Exception;}
         case Dump::None: {

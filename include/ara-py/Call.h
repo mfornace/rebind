@@ -1,17 +1,9 @@
 #pragma once
-#include "Load.h"
+#include "Builtins.h"
 #include <ara/Call.h>
 #include <mutex>
 
 namespace ara::py {
-
-/******************************************************************************/
-
-// template <class T>
-// PyCFunction c_function(T t) {
-//     if constexpr(std::is_constructible_v<PyCFunction, T>) return static_cast<PyCFunction>(t);
-//     else return reinterpret_cast<PyCFunction>(static_cast<PyCFunctionWithKeywords>(t));
-// }
 
 /******************************************************************************/
 
@@ -47,7 +39,6 @@ struct PythonFrame final : Frame {
     ~PythonFrame() {if (state) PyEval_RestoreThread(state);}
 };
 
-
 /******************************************************************************/
 
 struct CallKeywords {
@@ -56,33 +47,7 @@ struct CallKeywords {
     Maybe<> tags = nullptr;
     bool gil = true;
 
-    explicit CallKeywords(Maybe<pyDict> kws) {
-        if (!kws) return;
-        out = PyDict_GetItemString(~kws, "out");
-        tags = PyDict_GetItemString(~kws, "tags");
-
-        Py_ssize_t n = 0;
-        if (tags) ++n;
-        if (out) ++n;
-
-        if (auto g = PyDict_GetItemString(~kws, "gil")) {
-            gil = PyObject_IsTrue(g);
-            ++n;
-        }
-
-        if (auto r = PyDict_GetItemString(~kws, "mode")) {
-            mode = as_string_view(*r);
-            ++n;
-        }
-
-        if (n != PyDict_Size(~kws)) {
-            PyDict_DelItemString(~kws, "tag");
-            PyDict_DelItemString(~kws, "out");
-            PyDict_DelItemString(~kws, "mode");
-            PyDict_DelItemString(~kws, "gil");
-            throw PythonError::type("ara.Variable: unexpected keyword arguments: %R", +Value<>::take(PyDict_Keys(~kws)));
-        }
-    }
+    CallKeywords(Maybe<pyDict> kws);
 };
 
 /******************************************************************************/
@@ -107,43 +72,5 @@ struct ArgAlloc {
 };
 
 /******************************************************************************/
-
-
-/******************************************************************************/
-
-// PyObject* c_variable_attribute(PyObject* self, PyObject*args, PyObject* kws) noexcept {
-//     return nullptr;
-//     // return raw_object([=] {
-//     //     return variable_access<Str>(cast_object<Variable>(self), *self,
-//     //         *reinterpret_cast<PyTupleObject *>(args), CallKeywords(kws));
-//     // });
-// }
-
-// PyObject* c_variable_element(PyObject* self, PyObject*args, PyObject* kws) noexcept {
-//     return nullptr;
-//     // return raw_object([=] {
-//     //     return variable_access<Integer>(cast_object<Variable>(self), *self,
-//     //         *reinterpret_cast<PyTupleObject *>(args), CallKeywords(kws));
-//     // });
-// }
-
-// PyObject* c_variable_call(PyObject* self, PyObject* args, PyObject* kws) noexcept {
-//     return nullptr;
-//     // return raw_object([=] {
-//     //     return variable_call(cast_object<Variable>(self),
-//     //         *reinterpret_cast<PyTupleObject *>(args), CallKeywords(kws));
-//     // });
-// }
-
-// PyObject* c_variable_method(PyObject* self, PyObject* args, PyObject* kws) noexcept {
-//     return nullptr;
-//     // return raw_object([=] {
-//     //     return variable_method(cast_object<Variable>(self), *self,
-//     //         *reinterpret_cast<PyTupleObject *>(args), CallKeywords(kws));
-//     // });
-// }
-
-/******************************************************************************/
-
 
 }

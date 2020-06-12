@@ -1,9 +1,9 @@
 #pragma once
 #include "Variable.h"
 #include <deque>
+#include <structmember.h>
 
 namespace ara::py {
-
 
 /******************************************************************************/
 
@@ -12,14 +12,14 @@ struct pyMeta : StaticType<pyMeta> {
 
     static void initialize_type(Always<pyType>) noexcept;
 
-    // static void placement_new(type& t) noexcept {
-    //     DUMP("init meta?");
-    //     // t = type();
-    //     // t.tp_name = "blah";
-    // }
+    static Value<pyType> new_type(Ignore, Always<pyTuple> args, Maybe<pyDict> kwargs);
 };
 
 /******************************************************************************/
+
+// PySequenceMethods VariableSequenceMethods = {
+//     .sq_item = c_variable_element
+// };
 
 struct DynamicType {
     struct Member {
@@ -30,32 +30,96 @@ struct DynamicType {
             : name(s), annotation(std::move(a)) {}
     };
     std::unique_ptr<PyTypeObject> object;
+    std::optional<PySequenceMethods> sequence;
+    std::optional<PyNumberMethods> number;
+    std::optional<PyMappingMethods> mapping;
+
     std::vector<PyGetSetDef> getsets;
+    std::vector<PyMethodDef> methods;
+    std::vector<PyMemberDef> member_defs;
+
     std::string name = "ara.extension.";
     std::deque<Member> members;
 
-    DynamicType() noexcept
-        : object(std::make_unique<PyTypeObject>(PyTypeObject{PyVarObject_HEAD_INIT(NULL, 0)})) {
+    DynamicType()
+        : object(std::unique_ptr<PyTypeObject>(new PyTypeObject{PyVarObject_HEAD_INIT(NULL, 0)})) {
         define_type<pyVariable>(*object, "ara.DerivedVariable", "low-level base inheriting from ara.Variable");
-        // reinterpret_cast<PyObject*>(object.get())->ob_type = +pyMeta::def();
     }
 
-    void finalize(Always<pyTuple> args) {
-        DUMP("finalizing dynamic class");
-        auto s = Value<pyStr>::take(PyObject_Str(+item_at(args, 0)));
-        this->name += as_string_view(*s);
-        object->tp_name = this->name.data();
-        object->tp_base = +pyVariable::def();
-
-        if (!getsets.empty()) {
-            getsets.emplace_back();
-            object->tp_getset = getsets.data();
-        }
-        if (PyType_Ready(object.get()) < 0) throw PythonError();
-    }
+    void finalize(Always<pyTuple> args);
 };
 
-std::deque<DynamicType> dynamic_types;
+extern std::deque<DynamicType> dynamic_types;
+
+/******************************************************************************/
+
+struct BoundMethod {
+    PyObject *method;
+    PyObject *self;
+    BoundMethod(Value<> m, Value<> s) noexcept : method(m.leak()), self(s.leak()) {}
+    ~BoundMethod() noexcept {Py_DECREF(method); Py_DECREF(self);}
+};
+
+/******************************************************************************/
+
+struct Method {
+    PyObject* signature;
+    PyObject* docstring;
+    PyObject* doc;
+    std::string name;
+
+    ~Method() noexcept {Py_DECREF(signature); Py_DECREF(docstring); Py_DECREF(doc);}
+};
+
+struct MethodObject : ObjectBase, Method {};
+
+struct pyMethod : StaticType<pyMethod> {
+    using type = MethodObject;
+
+    static PyMemberDef members[];
+
+    static Value<> repr(Always<pyMethod> self) {return Always<>(*self->doc);}
+
+    static Value<> str(Always<pyMethod> self) {return Always<>(*self->docstring);}
+
+    static Value<> get(Always<pyMethod> self, Maybe<> instance, Ignore) {
+        if (instance) {
+            BoundMethod(self, *instance);
+            return {};
+        } else return self;
+    }
+
+    static Value<> call(Always<pyMethod> self, Always<pyTuple> args, Maybe<pyDict> kws) {
+        return {};
+    }
+
+    static void initialize_type(Always<pyType> o) noexcept;
+
+    static void placement_new(MethodObject &) noexcept {}
+};
+
+
+#define ARA_WRAP_OFFSET(type, member) offsetof(Wrap< type >, value) + offsetof(Method, member)
+
+PyMemberDef pyMethod::members[] = {
+    // const_cast<char*>("__signature__"), T_OBJECT_EX, ARA_WRAP_OFFSET(Method, signature), READONLY, const_cast<char*>("method signature"),
+    // const_cast<char*>("docstring"), T_OBJECT_EX, ARA_WRAP_OFFSET(Method, docstring), READONLY, const_cast<char*>("doc string"),
+    // const_cast<char*>("doc"), T_OBJECT_EX, ARA_WRAP_OFFSET(Method, doc), READONLY, const_cast<char*>("doc"),
+    nullptr
+};
+
+
+void pyMethod::initialize_type(Always<pyType> o) noexcept {
+    define_type<pyMethod>(o, "ara.Method", "ara Method type");
+    o->tp_repr = reinterpret<repr, Always<pyMethod>>;
+    o->tp_str = reinterpret<str, Always<pyMethod>>;
+    o->tp_descr_get = reinterpret<get, Always<pyMethod>, Maybe<>, Ignore>;
+    o->tp_call = reinterpret<call, Always<pyMethod>, Always<pyTuple>, Maybe<pyDict>>;
+    o->tp_members = members;
+    // tp_traverse, tp_clear
+    // PyMemberDef, tp_members
+};
+
 
 Value<> get_member(Always<> self, Always<> annotation) {
     return {};
@@ -85,80 +149,6 @@ Value<> get_member(Always<> self, Always<> annotation) {
 // this is very tricky... we have to go through the properties, find the declarations
 // set the rest of the properties as normal
 // set these properties specially
-
-/******************************************************************************/
-
-Value<pyType> meta_new(Ignore, Always<pyTuple> args, Maybe<pyDict> kwargs) {
-    DUMP("meta_new", args);
-    if (size(args) != 3) throw PythonError::type("Meta.__new__ takes 3 positional arguments");
-
-    auto& base = dynamic_types.emplace_back();
-
-    auto properties = Always<pyDict>::from(item(args, 2));
-    if (auto as = item(properties, "__annotations__")) {
-        DUMP("working on annotations");
-        iterate(Always<pyDict>::from(*as), [&](auto k, auto v) {
-            auto key = Always<pyStr>::from(k);
-
-            Value<pyStr> doc;
-            if (auto doc_string = item(properties, key)) {
-                doc = Always<pyStr>::from(*doc_string);
-                if (0 != PyDict_DelItem(~properties, ~key)) throw PythonError();
-            }
-
-            auto &member = base.members.emplace_back(as_string_view(key), v, std::move(doc));
-            // DUMP("ok", as_string_view(*key), member.name, member.doc, +member.annotation);
-            base.getsets.emplace_back(PyGetSetDef{member.name.data(),
-                api<get_member, Always<>, Always<>>, nullptr, member.doc.data(), +member.annotation});
-        });
-    }
-
-    base.finalize(args);
-
-    // auto bases = Value<pyTuple>::take(PyTuple_Pack(1, base.object.get()));
-    auto bases = Value<pyTuple>::take(PyTuple_Pack(1, +pyVariable::def()));
-
-    auto args2 = Value<pyTuple>::take(PyTuple_Pack(3, +item(args, 0), +bases, +item(args, 2)));
-    DUMP("Calling type()", args2, kwargs);
-    auto out = Value<pyType>::take(PyObject_Call(~pyType::def(), +args2, +kwargs));
-
-    auto method = Value<>::take(PyInstanceMethod_New(Py_None));
-    // PyObject_SetAttrString(~out, "instance_method", +method);
-    DUMP("done");
-    return out;
-    // return out;
-    // DUMP(type);
-    // return PyObject_Call((PyObject*) &PyType_Type, args, kwargs);
-    // // DUMP("making class...", Value<>(out, true));
-    // if (!out) return out;
-    // auto o = ((PyTypeObject*) out);
-
-    // DUMP("hash?", (+o)->tp_hash);
-
-    // (+o)->tp_name = "blah";
-    // (+o)->tp_basicsize = sizeof(Wrap<Variable>);
-    // (+o)->tp_dealloc = c_delete<Variable>;
-    // (+o)->tp_new = c_new<Variable>;
-    // (+o)->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
-    // (+o)->tp_doc = "doc";
-    // int bad = PyType_Ready(o);
-    // DUMP("bad?", bad);
-    // return out;
-    // return nullptr;
-    // name, bases, properties
-    // return nullptr;
-}
-
-/******************************************************************************/
-
-void pyMeta::initialize_type(Always<pyType> o) noexcept {
-    o->tp_name = "ara.Meta";
-    o->tp_basicsize = sizeof(PyTypeObject);
-    o->tp_doc = "Object metaclass";
-    o->tp_new = api<meta_new, Always<pyType>, Always<pyTuple>, Maybe<pyDict>>;
-    o->tp_base = +pyType::def();
-    // o->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
-}
 
 /******************************************************************************/
 

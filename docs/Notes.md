@@ -38,8 +38,8 @@ With these objectives, seems like maybe a good approach is just to enable the fo
 ref = std::pair<std::string, unsigned>();
 std::array<Ref, 2> key_value = ref.splat<2>();
 std::pair<std::string, int> out;
-key_value[0].load_to(out.first);
-key_value[1].load_to(out.second);
+key_value[0].get_to(out.first);
+key_value[1].get_to(out.second);
 ```
 
 There are problems here. Mainly, the storage of key_value is unclear if it's supposed to give an rvalue.
@@ -371,3 +371,24 @@ For call it's different
 - `ara_str` for method name
 - extra `Ref` for tag
 - `Ref` for each argument
+
+## Heap vs non-heap python type
+
+Heap allows:
+
+- multiple base classes
+- dynamic attribute assignment on the class
+
+Non-heap allows:
+
+- definition as usual like with static types in C++
+- probably a bit more efficient
+
+In our rendering we are going to want to modify the following attributes:
+
+- tp_getset
+- tp_hash
+- tp_getitem
+
+etc.
+

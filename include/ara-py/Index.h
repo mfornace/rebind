@@ -29,14 +29,10 @@ Value<> compare(Always<T> self, Always<> other, int op) {
     else return Always<>(*Py_NotImplemented);
 }
 
+/******************************************************************************/
+
 struct pyIndex : StaticType<pyIndex> {
     using type = IndexObject;
-    using value_type = Index;
-    // PyObject* new_(PyTypeObject *subtype, Ignore, Ignore) noexcept {
-    //     PyObject* o = subtype->tp_alloc(subtype, 0); // 0 unused
-    //     if (o) reinterpret_cast<Index*>(o)->reset(); // noexcept
-    //     return o;
-    // }
 
     static long hash(Always<pyIndex> o) noexcept {
         return static_cast<long>(std::hash<Index>()(*o));
@@ -51,44 +47,20 @@ struct pyIndex : StaticType<pyIndex> {
     }
 
     template <class ...Args>
-    static void placement_new(Index &t, Args &&...args) noexcept {
-        DUMP("working right?");
-        t = Index(std::forward<Args>(args)...);
-        DUMP("OK...", t.integer());
-    }
-
+    static void placement_new(Index &t, Args &&...args) noexcept {t = Index(std::forward<Args>(args)...);}
 
     static int as_bool(Always<pyIndex> i) noexcept {return bool(*i);}
 
-    static Value<pyInt> as_int(Always<pyIndex> i) {
-        DUMP("type", Ptr<pyType>{(~i)->ob_type}, reference_count(i));
-        DUMP("index address2", &*i, &static_cast<Index&>(*i), i->integer());
-        return pyInt::from(i->integer());}
+    static Value<pyInt> as_int(Always<pyIndex> i) {return pyInt::from(i->integer());}
 
-    static void initialize_type(Always<pyType> o) noexcept {
-        static PyNumberMethods NumberMethods = {
-            .nb_bool = api<as_bool, Always<pyIndex>>,
-            .nb_int = api<as_int, Always<pyIndex>>
-        };
-        define_type<pyIndex>(o, "ara.Index", "Index type");
-        o->tp_repr = api<repr, Always<pyIndex>>;
-        o->tp_hash = api<hash, Always<pyIndex>>;
-        o->tp_str = api<str, Always<pyIndex>>;
-        o->tp_as_number = &NumberMethods;
-        o->tp_richcompare = api<compare<pyIndex>, Always<pyIndex>, Always<>, int>;
-    };
+    static PyNumberMethods number_methods;
+
+    static void initialize_type(Always<pyType> o) noexcept;
 
     static Value<pyIndex> load(Ref &ref, Ignore, Ignore) {return {};}
+
+    static Value<> call(Index, Always<pyTuple>, CallKeywords&&);
 };
-
-/******************************************************************************/
-
-
-// Ptr index_compare(Ptr self, Ptr other, int op) {
-//     return raw_object([=]() -> Object {
-//         return {compare(op, cast_object<Index>(self), cast_object<Index>(other)) ? Py_True : Py_False, true};
-//     });
-// }
 
 /******************************************************************************/
 

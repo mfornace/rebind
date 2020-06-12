@@ -13,12 +13,11 @@ log = logging.getLogger(__name__ + '.ara')
 logging.basicConfig(level=logging.INFO)
 set_logger(log)
 
-# from .cpp import schema
-# schema = Schema('example', schema)
+dump = lambda *args: print('\n******', *args)
+
 import inspect
-print(type(Variable))
-print(Variable.mro())
-print(type(Variable).mro(type(Variable)))
+dump(type(Variable))
+dump(Variable.mro())
 assert isinstance(Variable, type)
 assert isinstance(Meta, type)
 assert issubclass(Meta, type)
@@ -28,12 +27,12 @@ assert issubclass(Meta, type)
 def easy():
     return call('easy', out=Variable)
 
-class Float(Variable):
+class Float(metaclass=Meta):
     hmm: float = 'Doc string'
 
     def __init__(self):
+        dump('python __init__')
         # raise NotImplementedError
-        pass
 
     def value(self):
         return self.load(float)
@@ -41,21 +40,36 @@ class Float(Variable):
     def __repr__(self):
         return 'Float({})'.format(self.value())
 
-# Index.__hash__.__text_signature__ = ''
-print(inspect.signature(Variable.index))
-print(Variable.state(1))
-print(repr(inspect.signature(Variable.index)))
-# print(help(Variable))
+import sys
+dump(type(Variable))
+dump('make Variable', Variable())
+dump('make Variable', type(Variable()))
+v = Variable()
+dump('checking index temporary')
+dump(sys.getrefcount(v.index()))
+dump('checking stuff')
+i = v.index()
+dump('got index, refcount =', sys.getrefcount(i))
+dump('int of index', int(i))
+dump('int of index', int(i))
+dump('int of index', int(i))
+dump('index str', i)
+dump('index repr', repr(Variable().index()))
 
-# input('hmm')
-# print(help(Variable.method))
+# dump(inspect.signature(Variable.index))
+# dump(repr(inspect.signature(Variable.index)))
 
+dump('Declared float')
+dump('Float mro', Float.mro())
+
+dump('making float')
 f = Float()
-print('instance_method', Float.instance_method)
-print('hash', Float.__hash__)
-print(Float.mro())
-print('hash', hash(Float()))
-print('set', set([Float()]))
+# dump('instance_method', Float.instance_method)
+dump('Float hash', Float.__hash__)
+dump('Float() ref count', sys.getrefcount(Float()))
+dump(hash(f))
+# dump('hash', hash(Float()))
+# dump('set', set([Float()]))
 
 
 class Goo(Variable):
@@ -76,32 +90,32 @@ class Goo(Variable):
     def x(self, value):
         self.method('.x=', value, out=None, mode='w')
 
-print('Goo name:', Goo.__name__)
-print('Goo mro:', Goo.mro())
-print('Goo type:', type(Goo))
+dump('Goo name:', Goo.__name__)
+dump('Goo mro:', Goo.mro())
+dump('Goo type:', type(Goo))
 
-print('running easy()')
-print(easy())
-print('making Goo()')
+dump('running easy()')
+dump(easy())
+dump('making Goo()')
 goo = Goo(1.5)
-print('goo', goo)
-print('goo.x', goo.x)
-print('get_x()', goo.get_x())
-print('get_x().lock()', goo.get_x().lock())
-print('get_x', goo.get_x().load(float))
+dump('goo', goo)
+dump('goo.x', goo.x)
+dump('get_x()', goo.get_x())
+dump('get_x().lock()', goo.get_x().lock())
+dump('get_x', goo.get_x().load(float))
 
 a1 = Goo(1.5)
 a2 = Goo(1.5)
 
-print('uses', goo.use_count(), a1.use_count(), a2.use_count())
+dump('uses', goo.use_count(), a1.use_count(), a2.use_count())
 
 try:
     blah = goo.method('add', a1, a1, out=Variable, gil=True, mode='r:ww')
     raise ValueError('bad')
 except TypeError as e:
-    print('works:', e)
+    dump('works:', e)
 
-print('uses', goo.use_count(), a1.use_count(), a2.use_count())
+dump('uses', goo.use_count(), a1.use_count(), a2.use_count())
 
 blah = goo.method('add', a1, a2, out=Variable, gil=True, mode='r:rr')
 blah = goo.method('add', a1, a2, out=Goo, gil=True, mode='r')
@@ -114,8 +128,14 @@ vec3 = call('vec3', [1,2,3])
 assert call('bool', True, out=bool)
 
 from typing import Dict
+
+dump('try to call with empty dict')
+call('dict', {})
+
+dump('try to load dict')
 call('dict', {}).load(Dict[str, str])
 
+dump('try to load non-empty dict')
 call('dict', {'a': 'a'}).load(dict)
 
 ################################################################################

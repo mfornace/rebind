@@ -77,9 +77,9 @@ struct Impl<T, std::void_t<decltype(T::global_schema)>> : Default<T> {
             m.stat = Call::None;
             return true;
         }
-        DUMP("got to the module! args=", m.args.size(), " tags=", m.args.tags());
+        DUMP("got to the module: # args =", m.args.size(), ", tags =", m.args.tags());
         for (auto const &a : m.args) {
-            DUMP(a.name());
+            DUMP("module call: argument =", a.name());
         }
 
         if (auto name = m.args.tag(0).get<Str>()) {
