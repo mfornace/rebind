@@ -494,6 +494,11 @@ struct VectorRequest {
     }
 
     std::optional<V> operator()(Variable const &v, Dispatch &msg) const {
+        if (auto p = v.request<ArrayView>()) {
+            if (auto t = p->data.target<T const>()) {
+                return V(t, t + p->layout.n_elem());
+            }
+        }
         // if (auto p = v.request<Vector<T>>()) return get(*p, msg);
         if (!std::is_same_v<V, Sequence>)
             if (auto p = v.request<Sequence>()) return get(*p, msg);
