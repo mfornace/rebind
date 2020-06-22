@@ -111,7 +111,7 @@ struct LoadVector {
     static std::optional<V> load(Ref& v) {
         std::optional<V> out;
         if (auto p = v.get<Span>()) load_span(out, *p);
-        else if (auto p = v.get<Array>()) load_span(out, *p);
+        else if (auto p = v.get<Array>()) load_span(out, p->span());
         else if (auto p = v.get<View>()) load_view(out, *p);
         return out;
     }

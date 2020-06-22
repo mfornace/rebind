@@ -41,6 +41,8 @@ struct DynamicType {
     std::string name = "ara.extension.";
     std::deque<Member> members;
 
+    void add_members(Always<pyDict> annotations, Always<pyDict> properties);
+
     DynamicType()
         : object(std::unique_ptr<PyTypeObject>(new PyTypeObject{PyVarObject_HEAD_INIT(NULL, 0)})) {
         define_type<pyVariable>(*object, "ara.DerivedVariable", "low-level base inheriting from ara.Variable");

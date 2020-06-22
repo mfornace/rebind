@@ -380,6 +380,26 @@ void DynamicType::finalize(Always<pyTuple> args) {
 
 /******************************************************************************/
 
+void DynamicType::add_members(Always<pyDict> as, Always<pyDict> properties) {
+    DUMP("working on annotations");
+    iterate(as, [&](Ignore, auto k, auto v) {
+        auto key = Always<pyStr>::from(k);
+
+        Value<pyStr> doc;
+        if (auto doc_string = item(properties, key)) {
+            doc = Always<pyStr>::from(*doc_string);
+            if (0 != PyDict_DelItem(~properties, ~key)) throw PythonError();
+        }
+
+        auto &member = members.emplace_back(as_string_view(key), v, std::move(doc));
+        // DUMP("ok", as_string_view(*key), member.name, member.doc, +member.annotation);
+        getsets.emplace_back(PyGetSetDef{member.name.data(),
+            reinterpret<get_member, Always<>, Always<>>, nullptr, member.doc.data(), +member.annotation});
+    });
+}
+
+/******************************************************************************/
+
 Value<pyType> pyMeta::new_type(Ignore, Always<pyTuple> args, Maybe<pyDict> kwargs) {
     DUMP("new_type", args);
     if (size(args) != 3) throw PythonError::type("Meta.__new__ takes 3 positional arguments");
@@ -387,23 +407,9 @@ Value<pyType> pyMeta::new_type(Ignore, Always<pyTuple> args, Maybe<pyDict> kwarg
     auto& base = dynamic_types.emplace_back();
 
     auto properties = Always<pyDict>::from(item(args, 2));
-    if (auto as = item(properties, "__annotations__")) {
-        DUMP("working on annotations");
-        iterate(Always<pyDict>::from(*as), [&](auto k, auto v) {
-            auto key = Always<pyStr>::from(k);
 
-            Value<pyStr> doc;
-            if (auto doc_string = item(properties, key)) {
-                doc = Always<pyStr>::from(*doc_string);
-                if (0 != PyDict_DelItem(~properties, ~key)) throw PythonError();
-            }
-
-            auto &member = base.members.emplace_back(as_string_view(key), v, std::move(doc));
-            // DUMP("ok", as_string_view(*key), member.name, member.doc, +member.annotation);
-            base.getsets.emplace_back(PyGetSetDef{member.name.data(),
-                reinterpret<get_member, Always<>, Always<>>, nullptr, member.doc.data(), +member.annotation});
-        });
-    }
+    if (auto as = item(properties, "__annotations__"))
+        base.add_members(Always<pyDict>::from(*as), properties);
 
     base.finalize(args);
 
@@ -412,7 +418,7 @@ Value<pyType> pyMeta::new_type(Ignore, Always<pyTuple> args, Maybe<pyDict> kwarg
 
     auto args2 = Value<pyTuple>::take(PyTuple_Pack(3, +item(args, 0), +bases, +item(args, 2)));
     DUMP("Calling type()", args2, kwargs);
-    auto out = Value<pyType>::take(PyObject_Call(~pyType::def(), +args2, +kwargs));
+    auto out = Value<pyType>::take(PyObject_Call(~pyType::def(), ~args2, +kwargs));
 
     auto method = Value<>::take(PyInstanceMethod_New(Py_None));
     // PyObject_SetAttrString(~out, "instance_method", +method);
@@ -436,97 +442,95 @@ void pyMeta::initialize_type(Always<pyType> o) noexcept {
 
 /******************************************************************************/
 
-bool dump_span(Target &target, Always<> o) {
-    DUMP("dump_span");
-    if (PyTuple_Check(+o)) {
-        PyObject** start = reinterpret_cast<PyTupleObject*>(+o)->ob_item;
-        std::size_t size = PyTuple_GET_SIZE(+o);
-        DUMP("dumping tuple into span", start, size ? *start : nullptr);
-        return target.emplace<Span>(reinterpret_cast<Export**>(start), size);
-    }
-    // depends on the guarantee below...hmmm...probably better to get rid of this approach
-    if (PyList_Check(+o)) {
-        PyObject** start = reinterpret_cast<PyListObject*>(+o)->ob_item;
-        std::size_t size = PyList_GET_SIZE(+o);
-        DUMP("dumping list into span", start, size ? *start : nullptr);
-        return target.emplace<Span>(reinterpret_cast<Export**>(start), size);
-    }
+template <class F>
+bool list_or_tuple(Always<> o, F &&f) {
+    if (auto t = Maybe<pyTuple>(o)) return f(*t), true;
+    if (auto t = Maybe<pyList>(o)) return f(*t), true;
     return false;
 }
 
+bool dump_span(Target &target, Always<> o) {
+    DUMP("dump_span");
+    // depends on the guarantee below...hmmm...probably better to get rid of this approach
+    return list_or_tuple(o, [&target](auto t) {
+        std::size_t n = size(t);
+        PyObject** data = (+t)->ob_item;
+        DUMP("dumping tuple/list into span", data, n);
+        return target.emplace<Span>(reinterpret_cast<Export**>(data), n);
+    });
+}
 
-inline bool dump_array(Target &target, Always<> o) {
+
+bool dump_array(Target &target, Always<> o) {
     DUMP("dump_array");
-    if (PyTuple_Check(+o)) {
-        PyObject** start = reinterpret_cast<PyTupleObject*>(+o)->ob_item;
-        std::size_t size = PyTuple_GET_SIZE(+o);
-        return target.emplace<Array>(reinterpret_cast<Export**>(start), size, ObjectGuard::make_unique(o));
-    }
-    if (PyList_Check(+o)) {
-        PyObject** start = reinterpret_cast<PyListObject*>(+o)->ob_item;
-        std::size_t size = PyList_GET_SIZE(+o);
-        return target.emplace<Array>(reinterpret_cast<Export**>(start), size, ObjectGuard::make_unique(o));
-    }
-    if (PyDict_Check(+o)) {
+    if (list_or_tuple(o, [&target](auto t) {
+        std::size_t n = size(t);
+        PyObject** start = (+t)->ob_item;
+        return target.emplace<Array>(Span(reinterpret_cast<Export**>(start), n), ObjectGuard::make_unique(t));
+    })) return true;
+
+    if (auto t = Maybe<pyDict>(o)) {
         std::size_t const len = PyDict_Size(+o);
         auto a = Value<pyTuple>::take(PyTuple_New(len));
-
-        Py_ssize_t pos = 0;
-        for (std::size_t i = 0; i != len; ++i) {
-            PyObject *key, *value;
-            PyDict_Next(+o, &pos, &key, &value);
-            Py_INCREF(key);
-            Py_INCREF(value);
-            PyTuple_SET_ITEM(+a, 2 * i, key);
-            PyTuple_SET_ITEM(+a, 2 * i + 1, value);
-        }
-        return target.emplace<Array>(reinterpret_cast<PyTupleObject*>(+a)->ob_item,
-            std::array<std::size_t, 2>{len, 2}, ObjectGuard::make_unique(*a));
+        iterate(*t, [&a](auto i, Always<> key, Always<> value) noexcept {
+            DUMP("set elements", i, reference_count(key), reference_count(value));
+            set_new_item(*a, 2 * i, key);
+            set_new_item(*a, 2 * i + 1, value);
+            DUMP("set elements", i, reference_count(key), reference_count(value));
+        });
+        DUMP("make array", +a, &((+a)->ob_item));
+        return target.emplace<Array>(
+            Span(reinterpret_cast<Export**>((+a)->ob_item), {len, 2}),
+            ObjectGuard::make_unique(*a));
     }
     return false;
 }
 
 /******************************************************************************/
 
-View::Alloc allocated_view(Always<> o) {
-    if (PyList_Check(+o)) {
-        View::Alloc alloc(PyList_GET_SIZE(+o));
-        for (Py_ssize_t i = 0; i != alloc.size; ++i)
-            alloc.data[i] = Ref(reinterpret_cast<Export&>(*PyList_GET_ITEM(+o, i)));
-        return alloc;
-    }
-    if (PyTuple_Check(+o)) {
-        View::Alloc alloc(PyTuple_GET_SIZE(+o));
-        for (Py_ssize_t i = 0; i != alloc.size; ++i)
-            alloc.data[i] = Ref(reinterpret_cast<Export&>(*PyTuple_GET_ITEM(+o, i)));
-        return alloc;
+std::optional<View> get_view(Always<> o) {
+    std::optional<View> v;
+    list_or_tuple(o, [&](auto t) {
+        auto const n = PyList_GET_SIZE(+o);
+        v.emplace(n, [&](auto &p, Ignore) {
+            for (Py_ssize_t i = 0; i != n; ++i) {
+                new (p) Ref(reinterpret_cast<Export&>(*PyList_GET_ITEM(+o, i)));
+                ++p;
+            }
+        });
+    });
+
+    if (!v) {
+        Value<> iter(PyObject_GetIter(+o), true);
+        if (!iter) {PyErr_Clear(); return v;}
+
+        std::vector<Ref> vec;
+        Value<> item;
+        while ((item = {PyIter_Next(+iter), true}))
+            vec.emplace_back(reinterpret_cast<Export&>(*(+o)));
+
+        v.emplace(vec.size(), [&](auto &p, Ignore) {
+            for (auto &r : vec) {
+                new (p) Ref(std::move(r));
+                ++p;
+            }
+        });
     }
 
-    Value<> iter(PyObject_GetIter(+o), true);
-    if (!iter) {
-        PyErr_Clear();
-        return {};
-    }
-    std::vector<Ref> v;
-    Value<> item;
-    while ((item = {PyIter_Next(+iter), true}))
-        v.emplace_back(reinterpret_cast<Export&>(*(+o)));
-
-    View::Alloc alloc(v.size());
-    std::copy(std::make_move_iterator(v.begin()), std::make_move_iterator(v.end()), alloc.data.get());
-    return alloc;
+    return v;
 }
 
 /******************************************************************************/
 
 bool dump_view(Target& target, Always<> o) {
-    auto alloc = allocated_view(o);
-    return alloc.data && target.emplace<View>(std::move(alloc));
+    if (auto v = get_view(o))
+        return target.emplace<View>(std::move(*v));
+    return false;
 }
 
 bool dump_tuple(Target& target, Always<> o) {
-    auto p = allocated_view(o);
-    return p.data && target.emplace<Tuple>(std::move(p.data), p.size, ObjectGuard::make_unique(o));
+    if (auto v = get_view(o))
+        return target.emplace<Tuple>(std::move(*v), ObjectGuard::make_unique(o));
     return false;
 }
 

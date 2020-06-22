@@ -48,18 +48,28 @@ ARA_DEFINE(view,   ara::View);
 #if __has_include(<cxxabi.h>)
 #   include <cxxabi.h>
     namespace ara {
-        using namespace __cxxabiv1;
+        struct demangle_raii {
+            char *buff;
+            ~demangle_raii() {std::free(buff);}
+        };
 
-        std::string demangle(char const *s) {
+        std::string demangle(char const* name) {
+            // if (t == typeid(std::string)) return "std::string";
+            using namespace __cxxabiv1;
             int status = 0;
-            char * buff = __cxa_demangle(s, nullptr, nullptr, &status);
-            if (!buff) return s;
+            char* buff = __cxa_demangle(name, nullptr, nullptr, &status);
+            if (!buff) return name;
+            demangle_raii guard{buff};
             std::string out = buff;
-            std::free(buff);
+            while (true) {
+                auto pos = out.rfind("::__1::");
+                if (pos == std::string::npos) break;
+                out.erase(pos, 5);
+            }
             return out;
         }
 
-        char const *unknown_exception_description() noexcept {
+        char const* unknown_exception_description() noexcept {
             return abi::__cxa_current_exception_type()->name();
         }
     }

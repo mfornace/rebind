@@ -16,7 +16,7 @@ struct Variable {
 
     union Storage {
         Address address;
-        char data[24];
+        char data[32];
     };
 
     union Lock {
@@ -206,6 +206,7 @@ struct pyVariable : StaticType<pyVariable> {
 
     template <class T>
     static Value<pyVariable> from(T value, Value<> lock) {
+        DUMP("making non reference object", Variable::allocated<T>, sizeof(T), type_name<T>());
         auto v = Value<pyVariable>::new_from();
         if constexpr(Variable::allocated<T>) {
             v->storage.address.pointer = Allocator<T>::heap(std::move(value));
@@ -341,7 +342,7 @@ Lifetime invoke_call(Variable &out, Index self, Pointer address, ArgView &args, 
         case Call::Exception:   {throw PythonError(type_error("Exception"));}
         case Call::OutOfMemory: {throw std::bad_alloc();}
     }
-    DUMP("output:", out.name(), "address:", out.address(), target.c.lifetime, target.lifetime().value);
+    DUMP("output:", out.name(), "stat:", stat, "address:", out.address(), target.c.lifetime, target.lifetime().value);
     return target.lifetime();
 }
 

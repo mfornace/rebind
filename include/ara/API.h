@@ -7,6 +7,7 @@ Defines raw C API
 
 #include <stdint.h> // uintptr_t
 #include <stddef.h> // size_t
+#include <stdlib.h> // size_t
 
 #ifdef __cplusplus
 extern "C" {
@@ -107,66 +108,79 @@ typedef struct ara_string {
 /******************************************************************************************/
 
 /// ara_str is essentially an in-house copy of std::string_view
-typedef struct ara_bin {
+typedef struct ara_bin { // (usual size = 16)
     unsigned char const *data;
     uintptr_t size;
 } ara_bin;
 
 // type-erasure used to deallocate another pointer
-typedef struct ara_binary_alloc {
+typedef struct ara_binary_alloc { // (usual size = 16)
     unsigned char *pointer; // for std::allocator, this is just reinterpreted as capacity
     void (*destructor)(size_t, void *); // destructor function pointer, called with size and data
 } ara_binary_alloc;
 
 /// small buffer optimization of same size as ara_binary_alloc
-typedef union ara_binary_sbo {
+typedef union ara_binary_sbo { // (usual size = 16)
     ara_binary_alloc alloc;
     char storage[sizeof(ara_binary_alloc)];
 } ara_binary_sbo;
 
 /// A simple non-null-terminated byte container containing a type-erased destructor and SSO
-typedef struct ara_binary {
+typedef struct ara_binary { // (usual size = 24)
     ara_binary_sbo sbo;
     size_t size; // if size <= sizeof(storage), SSO is used
 } ara_binary;
 
 /******************************************************************************************/
 
-typedef struct ara_shape_alloc {
-    size_t* dimensions;
-    void (*destructor)(size_t*, uint32_t);
-} ara_shape_alloc;
+// 3 options
+// 1) include size and item --> 12 bytes, only 1D
+// 2) include rank, item, size, pointer to shape   --> 24 bytes, ND // OK this is dumb
+// 3) include rank, item, size or pointer to shape --> 16 bytes, ND // this is current
+// 4) include size in the shape array --> obviates the multiplication but that's it // fine maybe later as optimization, probably not worth it.
+// 5) can pack dimensions into the size member... pretty easily could get matrix, maybe even up to 4 or 8 dimensions (4 --> 65535 max, 8 --> 255 max)
+// I guess the only main choice presented here is whether ND is a good idea to include.
+// And if it is, why not in tuple/view.
 
 // Either shape pointer or the length itself if rank=1
-typedef union ara_shape {
-    size_t stack[2];       // 1 or 2 dimensions if rank <= 2
-    ara_shape_alloc alloc; // array of more dimensions, with its deleter
+typedef union ara_dims { // (usual size = 8)
+    size_t stack;   // dimensions if rank = 1
+    size_t* alloc;  // pointer to dimensions if rank > 1
+} ara_dims;
+
+// Allocate the shape array given the rank of the array
+inline size_t* ara_dims_allocate(int32_t n) {return (size_t*) malloc((n+1) * sizeof(size_t));}
+// Deallocation only handles the array allocation
+inline void ara_dims_deallocate(size_t* data, int32_t) {free(data);}
+
+typedef struct ara_shape {
+    ara_dims dims;
+    int32_t rank; // Rank of the array
 } ara_shape;
+
+/******************************************************************************************/
 
 // Contiguous container similar to a type-erased std::span, extended to N dimensions though.
 // Having an ara_span lets you access data as & or const &, depending on held qualifier
 // Does not let you change the shape of the array
 // Cannot access data as && currently because the move can't be handled.
-typedef struct ara_span {
-    ara_shape shape;
+typedef struct ara_span {  // (usual size = 40)
     ara_index index;   // Type and qualifier of the held type, either & or const &
     void* data;        // Address to the start of the array
-    uint32_t rank;     // Rank of the array
+    ara_shape shape;   // Shape of the array in memory
     uint32_t item;     // Item size
 } ara_span;
+// deletion of span should delete shape.
 
 // Contiguous container similar to a type-erased n-dimensional std::vector
 // Includes all capabilities of span: access as & or const &
 // Also manages the held values, so std::move(a[i]) is fine
-typedef struct ara_array {
+typedef struct ara_array {  // (usual size = 56)
     ara_span span;
     void *storage; // destructor data, could maybe be folded into destructor in the future
     void (*destructor)(ara_index, void*); // called with previous members
 } ara_array;
-
-// Span and Array leave open the possibility of another container type which allows
-// destructive moves. OTOH this is difficult, implies you would need something like a bool
-// to tell if the element has been destructed ... seems out of scope.
+// deletion of array should call destructor and then delete span.
 
 /******************************************************************************************/
 
@@ -176,11 +190,17 @@ typedef struct ara_array {
 // Well...they could be &&, if the allocation is held somewhere else in aligned_storage-like manner ... this is fairly niche though
 // OTOH it would have been perfectly fine for C++ semantics since moves aren't destructing
 // Is there a good use case for a view containing rvalues ... ? Seems like ... not really?
-typedef struct ara_view {
-    ara_ref* data;                               // address to the start of the array
-    size_t size;                                 // if shape is given, the rank. otherwise length of array
-    void (*destructor)(ara_ref*, size_t);        // called with previous members
+typedef struct ara_view { // (usual size = 20)
+    ara_ref* data;  // address to the start of the array
+    ara_shape shape;
 } ara_view;
+// deletion of view should delete data allocation and shape
+
+// if it was ND, shape would become ara_shape (no change in total size). rank would be needed though (increase by ~4 bytes I guess).
+
+inline ara_ref* ara_view_allocate(size_t n) {return n ? (ara_ref*) malloc(n * sizeof(ara_ref)) : nullptr;}
+// Deallocation only handles the array allocation
+inline void ara_view_deallocate(ara_ref* data, ara_shape const*) {if (data) free(data);}
 
 // Value container of heterogeneous types
 // I suppose std::tuple<int&> is OK to hold here
@@ -190,12 +210,12 @@ typedef struct ara_view {
 // e.g. storage = new std::tuple<std::string>(); // = bad because can't make destructible reference
 //      storage = new aligned_storage<std::tuple<std::string>>[n]; // = ok because we can handle the moves
 // both involve an allocation anyway...
-typedef struct ara_tuple {
-    ara_ref* data;                               // address to the start of the array
-    size_t size;                                 // if shape is given, number of shape. otherwise length of array
+typedef struct ara_tuple {  // (usual size = 36)
+    ara_view view;
     void* storage;
-    void (*destructor)(ara_ref*, size_t, void*); // called with previous members (fold in storage?)
+    void (*destructor)(ara_view const*, void*); // called with previous members (fold in storage?)
 } ara_tuple;
+// deletion of view should delete view, call destructor separately
 
 // Now one question is what the point of "View" is, compared to Tuple with null destructor
 // I guess having a Tuple signifies it's a non-aliasing container (for most but not all usages...)
@@ -214,7 +234,7 @@ typedef struct ara_tuple {
 /******************************************************************************************/
 
 // Main type used for emplacing a function output
-typedef struct ara_target {
+typedef struct ara_target {  // (usual size = 32)
     // Requested type index. May be null if no type is requested
     ara_index index;
     // Output storage address. Must satisfy at least void* alignment and size requirements.

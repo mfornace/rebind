@@ -198,7 +198,54 @@ bool is_structured_type(Always<> def, PyTypeObject *origin) {
     return false;
 }
 
+/******************************************************************************/
+
+struct pyTuple : Wrap<pyTuple> {
+    using type = PyTupleObject;
+
+    static bool check(Always<> p) {return PyTuple_Check(+p);}
+
+    static bool matches(Always<> p) {return is_structured_type(p, &PyTuple_Type);}
+
+    static Value<> load(Ref &ref, Always<> p, Maybe<> root) {
+        // load pyTuple or View, go through and load each def. straightforward.
+        return {};
+    }
+};
+
+inline void set_new_item(Always<pyTuple> t, Py_ssize_t i, Always<> x) noexcept {
+    Py_INCREF(+x);
+    PyTuple_SET_ITEM(+t, i, +x);
+}
+
+/******************************************************************************/
+
+inline Always<> item(Always<pyTuple> t, Py_ssize_t i) {return *PyTuple_GET_ITEM(~t, i);}
+inline auto size(Always<pyTuple> t) {return PyTuple_GET_SIZE(~t);}
+
+Always<> item_at(Always<pyTuple> t, Py_ssize_t i) {
+    return (i < size(t)) ? item(t, i) : throw PythonError::type("out of bounds");
+}
+
+/******************************************************************************/
+
+Value<pyTuple> type_args(Always<> o) {
+    auto out = Value<>::take(PyObject_GetAttrString(+o, "__args__"));
+    if (auto t = Maybe<pyTuple>(*out)) return *t;
+    throw PythonError::type("expected __args__ to be a tuple");
+}
+
+Value<pyTuple> type_args(Always<> o, Py_ssize_t n) {
+    auto out = type_args(o);
+    Py_ssize_t const m = size(*out);
+    if (m != n) throw PythonError::type("expected __args__ to be length %zd (got %zd)", n, m);
+    return out;
+}
+
+
 struct pyList : Wrap<pyList> {
+    using type = PyListObject;
+
     static bool check(Always<> p) {return PyList_Check(+p);}
 
     static bool matches(Always<> p) {return is_structured_type(p, &PyList_Type);}
@@ -210,27 +257,56 @@ struct pyList : Wrap<pyList> {
     }
 };
 
+inline Always<> item(Always<pyList> t, Py_ssize_t i) {return *PyList_GET_ITEM(~t, i);}
+inline auto size(Always<pyList> t) {return PyList_GET_SIZE(~t);}
+
+Value<> try_load(Ref &r, Always<> t, Maybe<> root);
+
 struct pyDict : Wrap<pyDict> {
     static bool check(Always<> p) {return PyDict_Check(+p);}
 
     static bool matches(Always<> p) {return is_structured_type(p, &PyDict_Type);}
 
-    static Value<> load(Ref &ref, Always<> p, Maybe<> root) {
-        DUMP("loading pyDict[]", ref.name());
-        if (auto a = ref.get<Array>()) {
-            Span &s = *a;
-            if (s.rank() == 1) {
-                auto out = Value<>::take(PyDict_New());
-                s.map([&](Ref &r) {
-                    if (auto v = r.get<View>()) {
-                        if (v->size() != 2) return false;
-                        Value<> key, value;
-                        PyDict_SetItem(+out, +key, +value);
-                        return true;
+    template <class V>
+    static Value<> load_iterable(V const& v, Always<> key, Always<> value, Maybe<> root) {
+        auto out = Value<>::take(PyDict_New());
+        bool ok = v.map([&](Ref &r) {
+            DUMP("iterating through view");
+            if (auto v = r.get<View>()) {
+                DUMP("got key value pair", v->size());
+                if (v->size() == 2) {
+                    if (auto k = try_load(v->begin()[0], key, root)) {
+                        if (auto val = try_load(v->begin()[1], value, root)) {
+                            PyDict_SetItem(+out, +k, +val);
+                            return true;
+                        }
                     }
-                    return false;
-                });
+                }
+            }
+            return false;
+        });
+        DUMP("load_iterable", ok);
+        return ok ? out : Value<>();
+    }
+
+    static Value<> load(Ref &ref, Always<> type, Maybe<> root) {
+        DUMP("loading pyDict", ref.name(), type);
+        auto types = type_args(type, 2);
+        auto key = item_at(*types, 0), value = item_at(*types, 1);
+        DUMP(key, value);
+
+        if (auto v = ref.get<View>()) {
+            DUMP("got View");
+            return load_iterable(*v, key, value, root);
+        }
+        if (auto v = ref.get<Array>()) {
+            DUMP("got Array");
+            Span &s = v->span();
+            if (s.rank() == 1) {
+                return load_iterable(s, key, value, root);
+
             } else if (s.rank() == 2 && s.length(1) == 2) {
+                DUMP("got 2D Array of pairs");
                 auto out = Value<>::take(PyDict_New());
                 Value<> key;
                 s.map([&](Ref &r) {
@@ -245,16 +321,6 @@ struct pyDict : Wrap<pyDict> {
                 });
             }
         }
-        // -
-        // strategy: load Array --> gives pair<K, V>[n] --> then load each value as View --> then load each element as Key, Value
-        // strategy: load pyTuple --> gives Ref[n] --> then load each ref to a View --> then load each element as Key, Value
-        // these are similar... main annoyance is the repeated allocation for a 2-length View...
-        // strategy: load Array --> gives variant<K, V>[n, 2] --> then load each value. hmm. not great for compile time. // bad
-        // hmm, this seems unfortunate. Maybe pyTuple[] should actually have multiple dimensions?:
-        // then: load pyTuple --> gives Ref[n, 2] --> load each element as Key, Value
-        // problem with this is that load pyTuple, should it return ref(pair)[N] or ref[N, 2] ... depends on the context which is better.
-        // other possibility is to just declare different dimension types ... sigh, gets nasty.
-        // other alternative is to make a map def which is like pyTuple[N, 2].
         return {};
     }
 };
@@ -270,31 +336,10 @@ template <class F>
 void iterate(Always<pyDict> o, F &&f) {
     PyObject *key, *value;
     Py_ssize_t pos = 0;
+    std::size_t i = 0;
 
     while (PyDict_Next(~o, &pos, &key, &value))
-        f(Always<>(*key), Always<>(*value));
-}
-
-/******************************************************************************/
-
-struct pyTuple : Wrap<pyTuple> {
-    static bool check(Always<> p) {return PyTuple_Check(+p);}
-
-    static bool matches(Always<> p) {return is_structured_type(p, &PyTuple_Type);}
-
-    static Value<> load(Ref &ref, Always<> p, Maybe<> root) {
-        // load pyTuple or View, go through and load each def. straightforward.
-        return {};
-    }
-};
-
-/******************************************************************************/
-
-inline Always<> item(Always<pyTuple> t, Py_ssize_t i) {return *PyTuple_GET_ITEM(~t, i);}
-inline auto size(Always<pyTuple> t) {return PyTuple_GET_SIZE(~t);}
-
-Always<> item_at(Always<pyTuple> t, Py_ssize_t i) {
-    return (i < size(t)) ? item(t, i) : throw PythonError::type("out of bounds");
+        f(i++, Always<>(*key), Always<>(*value));
 }
 
 /******************************************************************************/

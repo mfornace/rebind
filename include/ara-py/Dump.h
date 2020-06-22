@@ -30,10 +30,16 @@ bool dump_arithmetic(Target &target, Always<> o) {
 /******************************************************************************/
 
 struct ObjectGuard {
-    void operator()(PyObject* object) {Py_DECREF(object);}
+    void operator()(PyObject* object) {
+        DUMP("what happening", object);
+        DUMP("what happening", reference_count(Ptr<>{object}));
+        DUMP("decrementing object", Ptr<>{object});
+        Py_DECREF(object);}
 
     static auto make_unique(Always<> o) noexcept {
+        DUMP("make_unique", +o, reference_count(o));
         Py_INCREF(+o);
+        DUMP("make_unique", +o, reference_count(o));
         return std::unique_ptr<PyObject, ObjectGuard>(+o);
     }
 };

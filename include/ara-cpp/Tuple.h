@@ -36,12 +36,11 @@ struct DumpTuple {
 
     template <std::size_t ...Is>
     static bool view(Target &v, T const &t, std::index_sequence<Is...>) {
-        if (auto o = v.emplace<View>()) {
-            // o->size = sizeof...(Is);
-            // o->shape = nullptr;
-            // o->data = reinterpret_cast<ara_ref *>(new Ref[sizeof...(Is)]{Ref::from_existing(std::get<Is>(t))...});
-            return true;
-        } else return false;
+        DUMP("making view from tuple object", type_name<T>());
+        return v.emplace<View>(sizeof...(Is), [&](auto &p, Ignore) {
+            (((new (p) Ref(std::get<Is>(t))) ? ++p : nullptr), ...);
+            DUMP("worked I guess...");
+        });
     }
 
     template <std::size_t ...Is>

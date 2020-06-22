@@ -49,11 +49,9 @@ PyTypeObject StaticType<T>::definition{PyVarObject_HEAD_INIT(NULL, 0)};
 
 template <class T> template <class ...Args>
 Value<T> Value<T>::new_from(Args &&...args) {
-    DUMP("allocating...");
+    DUMP("allocating new object", type_name<T>());
     auto out = Value<T>::take(T::def()->tp_alloc(+T::def(), 0)); // 0 unused
-    DUMP("placement_new...");
     T::placement_new(*out, std::forward<Args>(args)...);
-    DUMP("returning...");
     DUMP(bool(out), out, reference_count(out));
     return out;
 }

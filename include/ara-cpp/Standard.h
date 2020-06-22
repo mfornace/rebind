@@ -119,16 +119,53 @@ struct Impl<std::variant<Ts...>> : Default<std::variant<Ts...>> {
 
 /******************************************************************************/
 
+template <class T, class B, class E>
+bool dump_array(Target& a, std::size_t size, B&& begin, E&& end) {
+    auto raw = std::make_unique<storage_like<T>[]>(size);
+    auto const address = reinterpret_cast<T*>(raw.get());
+    std::uninitialized_copy(std::forward<B>(begin), std::forward<E>(end), address);
+    std::unique_ptr<T[]> ptr(address);
+    raw.release();
+    DUMP("made array", size);
+    return a.emplace<Array>(Span(address, size), std::move(ptr));
+}
+
+template <class B, class E>
+bool dump_view(Target& a, std::size_t size, B begin, E const& end) {
+    return a.emplace<View>(size, [&](auto &p, Ignore) {
+        for (; begin != end; ++begin) {
+            new(p) Ref(*begin);
+            ++p;
+        }
+    });
+}
+
 template <class M>
 struct DumpMap {
     using T = std::pair<typename M::key_type, typename M::mapped_type>;
 
-    static bool dump(Target &a, M &&v) {
+    static bool dump(Target& a, M&& v) {
+        using std::begin; using std::end; using std::size;
+        if (a.accepts<View>()) return dump_view(a, size(v), begin(v), end(v));
+        if (a.accepts<Array>()) return dump_array<T>(a, size(v),
+            std::make_move_iterator(begin(v)), std::make_move_iterator(end(v)));
+        // Span impossible (not contiguous).
+        // Tuple? Probably not useful.
         return false;
-        // return range_response<T>(o, t, std::make_move_iterator(std::begin(v)), std::make_move_iterator(std::end(v)));
     }
 
-    static bool dump(Target &o, M const &v) {
+    static bool dump(Target& a, M const& v) {
+        using std::begin; using std::end; using std::size;
+        if (a.accepts<View>()) return dump_view(a, size(v), begin(v), end(v));
+        if (a.accepts<Array>()) return dump_array<T>(a, size(v), begin(v), end(v));
+        return false;
+        // return range_response<T>(o, t, std::begin(v), std::end(v));
+    }
+
+    static bool dump(Target& a, M& v) {
+        using std::begin; using std::end; using std::size;
+        if (a.accepts<View>()) return dump_view(a, size(v), begin(v), end(v));
+        if (a.accepts<Array>()) return dump_array<T>(a, size(v), begin(v), end(v));
         return false;
         // return range_response<T>(o, t, std::begin(v), std::end(v));
     }
@@ -144,27 +181,31 @@ struct LoadMap {
     static void load_span(std::optional<M>& o, Span& span) {
         DUMP("load span into map", span.rank());
         if (span.rank() != 2 || span.length(1) != 2) return;
+        DUMP(span.rank(), span.length(0), span.length(1));
         o.emplace();
         std::optional<K> key;
-        span.map([&](Ref &ref) {
+        if (!span.map([&](Ref& ref) {
             if (key) {
+                DUMP("loading value");
                 if (auto v = ref.get<V>()) {
+                    DUMP("emplace key value pair");
                     o->emplace(std::move(*key), std::move(*v));
                     key.reset();
                     return true;
                 } else return false;
             } else {
                 key = ref.get<K>();
+                DUMP("loaded key", bool(key));
                 return bool(key);
             }
-        });
+        })) o.reset();
     }
 
     static std::optional<M> load(Ref &r) {
         DUMP("try to load map", type_name<M>());
         std::optional<M> o;
         if (auto p = r.get<Span>()) load_span(o, *p);
-        else if (auto p = r.get<Array>()) load_span(o, *p);
+        else if (auto p = r.get<Array>()) load_span(o, p->span());
         return o;
     }
 };
