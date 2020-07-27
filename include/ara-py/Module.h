@@ -8,15 +8,6 @@
 #include <deque>
 
 
-struct Example;
-
-namespace ara {
-
-template <>
-ara_stat Switch<Example>::call(ara_input, void*, void*, void*) noexcept;
-
-}
-
 /******************************************************************************************/
 
 namespace ara::py {
@@ -34,32 +25,23 @@ bool add_module_type(PyObject* mod, char const* name) {
 
 /******************************************************************************/
 
-template<>
-PyObject* init_module<Example>() noexcept {
+PyObject* init_module() noexcept {
     Py_Initialize();
 
-    DUMP("initializing...");
-    try {
-        Module<Example>::init();
-    } catch (std::exception const &e) {
-        return type_error("Failed to initialize ara module: %s", e.what());
-    } catch (...) {
-        return type_error("Failed to initialize ara module: unknown error");
-    }
-
-    DUMP("initializing...done");
-    static PyMethodDef methods[] = {
-        {"call", reinterpret<module_call<Example>, Ignore, Always<pyTuple>, CallKeywords>, METH_VARARGS | METH_KEYWORDS, "Call a function"},
-        {nullptr, nullptr, 0, nullptr}
-    };
+    // DUMP("initializing...done");
+    // static PyMethodDef methods[] = {
+        // {"call", reinterpret<module_call<Example>, Ignore, Always<pyTuple>, CallKeywords>, METH_VARARGS | METH_KEYWORDS, "Call a function"},
+        // {nullptr, nullptr, 0, nullptr}
+    // };
 
     // Needs to be static (either in function or outside)
     static PyModuleDef module = {
         PyModuleDef_HEAD_INIT,
-        "cpp",
-        "A Python module",
+        "sfb",
+        "sfb Python module",
         -1,
-        methods,
+        nullptr
+        // methods,
     };
     // the Schema satisfies:
     // - it is an empty type
@@ -81,7 +63,9 @@ PyObject* init_module<Example>() noexcept {
     if (!add_module_type<pyMeta>(mod, "Meta")) return nullptr;
     if (!add_module_type<pyVariable>(mod, "Variable")) return nullptr;
 
+    DUMP("returning", bool(mod));
     return mod;
 }
 
 }
+

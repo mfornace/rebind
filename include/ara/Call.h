@@ -246,6 +246,8 @@ static_assert(std::is_same_v<typename Reduce< void(double) >::type, void(*)(doub
 
 /******************************************************************************/
 
+#warning "clean this up, it was templated now"
+
 template <class T, int N, class ...Ts>
 T call_args(Index i, Pointer self, Mode mode, Caller &c, Arg<Ts &&> ...ts) {
     static_assert(N <= sizeof...(Ts));

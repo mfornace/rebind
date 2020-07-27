@@ -211,3 +211,4 @@ ARA_DECLARE(ulonglong, unsigned long long);
 ARA_DECLARE(unsigned, unsigned);
 ARA_DECLARE(float, float);
 ARA_DECLARE(double, double);
+#warning "add ara_index I think"

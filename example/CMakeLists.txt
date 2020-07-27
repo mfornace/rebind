@@ -4,11 +4,10 @@ project(ara_example VERSION 0.0.0 LANGUAGES CXX)
 
 ################################################################################
 
-add_library(example_source STATIC EXCLUDE_FROM_ALL Example.cc)
+add_library(example_source SHARED EXCLUDE_FROM_ALL Example.cc)
 set_target_properties(example_source PROPERTIES OUTPUT_NAME "ara_example")
 target_link_libraries(example_source PRIVATE libara)
-ara_module(example_module cpp example_source)
-set_target_properties(example_module PROPERTIES PREFIX "" LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/example)
+# set_target_properties(example_module PROPERTIES PREFIX "" LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/example)
 
 ################################################################################
 
@@ -42,5 +41,3 @@ add_library(example_rust SHARED
 target_link_libraries(example_rust PUBLIC libara)
 
 ################################################################################
-
-add_custom_target(example_python ALL DEPENDS ${link_outputs} example_module)

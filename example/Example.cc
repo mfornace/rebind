@@ -286,8 +286,11 @@ void Example::write(ara::Schema &s) {
 }
 
 
-namespace ara {
+extern "C" {
 
-// void init(Schema &s) {write_schema(s);}
+ara_index example_module() {
+    DUMP(reinterpret_cast<std::uintptr_t>(+ara::Index::of<Example>()));
+    return ara::Index::of<Example>();
+}
 
 }

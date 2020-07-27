@@ -26,6 +26,8 @@ Value CallReturn<Value>::call(Index i, Pointer self, Mode mode, ArgView &args) {
     return out;
 }
 
+#warning "I think I had to move these into header"
+
 Value CallReturn<Value>::attempt(Index i, Pointer self, Mode mode, ArgView &args) {
     DUMP("calling to get Value");
     Value out;

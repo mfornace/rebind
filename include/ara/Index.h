@@ -49,6 +49,8 @@ struct Index {
     std::string_view name() const noexcept;
 };
 
+#warning "I think I added a static call here"
+
 /******************************************************************************************/
 
 template <class Mode>
