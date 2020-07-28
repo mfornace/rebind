@@ -57,7 +57,7 @@ struct Copy {
         }
     };
 
-    static stat call(Idx f, Target& out, Pointer self) noexcept {
+    static stat invoke(Idx f, Target& out, Pointer self) noexcept {
         return static_cast<stat>(f({code::copy, {}}, &out, self.base, {}));
     }
 };
@@ -82,7 +82,7 @@ struct Relocate {
         }
     };
 
-    static stat call(Idx f, void* out, void* source) noexcept {
+    static stat invoke(Idx f, void* out, void* source) noexcept {
         return static_cast<stat>(f({code::relocate, {}}, out, source, {}));
     }
 };
@@ -103,7 +103,7 @@ struct Swap {
         }
     };
 
-    static stat call(Idx f, Pointer first, Pointer second) noexcept {
+    static stat invoke(Idx f, Pointer first, Pointer second) noexcept {
         return static_cast<stat>(f({code::swap, {}}, first.base, second.base, {}));
     }
 };
@@ -123,7 +123,7 @@ struct Destruct {
         }
     };
 
-    static stat call(Idx f, Pointer t) noexcept {
+    static stat invoke(Idx f, Pointer t) noexcept {
         return static_cast<stat>(f({code::destruct, {}}, t.base, {}, {}));
     }
 
@@ -150,7 +150,7 @@ struct Deallocate {
         }
     };
 
-    static stat call(Idx f, Pointer t) noexcept {
+    static stat invoke(Idx f, Pointer t) noexcept {
         return static_cast<stat>(f({code::deallocate, {}}, t.base, {}, {}));
     }
 
@@ -178,7 +178,7 @@ struct Info {
         }
     };
 
-    static stat call(Idx f, Idx& out, void const*& t) noexcept {
+    static stat invoke(Idx f, Idx& out, void const*& t) noexcept {
         return static_cast<stat>(f({code::info, {}}, &out, &t, {}));
     }
 };
@@ -200,7 +200,7 @@ struct Name {
         }
     };
 
-    static stat call(Idx f, ara_str &s) noexcept {
+    static stat invoke(Idx f, ara_str &s) noexcept {
         return static_cast<stat>(f({code::name, {}}, &s, {}, {}));
     }
 };
@@ -228,7 +228,7 @@ struct Element {
         }
     };
 
-    static stat call(Idx f, Target& out, Pointer self, std::intptr_t i, Mode mode) noexcept {
+    static stat invoke(Idx f, Target& out, Pointer self, std::intptr_t i, Mode mode) noexcept {
         return static_cast<stat>(f({code::element, static_cast<Code>(mode)},
             &out, self.base, reinterpret_cast<void*>(i)));
     }
@@ -265,7 +265,7 @@ struct Attribute {
         }
     };
 
-    static stat call(Idx f, Target &out, Pointer self, ara_str name, Mode qualifier) noexcept {
+    static stat invoke(Idx f, Target &out, Pointer self, ara_str name, Mode qualifier) noexcept {
         return static_cast<stat>(f({code::attribute, static_cast<Code>(qualifier)}, &out, self.base, &name));
     }
 };
@@ -295,7 +295,7 @@ struct Equal {
         }
     };
 
-    static stat call(Idx f, Pointer lhs, Pointer rhs) noexcept {
+    static stat invoke(Idx f, Pointer lhs, Pointer rhs) noexcept {
         return static_cast<stat>(f({code::equal, {}}, lhs.base, rhs.base, {}));
     }
 };
@@ -334,7 +334,7 @@ struct Compare {
         }
     };
 
-    static stat call(Idx f, Pointer lhs, Pointer rhs) noexcept {
+    static stat invoke(Idx f, Pointer lhs, Pointer rhs) noexcept {
         return static_cast<stat>(f({code::compare, {}}, lhs.base, rhs.base, {}));
     }
 };
@@ -362,7 +362,7 @@ struct Hash {
         }
     };
 
-    static stat call(Idx f, std::size_t& out, Pointer self) noexcept {
+    static stat invoke(Idx f, std::size_t& out, Pointer self) noexcept {
         return static_cast<stat>(f({code::hash, {}}, &out, self.base, {}));
     }
 };
@@ -406,7 +406,7 @@ struct Dump {
         }
     };
 
-    static stat call(Idx f, Target &out, Pointer source, Mode qualifier) noexcept {
+    static stat invoke(Idx f, Target &out, Pointer source, Mode qualifier) noexcept {
         return static_cast<stat>(f({code::dump, static_cast<Code>(qualifier)}, &out, source.base, {}));
     }
 };
@@ -453,14 +453,14 @@ struct Load {
         }
     };
 
-    static stat call(Idx f, Target &out, Pointer source, Mode qualifier) noexcept {
+    static stat invoke(Idx f, Target &out, Pointer source, Mode qualifier) noexcept {
         return static_cast<stat>(f({code::load, static_cast<Code>(qualifier)}, &out, source.base, {}));
     }
 };
 
 /******************************************************************************/
 
-ARA_DETECT_TRAIT(has_call, decltype(Impl<T>::call(DeclAny(), std::declval<T&&>())));
+ARA_DETECT_TRAIT(has_call, decltype(Impl<T>::invoke(DeclAny(), std::declval<T&&>())));
 // stat operator()(Target *out, T, ArgView &args)
 
 // Call an object
@@ -484,24 +484,26 @@ struct Call {
             stat s = Impossible;
             if constexpr(has_call_v<T>) {
                 switch (mode) {
-                    case Mode::Stack: {Impl<T>::call({out, args, s}, self.load<T&&>()); break;}
-                    case Mode::Heap:  {Impl<T>::call({out, args, s}, self.load<T&&>()); break;}
-                    case Mode::Write: {Impl<T>::call({out, args, s}, self.load<T&>()); break;}
-                    case Mode::Read:  {Impl<T>::call({out, args, s}, self.load<T const&>()); break;}
+                    case Mode::Stack: {Impl<T>::invoke({out, args, s}, self.load<T&&>()); break;}
+                    case Mode::Heap:  {Impl<T>::invoke({out, args, s}, self.load<T&&>()); break;}
+                    case Mode::Write: {Impl<T>::invoke({out, args, s}, self.load<T&>()); break;}
+                    case Mode::Read:  {Impl<T>::invoke({out, args, s}, self.load<T const&>()); break;}
                 }
             }
             return s;
         }
     };
 
-    static stat call(Idx f, Target &out, Pointer self, Mode qualifier, ArgView &args) noexcept {
-        return static_cast<stat>(f({code::call, static_cast<Code>(qualifier)}, &out, self.base, reinterpret_cast<ara_args *>(&args)));
+    static stat invoke(Idx f, Target &out, Pointer self, Mode qualifier, ArgView &args) noexcept {
+        return static_cast<stat>(f({code::invoke, static_cast<Code>(qualifier)}, &out, self.base, reinterpret_cast<ara_args *>(&args)));
     }
 
     [[nodiscard]] static stat wrong_number(Target &, Code, Code) noexcept;
     static stat wrong_type(Target &, Code, Index, Qualifier) noexcept;
     [[nodiscard]] static stat wrong_return(Target &, Index, Qualifier) noexcept;
 };
+
+#warning "I think I renamed this, oh no I renamed invoke to invoke"
 
 /******************************************************************************************/
 
@@ -551,7 +553,7 @@ struct Switch {
     static_assert(!std::is_volatile_v<T>);
     static_assert(!std::is_same_v<T, Ref>);
 
-    static Stat call(ara_input i, void* o, void* s, void* args) noexcept {
+    static Stat invoke(ara_input i, void* o, void* s, void* args) noexcept {
         static_assert(sizeof(T) >= 0, "Type should be complete");
         warn_unimplemented<T>();
 
@@ -595,7 +597,7 @@ struct Switch {
             case code::dump:
                 return Impl<T>::dump_nothrow(*static_cast<Target *>(o), Pointer::from(s), static_cast<Mode>(i.tag));
 
-            case code::call:
+            case code::invoke:
                 return Impl<T>::call_nothrow(*static_cast<Target *>(o), Pointer::from(s), *reinterpret_cast<ArgView *>(args), static_cast<Mode>(i.tag));
 
             case code::name:
@@ -614,7 +616,7 @@ struct Switch {
 
 template <class SFINAE>
 struct Switch<void, SFINAE> {
-    static Stat call(ara_input i, void* o, void* s, void*) noexcept {
+    static Stat invoke(ara_input i, void* o, void* s, void*) noexcept {
         switch (i.code) {
             case code::name: {
                 return Name::Default<void>::name(*static_cast<ara_str *>(o));
@@ -635,7 +637,7 @@ struct Switch<void, SFINAE> {
 inline std::string_view Index::name() const noexcept {
     if (!has_value()) return "null";
     ara_str out;
-    Name::call(*this, out);
+    Name::invoke(*this, out);
     return std::string_view(out.data, out.size);
 }
 

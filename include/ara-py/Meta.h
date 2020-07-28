@@ -7,13 +7,13 @@ namespace ara::py {
 
 /******************************************************************************/
 
-struct pyMeta : StaticType<pyMeta> {
-    using type = PyTypeObject;
+// struct pyMeta : StaticType<pyMeta> {
+//     using type = PyTypeObject;
 
-    static void initialize_type(Always<pyType>) noexcept;
+//     static void initialize_type(Always<pyType>) noexcept;
 
-    static Value<pyType> new_type(Ignore, Always<pyTuple> args, Maybe<pyDict> kwargs);
-};
+//     static Value<pyType> new_type(Ignore, Always<pyTuple> args, Maybe<pyDict> kwargs);
+// };
 
 /******************************************************************************/
 
@@ -21,46 +21,37 @@ struct pyMeta : StaticType<pyMeta> {
 //     .sq_item = c_variable_element
 // };
 
-struct DynamicType {
-    struct Member {
-        std::string name;
-        std::string doc = "doc string";
-        Value<> annotation;
-        Member(std::string_view s, Value<> a, Value<pyStr> doc)
-            : name(s), annotation(std::move(a)) {}
-    };
-    std::unique_ptr<PyTypeObject> object;
-    std::optional<PySequenceMethods> sequence;
-    std::optional<PyNumberMethods> number;
-    std::optional<PyMappingMethods> mapping;
+// struct DynamicType {
+//     struct Member {
+//         std::string name;
+//         std::string doc = "doc string";
+//         Value<> annotation;
+//         Member(std::string_view s, Value<> a, Value<pyStr> doc)
+//             : name(s), annotation(std::move(a)) {}
+//     };
+//     std::unique_ptr<PyTypeObject> object;
+//     std::optional<PySequenceMethods> sequence;
+//     std::optional<PyNumberMethods> number;
+//     std::optional<PyMappingMethods> mapping;
 
-    std::vector<PyGetSetDef> getsets;
-    std::vector<PyMethodDef> methods;
-    std::vector<PyMemberDef> member_defs;
+//     std::vector<PyGetSetDef> getsets;
+//     std::vector<PyMethodDef> methods;
+//     std::vector<PyMemberDef> member_defs;
 
-    std::string name = "ara.extension.";
-    std::deque<Member> members;
+//     std::string name = "ara.extension.";
+//     std::deque<Member> members;
 
-    void add_members(Always<pyDict> annotations, Always<pyDict> properties);
+//     void add_members(Always<pyDict> annotations, Always<pyDict> properties);
 
-    DynamicType()
-        : object(std::unique_ptr<PyTypeObject>(new PyTypeObject{PyVarObject_HEAD_INIT(NULL, 0)})) {
-        define_type<pyVariable>(*object, "ara.DerivedVariable", "low-level base inheriting from ara.Variable");
-    }
+//     DynamicType()
+//         : object(std::unique_ptr<PyTypeObject>(new PyTypeObject{PyVarObject_HEAD_INIT(NULL, 0)})) {
+//         define_type<pyVariable>(*object, "ara.DerivedVariable", "low-level base inheriting from ara.Variable");
+//     }
 
-    void finalize(Always<pyTuple> args);
-};
+//     void finalize(Always<pyTuple> args);
+// };
 
-extern std::deque<DynamicType> dynamic_types;
-
-/******************************************************************************/
-
-struct BoundMethod {
-    PyObject *method;
-    PyObject *self;
-    BoundMethod(Value<> m, Value<> s) noexcept : method(m.leak()), self(s.leak()) {}
-    ~BoundMethod() noexcept {Py_DECREF(method); Py_DECREF(self);}
-};
+// extern std::deque<DynamicType> dynamic_types;
 
 /******************************************************************************/
 
@@ -84,12 +75,7 @@ struct pyMethod : StaticType<pyMethod> {
 
     static Value<> str(Always<pyMethod> self) {return Always<>(*self->docstring);}
 
-    static Value<> get(Always<pyMethod> self, Maybe<> instance, Ignore) {
-        if (instance) {
-            BoundMethod(self, *instance);
-            return {};
-        } else return self;
-    }
+    static Value<> get(Always<pyMethod> self, Maybe<> instance, Ignore);
 
     static Value<> call(Always<pyMethod> self, Always<pyTuple> args, Maybe<pyDict> kws) {
         return {};
@@ -101,33 +87,66 @@ struct pyMethod : StaticType<pyMethod> {
 };
 
 
-#define ARA_WRAP_OFFSET(type, member) offsetof(Wrap< type >, value) + offsetof(Method, member)
-
-PyMemberDef pyMethod::members[] = {
-    // const_cast<char*>("__signature__"), T_OBJECT_EX, ARA_WRAP_OFFSET(Method, signature), READONLY, const_cast<char*>("method signature"),
-    // const_cast<char*>("docstring"), T_OBJECT_EX, ARA_WRAP_OFFSET(Method, docstring), READONLY, const_cast<char*>("doc string"),
-    // const_cast<char*>("doc"), T_OBJECT_EX, ARA_WRAP_OFFSET(Method, doc), READONLY, const_cast<char*>("doc"),
-    nullptr
-};
-
-
 void pyMethod::initialize_type(Always<pyType> o) noexcept {
     define_type<pyMethod>(o, "ara.Method", "ara Method type");
     o->tp_repr = reinterpret<repr, Always<pyMethod>>;
     o->tp_str = reinterpret<str, Always<pyMethod>>;
     o->tp_descr_get = reinterpret<get, Always<pyMethod>, Maybe<>, Ignore>;
     o->tp_call = reinterpret<call, Always<pyMethod>, Always<pyTuple>, Maybe<pyDict>>;
-    o->tp_members = members;
+    // o->tp_members = members;
     // tp_traverse, tp_clear
     // PyMemberDef, tp_members
 };
 
+/******************************************************************************/
 
-Value<> get_member(Always<> self, Always<> annotation) {
-    return {};
-    // DUMP("get_member", Value<>(annotation, true));
-    // return Value<>(annotation, true);
+struct BoundMethod {
+    PyObject *method;
+    PyObject *self;
+    BoundMethod(Value<> m, Value<> s) noexcept : method(m.leak()), self(s.leak()) {}
+    ~BoundMethod() noexcept {Py_DECREF(method); Py_DECREF(self);}
+};
+
+/******************************************************************************/
+
+Value<> Method::get(Always<pyMethod> self, Maybe<> instance, Ignore) {
+    if (instance) {
+        BoundMethod(self, *instance);
+        return {};
+    } else return self;
 }
+
+/******************************************************************************/
+
+struct Forward {
+
+};
+
+/******************************************************************************/
+
+struct Function {
+
+};
+
+/******************************************************************************/
+
+// #define ARA_WRAP_OFFSET(type, member) offsetof(Wrap< type >, value) + offsetof(Method, member)
+
+// PyMemberDef pyMethod::members[] = {
+    // const_cast<char*>("__signature__"), T_OBJECT_EX, ARA_WRAP_OFFSET(Method, signature), READONLY, const_cast<char*>("method signature"),
+    // const_cast<char*>("docstring"), T_OBJECT_EX, ARA_WRAP_OFFSET(Method, docstring), READONLY, const_cast<char*>("doc string"),
+    // const_cast<char*>("doc"), T_OBJECT_EX, ARA_WRAP_OFFSET(Method, doc), READONLY, const_cast<char*>("doc"),
+    // nullptr
+// };
+
+
+
+
+// Value<> get_member(Always<> self, Always<> annotation) {
+//     return {};
+//     // DUMP("get_member", Value<>(annotation, true));
+//     // return Value<>(annotation, true);
+// }
 
 // PyFunction_GetAnnotations
 // PyFunction_GetDefaults

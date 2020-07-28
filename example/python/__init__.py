@@ -29,8 +29,8 @@ f()
 def easy():
     return call('easy', out=Variable)
 
-class Float(metaclass=Meta):
-    hmm: float = 'Doc string'
+class Float(Variable):
+    hmm = Member(float, 'Doc string')
 
     def __init__(self):
         dump('python __init__')
@@ -85,16 +85,11 @@ class Goo(Variable):
     def get_x(self):
         return self.method('get_x', out=Float, mode='r')
 
-    # def __hash__(self):
-    #     return 123
+    @forward('r', 'underlying name')
+    def blah(self):
+        pass
 
-    @property
-    def x(self):
-        return self.attribute('x', out=float)
-
-    @x.setter
-    def x(self, value):
-        self.method('.x=', value, out=None, mode='w')
+    x = Member('x')
 
 def f():
     dump('Goo name:', Goo.__name__)
