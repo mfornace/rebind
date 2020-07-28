@@ -460,8 +460,7 @@ struct Load {
 
 /******************************************************************************/
 
-ARA_DETECT_TRAIT(has_call, decltype(Impl<T>::invoke(DeclAny(), std::declval<T&&>())));
-// stat operator()(Target *out, T, ArgView &args)
+ARA_DETECT_TRAIT(has_call, decltype(Impl<T>::call(DeclAny())));
 
 // Call an object
 // -- if Target is null, do not return output (change later for Exception actually...)
@@ -480,22 +479,17 @@ struct Call {
 
     template <class T>
     struct Default {
-        static stat call_nothrow(Target &out, Pointer self, ArgView &args, Mode mode) noexcept {
+        static stat call_nothrow(Target &out, ArgView &args) noexcept {
             stat s = Impossible;
             if constexpr(has_call_v<T>) {
-                switch (mode) {
-                    case Mode::Stack: {Impl<T>::invoke({out, args, s}, self.load<T&&>()); break;}
-                    case Mode::Heap:  {Impl<T>::invoke({out, args, s}, self.load<T&&>()); break;}
-                    case Mode::Write: {Impl<T>::invoke({out, args, s}, self.load<T&>()); break;}
-                    case Mode::Read:  {Impl<T>::invoke({out, args, s}, self.load<T const&>()); break;}
-                }
+                Impl<T>::call({out, args, s});
             }
             return s;
         }
     };
 
-    static stat invoke(Idx f, Target &out, Pointer self, Mode qualifier, ArgView &args) noexcept {
-        return static_cast<stat>(f({code::invoke, static_cast<Code>(qualifier)}, &out, self.base, reinterpret_cast<ara_args *>(&args)));
+    static stat invoke(Idx f, Target &out, ArgView &args) noexcept {
+        return static_cast<stat>(f({code::call, {}}, {}, &out, reinterpret_cast<ara_args *>(&args)));
     }
 
     [[nodiscard]] static stat wrong_number(Target &, Code, Code) noexcept;
@@ -503,7 +497,41 @@ struct Call {
     [[nodiscard]] static stat wrong_return(Target &, Index, Qualifier) noexcept;
 };
 
-#warning "I think I renamed this, oh no I renamed invoke to invoke"
+/******************************************************************************************/
+
+ARA_DETECT_TRAIT(has_method, decltype(Impl<T>::method(DeclAny(), std::declval<T&&>())));
+// stat operator()(Target *out, T, ArgView &args)
+
+// Call an object
+// -- if Target is null, do not return output (change later for Exception actually...)
+// -- on success, return one of first 5 qualifiers
+// -- Impossible: calling is not implemented
+// -- WrongNumber: wrong number of arguments
+// -- WrongReturn: wrong type or qualifier of return
+// -- WrongType: wrong type of argument
+// -- Exception: Exception while executing the function
+struct Method : Call {
+
+    template <class T>
+    struct Default {
+        static stat method_nothrow(Target &out, Pointer self, ArgView &args, Mode mode) noexcept {
+            stat s = Impossible;
+            if constexpr(has_method_v<T>) {
+                switch (mode) {
+                    case Mode::Stack: {Impl<T>::method({out, args, s}, self.load<T&&>()); break;}
+                    case Mode::Heap:  {Impl<T>::method({out, args, s}, self.load<T&&>()); break;}
+                    case Mode::Write: {Impl<T>::method({out, args, s}, self.load<T&>()); break;}
+                    case Mode::Read:  {Impl<T>::method({out, args, s}, self.load<T const&>()); break;}
+                }
+            }
+            return s;
+        }
+    };
+
+    static stat invoke(Idx f, Target &out, Pointer self, Mode qualifier, ArgView &args) noexcept {
+        return static_cast<stat>(f({code::method, static_cast<Code>(qualifier)}, &out, self.base, reinterpret_cast<ara_args *>(&args)));
+    }
+};
 
 /******************************************************************************************/
 
@@ -531,7 +559,8 @@ struct Default :
     Compare::Default<T>,
     Dump::Default<T>,
     Load::Default<T>,
-    Call::Default<T> {};
+    Call::Default<T>,
+    Method::Default<T> {};
 
 template <class T, class SFINAE>
 struct Impl : Default<T> {};
@@ -597,8 +626,11 @@ struct Switch {
             case code::dump:
                 return Impl<T>::dump_nothrow(*static_cast<Target *>(o), Pointer::from(s), static_cast<Mode>(i.tag));
 
-            case code::invoke:
-                return Impl<T>::call_nothrow(*static_cast<Target *>(o), Pointer::from(s), *reinterpret_cast<ArgView *>(args), static_cast<Mode>(i.tag));
+            case code::call:
+                return Impl<T>::call_nothrow(*static_cast<Target *>(o), *reinterpret_cast<ArgView *>(args));
+            
+            case code::method:
+                return Impl<T>::method_nothrow(*static_cast<Target *>(o), Pointer::from(s), *reinterpret_cast<ArgView *>(args), static_cast<Mode>(i.tag));
 
             case code::name:
                 return Impl<T>::name(*static_cast<ara_str *>(o));

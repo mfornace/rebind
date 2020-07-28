@@ -326,21 +326,21 @@ Target variable_target(Variable& out) {
 
 Lifetime invoke_call(Variable &out, Index self, Pointer address, ArgView &args, Mode mode) {
     Target target = variable_target(out);
-    auto const stat = Call::call(self, target, address, mode, args);
+    auto const stat = Method::invoke(self, target, address, mode, args);
     DUMP("Variable got stat and lifetime:", stat, target.c.lifetime);
 
     switch (stat) {
-        case Call::None:        break;
-        case Call::Stack:       {out.set_stack(target.index()); break;}
-        case Call::Read:        {out.set_pointer(target.index(), target.output(), Mode::Read); break;}
-        case Call::Write:       {out.set_pointer(target.index(), target.output(), Mode::Write); break;}
-        case Call::Heap:        {out.set_pointer(target.index(), target.output(), Mode::Heap); break;}
-        case Call::Impossible:  {throw PythonError(type_error("Impossible"));}
-        case Call::WrongNumber: {throw PythonError(type_error("WrongNumber"));}
-        case Call::WrongType:   {throw PythonError(type_error("WrongType"));}
-        case Call::WrongReturn: {throw PythonError(type_error("WrongReturn"));}
-        case Call::Exception:   {throw PythonError(type_error("Exception"));}
-        case Call::OutOfMemory: {throw std::bad_alloc();}
+        case Method::None:        break;
+        case Method::Stack:       {out.set_stack(target.index()); break;}
+        case Method::Read:        {out.set_pointer(target.index(), target.output(), Mode::Read); break;}
+        case Method::Write:       {out.set_pointer(target.index(), target.output(), Mode::Write); break;}
+        case Method::Heap:        {out.set_pointer(target.index(), target.output(), Mode::Heap); break;}
+        case Method::Impossible:  {throw PythonError(type_error("Impossible"));}
+        case Method::WrongNumber: {throw PythonError(type_error("WrongNumber"));}
+        case Method::WrongType:   {throw PythonError(type_error("WrongType"));}
+        case Method::WrongReturn: {throw PythonError(type_error("WrongReturn"));}
+        case Method::Exception:   {throw PythonError(type_error("Exception"));}
+        case Method::OutOfMemory: {throw std::bad_alloc();}
     }
     DUMP("output:", out.name(), "stat:", stat, "address:", out.address(), target.c.lifetime, target.lifetime().value);
     return target.lifetime();
@@ -352,7 +352,7 @@ template <class I>
 Lifetime invoke_access(Variable &out, Index self, Pointer address, I element, Mode mode) {
     Target target = variable_target(out);
     using A = std::conditional_t<std::is_same_v<I, Integer>, Element, Attribute>;
-    auto const stat = A::call(self, target, address, element, mode);
+    auto const stat = A::invoke(self, target, address, element, mode);
     DUMP("Variable got stat and lifetime:", stat, target.c.lifetime);
 
     switch (stat) {
@@ -511,7 +511,7 @@ auto call_with_caller(Index self, Pointer address, Mode mode, ArgView& args, Cal
 
 template <class Module>
 Value<> module_call(Ignore, Always<pyTuple> args, CallKeywords &&kws) {
-    return pyIndex::call(Switch<Module>::call, args, std::move(kws));
+    return pyIndex::call(Switch<Module>::invoke, args, std::move(kws));
 }
 
 /******************************************************************************/

@@ -4,11 +4,11 @@
 
 /******************************************************************************************/
 
-#define ARA_DEFINE(NAME, TYPE) ara_stat ARA_FUNCTION(NAME)(ara_input i, void* s, void* p, void* a) noexcept {return ara::Switch<TYPE>::call(i,s,p,a);}
+#define ARA_DEFINE(NAME, TYPE) ara_stat ARA_FUNCTION(NAME)(ara_input i, void* s, void* p, void* a) noexcept {return ara::Switch<TYPE>::invoke(i,s,p,a);}
 
 #define ARA_DECLARE(NAME, TYPE) \
     extern "C" ara_stat ARA_FUNCTION(NAME)(ara_input, void*, void*, void*) noexcept; \
-    namespace ara {template<> struct Lookup<TYPE> {static constexpr ara_index call = ARA_FUNCTION(NAME);};}
+    namespace ara {template<> struct Lookup<TYPE> {static constexpr ara_index invoke = ARA_FUNCTION(NAME);};}
 
 /******************************************************************************************/
 
@@ -63,20 +63,21 @@ enum codes {
     info       = 6,
     relocate   = 7,
     call       = 8,
-    dump       = 9,
-    load       = 10,
-    attribute  = 11,
-    element    = 12,
-    hash       = 13,
-    compare    = 14,
-    equal      = 15
+    method     = 9,
+    dump       = 10,
+    load       = 11,
+    attribute  = 12,
+    element    = 13,
+    hash       = 14,
+    compare    = 15,
+    equal      = 16
     // unary
     // binary
     // print
     // increment/decrement
 };
 
-inline constexpr bool valid(Code c) {return c < 16;}
+inline constexpr bool valid(Code c) {return c < 17;}
 
 }
 
@@ -93,6 +94,7 @@ inline char const * code_name(Code c) {
         case code::info :       return "info";
         case code::relocate :   return "relocate";
         case code::call :       return "call";
+        case code::method :     return "method";
         case code::dump :       return "dump";
         case code::load :       return "load";
         case code::attribute :  return "attribute";

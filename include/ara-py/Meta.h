@@ -7,16 +7,6 @@ namespace ara::py {
 
 /******************************************************************************/
 
-// struct pyMeta : StaticType<pyMeta> {
-//     using type = PyTypeObject;
-
-//     static void initialize_type(Always<pyType>) noexcept;
-
-//     static Value<pyType> new_type(Ignore, Always<pyTuple> args, Maybe<pyDict> kwargs);
-// };
-
-/******************************************************************************/
-
 // PySequenceMethods VariableSequenceMethods = {
 //     .sq_item = c_variable_element
 // };
@@ -56,18 +46,14 @@ namespace ara::py {
 /******************************************************************************/
 
 struct Method {
-    PyObject* signature;
-    PyObject* docstring;
-    PyObject* doc;
+    Value<> signature;
+    Value<> docstring;
+    Value<> doc;
     std::string name;
-
-    ~Method() noexcept {Py_DECREF(signature); Py_DECREF(docstring); Py_DECREF(doc);}
 };
 
-struct MethodObject : ObjectBase, Method {};
-
 struct pyMethod : StaticType<pyMethod> {
-    using type = MethodObject;
+    using type = Subtype<Method>;
 
     static PyMemberDef members[];
 
@@ -81,37 +67,46 @@ struct pyMethod : StaticType<pyMethod> {
         return {};
     }
 
-    static void initialize_type(Always<pyType> o) noexcept;
+    static void initialize_type(Always<pyType> o) noexcept {
+        define_type<pyMethod>(o, "ara.Method", "ara Method type");
+        o->tp_repr = reinterpret<repr, Always<pyMethod>>;
+        o->tp_str = reinterpret<str, Always<pyMethod>>;
+        o->tp_descr_get = reinterpret<get, Always<pyMethod>, Maybe<>, Ignore>;
+        o->tp_call = reinterpret<call, Always<pyMethod>, Always<pyTuple>, Maybe<pyDict>>;
+        // o->tp_members = members;
+        // tp_traverse, tp_clear
+        // PyMemberDef, tp_members
+    }
 
-    static void placement_new(MethodObject &) noexcept {}
-};
-
-
-void pyMethod::initialize_type(Always<pyType> o) noexcept {
-    define_type<pyMethod>(o, "ara.Method", "ara Method type");
-    o->tp_repr = reinterpret<repr, Always<pyMethod>>;
-    o->tp_str = reinterpret<str, Always<pyMethod>>;
-    o->tp_descr_get = reinterpret<get, Always<pyMethod>, Maybe<>, Ignore>;
-    o->tp_call = reinterpret<call, Always<pyMethod>, Always<pyTuple>, Maybe<pyDict>>;
-    // o->tp_members = members;
-    // tp_traverse, tp_clear
-    // PyMemberDef, tp_members
+    static void placement_new(Method &m) noexcept {
+        new(&m) Method();
+    }
 };
 
 /******************************************************************************/
 
 struct BoundMethod {
-    PyObject *method;
-    PyObject *self;
-    BoundMethod(Value<> m, Value<> s) noexcept : method(m.leak()), self(s.leak()) {}
-    ~BoundMethod() noexcept {Py_DECREF(method); Py_DECREF(self);}
+    Value<> method;
+    Value<> self;
+};
+
+struct pyBoundMethod : StaticType<pyBoundMethod> {
+    using type = Subtype<BoundMethod>;
+
+    static void initialize_type(Always<pyType> t) {
+        define_type<pyBoundMethod>(t, "ara.BoundMethod", "ara BoundMethod type");
+    }
+
+    static void placement_new(BoundMethod &f) {
+        new(&f) BoundMethod();
+    }
 };
 
 /******************************************************************************/
 
-Value<> Method::get(Always<pyMethod> self, Maybe<> instance, Ignore) {
+Value<> pyMethod::get(Always<pyMethod> self, Maybe<> instance, Ignore) {
     if (instance) {
-        BoundMethod(self, *instance);
+        BoundMethod{self, *instance};
         return {};
     } else return self;
 }
@@ -122,10 +117,34 @@ struct Forward {
 
 };
 
+struct pyForward : StaticType<Forward> {
+    using type = Subtype<Forward>;
+
+    static void initialize_type(Always<pyType> t) {
+        define_type<pyForward>(t, "ara.Forward", "ara Forward type");
+    }
+
+    static void placement_new(Forward &f) {
+        new(&f) Forward();
+    }
+};
+
 /******************************************************************************/
 
 struct Function {
 
+};
+
+struct pyFunction : StaticType<Function> {
+    using type = Subtype<Function>;
+
+    static void initialize_type(Always<pyType> t) {
+        define_type<pyFunction>(t, "ara.Function", "ara Function type");
+    }
+
+    static void placement_new(Function &f) {
+        new(&f) Function();
+    }
 };
 
 /******************************************************************************/

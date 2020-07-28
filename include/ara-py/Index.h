@@ -66,12 +66,13 @@ struct pyIndex : StaticType<pyIndex> {
     }
 
     static Value<pyIndex> from_file(Always<pyTuple>) {
-        auto ctypes = Object::take(Py_import_module("ctypes"));
-        auto cdll = getattr(ctypes, "CDLL");
-        auto lib = call_object(cdll, args[0]);
-        auto fun = getattr(lib, args[1]);
-        setattr(fun, "restype", getattr(ctypes, "void_p"));
-        return from_address(call_object(fun));
+        // auto ctypes = Object::take(Py_import_module("ctypes"));
+        // auto cdll = getattr(ctypes, "CDLL");
+        // auto lib = call_object(cdll, args[0]);
+        // auto fun = getattr(lib, args[1]);
+        // setattr(fun, "restype", getattr(ctypes, "void_p"));
+        // return from_address(call_object(fun));
+        return {};
     }
 };
 

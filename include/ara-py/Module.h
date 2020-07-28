@@ -60,8 +60,11 @@ PyObject* init_module() noexcept {
     PyObject* mod = PyModule_Create(&module);
     if (!mod) return nullptr;
     if (!add_module_type<pyIndex>(mod, "Index")) return nullptr;
-    if (!add_module_type<pyMeta>(mod, "Meta")) return nullptr;
     if (!add_module_type<pyVariable>(mod, "Variable")) return nullptr;
+    if (!add_module_type<pyMethod>(mod, "Method")) return nullptr;
+    if (!add_module_type<pyFunction>(mod, "Function")) return nullptr;
+    if (!add_module_type<pyForward>(mod, "Forward")) return nullptr;
+    if (!add_module_type<pyBoundMethod>(mod, "BoundMethod")) return nullptr;
 
     DUMP("returning", bool(mod));
     return mod;

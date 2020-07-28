@@ -81,9 +81,9 @@ void Variable::reset() noexcept {
     }
     if (state & 0x2) {
         if (storage.address.qualifier == Mode::Heap)
-            Deallocate::call(index(), Pointer::from(storage.address.pointer));
+            Deallocate::invoke(index(), Pointer::from(storage.address.pointer));
     } else {
-        Destruct::call(index(), Pointer::from(&storage));
+        Destruct::invoke(index(), Pointer::from(&storage));
     }
     if (state & 0x1) {
         --Always<pyVariable>::from(lock.other)->lock.count;
@@ -101,7 +101,7 @@ Py_hash_t pyVariable::hash(Always<pyVariable> self) noexcept {
         return 0;
     }
     std::size_t out;
-    auto stat = Hash::call(self->index(), out, Pointer::from(self->address()));
+    auto stat = Hash::invoke(self->index(), out, Pointer::from(self->address()));
     switch (stat) {
         case Hash::OK: {
             return combine_hash(std::hash<Index>()(self->index()), out);
@@ -302,7 +302,7 @@ int pyVariable::compare(Always<pyVariable> l, Always<> other, decltype(Py_EQ) op
             }
         } else {
             bool equal;
-            switch (Equal::call(l->index(), Pointer::from(l->address()), Pointer::from(r->address()))) {
+            switch (Equal::invoke(l->index(), Pointer::from(l->address()), Pointer::from(r->address()))) {
                 case Equal::Impossible: return -1;
                 case Equal::False: {equal = false; break;}
                 case Equal::True: {equal = true; break;}
@@ -323,7 +323,7 @@ int pyVariable::compare(Always<pyVariable> l, Always<> other, decltype(Py_EQ) op
                     default: break;
                 }
             }
-            switch (Compare::call(l->index(), Pointer::from(l->address()), Pointer::from(r->address()))) {
+            switch (Compare::invoke(l->index(), Pointer::from(l->address()), Pointer::from(r->address()))) {
                 case Compare::Unordered: return -1;
                 case Compare::Less: {
                     switch(op) {
@@ -357,81 +357,81 @@ int pyVariable::compare(Always<pyVariable> l, Always<> other, decltype(Py_EQ) op
 
 /******************************************************************************/
 
-void DynamicType::finalize(Always<pyTuple> args) {
-    DUMP("finalizing dynamic class");
-    auto s = Value<pyStr>::take(PyObject_Str(+item_at(args, 0)));
-    this->name += as_string_view(*s);
-    object->tp_name = this->name.data();
-    object->tp_base = +pyVariable::def();
+// void DynamicType::finalize(Always<pyTuple> args) {
+//     DUMP("finalizing dynamic class");
+//     auto s = Value<pyStr>::take(PyObject_Str(+item_at(args, 0)));
+//     this->name += as_string_view(*s);
+//     object->tp_name = this->name.data();
+//     object->tp_base = +pyVariable::def();
 
-    if (!getsets.empty()) {
-        getsets.emplace_back();
-        object->tp_getset = getsets.data();
-    }
-    if (PyType_Ready(object.get()) < 0) throw PythonError();
-}
-
-/******************************************************************************/
-
-void DynamicType::add_members(Always<pyDict> as, Always<pyDict> properties) {
-    DUMP("working on annotations");
-    iterate(as, [&](Ignore, auto k, auto v) {
-        auto key = Always<pyStr>::from(k);
-
-        Value<pyStr> doc;
-        if (auto doc_string = item(properties, key)) {
-            doc = Always<pyStr>::from(*doc_string);
-            if (0 != PyDict_DelItem(~properties, ~key)) throw PythonError();
-        }
-
-        auto &member = members.emplace_back(as_string_view(key), v, std::move(doc));
-        // DUMP("ok", as_string_view(*key), member.name, member.doc, +member.annotation);
-        getsets.emplace_back(PyGetSetDef{member.name.data(),
-            reinterpret<get_member, Always<>, Always<>>, nullptr, member.doc.data(), +member.annotation});
-    });
-}
+//     if (!getsets.empty()) {
+//         getsets.emplace_back();
+//         object->tp_getset = getsets.data();
+//     }
+//     if (PyType_Ready(object.get()) < 0) throw PythonError();
+// }
 
 /******************************************************************************/
 
-Value<pyType> pyMeta::new_type(Ignore, Always<pyTuple> args, Maybe<pyDict> kwargs) {
-    DUMP("new_type", args);
-    if (size(args) != 3) throw PythonError::type("Meta.__new__ takes 3 positional arguments");
+// void DynamicType::add_members(Always<pyDict> as, Always<pyDict> properties) {
+//     DUMP("working on annotations");
+//     iterate(as, [&](Ignore, auto k, auto v) {
+//         auto key = Always<pyStr>::from(k);
 
-    auto& base = dynamic_types.emplace_back();
+//         Value<pyStr> doc;
+//         if (auto doc_string = item(properties, key)) {
+//             doc = Always<pyStr>::from(*doc_string);
+//             if (0 != PyDict_DelItem(~properties, ~key)) throw PythonError();
+//         }
 
-    auto properties = Always<pyDict>::from(item(args, 2));
-
-    if (auto as = item(properties, "__annotations__"))
-        base.add_members(Always<pyDict>::from(*as), properties);
-
-    base.finalize(args);
-
-    auto bases = Value<pyTuple>::take(PyTuple_Pack(1, base.object.get()));
-    // auto bases = Value<pyTuple>::take(PyTuple_Pack(1, +pyVariable::def()));
-
-    auto args2 = Value<pyTuple>::take(PyTuple_Pack(3, +item(args, 0), +bases, +item(args, 2)));
-    DUMP("Calling type()", args2, kwargs);
-    auto out = Value<pyType>::take(PyObject_Call(~pyType::def(), ~args2, +kwargs));
-
-    auto method = Value<>::take(PyInstanceMethod_New(Py_None));
-    // PyObject_SetAttrString(~out, "instance_method", +method);
-    DUMP("done");
-    return out;
-    // return PyObject_Call((PyObject*) &PyType_Type, args, kwargs);
-    // // DUMP("making class...", Value<>(out, true));
-    // DUMP("hash?", (+o)->tp_hash);
-}
+//         auto &member = members.emplace_back(as_string_view(key), v, std::move(doc));
+//         // DUMP("ok", as_string_view(*key), member.name, member.doc, +member.annotation);
+//         getsets.emplace_back(PyGetSetDef{member.name.data(),
+//             reinterpret<get_member, Always<>, Always<>>, nullptr, member.doc.data(), +member.annotation});
+//     });
+// }
 
 /******************************************************************************/
 
-void pyMeta::initialize_type(Always<pyType> o) noexcept {
-    o->tp_name = "ara.Meta";
-    o->tp_basicsize = sizeof(PyTypeObject);
-    o->tp_doc = "Object metaclass";
-    o->tp_new = reinterpret<new_type, Always<pyType>, Always<pyTuple>, Maybe<pyDict>>;
-    o->tp_base = +pyType::def();
-    o->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
-}
+// Value<pyType> pyMeta::new_type(Ignore, Always<pyTuple> args, Maybe<pyDict> kwargs) {
+//     DUMP("new_type", args);
+//     if (size(args) != 3) throw PythonError::type("Meta.__new__ takes 3 positional arguments");
+
+//     auto& base = dynamic_types.emplace_back();
+
+//     auto properties = Always<pyDict>::from(item(args, 2));
+
+//     if (auto as = item(properties, "__annotations__"))
+//         base.add_members(Always<pyDict>::from(*as), properties);
+
+//     base.finalize(args);
+
+//     auto bases = Value<pyTuple>::take(PyTuple_Pack(1, base.object.get()));
+//     // auto bases = Value<pyTuple>::take(PyTuple_Pack(1, +pyVariable::def()));
+
+//     auto args2 = Value<pyTuple>::take(PyTuple_Pack(3, +item(args, 0), +bases, +item(args, 2)));
+//     DUMP("Calling type()", args2, kwargs);
+//     auto out = Value<pyType>::take(PyObject_Call(~pyType::def(), ~args2, +kwargs));
+
+//     auto method = Value<>::take(PyInstanceMethod_New(Py_None));
+//     // PyObject_SetAttrString(~out, "instance_method", +method);
+//     DUMP("done");
+//     return out;
+//     // return PyObject_Call((PyObject*) &PyType_Type, args, kwargs);
+//     // // DUMP("making class...", Value<>(out, true));
+//     // DUMP("hash?", (+o)->tp_hash);
+// }
+
+/******************************************************************************/
+
+// void pyMeta::initialize_type(Always<pyType> o) noexcept {
+//     o->tp_name = "ara.Meta";
+//     o->tp_basicsize = sizeof(PyTypeObject);
+//     o->tp_doc = "Object metaclass";
+//     o->tp_new = reinterpret<new_type, Always<pyType>, Always<pyTuple>, Maybe<pyDict>>;
+//     o->tp_base = +pyType::def();
+//     o->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
+// }
 
 /******************************************************************************/
 
@@ -591,6 +591,6 @@ Value<> pyVariable::load(Always<pyVariable> self, Always<> type) {
 
 /******************************************************************************/
 
-std::deque<DynamicType> dynamic_types;
+// std::deque<DynamicType> dynamic_types;
 
 }

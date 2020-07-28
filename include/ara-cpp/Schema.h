@@ -70,11 +70,11 @@ template <class T>
 struct Impl<T, std::void_t<decltype(T::global_schema)>> : Default<T> {
     static_assert(std::is_aggregate_v<T>);
 
-    static bool call(Method m, T) {
+    static bool call(Body m) {
         if (!m.args.tags()) {
             DUMP("writing the schema");
             T::write(T::global_schema);
-            m.stat = Call::None;
+            m.stat = Method::None;
             return true;
         }
         DUMP("got to the module: # args =", m.args.size(), ", tags =", m.args.tags());
@@ -88,7 +88,7 @@ struct Impl<T, std::void_t<decltype(T::global_schema)>> : Default<T> {
             auto const &value = T::global_schema[*name];
             m.args.c.tags -= 1;
             DUMP("invoking module member! args=", m.args.size(), " tags=", m.args.tags());
-            m.stat = Call::call(value.index(), m.target, value.address(), Mode::Read, m.args);
+            m.stat = Method::invoke(value.index(), m.target, value.address(), Mode::Read, m.args);
             return true;
         }
         DUMP("not a method!");
@@ -97,5 +97,28 @@ struct Impl<T, std::void_t<decltype(T::global_schema)>> : Default<T> {
 };
 
 /******************************************************************************/
+
+template <class Mod>
+struct Module {
+    static void init(Caller caller={}) {
+        return Output<void, true>()([&](Target &t) {
+            return parts::with_args<0>([&](auto &args) {
+                return Call::invoke(fetch(Type<Mod>()), t, args);
+            }, caller);
+        });
+    }
+
+    template <class T, bool Check=true, int N=1, class ...Ts>
+    static decltype(auto) call(Str name, Caller caller, Ts&& ...ts) {
+        return Output<T, Check>()([&](Target &t) {
+            return parts::with_args<N>([&](auto &args) {
+                return Call::invoke(fetch(Type<Mod>()), t, args);
+            }, caller, name, std::forward<Ts>(ts)...);
+        });
+    }
+};
+
+/******************************************************************************/
+
 
 }

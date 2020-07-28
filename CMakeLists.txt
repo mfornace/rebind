@@ -13,7 +13,6 @@ target_include_directories(headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include
 # Maybe change in future to user provided interface library?
 add_library(libara STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/source/Source.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/Schema.cc
 )
 set_target_properties(libara PROPERTIES OUTPUT_NAME ara ${ARA_STATIC_PROPERTIES})
 target_link_libraries(libara PUBLIC headers)

@@ -177,7 +177,7 @@ struct Goo : GooBase {
 
 template <>
 struct ara::Impl<GooBase> : ara::Default<GooBase> {
-    static bool call(Method, GooBase const &) {return false;}
+    static bool method(Body, GooBase const &) {return false;}
 };
 
 template <>
@@ -187,25 +187,25 @@ struct ara::Impl<Goo> : ara::Default<Goo> {
         return false;
     }
 
-    static bool call(Method method, Goo &self) {
+    static bool method(Body body, Goo &self) {
         DUMP("calling Goo");
-        return method(self, ".x", &Goo::x, {0})
-            || method(self, ".x=", [](Goo &s, double x) {s.x = x;});
+        return body(self, ".x", &Goo::x, {0})
+            || body(self, ".x=", [](Goo &s, double x) {s.x = x;});
     }
 
-    static bool call(Method, Goo &&) {
+    static bool method(Body, Goo &&) {
         DUMP("calling Goo");
         return false;
     }
 
-    static bool call(Method method, Goo const &self) {
-        DUMP("calling Goo method", ara::Lifetime({0}).value);
-        return method(self, &Goo::x)
-            || method(self, "add", [](Goo g, Goo g2, Goo g3) {return g;})
-            // || method(self, "test_throw", &Goo::test_throw)
-            || method(self, "get_x", [](Goo const &g) {return g.x;})
-            // || method(self, "add", [](Goo &g, double x) {g.x += x;})
-            || method.derive<GooBase const &>(self);
+    static bool method(Body body, Goo const &self) {
+        DUMP("calling Goo body", ara::Lifetime({0}).value);
+        return body(self, &Goo::x)
+            || body(self, "add", [](Goo g, Goo g2, Goo g3) {return g;})
+            // || body(self, "test_throw", &Goo::test_throw)
+            || body(self, "get_x", [](Goo const &g) {return g.x;})
+            // || body(self, "add", [](Goo &g, double x) {g.x += x;})
+            || body.derive<GooBase const &>(self);
     }
 };
 
@@ -219,7 +219,7 @@ struct Example : ara::GlobalSchema<Example>, ara::Default<Example> {
 static_assert(ara::has_call_v<ara::GlobalSchema<Example>>);
 static_assert(ara::has_call_v<Example>);
 
-template ara_stat ara::Switch<Example>::call(ara_input, void*, void*, void*) noexcept;
+template ara_stat ara::Switch<Example>::invoke(ara_input, void*, void*, void*) noexcept;
 
 // could make this return a schema
 void Example::write(ara::Schema &s) {

@@ -8,7 +8,7 @@ struct Example;
 namespace ara {
 
 template <>
-ara_stat Switch<Example>::call(ara_input, void*, void*, void*) noexcept;
+ara_stat Switch<Example>::invoke(ara_input, void*, void*, void*) noexcept;
 
 }
 
@@ -62,7 +62,7 @@ int main() {
 
     }
 
-    auto x = Mod::attempt<Value>("mutex", Caller(), mut);
+    auto x = Mod::call<Value, false>("mutex", Caller(), mut);
 
 {
     auto v = Value(1);
@@ -75,11 +75,11 @@ int main() {
     Value v = Mod::call<Value>("Goo.new", Caller(), 1.5);
     DUMP("got the Goo?", v.name(), int(v.location()));//, int(Value::loc_of<Goo>));
 
-    double y = v.call<double, 1>(Caller(), ".x");
+    double y = v.method<double, 1>(Caller(), ".x");
     DUMP("got .x", y);
-    double y2 = v.call<double, 1>(Caller(), ".x");
+    double y2 = v.method<double, 1>(Caller(), ".x");
     DUMP("got .x", y2);
-    double y3 = v.call<double>(Caller());
+    double y3 = v.method<double>(Caller());
 }
 
     DUMP("done");

@@ -106,28 +106,40 @@ struct Value : Base {
     template <class T>
     std::optional<T> get(Type<T> t={}) const {return as_ref().get(t);}
 
-    template <class T=Value, int N=0, class ...Ts>
-    T call(Caller c, Ts &&...ts) const {
-        return parts::call<T, N>(index(), address(), Mode::Read, c, static_cast<Ts &&>(ts)...);
+    template <class T=Value, bool Check=true, int N=0, class ...Ts>
+    decltype(auto) method(Caller c, Ts &&...ts) const {
+        return Output<T, Check>()([&](Target &t) {
+            return parts::with_args<N>([&](auto &args) {
+                return Method::invoke(index(), t, address(), Mode::Read, args);
+            }, c, static_cast<Ts &&>(ts)...);
+        });
     }
 
-    template <class T=Value, int N=0, class ...Ts>
-    T mutate(Caller c, Ts &&...ts) {
-        return parts::call<T, N>(index(), address(), Mode::Write, c, static_cast<Ts &&>(ts)...);
+    template <class T=Value, bool Check=true, int N=0, class ...Ts>
+    decltype(auto) mutate(Caller c, Ts &&...ts) {
+        return Output<T, Check>()([&](Target &t) {
+            return parts::with_args<N>([&](auto &args) {
+                return Method::invoke(index(), t, address(), Mode::Write, args);
+            }, c, static_cast<Ts &&>(ts)...);
+        });
     }
 
-    template <class T=Value, int N=0, class ...Ts>
-    T move(Caller c, Ts &&...ts) {
+    template <class T=Value, bool Check=true, int N=0, class ...Ts>
+    decltype(auto) move(Caller c, Ts &&...ts) {
         Ref ref(index(), location() == Heap ? Mode::Heap : Mode::Stack, address());
         release();
-        return parts::call<T, N>(ref.index(), ref.pointer(), ref.mode(), c, static_cast<Ts &&>(ts)...);
+        return Output<T, Check>()([&](Target &t) {
+            return parts::with_args<N>([&](auto &args) {
+                return Method::invoke(ref.index(), t, ref.pointer(), ref.mode(), args);
+            }, c, static_cast<Ts &&>(ts)...);
+        });
     }
 
-    template <class T=Value, int N=0, class ...Ts>
-    maybe<T> attempt(Caller c, Ts &&...ts) const {
-        if (!has_value()) return Maybe<T>::none();
-        return parts::attempt<T, N>(index(), Mode::Read, address(), c, static_cast<Ts &&>(ts)...);
-    }
+    // template <class T=Value, int N=0, class ...Ts>
+    // maybe<T> attempt(Caller c, Ts &&...ts) const {
+    //     if (!has_value()) return Maybe<T>::none();
+    //     return parts::attempt<T, N>(index(), Mode::Read, address(), c, static_cast<Ts &&>(ts)...);
+    // }
 
     auto get_to(Target &t) const {return as_ref().get_to(t);}
 
@@ -187,7 +199,7 @@ T & Value::emplace(Type<T>, Args &&...args) {
 /******************************************************************************/
 
 inline Value::Value(Value&& v) noexcept : Base{v.idx}, storage(v.storage) {
-    if (location() == Loc::Stack) Relocate::call(index(), &storage.data, &v.storage.data);
+    if (location() == Loc::Stack) Relocate::invoke(index(), &storage.data, &v.storage.data);
     v.release();
 }
 
@@ -195,7 +207,7 @@ inline Value& Value::operator=(Value&& v) noexcept {
     reset();
     idx = v.idx;
     if (location() == Loc::Stack) {
-        Relocate::call(index(), &storage.data, &v.storage.data);
+        Relocate::invoke(index(), &storage.data, &v.storage.data);
     } else {
         storage = v.storage;
     }
@@ -207,8 +219,8 @@ inline bool Value::destruct() noexcept {
     if (!has_value()) return false;
     switch (location()) {
         case Loc::Trivial: break;
-        case Loc::Heap: {Deallocate::call(index(), Pointer::from(storage.pointer)); break;}
-        default: {Destruct::call(index(), Pointer::from(&storage)); break;}
+        case Loc::Heap: {Deallocate::invoke(index(), Pointer::from(storage.pointer)); break;}
+        default: {Destruct::invoke(index(), Pointer::from(&storage)); break;}
     }
     return true;
 }
@@ -216,10 +228,63 @@ inline bool Value::destruct() noexcept {
 /******************************************************************************/
 
 template <>
-struct CallReturn<Value> {
-    static Value call(Index i, Pointer self, Mode qualifier, ArgView &args);
+struct Output<Value, true> {   
+    template <class F>
+    Value operator()(F &&f) const {
+        DUMP("calling to get Value");
+        Value out;
+        Target target(Index(), &out.storage, sizeof(out.storage),
+            Target::Trivial | Target::Relocatable | Target::MoveNoThrow | Target::Heap);
+        auto const stat = f(target);
+        DUMP("called the output!", stat);
 
-    static Value attempt(Index i, Pointer self, Mode qualifier, ArgView &args);
+        switch (stat) {
+            case Method::None: {break;}
+            case Method::Stack: {
+                out.idx = Tagged(target.index(), Value::Stack);
+                break;
+            }
+            case Method::Heap: {
+                out.storage.pointer = target.output();
+                out.idx = Tagged(target.index(), Value::Heap);
+                break;
+            }
+            default: call_throw(std::move(target), stat);
+        }
+        return out;
+    }
+};
+
+template <>
+struct Output<Value, false> {   
+    template <class F>
+    Value operator()(F &&f) const {
+        DUMP("calling to get Value");
+        Value out;
+        Target target(Index(), &out.storage, sizeof(out.storage),
+            Target::Trivial | Target::Relocatable | Target::MoveNoThrow | Target::Heap);
+        auto const stat = f(target);
+        DUMP("called the output!", stat);
+
+        switch (stat) {
+            case Method::None: {break;}
+            case Method::Stack: {
+                out.idx = Tagged(target.index(), Value::Stack);
+                break;
+            }
+            case Method::Heap: {
+                out.storage.pointer = target.output();
+                out.idx = Tagged(target.index(), Value::Heap);
+                break;
+            }
+            case Method::Impossible: {break;}
+            case Method::WrongNumber: {break;}
+            case Method::WrongType: {break;}
+            case Method::WrongReturn: {break;}
+            default: call_throw(std::move(target), stat);
+        }
+        return out;
+    }
 };
 
 // struct Copyable : Value {

@@ -8,6 +8,7 @@ namespace ara {
 
 /******************************************************************************/
 
+// This is the actual callable object plus a lifetime annotation
 template <class F>
 struct Functor {
     F function;
@@ -20,6 +21,7 @@ struct Functor {
     // }
 };
 
+// This is some future thing for default arguments
 template <int N, class F>
 struct DefaultFunctor : Functor<F> {
     static_assert(N > 0, "Functor must have some default arguments");
@@ -28,28 +30,29 @@ struct DefaultFunctor : Functor<F> {
 
 /******************************************************************************/
 
-template <class F, class SFINAE=void>
-struct FunctorCall;
+// template <class F, class SFINAE=void>
+// struct FunctorCall;
 
-template <int N, class F, class SFINAE=void>
-struct DefaultFunctorCall;
+// template <int N, class F, class SFINAE=void>
+// struct DefaultFunctorCall;
 
 template <class F, class SFINAE=void>
-struct MethodCall;
+struct ApplyMethod;
 
 /******************************************************************************/
 
-struct Method {
+// This is the function context with arguments, output, output stat
+struct Body {
     Target &target;
     ArgView &args;
     Call::stat &stat;
 
     template <class S, class F>
     [[nodiscard]] bool operator()(S &&self, F const functor, Lifetime life={}) {
-        DUMP("Method::operator()", args.tags(), args.size());
+        DUMP("Body::operator()", args.tags(), args.size());
         if (args.tags() == 0) {
             DUMP("found match");
-            stat = MethodCall<F>::call(target, life, functor, std::forward<S>(self), args);
+            stat = ApplyMethod<F>::invoke(target, life, functor, std::forward<S>(self), args);
             return true;
         }
         return false;
@@ -57,13 +60,13 @@ struct Method {
 
     template <class S, class F>
     [[nodiscard]] bool operator()(S &&self, std::string_view name, F const functor, Lifetime life={}) {
-        DUMP("Method::operator()", args.tags(), args.size());
+        DUMP("Body::operator()", args.tags(), args.size());
         if (args.tags() == 1) if (auto given = args.tag(0).get<Str>()) {
             std::string_view s(*given);
             DUMP("Checking for method", name, "from", s);
             if (s == name) {
                 DUMP("found match");
-                stat = MethodCall<F>::call(target, life, functor, std::forward<S>(self), args);
+                stat = ApplyMethod<F>::invoke(target, life, functor, std::forward<S>(self), args);
                 return true;
             }
         }
@@ -72,15 +75,15 @@ struct Method {
 
     template <class Base, class S>
     [[nodiscard]] bool derive(S &&self) {
-        static_assert(std::is_reference_v<Base>, "T should be a reference type for Method::derive<T>()");
+        static_assert(std::is_reference_v<Base>, "T should be a reference type for Body::derive<T>()");
         static_assert(std::is_convertible_v<S &&, Base>);
         static_assert(!std::is_same_v<unqualified<S>, unqualified<Base>>);
-        return Impl<unqualified<Base>>::call(*this, std::forward<S>(self));
+        return Impl<unqualified<Base>>::method(*this, std::forward<S>(self));
     }
 };
 
-static_assert(std::is_move_constructible_v<Method>);
-static_assert(std::is_copy_constructible_v<Method>);
+static_assert(std::is_move_constructible_v<Body>);
+static_assert(std::is_copy_constructible_v<Body>);
 
 /******************************************************************************/
 
@@ -203,7 +206,7 @@ struct Impl<Functor<F>> : Default<Functor<F>> {
      Interface implementation for a function with no optional arguments.
      - Returns WrongNumber if args is not the right length
      */
-    static bool call(Method m, Functor<F> const &f) noexcept {
+    static bool call(Body m, Functor<F> const &f) noexcept {
         DUMP("call_to function adapter", type_name<F>(), std::addressof(f), "args=", m.args.size());
         if (m.args.tags())
             return Call::wrong_number(m.target, m.args.tags(), 0);
@@ -231,13 +234,13 @@ struct Impl<Functor<F>> : Default<Functor<F>> {
 /******************************************************************************/
 
 template <bool UseCaller, class F, class S, class ...Ts>
-Call::stat invoke_method(Target& out, F const &f, Caller &&c, S &&self, maybe<Ts> &&...ts) {
+Method::stat invoke_method(Target& out, F const &f, Caller &&c, S &&self, maybe<Ts> &&...ts) {
     DUMP("casting arguments");
     if (!(ts && ...)) {
         DUMP("casting arguments failed");
         Code i = 0;
-        (void) ((ts ? (++i, true) : (Call::wrong_type(out, i, Index::of<unqualified<Ts>>(), qualifier_of<Ts>), false)) && ...);
-        return Call::WrongType;
+        (void) ((ts ? (++i, true) : (Method::wrong_type(out, i, Index::of<unqualified<Ts>>(), qualifier_of<Ts>), false)) && ...);
+        return Method::WrongType;
     }
     DUMP("invoke_method");
     c.enter();
@@ -248,8 +251,9 @@ Call::stat invoke_method(Target& out, F const &f, Caller &&c, S &&self, maybe<Ts
     }
 }
 
+// This thing does the job of converting arguments, handling the call context
 template <class F, class SFINAE>
-struct MethodCall {
+struct ApplyMethod {
     using Signature = simplify_signature<F>;
     using Return = decltype(first_type(Signature()));
     using UseCaller = decltype(third_is_convertible<Caller>(Signature()));
@@ -260,8 +264,8 @@ struct MethodCall {
      - Returns WrongNumber if args is not the right length
      */
     template <class S>
-    static Call::stat call(Target& out, Lifetime life, F const &f, S &&self, ArgView &args) noexcept {
-        DUMP("call_to MethodCall<", type_name<F>(), ">:", std::addressof(f), args.size(), life.value);
+    static Call::stat invoke(Target& out, Lifetime life, F const &f, S &&self, ArgView &args) noexcept {
+        DUMP("call_to ApplyMethod<", type_name<F>(), ">:", std::addressof(f), args.size(), life.value);
 
         if (args.size() != Args::size)
             return Call::wrong_number(out, args.size(), Args::size);

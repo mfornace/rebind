@@ -538,25 +538,6 @@ template <> struct AliasType<Array>  {using type = ara_array;};
 template <> struct AliasType<Tuple>  {using type = ara_tuple;};
 template <> struct AliasType<View>   {using type = ara_view;};
 
-/******************************************************************************/
-
-template <class Mod>
-struct Module {
-    static void init(Caller caller={}) {
-        parts::call<void, 0>(fetch(Type<Mod>()), Pointer::from(nullptr), Mode::Read, caller);
-    }
-
-    template <class T, int N=1, class ...Ts>
-    static T call(Str name, Caller caller, Ts&& ...ts) {
-        return parts::call<T, N>(fetch(Type<Mod>()), Pointer::from(nullptr), Mode::Read, caller, name, std::forward<Ts>(ts)...);
-    }
-
-    template <class T, int N=1, class ...Ts>
-    static T attempt(Str name, Caller caller, Ts&& ...ts) {
-        return parts::attempt<T, N>(fetch(Type<Mod>()), Pointer::from(nullptr), Mode::Read, caller, name, std::forward<Ts>(ts)...);
-    }
-};
-
 /******************************************************************************************/
 
 }

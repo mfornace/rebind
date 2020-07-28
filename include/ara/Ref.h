@@ -48,8 +48,8 @@ union Ref {
     void destroy_if_managed() {
         if (!has_value()) return;
         switch (mode()) {
-            case Mode::Stack: {Destruct::call(index(), pointer()); c.mode_index = nullptr; return;}
-            case Mode::Heap:  {Deallocate::call(index(), pointer()); c.mode_index = nullptr; return;}
+            case Mode::Stack: {Destruct::invoke(index(), pointer()); c.mode_index = nullptr; return;}
+            case Mode::Heap:  {Deallocate::invoke(index(), pointer()); c.mode_index = nullptr; return;}
             default: {return;}
         }
     }
@@ -67,14 +67,16 @@ union Ref {
     template <class T, int N=0, class ...Ts>
     T call(Caller c, Ts &&...ts) const {
         DUMP("Ref::call:", type_name<T>(), "(", sizeof...(Ts), ")");
-        return parts::call<T, N>(index(), pointer(), mode(), c, static_cast<Ts &&>(ts)...);
+        return parts::with_args<N>([](auto &v) {
+            // return index(), pointer(), mode();
+        }, c, static_cast<Ts &&>(ts)...);
     }
 
-    template <class T, int N=0, class ...Ts>
-    maybe<T> attempt(Caller c, Ts &&...ts) const {
-        if (!has_value()) return Maybe<T>::none();
-        return parts::attempt<T, N>(index(), pointer(), Mode::Read, c, static_cast<Ts &&>(ts)...);
-    }
+    // template <class T, int N=0, class ...Ts>
+    // maybe<T> attempt(Caller c, Ts &&...ts) const {
+    //     if (!has_value()) return Maybe<T>::none();
+    //     return parts::attempt<T, N>(index(), pointer(), Mode::Read, c, static_cast<Ts &&>(ts)...);
+    // }
 
     /**************************************************************************************/
 
@@ -115,7 +117,7 @@ bool Ref::binds_to(Qualifier q) const {
 }
 
 inline Load::stat dump_or_load(Target &target, Index source, Pointer p, Mode t) noexcept {
-    switch (Dump::call(source, target, p, t)) {
+    switch (Dump::invoke(source, target, p, t)) {
         case Dump::Write: {DUMP("dump succeeded"); return Load::Write;}
         case Dump::Read: {DUMP("dump succeeded"); return Load::Read;}
         case Dump::Heap: {DUMP("dump succeeded"); return Load::Heap;}
@@ -125,7 +127,7 @@ inline Load::stat dump_or_load(Target &target, Index source, Pointer p, Mode t) 
         case Dump::None: {
             auto target_index = std::exchange(target.c.index, source);
             DUMP("try backup load");
-            return Load::call(target_index, target, p, t);
+            return Load::invoke(target_index, target, p, t);
         }
     }
 }

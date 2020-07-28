@@ -13,11 +13,11 @@ struct Switch;
 
 template <class T>
 struct Lookup {
-    static constexpr Idx call = Switch<Alias<T>>::call;
+    static constexpr Idx invoke = Switch<Alias<T>>::invoke;
 };
 
 template <class T>
-Idx fetch(Type<T>) noexcept {return Lookup<T>::call;}
+Idx fetch(Type<T>) noexcept {return Lookup<T>::invoke;}
 
 /******************************************************************************************/
 

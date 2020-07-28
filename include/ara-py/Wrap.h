@@ -32,7 +32,10 @@ struct ObjectBase {
 };
 
 template <class T>
-struct StaticType : Wrap<T> {
+struct Subtype : ObjectBase, T {};
+
+template <class T>
+struct StaticType : Wrap<T> {    
     static PyTypeObject definition;
 
     static Always<pyType> def() {return definition;}

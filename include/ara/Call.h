@@ -77,41 +77,50 @@ struct Arg<T&&> {
     Ref ref() noexcept {return Ref(Index::of<T>(), Mode::Stack, Pointer::from(&storage));}
 };
 
-[[noreturn]] void call_throw(Target &&target, Call::stat c);
+[[noreturn]] void call_throw(Target &&target, Method::stat c);
 
 /******************************************************************************/
+// auto const stat = Method::invoke(i, target, self, mode, args);
+
+template <class T, bool Check>
+struct Output;
+
 
 template <class T>
-struct CallReturn {
-    static std::optional<T> attempt(Index i, Pointer self, Mode mode, ArgView &args) {
+struct Output<T, false> {
+    template <class F>
+    std::optional<T> operator()(F &&f) const {
         std::aligned_union_t<0, T, void*> buffer;
         Target target(Index::of<T>(), &buffer, sizeof(buffer), Target::constraint<T>);
-        auto const stat = Call::call(i, target, self, mode, args);
+        auto const stat = f(target);
 
         std::optional<T> out;
         switch (stat) {
-            case Call::Stack: {
+            case Method::Stack: {
                 Destruct::RAII<T> raii{storage_cast<T>(buffer)};
                 out.emplace(std::move(raii.held));
                 break;
             }
-            case Call::Impossible:  {break;}
-            case Call::WrongType:   {break;}
-            case Call::WrongNumber: {break;}
-            case Call::WrongReturn: {break;}
+            case Method::Impossible:  {break;}
+            case Method::WrongType:   {break;}
+            case Method::WrongNumber: {break;}
+            case Method::WrongReturn: {break;}
             default: call_throw(std::move(target), stat);
         }
         return out;
     }
+};
 
-    template <class ...Ts>
-    static T call(Index i, Pointer self, Mode mode, ArgView &args) {
+template <class T>
+struct Output<T, true> {
+    template <class F>
+    T operator()(F &&f) const {
         std::aligned_union_t<0, T, void*> buffer;
         Target target(Index::of<T>(), &buffer, sizeof(buffer), Target::constraint<T>);
-        auto const stat = Call::call(i, target, self, mode, args);
+        auto const stat = f(target);
 
         switch (stat) {
-            case Call::Stack: {
+            case Method::Stack: {
                 Destruct::RAII<T> raii{storage_cast<T>(buffer)};
                 return std::move(raii.held);
             }
@@ -123,33 +132,38 @@ struct CallReturn {
 /******************************************************************************/
 
 template <class T>
-struct CallReturn<T &> {
-    static T * attempt(Index i, Pointer self, Mode mode, ArgView &args) {
+struct Output<T &, false> {
+    template <class F>
+    T * operator()(F &&f) const {
         DUMP("calling something that returns reference ...");
         Target target(Index::of<std::remove_cv_t<T>>(), nullptr, 0,
             std::is_const_v<T> ? Target::Read : Target::Write);
 
-        auto const stat = Call::call(i, target, self, mode, args);
+        auto const stat = f(target);
         DUMP("got stat", stat);
         switch (stat) {
-            case (std::is_const_v<T> ? Call::Read : Call::Write): return *reinterpret_cast<T *>(target.output());
-            case Call::Impossible:  {return nullptr;}
-            case Call::WrongType:   {return nullptr;}
-            case Call::WrongNumber: {return nullptr;}
-            case Call::WrongReturn: {return nullptr;}
+            case (std::is_const_v<T> ? Method::Read : Method::Write): return *reinterpret_cast<T *>(target.output());
+            case Method::Impossible:  {return nullptr;}
+            case Method::WrongType:   {return nullptr;}
+            case Method::WrongNumber: {return nullptr;}
+            case Method::WrongReturn: {return nullptr;}
             default: call_throw(std::move(target), stat);
         }
     }
+};
 
-    static T & call(Index i, Pointer self, Mode mode, ArgView &args) {
+template <class T>
+struct Output<T &, true> {
+    template <class F>
+    T & operator()(F &&f) const {
         DUMP("calling something that returns reference ...");
         Target target(Index::of<std::remove_cv_t<T>>(), nullptr, 0,
             std::is_const_v<T> ? Target::Read : Target::Write);
 
-        auto const stat = Call::call(i, target, self, mode, args);
+        auto const stat = f(target);
         DUMP("got stat", stat);
         switch (stat) {
-            case (std::is_const_v<T> ? Call::Read : Call::Write): return *reinterpret_cast<T *>(target.output());
+            case (std::is_const_v<T> ? Method::Read : Method::Write): return *reinterpret_cast<T *>(target.output());
             default: call_throw(std::move(target), stat);
         }
     }
@@ -158,31 +172,35 @@ struct CallReturn<T &> {
 /******************************************************************************/
 
 template <>
-struct CallReturn<void> {
-    static void call(Index i, Pointer self, Mode mode, ArgView &args) {
-        DUMP("calling something...", args.size());
+struct Output<void, false> {
+    template <class F>
+    void operator()(F &&f) const {
         Target target(Index(), nullptr, 0, Target::None);
 
-        auto const stat = Call::call(i, target, self, mode, args);
+        auto const stat = f(target);
         DUMP("got stat", stat);
         switch (stat) {
-            case Call::None: {return;}
+            case Method::None: {return;}
             default: call_throw(std::move(target), stat);
         }
     }
+};
 
-    static void attempt(Index i, Pointer self, Mode mode, ArgView &args) {
+template <>
+struct Output<void, true> {
+    template <class F>
+    void operator()(F &&f) const {
         DUMP("calling something...");
         Target target(Index(), nullptr, 0, Target::None);
 
-        auto const stat = Call::call(i, target, self, mode, args);
+        auto const stat = f(target);
         DUMP("got stat", stat);
         switch (stat) {
-            case Call::None: {return;}
-            case Call::Impossible:  {return;}
-            case Call::WrongType:   {return;}
-            case Call::WrongNumber: {return;}
-            case Call::WrongReturn: {return;}
+            case Method::None: {return;}
+            case Method::Impossible:  {return;}
+            case Method::WrongType:   {return;}
+            case Method::WrongNumber: {return;}
+            case Method::WrongReturn: {return;}
             default: call_throw(std::move(target), stat);
         }
     }
@@ -191,15 +209,16 @@ struct CallReturn<void> {
 /******************************************************************************/
 
 template <>
-struct CallReturn<Ref> {
-    static Ref call(Index i, Pointer self, Mode mode, ArgView &args) {
+struct Output<Ref, true> {
+    template <class F>
+    Ref operator()(F &&f) const {
         DUMP("calling something...");
         Target target(Index(), nullptr, 0, Target::Read | Target::Write);
-        auto stat = Call::call(i, target, self, mode, args);
+        auto const stat = f(target);
 
         switch (stat) {
-            case Call::Read:   return Ref(target.index(), Mode::Read, Pointer::from(target.output()));
-            case Call::Write: return Ref(target.index(), Mode::Write, Pointer::from(target.output()));
+            case Method::Read:   return Ref(target.index(), Mode::Read, Pointer::from(target.output()));
+            case Method::Write: return Ref(target.index(), Mode::Write, Pointer::from(target.output()));
             // function is noexcept until here, now it is permitted to throw (I think)
             default: return nullptr;
         }
@@ -248,30 +267,31 @@ static_assert(std::is_same_v<typename Reduce< void(double) >::type, void(*)(doub
 
 #warning "clean this up, it was templated now"
 
-template <class T, int N, class ...Ts>
-T call_args(Index i, Pointer self, Mode mode, Caller &c, Arg<Ts &&> ...ts) {
+template <int N, class F, class ...Ts>
+decltype(auto) with_exact_args(F &&f, Caller &c, Arg<Ts &&> ...ts) {
     static_assert(N <= sizeof...(Ts));
     ArgStack<N, sizeof...(Ts) - N> args(c, ts.ref()...);
-    DUMP(type_name<T>(), " tags=", N, " args=", reinterpret_cast<ArgView &>(args).size());
+    DUMP(type_name<F>(), " tags=", N, " args=", reinterpret_cast<ArgView &>(args).size());
     ((std::cout << type_name<Ts>() << std::endl), ...);
-    return CallReturn<T>::call(i, self, mode, reinterpret_cast<ArgView &>(args));
+    return f(reinterpret_cast<ArgView &>(args));
 }
 
-template <class T, int N, class ...Ts>
-T call(Index i, Pointer self, Mode mode, Caller &c, Ts &&...ts) {
-    return call_args<T, N, typename Reduce<Ts>::type...>(i, self, mode, c, static_cast<Ts &&>(ts)...);
+template <int N, class F, class ...Ts>
+decltype(auto) with_args(F &&f, Caller &c, Ts &&...ts) {
+    return with_exact_args<N, F, typename Reduce<Ts>::type...>(
+        std::forward<F>(f), c, static_cast<Ts &&>(ts)...);
 }
 
-template <class T, int N, class ...Ts>
-maybe<T> attempt_args(Index i, Pointer self, Mode mode, Caller &c, Arg<Ts &&> ...ts) {
-    ArgStack<N, sizeof...(Ts) - N> args(c, ts.ref()...);
-    return CallReturn<T>::attempt(i, self, mode, reinterpret_cast<ArgView &>(args));
-}
+// template <class T, int N, class ...Ts>
+// maybe<T> attempt_args(Index i, Pointer self, Mode mode, Caller &c, Arg<Ts &&> ...ts) {
+//     ArgStack<N, sizeof...(Ts) - N> args(c, ts.ref()...);
+//     return Output<T>::attempt(i, self, mode, reinterpret_cast<ArgView &>(args));
+// }
 
-template <class T, int N, class ...Ts>
-maybe<T> attempt(Index i, Pointer self, Mode mode, Caller &c, Ts &&...ts) {
-    return attempt_args<T, N, typename Reduce<Ts>::type...>(i, self, mode, c, static_cast<Ts &&>(ts)...);
-}
+// template <class T, int N, class ...Ts>
+// maybe<T> attempt(Index i, Pointer self, Mode mode, Caller &c, Ts &&...ts) {
+//     return attempt_args<T, N, typename Reduce<Ts>::type...>(i, self, mode, c, static_cast<Ts &&>(ts)...);
+// }
 
 /******************************************************************************/
 
