@@ -1,6 +1,7 @@
 #pragma once
 #include "Parts.h"
 #include "Impl.h"
+#include <stdexcept>
 
 namespace ara {
 
@@ -31,6 +32,14 @@ union Ref {
 
     Ref(Ref const &) = delete;
     Ref &operator=(Ref const &) = delete;
+
+    Ref copy() const {
+        switch (mode()) {
+            case Mode::Read: return Ref(index(), mode(), pointer());
+            case Mode::Write: return Ref(index(), mode(), pointer());
+            default: throw std::runtime_error("not copyable");
+        }
+    }
 
     ~Ref() noexcept {destroy_if_managed();}
 
@@ -64,12 +73,14 @@ union Ref {
         return binds_to<unqualified<T>>(qualifier_of<T>) ? pointer().address<std::remove_reference_t<T>>() : nullptr;
     }
 
-    template <class T, int N=0, class ...Ts>
-    T call(Caller c, Ts &&...ts) const {
+    template <class T, bool Check=true, int N=0, class ...Ts>
+    decltype(auto) call(Caller c, Ts &&...ts) const {
         DUMP("Ref::call:", type_name<T>(), "(", sizeof...(Ts), ")");
-        return parts::with_args<N>([](auto &v) {
-            // return index(), pointer(), mode();
-        }, c, static_cast<Ts &&>(ts)...);
+        return Output<T, Check>()([&](Target &t) {
+            return parts::with_args<N>([&](auto &args) {
+                return Method::invoke(index(), t, pointer(), Mode::Write, args);
+            }, c, static_cast<Ts &&>(ts)...);
+        });
     }
 
     // template <class T, int N=0, class ...Ts>

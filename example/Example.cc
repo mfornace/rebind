@@ -212,17 +212,9 @@ struct ara::Impl<Goo> : ara::Default<Goo> {
 
 /******************************************************************************/
 
-struct Example : ara::GlobalSchema<Example>, ara::Default<Example> {
-    static void write(ara::Schema &s);
-};
-
-static_assert(ara::has_call_v<ara::GlobalSchema<Example>>);
-static_assert(ara::has_call_v<Example>);
-
-template ara_stat ara::Switch<Example>::invoke(ara_input, void*, void*, void*) noexcept;
-
 // could make this return a schema
-void Example::write(ara::Schema &s) {
+Schema make_schema() {
+    Schema s;
     s.object("global_value", 123);
     s.function("easy", [] {
         DUMP("invoking easy");
@@ -283,14 +275,23 @@ void Example::write(ara::Schema &s) {
     // s.function<1>("vec4", [](int, int i=2) {});
 
     DUMP("made schema");
+    return s;
 }
 
+struct BootKey;
+using Boot = BootKey*;
 
-extern "C" {
+template <>
+struct ara::Impl<Boot> : ara::Default<Boot> {
+    static bool method(ara::Body body, Boot const &self) {
+        return body(self, [](Boot const &self) {
+            return make_schema();
+        });
+    }
+};
 
-ara_index example_module() {
-    DUMP(reinterpret_cast<std::uintptr_t>(+ara::Index::of<Example>()));
-    return ara::Index::of<Example>();
-}
 
-}
+ARA_DECLARE(example_boot, Boot);
+ARA_DEFINE(example_boot, Boot);
+
+

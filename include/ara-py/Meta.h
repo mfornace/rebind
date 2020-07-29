@@ -195,8 +195,10 @@ struct pyMember : StaticType<Member> {
     }
 
     static Value<> get(Always<pyMember> self, Maybe<> instance, Ignore) {
-        if (instance) return {};// variable_access<pyStr>(v, name);// {};//Always<pyVariable>::from(*instance)
-        else return self;
+        if (!instance) return self;
+        return {};
+        // CallKeywords kws;
+        // return variable_access(Always<pyVariable>::from(*instance), self->name, kws);
     }
 
     static void placement_new(Member &f, Always<pyTuple> args, Maybe<pyDict> kws) {
@@ -204,49 +206,6 @@ struct pyMember : StaticType<Member> {
         new(&f) Member{name, out, doc};
     }
 };
-
-/******************************************************************************/
-
-// #define ARA_WRAP_OFFSET(type, member) offsetof(Wrap< type >, value) + offsetof(Method, member)
-
-// PyMemberDef pyMethod::members[] = {
-    // const_cast<char*>("__signature__"), T_OBJECT_EX, ARA_WRAP_OFFSET(Method, signature), READONLY, const_cast<char*>("method signature"),
-    // const_cast<char*>("docstring"), T_OBJECT_EX, ARA_WRAP_OFFSET(Method, docstring), READONLY, const_cast<char*>("doc string"),
-    // const_cast<char*>("doc"), T_OBJECT_EX, ARA_WRAP_OFFSET(Method, doc), READONLY, const_cast<char*>("doc"),
-    // nullptr
-// };
-
-
-
-
-// Value<> get_member(Always<> self, Always<> annotation) {
-//     return {};
-//     // DUMP("get_member", Value<>(annotation, true));
-//     // return Value<>(annotation, true);
-// }
-
-// PyFunction_GetAnnotations
-// PyFunction_GetDefaults
-// PyInstanceMethod_New
-
-// Choice 1: implement custom callable class. Unclear how to get documentation/annotations to work well though.
-//           this might be most efficient
-// OK the documentation for the class is not too bad. just need to provide repr()
-// The documentation for the type is not great...extremely long
-
-// Choice 2: use PyInstanceMethod_New(). unclear how to get documentation again... will look but seems not possible
-
-// Choice 3: "eval" based approach. here we'd basically define a function inline:
-// def function(self, x, y):
-//     return self.method("method_name", x, y)
-// advantage ... it's definitely a native function
-// disadvantage ... string formatting probably, also not as efficient as Choice 1
-
-// take name, bases, properties
-// return a new type
-// this is very tricky... we have to go through the properties, find the declarations
-// set the rest of the properties as normal
-// set these properties specially
 
 /******************************************************************************/
 

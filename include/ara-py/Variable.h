@@ -184,6 +184,8 @@ struct pyVariable : StaticType<pyVariable> {
     static Value<> element(Always<pyVariable> v, Always<pyTuple> args, CallKeywords&& kws);
 
     static Value<> attribute(Always<pyVariable> v, Always<pyTuple> args, CallKeywords&& kws);
+    
+    // static Value<> getattr(Always<pyVariable> v, Always<> key);
 
     /******************************************************************************/
 
@@ -245,6 +247,11 @@ struct pyVariable : StaticType<pyVariable> {
     }
 
     static Value<> method(Always<pyVariable> v, Always<pyTuple> args, CallKeywords &&kws);
+
+
+    static Value<> from_address(Always<> addr);
+
+    static Value<> from_library(Always<pyType>, Always<pyTuple> args, Maybe<pyDict> kws);
 
     static PyNumberMethods number_methods;
     static PyMethodDef methods[];
@@ -513,10 +520,10 @@ auto call_with_caller(Index self, Pointer address, Mode mode, ArgView& args, Cal
 
 /******************************************************************************/
 
-template <class Module>
-Value<> module_call(Ignore, Always<pyTuple> args, CallKeywords &&kws) {
-    return pyIndex::call(Switch<Module>::invoke, args, std::move(kws));
-}
+// template <class Module>
+// Value<> module_call(Ignore, Always<pyTuple> args, CallKeywords &&kws) {
+//     return pyIndex::call(Switch<Module>::invoke, args, std::move(kws));
+// }
 
 /******************************************************************************/
 
@@ -530,5 +537,37 @@ auto access_with_caller(Index self, Pointer address, I element, Mode mode, CallK
 }
 
 /******************************************************************************/
+
+Value<> pyVariable::from_address(Always<> addr) {
+    std::uintptr_t i = view_underlying(Always<pyInt>::from(addr));
+    Index idx = *reinterpret_cast<ara_index*>(i);
+    CallKeywords kws;
+    // auto const total = size(args);
+    ArgAlloc a(0, 0);
+
+    // for (Py_ssize_t i = 0; i != total; ++i)
+    //     a.view[i] = Ref(Index::of<Export>(), Mode::Write, Pointer::from(+item(args, i)));
+
+    Value<> out = call_with_caller(idx, Pointer::from(nullptr), Mode::Read, a.view, kws).first;
+    auto v = Always<pyVariable>::from(*out);
+    // v.load();
+    // if (PyObject_SetAttrString(~v, "blah", ~v)) return {};
+
+    return out;
+    // Method::call(idx);
+}
+
+Value<> pyVariable::from_library(Always<pyType>, Always<pyTuple> args, Maybe<pyDict> kws) {
+    auto [file, name] = parse<2, pyStr, pyStr>(args, kws, {"file", "function"});
+    auto ctypes = Value<>::take(PyImport_ImportModule("ctypes"));
+    auto CDLL = Value<>::take(PyObject_GetAttrString(~ctypes, "CDLL"));
+    auto addressof = Value<>::take(PyObject_GetAttrString(~ctypes, "addressof"));
+    
+    auto lib = Value<>::take(PyObject_CallFunctionObjArgs(~CDLL, ~file, nullptr));
+    auto fun = Value<>::take(PyObject_GetAttr(~lib, ~name));
+    auto address = Value<>::take(PyObject_CallFunctionObjArgs(~addressof, ~fun));
+    return from_address(*address);
+}
+
 
 }

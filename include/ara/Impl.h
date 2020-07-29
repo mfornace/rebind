@@ -41,7 +41,7 @@ struct Copy {
     struct Default {
         static stat copy(Target& out, T const& self) noexcept {
             return out.make_noexcept([&] {
-                if constexpr(std::is_copy_assignable_v<T>) {
+                if constexpr(is_copy_constructible_v<T> && std::is_copy_assignable_v<T>) {
                     if (out.can_yield(Target::Existing)) {
                         *static_cast<T*>(out.output()) = self;
                         return Assign;

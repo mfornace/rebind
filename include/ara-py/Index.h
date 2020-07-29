@@ -87,25 +87,8 @@ struct pyIndex : StaticType<pyIndex> {
 
     static Value<> call(Index, Always<pyTuple>, CallKeywords&&);
 
-    static Value<pyIndex> from_address(Always<> addr) {
-        std::uintptr_t i = view_underlying(Always<pyInt>::from(addr));
-        return Value<pyIndex>::new_from(reinterpret_cast<ara_index>(i));
-    }
-
     static Value<> forward(Always<pyIndex>, Always<pyTuple> args, Maybe<pyDict> kws) {
         return {};
-    }
-
-    static Value<pyIndex> from_library(Always<pyType>, Always<pyTuple> args, Maybe<pyDict> kws) {
-        auto [file, name] = parse<2, pyStr, pyStr>(args, kws, {"file", "function"});
-        auto ctypes = Value<>::take(PyImport_ImportModule("ctypes"));
-        auto cdll = Value<>::take(PyObject_GetAttrString(~ctypes, "CDLL"));
-        auto lib = Value<>::take(PyObject_CallFunctionObjArgs(~cdll, ~file, nullptr));
-        auto fun = Value<>::take(PyObject_GetAttr(~lib, ~name));
-        auto void_p = Value<>::take(PyObject_GetAttrString(~ctypes, "c_void_p"));
-        if (PyObject_SetAttrString(~fun, "restype", ~void_p)) throw PythonError();
-        auto addr = Value<>::take(PyObject_CallFunctionObjArgs(~fun, nullptr));
-        return from_address(*addr);
     }
 };
 

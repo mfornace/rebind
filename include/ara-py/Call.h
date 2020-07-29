@@ -47,6 +47,7 @@ struct CallKeywords {
     Maybe<> tags = nullptr;
     bool gil = true;
 
+    CallKeywords() = default;
     CallKeywords(Maybe<pyDict> kws);
 };
 

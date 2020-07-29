@@ -10,8 +10,6 @@ namespace ara::py {
 
 
 PyMethodDef pyIndex::methods[] = {
-    {"from_library", reinterpret_kws<from_library, Always<pyType>>, METH_CLASS | METH_VARARGS | METH_KEYWORDS,
-        "from_library(cls, file_name, function_name)\n--\n\nload index from a DLL"},
     {"forward", reinterpret_kws<forward, Always<pyIndex>>, METH_VARARGS | METH_KEYWORDS,
         "forward(self, function)\n--\n\ndeclare function"}
 };
@@ -179,18 +177,16 @@ Value<> pyVariable::call(Always<pyVariable> v, Always<pyTuple> args, CallKeyword
 /******************************************************************************/
 
 template <class I>
-Value<> variable_access(Always<pyVariable> v, Always<pyTuple> args, CallKeywords&& kws) {
+Value<> variable_access(Always<pyVariable> v, I arg, CallKeywords&& kws) {
+    if (!v->has_value()) throw PythonError::type("empty variable");
     DUMP("variable_attr", v->name());
-    if (size(args) != 1) throw PythonError::type("expected 1 positional argument");
-    auto element = view_underlying(Always<I>::from(item(args, 0)));
-
     DUMP("mode", kws.mode);
     Value<> out;
     Lifetime life;
     {
         char self_mode = remove_mode(kws.mode);
         auto self = v->acquire_ref(self_mode == 'w' ? LockType::Write : LockType::Read);
-        std::tie(out, life) = access_with_caller(self.ref.index(), self.ref.pointer(), element, self.ref.mode(), kws);
+        std::tie(out, life) = access_with_caller(self.ref.index(), self.ref.pointer(), arg, self.ref.mode(), kws);
     }
     DUMP("lifetime to attach = ", life.value);
     if (life.value) {
@@ -205,13 +201,25 @@ Value<> variable_access(Always<pyVariable> v, Always<pyTuple> args, CallKeywords
 /******************************************************************************/
 
 Value<> pyVariable::attribute(Always<pyVariable> v, Always<pyTuple> args, CallKeywords&& kws) {
-    return variable_access<pyStr>(v, args, std::move(kws));
+    if (size(args) != 1) throw PythonError::type("expected 1 positional argument");
+
+    return variable_access(v, view_underlying(Always<pyStr>::from(item(args, 0))), std::move(kws));
 }
 
 /******************************************************************************/
 
+// Value<> pyVariable::getattr(Always<pyVariable> v, Always<> key) {
+//     DUMP("getting member...");
+//     if (!v->has_value()) return {};
+//     return variable_access(v, view_underlying(Always<pyStr>::from(key)), CallKeywords());
+// }
+
+/******************************************************************************/
+
 Value<> pyVariable::element(Always<pyVariable> v, Always<pyTuple> args, CallKeywords&& kws) {
-    return variable_access<pyInt>(v, args, std::move(kws));
+    if (size(args) != 1) throw PythonError::type("expected 1 positional argument");
+
+    return variable_access(v, view_underlying(Always<pyInt>::from(item(args, 0))), std::move(kws));
 }
 
 /******************************************************************************/
@@ -269,6 +277,8 @@ PyMethodDef pyVariable::methods[] = {
     {"element", reinterpret<element, Always<pyVariable>, Always<pyTuple>, CallKeywords>, METH_VARARGS | METH_KEYWORDS,
         "element(self, name, out=None)\n--\n\nget a reference to a member variable"},
 
+    {"from_library", reinterpret_kws<from_library, Always<pyType>>, METH_CLASS | METH_VARARGS | METH_KEYWORDS,
+        "from_library(cls, file_name, function_name)\n--\n\nload index from a DLL"},
     // {"from_object", c_function(c_value_from),
         // METH_CLASS | METH_O, "cast an object to a given Python type"},
     {nullptr, nullptr, 0, nullptr}
@@ -285,12 +295,12 @@ void pyVariable::initialize_type(Always<pyType> o) noexcept {
     o->tp_call = reinterpret<pyVariable::call, Always<pyVariable>, Always<pyTuple>, Maybe<pyDict>>;
     // o->tp_clear = reinterpret<clear, Always<pyVariable>>;
     // o->tp_traverse = reinterpret<traverse, Always<pyVariable>, visitproc, void*>;
-    // o->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC;
-    // o->tp_getattro = c_variable_getattr;
+    // o->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;// | Py_TPFLAGS_HAVE_GC;
+    // o->tp_getattro = reinterpret<pyVariable::getattr, Always<pyVariable>, Always<>>;
     // o->tp_setattro = c_variable_setattr;
     o->tp_getset = nullptr;
-    // o->tp_hash = reinterpret<c_variable_hash, Always<pyVariable>>;
-    // o->tp_richcompare = c_variable_compare;
+    // o->tp_hash = reinterpret<hash, Always<pyVariable>>;
+    // o->tp_richcompare = reinterpret<compare, Always<pyVariable>, Always<>, int>;
     // no init (just use default constructor)
     // PyMemberDef, tp_members
 };

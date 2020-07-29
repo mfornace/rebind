@@ -58,65 +58,69 @@ struct Schema {
 
 /******************************************************************************/
 
-template <class Module>
-struct GlobalSchema {
-    static Schema global_schema;
-};
+// SFINAE not enabled on map
+template <>
+struct is_copy_constructible<Schema> : std::false_type {};
 
-template <class Module>
-Schema GlobalSchema<Module>::global_schema{};
+/******************************************************************************/
 
-template <class T>
-struct Impl<T, std::void_t<decltype(T::global_schema)>> : Default<T> {
-    static_assert(std::is_aggregate_v<T>);
-
-    static bool call(Body m) {
-        if (!m.args.tags()) {
-            DUMP("writing the schema");
-            T::write(T::global_schema);
-            m.stat = Method::None;
+template <>
+struct Impl<Schema> : Default<Schema> {
+    static bool attribute(Target &t, Schema const &s, std::string_view key) {
+        if (auto it = s.contents.find(key); it != s.contents.end()) {
+            t.set_reference(it->second);
             return true;
-        }
-        DUMP("got to the module: # args =", m.args.size(), ", tags =", m.args.tags());
-        for (auto const &a : m.args) {
-            DUMP("module call: argument =", a.name());
-        }
+        } else return false;
+    }
 
-        if (auto name = m.args.tag(0).get<Str>()) {
-            DUMP(name->data());
-            DUMP(std::string_view(*name), name->size());
-            auto const &value = T::global_schema[*name];
-            m.args.c.tags -= 1;
-            DUMP("invoking module member! args=", m.args.size(), " tags=", m.args.tags());
-            m.stat = Method::invoke(value.index(), m.target, value.address(), Mode::Read, m.args);
-            return true;
-        }
-        DUMP("not a method!");
+    static bool method(Body m, Schema const &s) {
+        DUMP("trying Schema method!");
+        // if (!m.args.tags()) {
+        //     DUMP("writing the schema");
+        //     T::write(T::global_schema);
+        //     m.stat = Method::None;
+        //     return true;
+        // }
+        // DUMP("got to the module: # args =", m.args.size(), ", tags =", m.args.tags());
+        // for (auto const &a : m.args) {
+        //     DUMP("module call: argument =", a.name());
+        // }
+
+        // if (auto name = m.args.tag(0).get<Str>()) {
+        //     DUMP(name->data());
+        //     DUMP(std::string_view(*name), name->size());
+        //     auto const &value = T::global_schema[*name];
+        //     m.args.c.tags -= 1;
+        //     DUMP("invoking module member! args=", m.args.size(), " tags=", m.args.tags());
+        //     m.stat = Method::invoke(value.index(), m.target, value.address(), Mode::Read, m.args);
+        //     return true;
+        // }
+        // DUMP("not a method!");
         return false;
     }
 };
 
 /******************************************************************************/
 
-template <class Mod>
-struct Module {
-    static void init(Caller caller={}) {
-        return Output<void, true>()([&](Target &t) {
-            return parts::with_args<0>([&](auto &args) {
-                return Call::invoke(fetch(Type<Mod>()), t, args);
-            }, caller);
-        });
-    }
+// template <class Mod>
+// struct Module {
+//     static void init(Caller caller={}) {
+//         return Output<void, true>()([&](Target &t) {
+//             return parts::with_args<0>([&](auto &args) {
+//                 return Call::invoke(fetch(Type<Mod>()), t, args);
+//             }, caller);
+//         });
+//     }
 
-    template <class T, bool Check=true, int N=1, class ...Ts>
-    static decltype(auto) call(Str name, Caller caller, Ts&& ...ts) {
-        return Output<T, Check>()([&](Target &t) {
-            return parts::with_args<N>([&](auto &args) {
-                return Call::invoke(fetch(Type<Mod>()), t, args);
-            }, caller, name, std::forward<Ts>(ts)...);
-        });
-    }
-};
+//     template <class T, bool Check=true, int N=1, class ...Ts>
+//     static decltype(auto) call(Str name, Caller caller, Ts&& ...ts) {
+//         return Output<T, Check>()([&](Target &t) {
+//             return parts::with_args<N>([&](auto &args) {
+//                 return Call::invoke(fetch(Type<Mod>()), t, args);
+//             }, caller, name, std::forward<Ts>(ts)...);
+//         });
+//     }
+// };
 
 /******************************************************************************/
 

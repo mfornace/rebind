@@ -82,8 +82,6 @@ struct Arg<T&&> {
 /******************************************************************************/
 // auto const stat = Method::invoke(i, target, self, mode, args);
 
-template <class T, bool Check>
-struct Output;
 
 
 template <class T>

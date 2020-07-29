@@ -47,6 +47,9 @@ using maybe = typename Maybe<T>::type;
 
 /******************************************************************************************/
 
+template <class T, bool Check>
+struct Output;
+
 namespace parts {
 
 template <int N, class F, class ...Ts>
