@@ -177,7 +177,7 @@ struct pyVariable : StaticType<pyVariable> {
 
     static Value<> as_int(Always<pyVariable> self) {return load(self, pyInt::def());}
 
-    static int compare(Always<pyVariable> l, Always<> other, int op) noexcept;
+    static Value<> compare(Always<pyVariable> l, Always<> other, int op) noexcept;
 
     static Value<> call(Always<pyVariable> v, Always<pyTuple> args, CallKeywords&& kws);
 
@@ -185,7 +185,9 @@ struct pyVariable : StaticType<pyVariable> {
 
     static Value<> attribute(Always<pyVariable> v, Always<pyTuple> args, CallKeywords&& kws);
     
-    // static Value<> getattr(Always<pyVariable> v, Always<> key);
+    static Value<> getattr(Always<pyVariable> v, Always<> key);
+
+    static Value<> forward(Always<pyVariable> v, Always<pyTuple> args, Maybe<pyDict> kws);
 
     /******************************************************************************/
 
@@ -359,6 +361,7 @@ Lifetime invoke_call(Variable &out, Index self, Pointer address, ArgView &args, 
 
 /******************************************************************************/
 
+// Fills the variable out *if* present, otherwise does nothing
 template <class I>
 Lifetime invoke_access(Variable &out, Index self, Pointer address, I element, Mode mode) {
     Target target = variable_target(out);
@@ -528,11 +531,15 @@ auto call_with_caller(Index self, Pointer address, Mode mode, ArgView& args, Cal
 /******************************************************************************/
 
 template <class I>
-auto access_with_caller(Index self, Pointer address, I element, Mode mode, CallKeywords const& kws) {
+auto try_access_with_caller(Index self, Pointer address, I element, Mode mode, CallKeywords const& kws) {
     Value<> out;
+    bool worked;
     auto life = call_to_output(out, kws.out, [&](Variable& v) {
-        return invoke_access(v, self, address, element, mode);
+        auto life = invoke_access(v, self, address, element, mode);
+        worked = v.has_value();
+        return life;
     });
+    if (!worked) out = {};
     return std::make_pair(out, life);
 }
 

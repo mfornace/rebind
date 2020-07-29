@@ -123,37 +123,37 @@ void Target::set_current_exception() noexcept {
     }
 }
 
-Call::stat Call::wrong_number(Target &target, Code got, Code expected) noexcept {
+Method::stat Method::wrong_number(Target &target, Code got, Code expected) noexcept {
     target.construct<ara_input>(got, expected);
     return WrongNumber;
 }
 
-Call::stat Call::wrong_type(Target &target, Code n, Index i, Qualifier q) noexcept {
+Method::stat Method::wrong_type(Target &target, Code n, Index i, Qualifier q) noexcept {
     // target.construct<ara_index>(ara_mode_index(i, static_cast<ara_mode>(q)), n);
     return WrongType;
 }
 
-Call::stat Call::wrong_return(Target &target, Index i, Qualifier q) noexcept {
+Method::stat Method::wrong_return(Target &target, Index i, Qualifier q) noexcept {
     target.construct<ara_index>(ara_mode_index(i, static_cast<ara_mode>(q)));
     return WrongReturn;
 }
 
 
-[[noreturn]] void call_throw(Target &&target, Call::stat stat) {
+[[noreturn]] void call_throw(Target &&target, Method::stat stat) {
     switch (stat) {
-        case Call::Stack:   {throw InvalidStatus("Call: InvalidStatus: Stack", stat);}
-        case Call::Heap:    {throw InvalidStatus("Call: InvalidStatus: Heap", stat);}
-        case Call::None:    {throw InvalidStatus("Call: InvalidStatus: None", stat);}
-        case Call::Read:   {throw InvalidStatus("Call: InvalidStatus: Read", stat);}
-        case Call::Write: {throw InvalidStatus("Call: InvalidStatus: Write", stat);}
+        case Method::Stack:   {throw InvalidStatus("Method: InvalidStatus: Stack", stat);}
+        case Method::Heap:    {throw InvalidStatus("Method: InvalidStatus: Heap", stat);}
+        case Method::None:    {throw InvalidStatus("Method: InvalidStatus: None", stat);}
+        case Method::Read:   {throw InvalidStatus("Method: InvalidStatus: Read", stat);}
+        case Method::Write: {throw InvalidStatus("Method: InvalidStatus: Write", stat);}
 
-        case Call::Impossible:  {throw NotImplemented("Call: Impossible", stat);}
-        case Call::WrongType:   {throw WrongType("WrongType");}
-        case Call::WrongNumber: {throw WrongNumber(1, 2);}
-        case Call::WrongReturn: {throw WrongReturn("WrongReturn");}
+        case Method::Impossible:  {throw NotImplemented("Method: Impossible", stat);}
+        case Method::WrongType:   {throw WrongType("WrongType");}
+        case Method::WrongNumber: {throw WrongNumber(1, 2);}
+        case Method::WrongReturn: {throw WrongReturn("WrongReturn");}
                 // Postcondition failure
-        case Call::OutOfMemory: {throw std::bad_alloc();}
-        case Call::Exception: {target.rethrow_exception();}
+        case Method::OutOfMemory: {throw std::bad_alloc();}
+        case Method::Exception: {target.rethrow_exception();}
     }
     throw InvalidStatus("Call: InvalidStatus: Unknown", stat);
 }

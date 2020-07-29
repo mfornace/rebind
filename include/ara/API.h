@@ -65,6 +65,7 @@ typedef struct ara_ref {
 /******************************************************************************************/
 
 /// span of a contiguous array of tags and arguments
+// [caller, arg[N]...arg[0], tag[M]...tag[0]]
 typedef struct ara_args {
     void *caller_ptr;
     uint32_t tags, args;

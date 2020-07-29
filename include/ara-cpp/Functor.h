@@ -45,7 +45,7 @@ struct ApplyMethod;
 struct Body {
     Target &target;
     ArgView &args;
-    Call::stat &stat;
+    Method::stat &stat;
 
     template <class S, class F>
     [[nodiscard]] bool operator()(S &&self, F const functor, Lifetime life={}) {
@@ -106,7 +106,7 @@ maybe<T> cast_index(ArgView &v, IndexedType<T> i) {
 
 /// Invoke a function and arguments, storing output if it doesn't return void
 template <class F, class ...Ts>
-Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
+Method::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
     static_assert(std::is_invocable_v<F, Ts...>, "Function is not invokable with designated arguments");
     using O = simplify_result<std::invoke_result_t<F, Ts...>>;
     using U = unqualified<O>;
@@ -114,7 +114,7 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
 
     if (target.c.mode == Target::None || (std::is_void_v<U> && !target.index())) {
         (void) std::invoke(f, std::forward<Ts>(ts)...);
-        return Call::None;
+        return Method::None;
     }
 
     if constexpr(!std::is_void_v<U>) { // void already handled
@@ -122,12 +122,12 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
 
             if (std::is_same_v<O, U &> && target.can_yield(Target::Write)) {
                 target.set_reference(std::invoke(f, std::forward<Ts>(ts)...));
-                return Call::Write;
+                return Method::Write;
             }
 
             if (std::is_reference_v<O> && target.can_yield(Target::Read)) {
                 target.set_reference(static_cast<U const &>(std::invoke(f, std::forward<Ts>(ts)...)));
-                return Call::Read;
+                return Method::Read;
             }
 
             if (std::is_same_v<O, U> || std::is_convertible_v<O, U>) {
@@ -135,22 +135,22 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
                     Allocator<U>::invoke_stack(p, f, std::forward<Ts>(ts)...);
                     target.set_index<U>();
                     if (!std::is_same_v<O, U> && !is_dependent<U>) target.set_lifetime({});
-                    return Call::Stack;
+                    return Method::Stack;
                 }
                 if (target.can_yield(Target::Heap)) {
                     target.set_heap(Allocator<U>::invoke_heap(f, std::forward<Ts>(ts)...));
                     if (!std::is_same_v<O, U> && !is_dependent<U>) target.set_lifetime({});
-                    return Call::Heap;
+                    return Method::Heap;
                 }
             }
 
         } else {
             if constexpr(std::is_reference_v<O>) {
                 switch (Ref(std::invoke(f, std::forward<Ts>(ts)...)).get_to(target)) {
-                    case Load::Exception: return Call::Exception;
-                    case Load::OutOfMemory: return Call::OutOfMemory;
+                    case Load::Exception: return Method::Exception;
+                    case Load::OutOfMemory: return Method::OutOfMemory;
                     case std::is_same_v<O, U &> ? Load::Write : Load::Read:
-                        return std::is_same_v<O, U &> ? Call::Write : Call::Read;
+                        return std::is_same_v<O, U &> ? Method::Write : Method::Read;
                     default: {}
                 }
             } else {
@@ -158,10 +158,10 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
                 new (&storage) U(std::invoke(f, std::forward<Ts>(ts)...));
                 Ref out(Index::of<U>(), Mode::Stack, Pointer::from(&storage));
                 switch (out.get_to(target)) {
-                    case Load::Exception: return Call::Exception;
-                    case Load::OutOfMemory: return Call::OutOfMemory;
-                    case Load::Stack: return Call::Stack;
-                    case Load::Heap: return Call::Heap;
+                    case Load::Exception: return Method::Exception;
+                    case Load::OutOfMemory: return Method::OutOfMemory;
+                    case Load::Stack: return Method::Stack;
+                    case Load::Heap: return Method::Heap;
                     default: {}
                 }
             }
@@ -170,19 +170,19 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
 
 #   warning "needs work... for reference returned as value... etc"
 
-    return Call::wrong_return(target, Index::of<U>(), qualifier_of<O>);
+    return Method::wrong_return(target, Index::of<U>(), qualifier_of<O>);
 }
 
 /******************************************************************************/
 
 template <bool UseCaller, class F, class ...Ts>
-Call::stat caller_invoke(Target& out, F const &f, Caller &&c, maybe<Ts> &&...ts) {
+Method::stat caller_invoke(Target& out, F const &f, Caller &&c, maybe<Ts> &&...ts) {
     DUMP("casting arguments");
     if (!(ts && ...)) {
         DUMP("casting arguments failed");
         Code i = 0;
-        (void) ((ts ? (++i, true) : ((void) Call::wrong_type(out, i, Index::of<unqualified<Ts>>(), qualifier_of<Ts>), false)) && ...);
-        return Call::WrongType;
+        (void) ((ts ? (++i, true) : ((void) Method::wrong_type(out, i, Index::of<unqualified<Ts>>(), qualifier_of<Ts>), false)) && ...);
+        return Method::WrongType;
     }
     DUMP("caller_invoke");
     c.enter();
@@ -206,12 +206,12 @@ struct Impl<Functor<F>> : Default<Functor<F>> {
      Interface implementation for a function with no optional arguments.
      - Returns WrongNumber if args is not the right length
      */
-    static bool call(Body m, Functor<F> const &f) noexcept {
+    static bool method(Body m, Functor<F> const &f) noexcept {
         DUMP("call_to function adapter", type_name<F>(), std::addressof(f), "args=", m.args.size());
         if (m.args.tags())
-            return Call::wrong_number(m.target, m.args.tags(), 0);
+            return Method::wrong_number(m.target, m.args.tags(), 0);
         if (m.args.size() != Args::size)
-            return Call::wrong_number(m.target, m.args.size(), Args::size);
+            return Method::wrong_number(m.target, m.args.size(), Args::size);
 
         auto frame = m.args.caller().new_frame(); // make a new unentered frame, must be noexcept
         Caller handle(frame); // make the Caller with a weak reference to frame
@@ -225,7 +225,7 @@ struct Impl<Functor<F>> : Default<Functor<F>> {
             });
         });
         DUMP("invoked with stat and lifetime", m.stat, f.lifetime.value);
-        return Call::was_invoked(m.stat);
+        return Method::was_invoked(m.stat);
         // It is possible that maybe the invoked function's C++ exception may propagated in the future, assuming the caller policies allow this.
         // Therefore, resource destruction must be done via the frame going out of scope.
     }
@@ -264,11 +264,11 @@ struct ApplyMethod {
      - Returns WrongNumber if args is not the right length
      */
     template <class S>
-    static Call::stat invoke(Target& out, Lifetime life, F const &f, S &&self, ArgView &args) noexcept {
+    static Method::stat invoke(Target& out, Lifetime life, F const &f, S &&self, ArgView &args) noexcept {
         DUMP("call_to ApplyMethod<", type_name<F>(), ">:", std::addressof(f), args.size(), life.value);
 
         if (args.size() != Args::size)
-            return Call::wrong_number(out, args.size(), Args::size);
+            return Method::wrong_number(out, args.size(), Args::size);
 
         auto frame = args.caller().new_frame(); // make a new unentered frame, must be noexcept
         Caller handle(frame); // make the Caller with a weak reference to frame

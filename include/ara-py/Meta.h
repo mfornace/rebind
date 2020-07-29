@@ -46,9 +46,9 @@ namespace ara::py {
 /******************************************************************************/
 
 struct Method {
-    Value<> tag;
-    Value<pyStr> mode;
-    Value<> out;
+    Value<> tag;       // optional
+    Value<pyStr> mode; // optional
+    Value<> out;       // optional
     // Value<> signature;
     // Value<> docstring;
     // Value<> doc;
@@ -74,19 +74,19 @@ struct pyMethod : StaticType<pyMethod> {
         define_type<pyMethod>(o, "ara.Method", "ara Method type");
         // o->tp_repr = reinterpret<repr, Always<pyMethod>>;
         // o->tp_str = reinterpret<str, Always<pyMethod>>;
-        o->tp_call = reinterpret<call, Always<pyMethod>, Always<pyTuple>, Maybe<pyDict>>;
-        o->tp_descr_get = reinterpret<get, Always<pyMethod>, Maybe<>, Ignore>;
+        o->tp_call = reinterpret_kws<call, Always<pyMethod>>;
+        o->tp_descr_get = reinterpret<get, nullptr, Always<pyMethod>, Maybe<>, Ignore>;
         // o->tp_members = members;
         // tp_traverse, tp_clear
         // PyMemberDef, tp_members
     }
 
-    static void placement_new(Method &m, Always<> tag, Always<pyStr> mode, Maybe<> out) {
+    static void placement_new(Method &m, Maybe<> tag, Maybe<pyStr> mode, Maybe<> out) {
         new(&m) Method{tag, mode, out};
     }
 
     static void placement_new(Method &m, Always<pyTuple> args, Maybe<pyDict> kws) {
-        auto [tag, mode, out] = parse<2, Object, pyStr, Object>(args, kws, {"tag", "name", "out"});
+        auto [tag, mode, out] = parse<0, Object, pyStr, Object>(args, kws, {"tag", "mode", "out"});
         placement_new(m, tag, mode, out);
     }
 };
@@ -94,8 +94,8 @@ struct pyMethod : StaticType<pyMethod> {
 /******************************************************************************/
 
 struct BoundMethod {
-    Value<pyMethod> method;
-    Value<pyVariable> self;
+    Bound<pyMethod> method;
+    Bound<pyVariable> self;
 };
 
 struct pyBoundMethod : StaticType<pyBoundMethod> {
@@ -110,8 +110,8 @@ struct pyBoundMethod : StaticType<pyBoundMethod> {
         return {};
     }
     
-    static void placement_new(BoundMethod &f, Value<pyMethod> m, Value<pyVariable> s) noexcept {
-        new(&f) BoundMethod{std::move(m), std::move(s)};
+    static void placement_new(BoundMethod &f, Always<pyMethod> m, Always<pyVariable> s) noexcept {
+        new(&f) BoundMethod{m, s};
     }
 
     static void placement_new(BoundMethod &f, Always<pyTuple> args, Maybe<pyDict> kws) {
@@ -131,9 +131,10 @@ Value<> pyMethod::get(Always<pyMethod> self, Maybe<> instance, Ignore) {
 /******************************************************************************/
 
 struct Forward {
-    Value<> tag;
-    Value<pyStr> mode;
-    Value<> out;
+    Value<pyVariable> impl; // optional
+    Value<> tag; // optional
+    Value<pyStr> mode; // optional
+    Value<> out; // optional
 };
 
 struct pyForward : StaticType<Forward> {
@@ -146,12 +147,26 @@ struct pyForward : StaticType<Forward> {
 
     static void placement_new(Forward &f, Always<pyTuple> args, Maybe<pyDict> kws) {
         auto [mode, tag, out] = parse<1, pyStr, Object, Object>(args, kws, {"mode", "tag", "out"});
-        new(&f) Forward{tag, mode, out};
+        new(&f) Forward{{}, tag, mode, out};
+    }
+
+    static void placement_new(Forward &f, Always<pyVariable> v, Maybe<pyStr> mode, Maybe<> out) {
+        new(&f) Forward{v, {}, mode, out};
     }
 
     static Value<pyMethod> call(Always<pyForward> f, Always<pyTuple> args, Maybe<pyDict> kws) {
         auto [fun] = parse<1, Object>(args, kws, {"function"});
-        return Value<pyMethod>::new_from(*f->tag, *f->mode, f->out);
+        Value<> tag = f->tag ? f->tag : Value<>::take(PyObject_GetAttrString(~fun, "__name__"));
+        Value<> out;
+
+        if (f->out) {
+            out = f->out;
+        } else {
+            auto a = Value<>::take(PyObject_GetAttrString(~fun, "__annotations__"));
+            out = item(Always<pyDict>::from(*a), "return");
+        }
+        
+        return Value<pyMethod>::new_from(std::move(tag), f->mode, std::move(out));
     }
 };
 
@@ -181,9 +196,9 @@ struct pyFunction : StaticType<Function> {
 /******************************************************************************/
 
 struct Member {
-    Value<pyStr> name;
-    Value<> out;
-    Value<pyStr> doc;
+    Bound<pyStr> name;
+    Value<> out; // optional
+    Value<pyStr> doc; // optional
 };
 
 struct pyMember : StaticType<Member> {
@@ -191,7 +206,7 @@ struct pyMember : StaticType<Member> {
 
     static void initialize_type(Always<pyType> t) {
         define_type<pyMember>(t, "ara.Member", "ara Member type");
-        t->tp_descr_get = reinterpret<get, Always<pyMember>, Maybe<>, Ignore>;
+        t->tp_descr_get = reinterpret<get, nullptr, Always<pyMember>, Maybe<>, Ignore>;
     }
 
     static Value<> get(Always<pyMember> self, Maybe<> instance, Ignore) {

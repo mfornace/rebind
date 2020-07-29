@@ -366,7 +366,7 @@ struct pyOption : Wrap<pyOption> {
 /******************************************************************************/
 
 template <auto F, class T>
-static constexpr Reinterpret<F, T, Always<pyTuple>, Maybe<pyDict>> reinterpret_kws{};
+static constexpr Reinterpret<F, nullptr, T, Always<pyTuple>, Maybe<pyDict>> reinterpret_kws{};
 
 /******************************************************************************/
 

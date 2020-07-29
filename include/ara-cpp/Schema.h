@@ -3,33 +3,42 @@
 #include "Value.h"
 #include "Functor.h"
 
-#include <map>
+#include <unordered_map>
 #include <vector>
+// #include <deque>
 
 namespace ara {
 
 /******************************************************************************/
 
-struct Schema {
+class Schema {
     // Global variables and functions
-    std::map<std::string, Value, std::less<>> contents;
+    std::unordered_map<std::string, Value> m_contents;
+    // std::deque<std::string> m_keys;
+
+public:
+
+    auto const & contents() const {return m_contents;}
+    // auto const & keys() const {return m_keys;}
 
     Value & emplace(std::string s, bool exist_ok=false) {
-        auto p = contents.emplace(std::move(s), nullptr);
-        if (p.second || exist_ok) return p.first->second;
-        throw std::out_of_range("already rendered object with key " + p.first->first);
+        // auto const &key = m_keys.emplace_back(std::move(s));
+        auto [it, inserted] = m_contents.emplace(std::move(s), nullptr);
+        if (inserted || exist_ok) return it->second;
+        // else if (exist_ok) {m_keys.pop_back(); return it->second;}
+        else throw std::out_of_range("already rendered object with key " + std::string(it->first));
     }
 
-    bool exists(std::string_view s) const {
-        return contents.count(s);
-    }
+    auto find(std::string_view s) const {return m_contents.find(std::string(s));}
 
-    auto dump() const {
-        std::vector<std::pair<std::string_view, Value const *>> out;
-        out.reserve(contents.size());
-        for (auto const &p : contents) out.emplace_back(p.first, &p.second);
-        return out;
-    }
+    bool exists(std::string_view s) const {return find(s) != contents().end();}
+
+    // auto dump() const {
+    //     std::vector<std::pair<std::string_view, Value const *>> out;
+    //     out.reserve(contents().size());
+    //     for (auto const &p : contents()) out.emplace_back(p.first, &p.second);
+    //     return out;
+    // }
 
     // Emplace a key and value.
     // If "overwrite" is false and the key already exists, std::out_of_range is thrown.
@@ -47,9 +56,7 @@ struct Schema {
     }
 
     Value const & operator[](std::string_view s) const {
-        if (auto it = contents.find(s); it != contents.end()) {
-            DUMP("contains value", s);
-            DUMP("contains value", it->second.name());
+        if (auto it = find(s); it != contents().end()) {
             return it->second;
         }
         throw std::out_of_range("Schema key not found: " + std::string(s));
@@ -67,35 +74,38 @@ struct is_copy_constructible<Schema> : std::false_type {};
 template <>
 struct Impl<Schema> : Default<Schema> {
     static bool attribute(Target &t, Schema const &s, std::string_view key) {
-        if (auto it = s.contents.find(key); it != s.contents.end()) {
+        if (auto it = s.find(key); it != s.contents().end()) {
             t.set_reference(it->second);
             return true;
         } else return false;
     }
 
     static bool method(Body m, Schema const &s) {
-        DUMP("trying Schema method!");
-        // if (!m.args.tags()) {
-        //     DUMP("writing the schema");
-        //     T::write(T::global_schema);
-        //     m.stat = Method::None;
-        //     return true;
-        // }
-        // DUMP("got to the module: # args =", m.args.size(), ", tags =", m.args.tags());
-        // for (auto const &a : m.args) {
-        //     DUMP("module call: argument =", a.name());
-        // }
+        DUMP("trying Schema method!", m.args.tags());
+        DUMP("got to the module: # args =", m.args.size(), ", tags =", m.args.tags());
+        
+        if (m.args.tags() || !m.args.size()) return false;
+        
+        for (auto const &a : m.args) {
+            DUMP("module call: argument =", a.name());
+        }
 
-        // if (auto name = m.args.tag(0).get<Str>()) {
-        //     DUMP(name->data());
-        //     DUMP(std::string_view(*name), name->size());
-        //     auto const &value = T::global_schema[*name];
-        //     m.args.c.tags -= 1;
-        //     DUMP("invoking module member! args=", m.args.size(), " tags=", m.args.tags());
-        //     m.stat = Method::invoke(value.index(), m.target, value.address(), Mode::Read, m.args);
-        //     return true;
-        // }
-        // DUMP("not a method!");
+        DUMP("number of contents", s.contents().size());
+        for (auto const &c : s.contents()) {
+            DUMP("content", c.first);
+        }
+
+        if (auto name = m.args[0].get<Str>()) {
+            DUMP(name->data());
+            DUMP(std::string_view(*name), name->size());
+            if (auto it = s.find(std::string_view(*name)); it != s.contents().end()) {
+                m.args.c.args -= 1;
+                DUMP("invoking module member! args=", m.args.size(), " tags=", m.args.tags());
+                m.stat = Method::invoke(it->second.index(), m.target, it->second.address(), Mode::Read, m.args);
+            }
+            return true;
+        }
+
         return false;
     }
 };

@@ -15,18 +15,18 @@ PyMethodDef pyIndex::methods[] = {
 };
 
 PyNumberMethods pyIndex::number_methods = {
-    .nb_bool = reinterpret<as_bool, Always<pyIndex>>,
-    .nb_int = reinterpret<as_int, Always<pyIndex>>
+    .nb_bool = reinterpret<as_bool, nullptr, Always<pyIndex>>,
+    .nb_int = reinterpret<as_int, nullptr, Always<pyIndex>>
 };
 
 void pyIndex::initialize_type(Always<pyType> o) noexcept {
     define_type<pyIndex>(o, "ara.Index", "Index type");
-    o->tp_repr = reinterpret<repr, Always<pyIndex>>;
-    o->tp_hash = reinterpret<hash, Always<pyIndex>>;
-    o->tp_str = reinterpret<str, Always<pyIndex>>;
+    o->tp_repr = reinterpret<repr, nullptr, Always<pyIndex>>;
+    o->tp_hash = reinterpret<hash, -1, Always<pyIndex>>;
+    o->tp_str = reinterpret<str, nullptr, Always<pyIndex>>;
     o->tp_as_number = &number_methods;
     o->tp_methods = methods;
-    o->tp_richcompare = reinterpret<compare<pyIndex>, Always<pyIndex>, Always<>, int>;
+    o->tp_richcompare = reinterpret<compare<pyIndex>, nullptr, Always<pyIndex>, Always<>, int>;
 };
 
 /******************************************************************************/
@@ -82,17 +82,20 @@ CallKeywords::CallKeywords(Maybe<pyDict> kws) {
 void Variable::reset() noexcept {
     if (!has_value()) return;
     auto const state = idx.tag();
-    if (!(state & 0x1) && lock.count > 0) {
+    DUMP("state", state);
+    
+    if (!(state & 0x1) && lock.count > 0) { // Read or Write
         DUMP("not resetting because a reference is held");
         return;
     }
-    if (state & 0x2) {
+    
+    if (state & 0x2) { // Heap
         if (storage.address.qualifier == Mode::Heap)
             Deallocate::invoke(index(), Pointer::from(storage.address.pointer));
     } else {
         Destruct::invoke(index(), Pointer::from(&storage));
     }
-    if (state & 0x1) {
+    if (state & 0x1) { // Stack
         --Always<pyVariable>::from(lock.other)->lock.count;
         Py_DECREF(+lock.other);
     }
@@ -165,6 +168,7 @@ Value<> pyVariable::method(Always<pyVariable> v, Always<pyTuple> args, CallKeywo
 
 Value<> pyVariable::call(Always<pyVariable> v, Always<pyTuple> args, CallKeywords&& kws) {
     DUMP("variable_call", v->name());
+    if (!v->has_value()) throw PythonError::type("Calling method on empty Variable");
     auto const total = size(args);
     ArgAlloc a(total, 0);
 
@@ -177,8 +181,8 @@ Value<> pyVariable::call(Always<pyVariable> v, Always<pyTuple> args, CallKeyword
 /******************************************************************************/
 
 template <class I>
-Value<> variable_access(Always<pyVariable> v, I arg, CallKeywords&& kws) {
-    if (!v->has_value()) throw PythonError::type("empty variable");
+Value<> try_variable_access(Always<pyVariable> v, I arg, CallKeywords&& kws) {
+    if (!v->has_value()) return {};
     DUMP("variable_attr", v->name());
     DUMP("mode", kws.mode);
     Value<> out;
@@ -186,7 +190,7 @@ Value<> variable_access(Always<pyVariable> v, I arg, CallKeywords&& kws) {
     {
         char self_mode = remove_mode(kws.mode);
         auto self = v->acquire_ref(self_mode == 'w' ? LockType::Write : LockType::Read);
-        std::tie(out, life) = access_with_caller(self.ref.index(), self.ref.pointer(), arg, self.ref.mode(), kws);
+        std::tie(out, life) = try_access_with_caller(self.ref.index(), self.ref.pointer(), arg, self.ref.mode(), kws);
     }
     DUMP("lifetime to attach = ", life.value);
     if (life.value) {
@@ -203,31 +207,56 @@ Value<> variable_access(Always<pyVariable> v, I arg, CallKeywords&& kws) {
 Value<> pyVariable::attribute(Always<pyVariable> v, Always<pyTuple> args, CallKeywords&& kws) {
     if (size(args) != 1) throw PythonError::type("expected 1 positional argument");
 
-    return variable_access(v, view_underlying(Always<pyStr>::from(item(args, 0))), std::move(kws));
+    if (auto out = try_variable_access(v, view_underlying(Always<pyStr>::from(item(args, 0))), std::move(kws)))
+        return out;
+    throw PythonError::attribute(~item(args, 0));
 }
 
 /******************************************************************************/
 
-// Value<> pyVariable::getattr(Always<pyVariable> v, Always<> key) {
-//     DUMP("getting member...");
-//     if (!v->has_value()) return {};
-//     return variable_access(v, view_underlying(Always<pyStr>::from(key)), CallKeywords());
-// }
+Value<> pyVariable::getattr(Always<pyVariable> v, Always<> key) {
+    DUMP("getting member...", key);
+
+    if (auto p = PyObject_GenericGetAttr(~v, ~key); p && !PyErr_Occurred()) {
+        return Value<>::take(p);
+    } else {
+        if (PyErr_Occurred()) {
+            if (PyErr_ExceptionMatches(PyExc_AttributeError)) {
+                PyErr_Clear();
+            } else {
+                throw PythonError();
+            }
+        }
+    }
+
+    if (v->has_value()) {
+        DUMP("looking");
+        if (auto out = try_variable_access(v, view_underlying(Always<pyStr>::from(key)), CallKeywords())) {
+            DUMP("got it", out);
+
+            return out;
+        }
+    }
+
+    throw PythonError::attribute(~key);
+}
 
 /******************************************************************************/
 
 Value<> pyVariable::element(Always<pyVariable> v, Always<pyTuple> args, CallKeywords&& kws) {
     if (size(args) != 1) throw PythonError::type("expected 1 positional argument");
 
-    return variable_access(v, view_underlying(Always<pyInt>::from(item(args, 0))), std::move(kws));
+    if (auto out = try_variable_access(v, view_underlying(Always<pyInt>::from(item(args, 0))), std::move(kws)))
+        return out;
+    throw PythonError::index(~item(args, 0));
 }
 
 /******************************************************************************/
 
 PyNumberMethods pyVariable::number_methods = {
-    .nb_bool = reinterpret<as_bool, Always<pyVariable>>,
-    .nb_int = reinterpret<as_int, Always<pyVariable>>,
-    .nb_float = reinterpret<as_float, Always<pyVariable>>
+    .nb_bool = reinterpret<as_bool, nullptr, Always<pyVariable>>,
+    .nb_int = reinterpret<as_int, nullptr, Always<pyVariable>>,
+    .nb_float = reinterpret<as_float, nullptr, Always<pyVariable>>
 };
 
 /******************************************************************************/
@@ -241,40 +270,43 @@ PyMethodDef pyVariable::methods[] = {
     // copy
     // swap
 
-    {"lock", reinterpret<lock, Always<pyVariable>, Ignore>, METH_NOARGS,
+    {"lock", reinterpret<lock, nullptr, Always<pyVariable>, Ignore>, METH_NOARGS,
         "lock(self)\n--\n\nget lock object"},
 
-    {"__enter__", reinterpret<return_self, Always<>, Ignore>, METH_NOARGS,
+    {"__enter__", reinterpret<return_self, nullptr, Always<>, Ignore>, METH_NOARGS,
         "__enter__(self)\n--\n\nreturn self"},
 
-    {"__exit__", reinterpret<reset, Always<pyVariable>, Ignore>, METH_VARARGS,
+    {"__exit__", reinterpret<reset, nullptr, Always<pyVariable>, Ignore>, METH_VARARGS,
         "__exit__(self, *args)\n--\n\nalias for Variable.reset"},
 
-    {"reset", reinterpret<reset, Always<pyVariable>, Ignore>, METH_NOARGS,
+    {"reset", reinterpret<reset, nullptr, Always<pyVariable>, Ignore>, METH_NOARGS,
         "reset(self)\n--\n\nreset the Variable"},
 
-    {"use_count", reinterpret<use_count, Always<pyVariable>, Ignore>, METH_NOARGS,
+    {"use_count", reinterpret<use_count, nullptr, Always<pyVariable>, Ignore>, METH_NOARGS,
         "use_count(self)\n--\n\nuse count or -1"},
 
-    {"state", reinterpret<state, Always<pyVariable>, Ignore>, METH_NOARGS,
+    {"state", reinterpret<state, nullptr, Always<pyVariable>, Ignore>, METH_NOARGS,
         "state(self)\n--\n\nreturn state of object"},
 
-    {"index", reinterpret<index, Always<pyVariable>, Ignore>, METH_NOARGS,
+    {"index", reinterpret<index, nullptr, Always<pyVariable>, Ignore>, METH_NOARGS,
         "index(self)\n--\n\nreturn Index of the held C++ object"},
 
     // {"as_value", c_function(c_as_value<Variable>),
     //     METH_NOARGS, "return an equivalent non-reference object"},
 
-    {"load", reinterpret<load, Always<pyVariable>, Always<>>, METH_O,
+    {"load", reinterpret<load, nullptr, Always<pyVariable>, Always<>>, METH_O,
         "load(self, type)\n--\n\ncast to a given Python type"},
 
-    {"method", reinterpret<method, Always<pyVariable>, Always<pyTuple>, CallKeywords>, METH_VARARGS | METH_KEYWORDS,
+    {"forward", reinterpret_kws<forward, Always<pyVariable>>, METH_VARARGS | METH_KEYWORDS,
+        "forward(self)\n--\n\nforward a method"},
+
+    {"method", reinterpret<method, nullptr, Always<pyVariable>, Always<pyTuple>, CallKeywords>, METH_VARARGS | METH_KEYWORDS,
         "method(self, name, out=None)\n--\n\ncall a method given a name and arguments"},
 
-    {"attribute", reinterpret<attribute, Always<pyVariable>, Always<pyTuple>, CallKeywords>, METH_VARARGS | METH_KEYWORDS,
+    {"attribute", reinterpret<attribute, nullptr, Always<pyVariable>, Always<pyTuple>, CallKeywords>, METH_VARARGS | METH_KEYWORDS,
         "attribute(self, name, out=None)\n--\n\nget a reference to a member variable"},
 
-    {"element", reinterpret<element, Always<pyVariable>, Always<pyTuple>, CallKeywords>, METH_VARARGS | METH_KEYWORDS,
+    {"element", reinterpret<element, nullptr, Always<pyVariable>, Always<pyTuple>, CallKeywords>, METH_VARARGS | METH_KEYWORDS,
         "element(self, name, out=None)\n--\n\nget a reference to a member variable"},
 
     {"from_library", reinterpret_kws<from_library, Always<pyType>>, METH_CLASS | METH_VARARGS | METH_KEYWORDS,
@@ -292,15 +324,15 @@ void pyVariable::initialize_type(Always<pyType> o) noexcept {
     define_type<pyVariable>(o, "ara.Variable", "Object class");
     o->tp_as_number = &pyVariable::number_methods;
     o->tp_methods = pyVariable::methods;
-    o->tp_call = reinterpret<pyVariable::call, Always<pyVariable>, Always<pyTuple>, Maybe<pyDict>>;
+    o->tp_call = reinterpret_kws<pyVariable::call, Always<pyVariable>>;
     // o->tp_clear = reinterpret<clear, Always<pyVariable>>;
     // o->tp_traverse = reinterpret<traverse, Always<pyVariable>, visitproc, void*>;
     // o->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;// | Py_TPFLAGS_HAVE_GC;
-    // o->tp_getattro = reinterpret<pyVariable::getattr, Always<pyVariable>, Always<>>;
+    o->tp_getattro = reinterpret<pyVariable::getattr, nullptr, Always<pyVariable>, Always<>>;
     // o->tp_setattro = c_variable_setattr;
-    o->tp_getset = nullptr;
-    // o->tp_hash = reinterpret<hash, Always<pyVariable>>;
-    // o->tp_richcompare = reinterpret<compare, Always<pyVariable>, Always<>, int>;
+    // o->tp_getset = nullptr;
+    o->tp_hash = reinterpret<hash, -1, Always<pyVariable>>;
+    o->tp_richcompare = reinterpret<compare, nullptr, Always<pyVariable>, Always<>, int>;
     // no init (just use default constructor)
     // PyMemberDef, tp_members
 };
@@ -308,7 +340,7 @@ void pyVariable::initialize_type(Always<pyType> o) noexcept {
 /******************************************************************************/
 
 
-int pyVariable::compare(Always<pyVariable> l, Always<> other, decltype(Py_EQ) op) noexcept {
+int compare_impl(Always<pyVariable> l, Always<> other, int op) noexcept {
     if (auto r = Maybe<pyVariable>(other)) {
         if (l->index() == r->index()) {
             switch(op) {
@@ -374,83 +406,13 @@ int pyVariable::compare(Always<pyVariable> l, Always<> other, decltype(Py_EQ) op
     return -1;
 }
 
-/******************************************************************************/
-
-// void DynamicType::finalize(Always<pyTuple> args) {
-//     DUMP("finalizing dynamic class");
-//     auto s = Value<pyStr>::take(PyObject_Str(+item_at(args, 0)));
-//     this->name += as_string_view(*s);
-//     object->tp_name = this->name.data();
-//     object->tp_base = +pyVariable::def();
-
-//     if (!getsets.empty()) {
-//         getsets.emplace_back();
-//         object->tp_getset = getsets.data();
-//     }
-//     if (PyType_Ready(object.get()) < 0) throw PythonError();
-// }
-
-/******************************************************************************/
-
-// void DynamicType::add_members(Always<pyDict> as, Always<pyDict> properties) {
-//     DUMP("working on annotations");
-//     iterate(as, [&](Ignore, auto k, auto v) {
-//         auto key = Always<pyStr>::from(k);
-
-//         Value<pyStr> doc;
-//         if (auto doc_string = item(properties, key)) {
-//             doc = Always<pyStr>::from(*doc_string);
-//             if (0 != PyDict_DelItem(~properties, ~key)) throw PythonError();
-//         }
-
-//         auto &member = members.emplace_back(as_string_view(key), v, std::move(doc));
-//         // DUMP("ok", as_string_view(*key), member.name, member.doc, +member.annotation);
-//         getsets.emplace_back(PyGetSetDef{member.name.data(),
-//             reinterpret<get_member, Always<>, Always<>>, nullptr, member.doc.data(), +member.annotation});
-//     });
-// }
-
-/******************************************************************************/
-
-// Value<pyType> pyMeta::new_type(Ignore, Always<pyTuple> args, Maybe<pyDict> kwargs) {
-//     DUMP("new_type", args);
-//     if (size(args) != 3) throw PythonError::type("Meta.__new__ takes 3 positional arguments");
-
-//     auto& base = dynamic_types.emplace_back();
-
-//     auto properties = Always<pyDict>::from(item(args, 2));
-
-//     if (auto as = item(properties, "__annotations__"))
-//         base.add_members(Always<pyDict>::from(*as), properties);
-
-//     base.finalize(args);
-
-//     auto bases = Value<pyTuple>::take(PyTuple_Pack(1, base.object.get()));
-//     // auto bases = Value<pyTuple>::take(PyTuple_Pack(1, +pyVariable::def()));
-
-//     auto args2 = Value<pyTuple>::take(PyTuple_Pack(3, +item(args, 0), +bases, +item(args, 2)));
-//     DUMP("Calling type()", args2, kwargs);
-//     auto out = Value<pyType>::take(PyObject_Call(~pyType::def(), ~args2, +kwargs));
-
-//     auto method = Value<>::take(PyInstanceMethod_New(Py_None));
-//     // PyObject_SetAttrString(~out, "instance_method", +method);
-//     DUMP("done");
-//     return out;
-//     // return PyObject_Call((PyObject*) &PyType_Type, args, kwargs);
-//     // // DUMP("making class...", Value<>(out, true));
-//     // DUMP("hash?", (+o)->tp_hash);
-// }
-
-/******************************************************************************/
-
-// void pyMeta::initialize_type(Always<pyType> o) noexcept {
-//     o->tp_name = "ara.Meta";
-//     o->tp_basicsize = sizeof(PyTypeObject);
-//     o->tp_doc = "Object metaclass";
-//     o->tp_new = reinterpret<new_type, Always<pyType>, Always<pyTuple>, Maybe<pyDict>>;
-//     o->tp_base = +pyType::def();
-//     o->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
-// }
+Value<> pyVariable::compare(Always<pyVariable> l, Always<> other, int op) noexcept {
+    switch (compare_impl(l, other, op)) {
+        case 0: return Always<>(*Py_False);
+        case 1: return Always<>(*Py_True);
+        default: return Always<>(*Py_NotImplemented);
+    }
+}
 
 /******************************************************************************/
 
@@ -611,5 +573,11 @@ Value<> pyVariable::load(Always<pyVariable> self, Always<> type) {
 /******************************************************************************/
 
 // std::deque<DynamicType> dynamic_types;
+
+Value<> pyVariable::forward(Always<pyVariable> v, Always<pyTuple> args, Maybe<pyDict> kws) {
+    auto [tag, mode, out] = parse<1, Object, pyStr, Object>(args, kws, {"tag", "mode", "out"});
+    auto method = pyVariable::getattr(v, tag);
+    return Value<pyForward>::new_from(Always<pyVariable>::from(*method), mode, out);
+}
 
 }

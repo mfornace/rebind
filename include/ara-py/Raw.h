@@ -25,10 +25,13 @@ static constexpr auto Version = std::make_tuple(PY_MAJOR_VERSION, PY_MINOR_VERSI
 /******************************************************************************/
 
 template <class ...Ts>
-std::nullptr_t type_error(char const *s, Ts ...ts) {
-    PyErr_Format(PyExc_TypeError, s, ts...);
+std::nullptr_t set_error(PyObject* exc, char const *s, Ts ...ts) {
+    PyErr_Format(exc, s, ts...);
     return nullptr;
 }
+
+template <class ...Ts>
+std::nullptr_t type_error(char const *s, Ts ...ts) {return set_error(PyExc_TypeError, s, ts...);}
 
 /******************************************************************************/
 
@@ -37,6 +40,10 @@ struct PythonError {
 
     template <class ...Ts>
     static PythonError type(char const *s, Ts ...ts) {return type_error(s, ts...);}
+    
+    static PythonError attribute(PyObject* k) {return set_error(PyExc_AttributeError, "No attribute %R", k);}
+    
+    static PythonError index(PyObject* k) {return set_error(PyExc_IndexError, "Index %R out of range", k);}
 };
 
 /******************************************************************************/
@@ -114,6 +121,16 @@ struct Always : Ptr<T> {
     static Always from(Always<U> o) {
         return T::check(o) ? *reinterpret_cast<type*>(o.base) : throw PythonError::type("bad");
     }
+};
+
+template <class T=Object>
+struct Bound : Always<T> {
+    Bound(Always<T> a) noexcept : Always<T>(a) {Py_INCREF(this->base);}
+    Bound(Bound&&) = delete;
+    Bound(Bound const&) = delete;
+    Bound& operator=(Bound&&) = delete;
+    Bound& operator=(Bound const&) = delete;
+    ~Bound() noexcept {Py_DECREF(this->base);}
 };
 
 /******************************************************************************/
@@ -194,7 +211,7 @@ PyObject* leak(Value<T> s) noexcept {return s.leak();}
 template <class T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
 inline constexpr T leak(T t) noexcept {return t;}
 
-template <auto F, class T, class ...Casts>
+template <auto F, auto Bad, class T, class ...Casts>
 struct ReinterpretCall;
 
 template <class T, class U>
@@ -206,8 +223,8 @@ T argument_cast(U u) noexcept {
     }
 }
 
-template <auto F, class Out, class ...Args, class ...Casts>
-struct ReinterpretCall<F, Out(*)(Args...), Casts...> {
+template <auto F, auto Bad, class Out, class ...Args, class ...Casts>
+struct ReinterpretCall<F, Bad, Out(*)(Args...), Casts...> {
     static Out call(Args... args) noexcept {
         if constexpr(noexcept(F(argument_cast<Casts>(args)...))) {
             return leak(F(argument_cast<Casts>(args)...));
@@ -217,7 +234,7 @@ struct ReinterpretCall<F, Out(*)(Args...), Casts...> {
                 // DUMP("output:", type_name<T>(), bool(out), "ref count =", reference_count(out));
                 // DUMP("output reference count", Py_REFCNT(out), type_name<decltype(out)>());
             } catch (PythonError const &) {
-                return nullptr;
+                return Bad;
             } catch (std::bad_alloc const &e) {
                 PyErr_SetString(PyExc_MemoryError, "C++: out of memory (std::bad_alloc)");
             } catch (std::exception const &e) {
@@ -227,26 +244,26 @@ struct ReinterpretCall<F, Out(*)(Args...), Casts...> {
                 if (!PyErr_Occurred())
                     PyErr_SetString(PyExc_RuntimeError, unknown_exception_description());
             }
-            return nullptr;
+            return Bad;
         }
     }
 };
 
-template <auto F, class ...Casts>
+template <auto F, auto Bad, class ...Casts>
 struct Reinterpret {
     template <class T>
     constexpr operator T() const noexcept {
         if constexpr(std::is_same_v<T, PyCFunction> && sizeof...(Casts) == 3) {
-            return reinterpret_cast<PyCFunction>(ReinterpretCall<F,
-                PyCFunctionWithKeywords, Casts...>::call);
+            return reinterpret_cast<PyCFunction>(
+                ReinterpretCall<F, Bad, PyCFunctionWithKeywords, Casts...>::call);
         } else {
-            return ReinterpretCall<F, T, Casts...>::call;
+            return ReinterpretCall<F, Bad, T, Casts...>::call;
         }
     }
 };
 
-template <auto F, class ...Casts>
-static constexpr Reinterpret<F, Casts...> reinterpret{};
+template <auto F, auto Bad, class ...Casts>
+static constexpr Reinterpret<F, Bad, Casts...> reinterpret{};
 
 /******************************************************************************/
 

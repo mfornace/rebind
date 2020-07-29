@@ -18,13 +18,16 @@ struct ArgStack : ara_args {
     ArgStack(Caller &c, Ts &&...ts) noexcept
         : ara_args{&c, Tags, Args}, refs{static_cast<Ts &&>(ts)...} {
         static_assert(Args + Tags == sizeof...(Ts));
-        // Tags go at the back and they're reversed.
         // Possible to do at compile time...but sort of tedious.
-        if constexpr(Tags > 0) {
-            std::rotate(std::begin(refs), std::begin(refs) + Tags, std::end(refs));
-            std::reverse(std::begin(refs) + Args, std::end(refs));
-        }
+        std::reverse(std::begin(refs), std::end(refs));
     }
+};
+
+/******************************************************************************/
+
+template <>
+struct ArgStack<0, 0> : ara_args {
+    ArgStack(Caller& c) noexcept : ara_args{&c, 0, 0} {}
 };
 
 /******************************************************************************/
@@ -32,14 +35,16 @@ struct ArgStack : ara_args {
 struct ArgView {
     ara_args c;
 
-    Ref *begin() noexcept {return reinterpret_cast<ArgStack<1, 0> &>(c).refs;}
+    Ref* ptr() noexcept {return reinterpret_cast<ArgStack<1, 0> &>(c).refs;}
+
+    auto begin() noexcept {return std::make_reverse_iterator(ptr() + c.args);}
+    auto end() noexcept {return std::make_reverse_iterator(ptr());}
     auto size() const noexcept {return c.args;}
-    Ref *end() noexcept {return begin() + size();}
 
     Caller &caller() const {return *static_cast<Caller *>(c.caller_ptr);}
 
     auto tags() const noexcept {return c.tags;}
-    Ref &tag(unsigned int i) noexcept {return *(end() + tags() - i - 1);}
+    Ref &tag(unsigned int i) noexcept {return ptr()[c.args + c.tags + 1 - i];}
 
     Ref &operator[](std::size_t i) noexcept {return begin()[i];}
 };

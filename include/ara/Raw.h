@@ -62,22 +62,21 @@ enum codes {
     name       = 5,
     info       = 6,
     relocate   = 7,
-    call       = 8,
-    method     = 9,
-    dump       = 10,
-    load       = 11,
-    attribute  = 12,
-    element    = 13,
-    hash       = 14,
-    compare    = 15,
-    equal      = 16
+    method     = 8,
+    dump       = 9,
+    load       = 10,
+    attribute  = 11,
+    element    = 12,
+    hash       = 13,
+    compare    = 14,
+    equal      = 15
     // unary
     // binary
     // print
     // increment/decrement
 };
 
-inline constexpr bool valid(Code c) {return c < 17;}
+inline constexpr bool valid(Code c) {return c < 16;}
 
 }
 
@@ -93,7 +92,6 @@ inline char const * code_name(Code c) {
         case code::name :       return "name";
         case code::info :       return "info";
         case code::relocate :   return "relocate";
-        case code::call :       return "call";
         case code::method :     return "method";
         case code::dump :       return "dump";
         case code::load :       return "load";
