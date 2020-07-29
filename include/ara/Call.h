@@ -265,8 +265,6 @@ static_assert(std::is_same_v<typename Reduce< void(double) >::type, void(*)(doub
 
 /******************************************************************************/
 
-#warning "clean this up, it was templated now"
-
 template <int N, class F, class ...Ts>
 decltype(auto) with_exact_args(F &&f, Caller &c, Arg<Ts &&> ...ts) {
     static_assert(N <= sizeof...(Ts));

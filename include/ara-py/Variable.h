@@ -128,6 +128,10 @@ struct pyVariable : StaticType<pyVariable> {
     using type = VariableObject;
 
     static void placement_new(Variable &v) noexcept {new (&v) Variable();}
+    
+    static void placement_new(Variable &v, Always<pyTuple> args, Maybe<pyDict> kws) noexcept {
+        new (&v) Variable();
+    }
 
     static void initialize_type(Always<pyType>) noexcept;
 

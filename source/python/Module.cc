@@ -8,6 +8,14 @@ extern "C" {
 
 namespace ara::py {
 
+
+PyMethodDef pyIndex::methods[] = {
+    {"from_library", reinterpret_kws<from_library, Always<pyType>>, METH_CLASS | METH_VARARGS | METH_KEYWORDS,
+        "from_library(cls, file_name, function_name)\n--\n\nload index from a DLL"},
+    {"forward", reinterpret_kws<forward, Always<pyIndex>>, METH_VARARGS | METH_KEYWORDS,
+        "forward(self, function)\n--\n\ndeclare function"}
+};
+
 PyNumberMethods pyIndex::number_methods = {
     .nb_bool = reinterpret<as_bool, Always<pyIndex>>,
     .nb_int = reinterpret<as_int, Always<pyIndex>>
@@ -19,6 +27,7 @@ void pyIndex::initialize_type(Always<pyType> o) noexcept {
     o->tp_hash = reinterpret<hash, Always<pyIndex>>;
     o->tp_str = reinterpret<str, Always<pyIndex>>;
     o->tp_as_number = &number_methods;
+    o->tp_methods = methods;
     o->tp_richcompare = reinterpret<compare<pyIndex>, Always<pyIndex>, Always<>, int>;
 };
 

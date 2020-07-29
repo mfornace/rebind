@@ -52,6 +52,7 @@ PyObject* init_module() noexcept;
 
 struct Object {
     using type = PyObject;
+    static bool check(Ignore) {return true;}
 };
 
 template <class T>
@@ -122,6 +123,7 @@ struct Maybe : Ptr<T> {
     using type = typename T::type;
     using Ptr<T>::base;
 
+    constexpr Maybe() noexcept : Ptr<T>{nullptr} {}
     constexpr Maybe(type *t) noexcept : Ptr<T>{t} {}
     constexpr Maybe(Always<T> o) noexcept : Ptr<T>{o.base} {}
 
@@ -153,6 +155,9 @@ struct Value : Maybe<T> {
 
     template <class U, std::enable_if_t<std::is_same_v<U, T> || std::is_same_v<T, Object>, int> = 0>
     Value(Always<U> o) noexcept : Base{reinterpret_cast<type*>(o.base)} {Py_INCREF(base);}
+
+    template <class U, std::enable_if_t<std::is_same_v<U, T> || std::is_same_v<T, Object>, int> = 0>
+    Value(Maybe<U> o) noexcept : Base{reinterpret_cast<type*>(o.base)} {Py_XINCREF(base);}
 
     template <class U, std::enable_if_t<!std::is_same_v<U, T> && std::is_same_v<T, Object>, int> = 0>
     Value(Value<U> v) noexcept : Base(reinterpret_cast<PyObject*>(std::exchange(v.base, nullptr))) {}

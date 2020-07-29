@@ -46,20 +46,23 @@ namespace ara::py {
 /******************************************************************************/
 
 struct Method {
-    Value<> signature;
-    Value<> docstring;
-    Value<> doc;
-    std::string name;
+    Value<> tag;
+    Value<pyStr> mode;
+    Value<> out;
+    // Value<> signature;
+    // Value<> docstring;
+    // Value<> doc;
+    // std::string name;
 };
 
 struct pyMethod : StaticType<pyMethod> {
     using type = Subtype<Method>;
 
-    static PyMemberDef members[];
+    // static PyMemberDef members[];
 
-    static Value<> repr(Always<pyMethod> self) {return Always<>(*self->doc);}
+    // static Value<> repr(Always<pyMethod> self) {return Always<>(*self->doc);}
 
-    static Value<> str(Always<pyMethod> self) {return Always<>(*self->docstring);}
+    // static Value<> str(Always<pyMethod> self) {return Always<>(*self->docstring);}
 
     static Value<> get(Always<pyMethod> self, Maybe<> instance, Ignore);
 
@@ -69,25 +72,30 @@ struct pyMethod : StaticType<pyMethod> {
 
     static void initialize_type(Always<pyType> o) noexcept {
         define_type<pyMethod>(o, "ara.Method", "ara Method type");
-        o->tp_repr = reinterpret<repr, Always<pyMethod>>;
-        o->tp_str = reinterpret<str, Always<pyMethod>>;
-        o->tp_descr_get = reinterpret<get, Always<pyMethod>, Maybe<>, Ignore>;
+        // o->tp_repr = reinterpret<repr, Always<pyMethod>>;
+        // o->tp_str = reinterpret<str, Always<pyMethod>>;
         o->tp_call = reinterpret<call, Always<pyMethod>, Always<pyTuple>, Maybe<pyDict>>;
+        o->tp_descr_get = reinterpret<get, Always<pyMethod>, Maybe<>, Ignore>;
         // o->tp_members = members;
         // tp_traverse, tp_clear
         // PyMemberDef, tp_members
     }
 
-    static void placement_new(Method &m) noexcept {
-        new(&m) Method();
+    static void placement_new(Method &m, Always<> tag, Always<pyStr> mode, Maybe<> out) {
+        new(&m) Method{tag, mode, out};
+    }
+
+    static void placement_new(Method &m, Always<pyTuple> args, Maybe<pyDict> kws) {
+        auto [tag, mode, out] = parse<2, Object, pyStr, Object>(args, kws, {"tag", "name", "out"});
+        placement_new(m, tag, mode, out);
     }
 };
 
 /******************************************************************************/
 
 struct BoundMethod {
-    Value<> method;
-    Value<> self;
+    Value<pyMethod> method;
+    Value<pyVariable> self;
 };
 
 struct pyBoundMethod : StaticType<pyBoundMethod> {
@@ -95,10 +103,20 @@ struct pyBoundMethod : StaticType<pyBoundMethod> {
 
     static void initialize_type(Always<pyType> t) {
         define_type<pyBoundMethod>(t, "ara.BoundMethod", "ara BoundMethod type");
+        t->tp_call = reinterpret_kws<call, Always<pyBoundMethod>>;
     }
 
-    static void placement_new(BoundMethod &f) {
-        new(&f) BoundMethod();
+    static Value<> call(Always<pyBoundMethod>, Always<pyTuple>, Maybe<pyDict>) {
+        return {};
+    }
+    
+    static void placement_new(BoundMethod &f, Value<pyMethod> m, Value<pyVariable> s) noexcept {
+        new(&f) BoundMethod{std::move(m), std::move(s)};
+    }
+
+    static void placement_new(BoundMethod &f, Always<pyTuple> args, Maybe<pyDict> kws) {
+        auto [m, s] = parse<2, pyMethod, pyVariable>(args, kws, {"method", "instance"});
+        placement_new(f, m, s);
     }
 };
 
@@ -106,15 +124,16 @@ struct pyBoundMethod : StaticType<pyBoundMethod> {
 
 Value<> pyMethod::get(Always<pyMethod> self, Maybe<> instance, Ignore) {
     if (instance) {
-        BoundMethod{self, *instance};
-        return {};
+        return Value<pyBoundMethod>::new_from(self, Always<pyVariable>::from(*instance));
     } else return self;
 }
 
 /******************************************************************************/
 
 struct Forward {
-
+    Value<> tag;
+    Value<pyStr> mode;
+    Value<> out;
 };
 
 struct pyForward : StaticType<Forward> {
@@ -122,10 +141,17 @@ struct pyForward : StaticType<Forward> {
 
     static void initialize_type(Always<pyType> t) {
         define_type<pyForward>(t, "ara.Forward", "ara Forward type");
+        t->tp_call = reinterpret_kws<call, Always<pyForward>>;
     }
 
-    static void placement_new(Forward &f) {
-        new(&f) Forward();
+    static void placement_new(Forward &f, Always<pyTuple> args, Maybe<pyDict> kws) {
+        auto [mode, tag, out] = parse<1, pyStr, Object, Object>(args, kws, {"mode", "tag", "out"});
+        new(&f) Forward{tag, mode, out};
+    }
+
+    static Value<pyMethod> call(Always<pyForward> f, Always<pyTuple> args, Maybe<pyDict> kws) {
+        auto [fun] = parse<1, Object>(args, kws, {"function"});
+        return Value<pyMethod>::new_from(*f->tag, *f->mode, f->out);
     }
 };
 
@@ -140,10 +166,42 @@ struct pyFunction : StaticType<Function> {
 
     static void initialize_type(Always<pyType> t) {
         define_type<pyFunction>(t, "ara.Function", "ara Function type");
+        t->tp_call = reinterpret_kws<call, Always<pyFunction>>;
     }
 
-    static void placement_new(Function &f) {
+    static void placement_new(Function &f, Always<pyTuple> args, Maybe<pyDict> kws) {
         new(&f) Function();
+    }
+
+    static Value<> call(Always<pyFunction> f, Always<pyTuple> args, Maybe<pyDict> kws) {
+        return {};
+    }
+};
+
+/******************************************************************************/
+
+struct Member {
+    Value<pyStr> name;
+    Value<> out;
+    Value<pyStr> doc;
+};
+
+struct pyMember : StaticType<Member> {
+    using type = Subtype<Member>;
+
+    static void initialize_type(Always<pyType> t) {
+        define_type<pyMember>(t, "ara.Member", "ara Member type");
+        t->tp_descr_get = reinterpret<get, Always<pyMember>, Maybe<>, Ignore>;
+    }
+
+    static Value<> get(Always<pyMember> self, Maybe<> instance, Ignore) {
+        if (instance) return {};// variable_access<pyStr>(v, name);// {};//Always<pyVariable>::from(*instance)
+        else return self;
+    }
+
+    static void placement_new(Member &f, Always<pyTuple> args, Maybe<pyDict> kws) {
+        auto [name, out, doc] = parse<1, pyStr, Object, pyStr>(args, kws, {"name", "out", "doc"});
+        new(&f) Member{name, out, doc};
     }
 };
 

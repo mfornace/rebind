@@ -48,49 +48,6 @@ template <class T>
 PyTypeObject StaticType<T>::definition{PyVarObject_HEAD_INIT(NULL, 0)};
 
 
-/******************************************************************************/
-
-template <class T> template <class ...Args>
-Value<T> Value<T>::new_from(Args &&...args) {
-    DUMP("allocating new object", type_name<T>());
-    auto out = Value<T>::take(T::def()->tp_alloc(+T::def(), 0)); // 0 unused
-    T::placement_new(*out, std::forward<Args>(args)...);
-    DUMP(bool(out), out, reference_count(out));
-    return out;
-}
-
-template <class T>
-PyObject* default_construct(PyTypeObject* subtype, PyObject*, PyObject*) noexcept {
-    DUMP("allocating new object");
-    PyObject *o = subtype->tp_alloc(subtype, 0); // 0 unused
-    DUMP("initializing object");
-    if (o) T::placement_new(*reinterpret_cast<typename T::type*>(o)); // Default construct the C++ type
-    DUMP("returning object", reference_count(Ptr<>{o}))
-    return o;
-}
-
-/******************************************************************************/
-
-template <class T>
-void call_destructor(PyObject *o) noexcept {
-    DUMP("destroying", type_name<T>(), reference_count(Ptr<>{o}));
-    reinterpret_cast<T *>(o)->~T();
-    Py_TYPE(o)->tp_free(o);
-}
-
-/******************************************************************************/
-
-template <class T>
-void define_type(Always<pyType> o, char const *name, char const *doc) noexcept {
-    DUMP("define_type", name, type_name<T>());
-    o->tp_name = name;
-    o->tp_basicsize = sizeof(typename T::type);
-    o->tp_itemsize = 0;
-    o->tp_dealloc = call_destructor<typename T::type>;
-    o->tp_new = default_construct<T>;
-    o->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
-    o->tp_doc = doc;
-}
 
 /******************************************************************************/
 
