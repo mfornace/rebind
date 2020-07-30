@@ -216,12 +216,11 @@ union Binary {
 
     bool sbo() const {return c.size <= sizeof(c.sbo);}
 
-    // char* data() {return sbo() ? c.sbo.storage : c.sbo.alloc.pointer;}
-    // char const* data() const {return sbo() ? c.sbo.storage : c.sbo.alloc.pointer;}
+    std::byte* data() {return reinterpret_cast<std::byte*>(sbo() ? c.sbo.storage : c.sbo.alloc.pointer);}
+    std::byte const* data() const {return reinterpret_cast<std::byte const *>(sbo() ? c.sbo.storage : c.sbo.alloc.pointer);}
 
-    // std::size_t size() const {return c.size;}
-
-    // constexpr operator Bin() const {return {data(), size()};}
+    std::size_t size() const {return c.size;}
+    constexpr operator Bin() const {return {data(), size()};}
 
     explicit operator ara_binary() && noexcept {return move_slice(*this);}
     // explicit operator ara_binary() const & {return const_slice(*this);}

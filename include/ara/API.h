@@ -123,7 +123,7 @@ typedef struct ara_binary_alloc { // (usual size = 16)
 /// small buffer optimization of same size as ara_binary_alloc
 typedef union ara_binary_sbo { // (usual size = 16)
     ara_binary_alloc alloc;
-    char storage[sizeof(ara_binary_alloc)];
+    unsigned char storage[sizeof(ara_binary_alloc)];
 } ara_binary_sbo;
 
 /// A simple non-null-terminated byte container containing a type-erased destructor and SSO

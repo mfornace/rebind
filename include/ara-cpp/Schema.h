@@ -78,6 +78,7 @@ struct Impl<Schema> : Default<Schema> {
             t.c.output = it->second.address().base;
             t.c.mode = static_cast<ara_mode>(Mode::Read);
             t.c.index = it->second.index();
+            t.c.lifetime = 1;
             return true;
         } else return false;
     }
