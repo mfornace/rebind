@@ -31,54 +31,6 @@ void pyIndex::initialize_type(Always<pyType> o) noexcept {
 
 /******************************************************************************/
 
-Value<> pyIndex::call(Index index, Always<pyTuple> args, CallKeywords&& kws) {
-    DUMP("index_call", index.name());
-    auto const total = size(args);
-    if (!total) throw PythonError(type_error("ara call: expected at least one argument"));
-    ArgAlloc a(total-1, 1);
-
-    Str name = as_string_view(item(args, 0));
-    a.view.tag(0) = Ref(name);
-
-    for (Py_ssize_t i = 0; i != total-1; ++i)
-        a.view[i] = Ref(Index::of<Export>(), Mode::Write, Pointer::from(+item(args, i+1)));
-
-    return call_with_caller(index, Pointer::from(nullptr), Mode::Read, a.view, kws).first;
-}
-
-/******************************************************************************/
-
-CallKeywords::CallKeywords(Maybe<pyDict> kws) {
-    if (!kws) return;
-    out = PyDict_GetItemString(~kws, "out");
-    tags = PyDict_GetItemString(~kws, "tags");
-
-    Py_ssize_t n = 0;
-    if (tags) ++n;
-    if (out) ++n;
-
-    if (auto g = Maybe<>(PyDict_GetItemString(~kws, "gil"))) {
-        gil = PyObject_IsTrue(+g);
-        ++n;
-    }
-
-    if (auto r = Maybe<>(PyDict_GetItemString(~kws, "mode"))) {
-        mode = as_string_view(*r);
-        ++n;
-    }
-
-    if (n != PyDict_Size(~kws)) {
-        PyDict_DelItemString(~kws, "tag");
-        PyDict_DelItemString(~kws, "out");
-        PyDict_DelItemString(~kws, "mode");
-        PyDict_DelItemString(~kws, "gil");
-        throw PythonError::type("ara.Variable: unexpected keyword arguments: %R", +Value<>::take(PyDict_Keys(~kws)));
-    }
-    // DUMP("made keywords!", mode.size());
-}
-
-/******************************************************************************/
-
 void Variable::reset() noexcept {
     if (!has_value()) return;
     auto const state = idx.tag();
@@ -122,7 +74,7 @@ Py_hash_t pyVariable::hash(Always<pyVariable> self) noexcept {
 
 /******************************************************************************/
 
-Value<> pyVariable::method(Always<pyVariable> v, Always<pyTuple> args, CallKeywords &&kws) {
+Value<> pyVariable::method(Always<pyVariable> v, Always<pyTuple> args, Modes modes, Tag tag, Out out, GIL gil) {
     DUMP("pyVariable::method", v->name());
     auto const total = size(args);
     ArgAlloc a(total-1, 1);
@@ -130,20 +82,19 @@ Value<> pyVariable::method(Always<pyVariable> v, Always<pyTuple> args, CallKeywo
     Str name = as_string_view(item(args, 0));
     a.view.tag(0) = Ref(name);
 
-    DUMP("mode", kws.mode);
-    Value<> out;
+    Value<> ret;
     Lifetime life;
     {
-        char self_mode = remove_mode(kws.mode);
+        char self_mode = modes.pop_first();
         auto self = v->acquire_ref(self_mode == 'w' ? LockType::Write : LockType::Read);
         TupleLock locking(a.view, args, 1);
-        locking.lock(kws.mode);
+        locking.lock(modes.value);
 
-        std::tie(out, life) = call_with_caller(self.ref.index(), self.ref.pointer(), self.ref.mode(), a.view, kws);
+        std::tie(ret, life) = call_with_caller(self.ref.index(), self.ref.pointer(), self.ref.mode(), a.view, out, gil);
     }
     DUMP("lifetime to attach = ", life.value);
     if (life.value) {
-        if (auto o = Maybe<pyVariable>(out)) {
+        if (auto o = Maybe<pyVariable>(ret)) {
             for (unsigned i = 0; life.value; ++i) {
                 if (life.value & 1) {
                     DUMP("got one", i);
@@ -161,12 +112,19 @@ Value<> pyVariable::method(Always<pyVariable> v, Always<pyTuple> args, CallKeywo
             }
         }
     }
-    return out;
+    return ret;
 }
 
 /******************************************************************************/
 
-Value<> pyVariable::call(Always<pyVariable> v, Always<pyTuple> args, CallKeywords&& kws) {
+Value<> pyVariable::fmethod(Always<pyVariable> v, Always<pyTuple> args, Maybe<pyDict> kws) {
+    auto [modes, tag, out, gil] = parse<0, pyStr, Object, Object, Object>(kws, {"mode", "tag", "out", "gil"});
+    return method(v, args, Modes(modes), Tag{tag}, Out{out}, GIL{gil});
+}
+
+/******************************************************************************/
+
+Value<> pyVariable::call(Always<pyVariable> v, Always<pyTuple> args, Modes modes, Tag tag, Out out, GIL gil) {
     DUMP("variable_call", v->name());
     if (!v->has_value()) throw PythonError::type("Calling method on empty Variable");
     auto const total = size(args);
@@ -175,40 +133,69 @@ Value<> pyVariable::call(Always<pyVariable> v, Always<pyTuple> args, CallKeyword
     for (Py_ssize_t i = 0; i != total; ++i)
         a.view[i] = Ref(Index::of<Export>(), Mode::Write, Pointer::from(+item(args, i)));
 
-    return call_with_caller(v->index(), Pointer::from(v->address()), Mode::Read, a.view, kws).first;
+    return call_with_caller(v->index(), Pointer::from(v->address()), Mode::Read, a.view, out, gil).first;
+}
+
+Value<> pyVariable::fcall(Always<pyVariable> v, Always<pyTuple> args, Maybe<pyDict> kws) {
+    auto [modes, tag, out, gil] = parse<0, pyStr, Object, Object, Object>(kws, {"mode", "tag", "out", "gil"});
+    return call(v, args, Modes(modes), Tag{tag}, Out{out}, GIL{gil});
 }
 
 /******************************************************************************/
 
 template <class I>
-Value<> try_variable_access(Always<pyVariable> v, I arg, CallKeywords&& kws) {
+Value<> try_variable_access(Always<pyVariable> v, I arg, Mode mode, Out out) {
     if (!v->has_value()) return {};
-    DUMP("variable_attr", v->name());
-    DUMP("mode", kws.mode);
-    Value<> out;
+    DUMP("try_variable_access", v->name());
+
+    Value<> ret;
     Lifetime life;
     {
-        char self_mode = remove_mode(kws.mode);
-        auto self = v->acquire_ref(self_mode == 'w' ? LockType::Write : LockType::Read);
-        std::tie(out, life) = try_access_with_caller(self.ref.index(), self.ref.pointer(), arg, self.ref.mode(), kws);
+        auto self = v->acquire_ref(mode == Mode::Write ? LockType::Write : LockType::Read);
+        std::tie(ret, life) = try_access_with_caller(self.ref.index(), self.ref.pointer(), arg, mode, out);
     }
     DUMP("lifetime to attach = ", life.value);
     if (life.value) {
-        if (auto o = Maybe<pyVariable>(out)) {
+        if (auto o = Maybe<pyVariable>(ret)) {
             DUMP("setting root to self");
             o->set_lock(current_root(v));
         }
     }
-    return out;
+    return ret;
+}
+
+Mode single_mode(Maybe<pyStr> s) {
+    if (s) {
+        auto str = view_underlying(*s);
+        if (str.size() > 1) throw PythonError::type("Expected mode specification of length 0 or 1");
+        if (str.size() == 1 && *str.data() == 'w') return Mode::Write;
+    }
+    return Mode::Read;
 }
 
 /******************************************************************************/
 
-Value<> pyVariable::attribute(Always<pyVariable> v, Always<pyTuple> args, CallKeywords&& kws) {
+Value<> pyVariable::element(Always<pyVariable> v, Always<pyTuple> args, Maybe<pyDict> kws) {
     if (size(args) != 1) throw PythonError::type("expected 1 positional argument");
 
-    if (auto out = try_variable_access(v, view_underlying(Always<pyStr>::from(item(args, 0))), std::move(kws)))
-        return out;
+    auto i = view_underlying(Always<pyInt>::from(item(args, 0)));
+    auto [mode, out] = parse<0, pyStr, Object>(kws, {"mode", "out"});
+
+    if (auto o = try_variable_access(v, i, single_mode(mode), Out{out}))
+        return o;
+    throw PythonError::index(~item(args, 0));
+}
+
+/******************************************************************************/
+
+Value<> pyVariable::attribute(Always<pyVariable> v, Always<pyTuple> args, Maybe<pyDict> kws) {
+    if (size(args) != 1) throw PythonError::type("expected 1 positional argument");
+
+    auto i = view_underlying(Always<pyStr>::from(item(args, 0)));
+    auto [mode, out] = parse<0, pyStr, Object>(kws, {"mode", "out"});
+
+    if (auto o = try_variable_access(v, i, single_mode(mode), Out{out}))
+        return o;
     throw PythonError::attribute(~item(args, 0));
 }
 
@@ -231,7 +218,7 @@ Value<> pyVariable::getattr(Always<pyVariable> v, Always<> key) {
 
     if (v->has_value()) {
         DUMP("looking");
-        if (auto out = try_variable_access(v, view_underlying(Always<pyStr>::from(key)), CallKeywords())) {
+        if (auto out = try_variable_access(v, view_underlying(Always<pyStr>::from(key)), {}, {})) {
             DUMP("got it", out);
 
             return out;
@@ -239,16 +226,6 @@ Value<> pyVariable::getattr(Always<pyVariable> v, Always<> key) {
     }
 
     throw PythonError::attribute(~key);
-}
-
-/******************************************************************************/
-
-Value<> pyVariable::element(Always<pyVariable> v, Always<pyTuple> args, CallKeywords&& kws) {
-    if (size(args) != 1) throw PythonError::type("expected 1 positional argument");
-
-    if (auto out = try_variable_access(v, view_underlying(Always<pyInt>::from(item(args, 0))), std::move(kws)))
-        return out;
-    throw PythonError::index(~item(args, 0));
 }
 
 /******************************************************************************/
@@ -300,17 +277,15 @@ PyMethodDef pyVariable::methods[] = {
     {"forward", reinterpret_kws<forward, Always<pyVariable>>, METH_VARARGS | METH_KEYWORDS,
         "forward(self)\n--\n\nforward a method"},
 
-    {"method", reinterpret<method, nullptr, Always<pyVariable>, Always<pyTuple>, CallKeywords>, METH_VARARGS | METH_KEYWORDS,
+    {"method", reinterpret_kws<fmethod, Always<pyVariable>>, METH_VARARGS | METH_KEYWORDS,
         "method(self, name, out=None)\n--\n\ncall a method given a name and arguments"},
 
-    {"attribute", reinterpret<attribute, nullptr, Always<pyVariable>, Always<pyTuple>, CallKeywords>, METH_VARARGS | METH_KEYWORDS,
+    {"attribute", reinterpret_kws<attribute, Always<pyVariable>>, METH_VARARGS | METH_KEYWORDS,
         "attribute(self, name, out=None)\n--\n\nget a reference to a member variable"},
 
-    {"element", reinterpret<element, nullptr, Always<pyVariable>, Always<pyTuple>, CallKeywords>, METH_VARARGS | METH_KEYWORDS,
+    {"element", reinterpret_kws<element, Always<pyVariable>>, METH_VARARGS | METH_KEYWORDS,
         "element(self, name, out=None)\n--\n\nget a reference to a member variable"},
 
-    {"from_library", reinterpret_kws<from_library, Always<pyType>>, METH_CLASS | METH_VARARGS | METH_KEYWORDS,
-        "from_library(cls, file_name, function_name)\n--\n\nload index from a DLL"},
     // {"from_object", c_function(c_value_from),
         // METH_CLASS | METH_O, "cast an object to a given Python type"},
     {nullptr, nullptr, 0, nullptr}
@@ -324,7 +299,7 @@ void pyVariable::initialize_type(Always<pyType> o) noexcept {
     define_type<pyVariable>(o, "ara.Variable", "Object class");
     o->tp_as_number = &pyVariable::number_methods;
     o->tp_methods = pyVariable::methods;
-    o->tp_call = reinterpret_kws<pyVariable::call, Always<pyVariable>>;
+    o->tp_call = reinterpret_kws<pyVariable::fcall, Always<pyVariable>>;
     // o->tp_clear = reinterpret<clear, Always<pyVariable>>;
     // o->tp_traverse = reinterpret<traverse, Always<pyVariable>, visitproc, void*>;
     // o->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;// | Py_TPFLAGS_HAVE_GC;
@@ -575,9 +550,44 @@ Value<> pyVariable::load(Always<pyVariable> self, Always<> type) {
 // std::deque<DynamicType> dynamic_types;
 
 Value<> pyVariable::forward(Always<pyVariable> v, Always<pyTuple> args, Maybe<pyDict> kws) {
-    auto [tag, mode, out] = parse<1, Object, pyStr, Object>(args, kws, {"tag", "mode", "out"});
-    auto method = pyVariable::getattr(v, tag);
-    return Value<pyForward>::new_from(Always<pyVariable>::from(*method), mode, out);
+    auto [tag, mode, out] = parse<0, Object, pyStr, Object>(args, kws, {"tag", "mode", "out"});
+    return Value<pyForward>::new_from(v, tag, mode, out);
+}
+
+/******************************************************************************/
+
+Value<> pyForward::call(Always<pyForward> f, Always<pyTuple> args, Maybe<pyDict> kws) {
+    auto [fun] = parse<1, Object>(args, kws, {"function"});
+    
+    Value<> tag = f->tag ? f->tag : Value<>::take(PyObject_GetAttrString(~fun, "__name__"));
+    
+    Value<> out;
+    if (f->out) {
+        out = f->out;
+    } else {
+        auto a = Value<>::take(PyObject_GetAttrString(~fun, "__annotations__"));
+        out = item(Always<pyDict>::from(*a), "return");
+    }
+
+    if (f->instance) {
+        if (!tag) throw PythonError::type("need tag...");
+        auto attr = try_variable_access(*f->instance, view_underlying(Always<pyStr>::from(*tag)), {}, {});
+        if (!attr) throw PythonError::attribute(~tag);
+        DUMP("got the attr", attr, Always<pyVariable>::from(*attr)->name());
+
+        auto method = Value<pyMethod>::new_from(Maybe<>(), f->mode, std::move(out));
+        
+        return Value<pyBoundMethod>::new_from(*method, Always<pyVariable>::from(*attr));
+    } else {
+        return Value<pyMethod>::new_from(std::move(tag), f->mode, std::move(out));
+    }
+}
+
+/******************************************************************************/
+
+Value<> pyBoundMethod::call(Always<pyBoundMethod> m, Always<pyTuple> args, Maybe<pyDict> kws) {
+    // already have out, mode, tag. need to bind keywords in future
+    return pyVariable::fcall(m->instance, args, kws);
 }
 
 }

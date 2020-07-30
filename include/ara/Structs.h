@@ -528,7 +528,7 @@ union Tuple {
 
 /******************************************************************************/
 
-template <> struct AliasType<Bool>    {using type = ara_bool;};
+template <> struct AliasType<Bool>   {using type = ara_bool;};
 template <> struct AliasType<Str>    {using type = ara_str;};
 template <> struct AliasType<Bin>    {using type = ara_bin;};
 template <> struct AliasType<String> {using type = ara_string;};

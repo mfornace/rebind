@@ -41,14 +41,33 @@ struct PythonFrame final : Frame {
 
 /******************************************************************************/
 
-struct CallKeywords {
-    std::string_view mode;
-    Maybe<> out = nullptr;
-    Maybe<> tags = nullptr;
-    bool gil = true;
+struct Modes {
+    std::string_view value;
 
-    CallKeywords() = default;
-    CallKeywords(Maybe<pyDict> kws);
+    explicit Modes(Maybe<pyStr> s) {
+        if (s) value = view_underlying(*s);
+    }
+
+    char pop_first() {
+        if (value.empty()) return 'r';
+        char const first = value[0];
+        value.remove_prefix(std::min(value.size(), std::size_t(2)));
+        return first;
+    }
+};
+
+struct Out {
+    Maybe<> value;
+};
+
+struct GIL {
+    bool value;
+    constexpr GIL() : value(true) {}
+    explicit GIL(Maybe<> s) : value(s ? PyObject_IsTrue(~s) : true) {}
+};
+
+struct Tag {
+    Maybe<> value;
 };
 
 /******************************************************************************/

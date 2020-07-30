@@ -75,7 +75,9 @@ template <>
 struct Impl<Schema> : Default<Schema> {
     static bool attribute(Target &t, Schema const &s, std::string_view key) {
         if (auto it = s.find(key); it != s.contents().end()) {
-            t.set_reference(it->second);
+            t.c.output = it->second.address().base;
+            t.c.mode = static_cast<ara_mode>(Mode::Read);
+            t.c.index = it->second.index();
             return true;
         } else return false;
     }
@@ -91,9 +93,6 @@ struct Impl<Schema> : Default<Schema> {
         }
 
         DUMP("number of contents", s.contents().size());
-        for (auto const &c : s.contents()) {
-            DUMP("content", c.first);
-        }
 
         if (auto name = m.args[0].get<Str>()) {
             DUMP(name->data());

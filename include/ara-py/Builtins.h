@@ -156,17 +156,17 @@ std::ostream& operator<<(std::ostream& os, Ptr<T> const& o) {
 
 /******************************************************************************/
 
-// struct pyFunction : Wrap<pyFunction> {
+struct pyFunction : Wrap<pyFunction> {
 
-//     static bool matches(Always<pyType> p) {return +p == &PyFunction_Type;}
-//     static bool check(Always<> p) {return PyFunction_Check(+p);}
+    static bool matches(Always<pyType> p) {return +p == &PyFunction_Type;}
+    static bool check(Always<> p) {return PyFunction_Check(+p);}
 
-//     static Value<pyFunction> load(Ref &ref, Ignore, Ignore) {
-//         // if (auto p = ref.get<Function>()) return as_object(std::move(*p));
-//         // if (auto p = ref.get<Overload>()) return as_object(Function(std::move(*p)));
-//         return {};
-//     }
-// };
+    static Value<pyFunction> load(Ref &ref, Ignore, Ignore) {
+        // if (auto p = ref.get<Function>()) return as_object(std::move(*p));
+        // if (auto p = ref.get<Overload>()) return as_object(Function(std::move(*p)));
+        return {};
+    }
+};
 
 struct pyMemoryView : Wrap<pyMemoryView> {
 

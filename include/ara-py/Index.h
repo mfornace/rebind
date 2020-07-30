@@ -8,7 +8,6 @@ namespace ara::py {
 
 /******************************************************************************/
 
-
 template <bool B, class T, std::size_t I>
 std::conditional_t<B, Always<T>, Maybe<T>> parse_each(Always<pyTuple> args, Maybe<pyDict> kws, char const* name) {
     if (I < size(args)) return Always<T>::from(item(args, I));
@@ -18,13 +17,32 @@ std::conditional_t<B, Always<T>, Maybe<T>> parse_each(Always<pyTuple> args, Mayb
 }
 
 template <std::size_t N, class ...Ts, std::size_t ...Is>
-auto parse(Always<pyTuple> args, Maybe<pyDict> kws, std::array<char const*, sizeof...(Ts)> const &names, std::index_sequence<Is...>) {
+auto parse_(Always<pyTuple> args, Maybe<pyDict> kws, std::array<char const*, sizeof...(Ts)> const &names, std::index_sequence<Is...>) {
     return std::make_tuple(parse_each<(Is < N), Ts, Is>(args, kws, names[Is])...);
 }
 
 template <std::size_t N, class ...Ts>
 auto parse(Always<pyTuple> args, Maybe<pyDict> kws, std::array<char const*, sizeof...(Ts)> const &names) {
-    return parse<N, Ts...>(args, kws, names, std::make_index_sequence<sizeof...(Ts)>());
+    return parse_<N, Ts...>(args, kws, names, std::make_index_sequence<sizeof...(Ts)>());
+}
+
+/******************************************************************************/
+
+template <bool B, class T>
+std::conditional_t<B, Always<T>, Maybe<T>> parse_each(Maybe<pyDict> kws, char const* name) {
+    if (kws) if (auto p = item(*kws, name)) return Always<T>::from(*p);
+    if constexpr(B) throw PythonError::type("bad");
+    else return {};
+}
+
+template <std::size_t N, class ...Ts, std::size_t ...Is>
+auto parse_(Maybe<pyDict> kws, std::array<char const*, sizeof...(Ts)> const &names, std::index_sequence<Is...>) {
+    return std::make_tuple(parse_each<(Is < N), Ts>(kws, names[Is])...);
+}
+
+template <std::size_t N, class ...Ts>
+auto parse(Maybe<pyDict> kws, std::array<char const*, sizeof...(Ts)> const &names) {
+    return parse_<N, Ts...>(kws, names, std::make_index_sequence<sizeof...(Ts)>());
 }
 
 /******************************************************************************/
@@ -84,8 +102,6 @@ struct pyIndex : StaticType<pyIndex> {
     static void initialize_type(Always<pyType> o) noexcept;
 
     static Value<pyIndex> load(Ref &ref, Ignore, Ignore) {return {};}
-
-    static Value<> call(Index, Always<pyTuple>, CallKeywords&&);
 
     static Value<> forward(Always<pyIndex>, Always<pyTuple> args, Maybe<pyDict> kws) {
         return {};

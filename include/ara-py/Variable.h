@@ -179,15 +179,21 @@ struct pyVariable : StaticType<pyVariable> {
 
     static Value<> compare(Always<pyVariable> l, Always<> other, int op) noexcept;
 
-    static Value<> call(Always<pyVariable> v, Always<pyTuple> args, CallKeywords&& kws);
-
-    static Value<> element(Always<pyVariable> v, Always<pyTuple> args, CallKeywords&& kws);
-
-    static Value<> attribute(Always<pyVariable> v, Always<pyTuple> args, CallKeywords&& kws);
+    static Value<> call(Always<pyVariable>, Always<pyTuple>, Modes, Tag, Out, GIL);
+    static Value<> fcall(Always<pyVariable>, Always<pyTuple>, Maybe<pyDict>);
     
-    static Value<> getattr(Always<pyVariable> v, Always<> key);
+    static Value<> method(Always<pyVariable>, Always<pyTuple>, Modes, Tag, Out, GIL);
+    static Value<> fmethod(Always<pyVariable>, Always<pyTuple>, Maybe<pyDict>);
 
-    static Value<> forward(Always<pyVariable> v, Always<pyTuple> args, Maybe<pyDict> kws);
+    template <class I>
+    static Value<> access(Always<pyVariable>, I, Mode, Out);
+
+    static Value<> element(Always<pyVariable>, Always<pyTuple>, Maybe<pyDict>);
+    static Value<> attribute(Always<pyVariable>, Always<pyTuple>, Maybe<pyDict>);
+    
+    static Value<> getattr(Always<pyVariable>, Always<> key);
+
+    static Value<> forward(Always<pyVariable>, Always<pyTuple>, Maybe<pyDict> kws);
 
     /******************************************************************************/
 
@@ -247,13 +253,6 @@ struct pyVariable : StaticType<pyVariable> {
         }
         return v;
     }
-
-    static Value<> method(Always<pyVariable> v, Always<pyTuple> args, CallKeywords &&kws);
-
-
-    static Value<> from_address(Always<> addr);
-
-    static Value<> from_library(Always<pyType>, Always<pyTuple> args, Maybe<pyDict> kws);
 
     static PyNumberMethods number_methods;
     static PyMethodDef methods[];
@@ -413,9 +412,9 @@ Lifetime call_to_output(Value<> &out, Always<> output, F&& fun) {
 /******************************************************************************/
 
 template <class F>
-Lifetime call_to_output(Value<> &out, Maybe<> output, F&& fun) {
-    if (output) {
-        return call_to_output(out, *output, fun);
+Lifetime call_to_output(Value<> &out, Out output, F&& fun) {
+    if (output.value) {
+        return call_to_output(out, *output.value, fun);
     } else {
         auto v = Value<pyVariable>::new_from();
         auto life = fun(*v);
@@ -501,61 +500,47 @@ struct TupleLock {
 //     ~SelfTupleLock() noexcept {end_acquisition(self);}
 // };
 
-char remove_mode(std::string_view &mode) {
-    char const first = mode.empty() ? 'r' : mode[0];
-    mode.remove_prefix(std::min(mode.size(), std::size_t(2)));
-    return first;
-}
-
 /******************************************************************************/
 
-auto call_with_caller(Index self, Pointer address, Mode mode, ArgView& args, CallKeywords const& kws) {
-    auto lk = std::make_shared<PythonFrame>(!kws.gil);
+auto call_with_caller(Index self, Pointer address, Mode mode, ArgView& args, Out out, GIL gil) {
+    auto lk = std::make_shared<PythonFrame>(!gil.value);
     Caller caller(lk);
     args.c.caller_ptr = &caller;
 
-    Value<> out;
-    auto life = call_to_output(out, kws.out, [&](Variable& v){
+    Value<> o;
+    auto life = call_to_output(o, out, [&](Variable& v){
         return invoke_call(v, self, address, args, mode);
     });
-    return std::make_pair(out, life);
+    return std::make_pair(o, life);
 }
-
-/******************************************************************************/
-
-// template <class Module>
-// Value<> module_call(Ignore, Always<pyTuple> args, CallKeywords &&kws) {
-//     return pyIndex::call(Switch<Module>::invoke, args, std::move(kws));
-// }
 
 /******************************************************************************/
 
 template <class I>
-auto try_access_with_caller(Index self, Pointer address, I element, Mode mode, CallKeywords const& kws) {
-    Value<> out;
+auto try_access_with_caller(Index self, Pointer address, I element, Mode mode, Out out) {
+    Value<> o;
     bool worked;
-    auto life = call_to_output(out, kws.out, [&](Variable& v) {
+    auto life = call_to_output(o, out, [&](Variable& v) {
         auto life = invoke_access(v, self, address, element, mode);
         worked = v.has_value();
         return life;
     });
-    if (!worked) out = {};
-    return std::make_pair(out, life);
+    if (!worked) o = {};
+    return std::make_pair(std::move(o), life);
 }
 
 /******************************************************************************/
 
-Value<> pyVariable::from_address(Always<> addr) {
+Value<> load_address(Ignore, Always<> addr) {
     std::uintptr_t i = view_underlying(Always<pyInt>::from(addr));
     Index idx = *reinterpret_cast<ara_index*>(i);
-    CallKeywords kws;
     // auto const total = size(args);
     ArgAlloc a(0, 0);
 
     // for (Py_ssize_t i = 0; i != total; ++i)
     //     a.view[i] = Ref(Index::of<Export>(), Mode::Write, Pointer::from(+item(args, i)));
 
-    Value<> out = call_with_caller(idx, Pointer::from(nullptr), Mode::Read, a.view, kws).first;
+    Value<> out = call_with_caller(idx, Pointer::from(nullptr), Mode::Read, a.view, {}, {}).first;
     auto v = Always<pyVariable>::from(*out);
     // v.load();
     // if (PyObject_SetAttrString(~v, "blah", ~v)) return {};
@@ -564,7 +549,7 @@ Value<> pyVariable::from_address(Always<> addr) {
     // Method::call(idx);
 }
 
-Value<> pyVariable::from_library(Always<pyType>, Always<pyTuple> args, Maybe<pyDict> kws) {
+Value<> load_library(Ignore, Always<pyTuple> args, Maybe<pyDict> kws) {
     auto [file, name] = parse<2, pyStr, pyStr>(args, kws, {"file", "function"});
     auto ctypes = Value<>::take(PyImport_ImportModule("ctypes"));
     auto CDLL = Value<>::take(PyObject_GetAttrString(~ctypes, "CDLL"));
@@ -573,7 +558,7 @@ Value<> pyVariable::from_library(Always<pyType>, Always<pyTuple> args, Maybe<pyD
     auto lib = Value<>::take(PyObject_CallFunctionObjArgs(~CDLL, ~file, nullptr));
     auto fun = Value<>::take(PyObject_GetAttr(~lib, ~name));
     auto address = Value<>::take(PyObject_CallFunctionObjArgs(~addressof, ~fun));
-    return from_address(*address);
+    return load_address({}, *address);
 }
 
 

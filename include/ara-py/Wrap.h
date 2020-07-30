@@ -12,11 +12,6 @@ struct pyType : Wrap<pyType> {
     static Always<pyType> def() {return PyType_Type;}
 
     static bool check(Always<> o) {return PyType_Check(+o);}
-    // static bool matches(Always<PyTypeObject> p) {return +p == Py_None->ob_type;}
-
-
-
-    // static Value<> load(Ignore, Ignore, Ignore) {return {Py_None, true};}
 };
 
 bool is_subclass(Always<pyType> s, Always<pyType> t) {
@@ -46,31 +41,6 @@ struct StaticType : Wrap<T> {
 
 template <class T>
 PyTypeObject StaticType<T>::definition{PyVarObject_HEAD_INIT(NULL, 0)};
-
-
-
-/******************************************************************************/
-
-// template <class T>
-// Always<Type> static_type(ara::Type<T> = {}) noexcept {return T::type();}
-
-/******************************************************************************/
-
-// template <class T>
-// T* cast_if(PyObject* o) {
-//     if (!o || !PyObject_TypeCheck(+o, +static_type<T>())) return nullptr;
-//     return std::addressof(reinterpret_cast<Wrap<T> *>(+o)->value);
-// }
-
-// template <class T>
-// T& cast_object_unsafe(PyObject *o) noexcept {return reinterpret_cast<Wrap<T> *>(o)->value;}
-
-// template <class T>
-// T& cast_object(PyObject *o) {
-//     if (!PyObject_TypeCheck(o, +static_type<T>()))
-//         throw std::invalid_argument("Expected instance of " + std::string(typeid(T).name()));
-//     return cast_object_unsafe<T>(o);
-// }
 
 /******************************************************************************/
 

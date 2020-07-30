@@ -31,6 +31,7 @@ ARA_DEFINE(span,   ara::Span);
 ARA_DEFINE(array,  ara::Array);
 ARA_DEFINE(tuple,  ara::Tuple);
 ARA_DEFINE(view,   ara::View);
+ARA_DEFINE(index,  ara::Index);
 
 }
 
