@@ -61,8 +61,9 @@ struct Out {
 };
 
 struct GIL {
-    bool value;
-    constexpr GIL() : value(true) {}
+    bool value = true;
+    constexpr GIL() = default;
+    explicit constexpr GIL(bool v) : value(v) {};
     explicit GIL(Maybe<> s) : value(s ? PyObject_IsTrue(~s) : true) {}
 };
 

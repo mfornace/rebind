@@ -52,13 +52,9 @@ enum class LockType {Read, Write};
 
 /******************************************************************************/
 
-template <class Module>
-PyObject* init_module() noexcept;
-
-/******************************************************************************/
-
 struct Object {
     using type = PyObject;
+    static auto def();
     static bool check(Ignore) {return true;}
 };
 
@@ -119,7 +115,9 @@ struct Always : Ptr<T> {
 
     template <class U>
     static Always from(Always<U> o) {
-        return T::check(o) ? *reinterpret_cast<type*>(o.base) : throw PythonError::type("bad");
+        if (T::check(o)) return *reinterpret_cast<type*>(o.base);
+        DUMP(typeid(U).name(), typeid(T).name(), T::check(o));
+        throw PythonError::type("Expected instance of %R (got %R)", ~T::def(), (~o)->ob_type);
     }
 };
 
@@ -271,16 +269,6 @@ template <int M, int N>
 union PythonObject {PyObject* base;};
 
 using Export = PythonObject<PY_MAJOR_VERSION, PY_MINOR_VERSION>;
-
-// Dump
-//  {
-//     PyErr_Format(PyExc_ImportError, "Python version %d.%d was not compiled by the ara library", Major, Minor);
-//     return nullptr;
-// }
-
-// template <>
-// PyObject* init_module<PY_MAJOR_VERSION, PY_MINOR_VERSION>(Value<PY_MAJOR_VERSION, PY_MINOR_VERSION> const &);
-
 
 }
 

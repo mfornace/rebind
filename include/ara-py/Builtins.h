@@ -115,6 +115,7 @@ inline Str view_underlying(Always<pyStr> o) {
 /******************************************************************************/
 
 struct pyBytes : Wrap<pyBytes> {
+    static Always<pyType> def() {return PyBytes_Type;}
 
     static bool check(Always<> o) {return PyBytes_Check(+o);}
     static bool matches(Always<pyType> p) {return +p == &PyBytes_Type;}
@@ -169,6 +170,7 @@ struct pyFunction : Wrap<pyFunction> {
 };
 
 struct pyMemoryView : Wrap<pyMemoryView> {
+    static Always<pyType> def() {return PyMemoryView_Type;}
 
     static bool matches(Always<pyType> p) {return +p == &PyMemoryView_Type;}
     static bool check(Always<> p) {return PyMemoryView_Check(+p);}
@@ -203,6 +205,8 @@ bool is_structured_type(Always<> def, PyTypeObject *origin) {
 struct pyTuple : Wrap<pyTuple> {
     using type = PyTupleObject;
 
+    static Always<pyType> def() {return PyTuple_Type;}
+
     static bool check(Always<> p) {return PyTuple_Check(+p);}
 
     static bool matches(Always<> p) {return is_structured_type(p, &PyTuple_Type);}
@@ -227,6 +231,12 @@ Always<> item_at(Always<pyTuple> t, Py_ssize_t i) {
     return (i < size(t)) ? item(t, i) : throw PythonError::type("out of bounds");
 }
 
+
+template <class F>
+void iterate(Always<pyTuple> t, F &&f) {
+    for (std::size_t i=0, n=size(t); i != n; ++i) f(item(t, i));
+}
+
 /******************************************************************************/
 
 Value<pyTuple> type_args(Always<> o) {
@@ -246,6 +256,8 @@ Value<pyTuple> type_args(Always<> o, Py_ssize_t n) {
 struct pyList : Wrap<pyList> {
     using type = PyListObject;
 
+    static Always<pyType> def() {return PyList_Type;}
+
     static bool check(Always<> p) {return PyList_Check(+p);}
 
     static bool matches(Always<> p) {return is_structured_type(p, &PyList_Type);}
@@ -260,9 +272,11 @@ struct pyList : Wrap<pyList> {
 inline Always<> item(Always<pyList> t, Py_ssize_t i) {return *PyList_GET_ITEM(~t, i);}
 inline auto size(Always<pyList> t) {return PyList_GET_SIZE(~t);}
 
-Value<> try_load(Ref &r, Always<> t, Maybe<> root);
+Value<> try_cast(Ref &r, Always<> t, Maybe<> root);
 
 struct pyDict : Wrap<pyDict> {
+    static Always<pyType> def() {return PyDict_Type;}
+
     static bool check(Always<> p) {return PyDict_Check(+p);}
 
     static bool matches(Always<> p) {return is_structured_type(p, &PyDict_Type);}
@@ -275,8 +289,8 @@ struct pyDict : Wrap<pyDict> {
             if (auto v = r.get<View>()) {
                 DUMP("got key value pair", v->size());
                 if (v->size() == 2) {
-                    if (auto k = try_load(v->begin()[0], key, root)) {
-                        if (auto val = try_load(v->begin()[1], value, root)) {
+                    if (auto k = try_cast(v->begin()[0], key, root)) {
+                        if (auto val = try_cast(v->begin()[1], value, root)) {
                             PyDict_SetItem(+out, +k, +val);
                             return true;
                         }

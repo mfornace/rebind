@@ -97,15 +97,10 @@ struct pyIndex : StaticType<pyIndex> {
     static Value<pyInt> as_int(Always<pyIndex> i) {return pyInt::from(i->integer());}
 
     static PyNumberMethods number_methods;
-    static PyMethodDef methods[];
 
     static void initialize_type(Always<pyType> o) noexcept;
 
     static Value<pyIndex> load(Ref &ref, Ignore, Ignore) {return {};}
-
-    static Value<> forward(Always<pyIndex>, Always<pyTuple> args, Maybe<pyDict> kws) {
-        return {};
-    }
 };
 
 /******************************************************************************/

@@ -1,6 +1,7 @@
 #pragma once
 #include "Raw.h"
 #include "Common.h"
+#include <ara/Type.h>
 
 #include <string_view>
 

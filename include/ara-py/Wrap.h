@@ -14,6 +14,8 @@ struct pyType : Wrap<pyType> {
     static bool check(Always<> o) {return PyType_Check(+o);}
 };
 
+inline auto Object::def() {return Always<pyType>(PyBaseObject_Type);}
+
 bool is_subclass(Always<pyType> s, Always<pyType> t) {
     if (s == t) return true;
     int x = PyObject_IsSubclass(~s, ~t);
