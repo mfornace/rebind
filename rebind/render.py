@@ -6,10 +6,10 @@ log = logging.getLogger(__name__)
 
 ################################################################################
 
-def render_module(pkg: str, doc: dict, set_type_names=False):
+def render_module(pkg: str, doc: dict, set_type_names=False, monkey=[]):
     clear = doc['clear_global_objects']
     try:
-        return _render_module(pkg, doc, set_type_names)
+        return _render_module(pkg, doc, set_type_names, monkey=monkey)
     except BaseException:
         clear()
         raise
@@ -18,7 +18,7 @@ def render_module(pkg: str, doc: dict, set_type_names=False):
 
 ################################################################################
 
-def _render_module(pkg, doc, set_type_names):
+def _render_module(pkg, doc, set_type_names, monkey=[]):
     log.info('rendering document into module %s', repr(pkg))
     config, out = Config(doc), doc.copy()
     config.set_type_error(ConversionError)
@@ -59,7 +59,7 @@ def _render_module(pkg, doc, set_type_names):
 
     translate.pop(None, None)
 
-    for mod in modules.union(classes):
+    for mod in modules.union(classes).union(monkey):
         log.info('rendering monkey-patching namespace {}'.format(mod))
         for k in dir(mod):
             try:

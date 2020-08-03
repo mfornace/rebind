@@ -109,7 +109,7 @@ public:
     ~Buffer() {
         if (valid) {
             PyObject *o = view.obj;
-            DUMP("before release", reference_count(view.obj));
+            DUMP("before release", reference_count(view.obj), " ", view.obj);
             PyBuffer_Release(&view);
             DUMP("after release", reference_count(o));
         }

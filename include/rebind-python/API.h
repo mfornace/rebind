@@ -34,6 +34,7 @@ struct Holder<Variable> : Holder<Var> {};
 
 struct ArrayBuffer {
     std::vector<Py_ssize_t> shape_stride;
+    std::size_t exports = 0;
     std::size_t n_elem;
     Object base;
     void *data;

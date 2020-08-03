@@ -33,23 +33,34 @@ namespace rebind {
 
 /******************************************************************************/
 
-int array_data_buffer(PyObject *self, Py_buffer *view, int flags) {
-    auto &p = cast_object<ArrayBuffer>(self);
-    view->buf = p.data;
-    if (p.base) {incref(p.base); view->obj = +p.base;}
-    else view->obj = nullptr;
-    view->itemsize = Buffer::itemsize(*p.type);
-    view->len = p.n_elem;
-    view->readonly = !p.mutate;
-    view->format = const_cast<char *>(Buffer::format(*p.type).data());
-    view->ndim = p.shape_stride.size() / 2;
-    view->shape = p.shape_stride.data();
-    view->strides = p.shape_stride.data() + view->ndim;
+int array_data_buffer(PyObject *self, Py_buffer *view, int flags) noexcept {
+    auto p = cast_if<ArrayBuffer>(self);
+    if (!p) return 1;
+    view->buf = p->data;
+
+    view->itemsize = Buffer::itemsize(*p->type);
+    view->len = p->n_elem;
+    view->readonly = !p->mutate;
+    view->format = const_cast<char *>(Buffer::format(*p->type).data());
+    view->ndim = p->shape_stride.size() / 2;
+    view->shape = p->shape_stride.data();
+    view->strides = p->shape_stride.data() + view->ndim;
     view->suboffsets = nullptr;
+    view->obj = self;
+    ++p->exports;
+    DUMP("allocating new array buffer", bool(p->base));
+    incref(view->obj);
     return 0;
 }
 
-PyBufferProcs buffer_procs{array_data_buffer, nullptr};
+void array_data_release(PyObject *self, Py_buffer *view) noexcept {
+    // auto &p  = cast_object<ArrayBuffer>(self)
+    // --p.exports;
+    // if (p.exports)
+    DUMP("releasing array buffer");
+}
+
+PyBufferProcs buffer_procs{array_data_buffer, array_data_release};
 
 template <>
 PyTypeObject Holder<ArrayBuffer>::type = []{
