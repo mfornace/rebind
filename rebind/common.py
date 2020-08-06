@@ -65,8 +65,12 @@ def default_str(self) -> str:
 def default_bool(self) -> bool:
     '''Convert self to a boolean via C++'''
 
-def default_logical(self, other) -> bool:
+def default_logical(self, other, _fun_=None):
     '''Run a logical operation via C++'''
+    try:
+        return _fun_(self, other)
+    except Exception:
+        return NotImplemented
 
 def default_int(self) -> int:
     '''Run an integer operation via C++'''
