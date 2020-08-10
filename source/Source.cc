@@ -125,11 +125,13 @@ void Target::set_current_exception() noexcept {
 }
 
 Method::stat Method::wrong_number(Target &target, Code got, Code expected) noexcept {
+    DUMP("Method::wrong_number", "got=", got, "expected=", expected);
     target.construct<ara_input>(got, expected);
     return WrongNumber;
 }
 
 Method::stat Method::wrong_type(Target &target, Code n, Index i, Qualifier q) noexcept {
+    DUMP("Method::wrong_type", "arg=", n, "expected=", i, "qualifier=", q);
     // target.construct<ara_index>(ara_mode_index(i, static_cast<ara_mode>(q)), n);
     return WrongType;
 }
@@ -168,7 +170,71 @@ Method::stat Method::wrong_return(Target &target, Index i, Qualifier q) noexcept
 //     }
 //     msg.error(s, t);
 // }
-// /******************************************************************************/
+
+/******************************************************************************/
+
+std::ostream& operator<<(std::ostream& os, Bool const &b) {
+    return os << "Bool(" << bool(b) << ")";
+}
+
+std::ostream& operator<<(std::ostream& os, Mode m) {
+    switch (m) {
+        case Mode::Read: return os << "read";
+        case Mode::Write: return os << "write";
+        case Mode::Stack: return os << "stack";
+        case Mode::Heap: return os << "heap";
+        default: return os << "<invalid Mode>";
+    }
+}
+
+std::ostream& operator<<(std::ostream& os, Qualifier q) {
+    switch (q) {
+        case Qualifier::C: return os << "const";
+        case Qualifier::L: return os << "lvalue";
+        case Qualifier::R: return os << "rvalue";
+        default: return os << "<invalid Qualifier>";
+    }
+}
+
+std::ostream& operator<<(std::ostream& os, Str const &t) {
+    return os << std::string_view(t);
+}
+
+std::ostream& operator<<(std::ostream& os, Bin const &) {
+    return os << "Bin";
+}
+
+std::ostream& operator<<(std::ostream& os, String const &t) {
+    return os << std::string_view(t);
+}
+
+std::ostream& operator<<(std::ostream& os, Binary const &) {
+    return os << "Binary";
+}
+
+std::ostream& operator<<(std::ostream& os, Span const &t) {
+    return os << "Span(" << t.shape() << ")";
+}
+
+std::ostream& operator<<(std::ostream& os, Array const &t) {
+    return os << "Array(" << t.span().shape() << ")";
+}
+
+std::ostream& operator<<(std::ostream& os, Tuple const &t) {
+    return os << "Tuple(" << t.view().shape() << ")";
+}
+
+std::ostream& operator<<(std::ostream& os, View const &t) {
+    return os << "View(" << t.shape() << ")";
+}
+
+std::ostream& operator<<(std::ostream& os, Shape const &t) {
+    os << "Shape(";
+    for (auto i : t) os << i << ",";
+    os << ")";
+    return os;
+}
+
 
 // void rvalue_fails(Variable const &v, Scope &msg, Index t) {
 //     char const *s = "could not convert to rvalue reference";

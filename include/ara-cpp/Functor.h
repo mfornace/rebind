@@ -65,7 +65,7 @@ struct Body {
             std::string_view s(*given);
             DUMP("Checking for method", name, "from", s);
             if (s == name) {
-                DUMP("found match");
+                DUMP("found match, forwarding args");
                 stat = ApplyMethod<F>::invoke(target, life, functor, std::forward<S>(self), args);
                 return true;
             }
@@ -88,18 +88,45 @@ static_assert(std::is_copy_constructible_v<Body>);
 /******************************************************************************/
 
 #warning "have to allow lifetime extension here"
+
 template <class T>
 struct MaybeArg {
     std::optional<T> value;
-    // MaybeArg(Ref &ref) :
+    explicit operator bool() const {return bool(value);}
+    T&& operator*() noexcept {return std::move(*value);}
 
+    MaybeArg(Ref &r) : value(r.get(Type<T>())) {}
 };
+
+template <class T>
+struct MaybeArg<T&> {
+    T* value;
+    explicit operator bool() const {return bool(value);}
+    T& operator*() noexcept {return *value;}
+
+    MaybeArg(Ref &r) : value(r.get(Type<T&>())) {}
+};
+
+template <class T>
+struct MaybeArg<T const &> {
+    T const* value;
+    std::optional<T> value2;
+
+    explicit operator bool() const {return value || value2;}
+    T const& operator*() noexcept {return value ? *value : *value2;}
+
+    MaybeArg(Ref &r) : value(r.get(Type<T const&>())) {
+        if (!value) value2 = r.get(Type<T>());
+    }
+};
+
+/******************************************************************************/
 
 /// Cast element i of v to type T
 template <class T>
-maybe<T> cast_index(ArgView &v, IndexedType<T> i) {
+MaybeArg<T> cast_index(ArgView &v, IndexedType<T> i) {
     DUMP("try to cast argument", i.index, "from", v[i.index].name(), "to", type_name<T>());
-    return v[i.index].get(Type<T>());
+    return v[i.index];
 }
 
 /******************************************************************************/
@@ -176,7 +203,7 @@ Method::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
 /******************************************************************************/
 
 template <bool UseCaller, class F, class ...Ts>
-Method::stat caller_invoke(Target& out, F const &f, Caller &&c, maybe<Ts> &&...ts) {
+Method::stat caller_invoke(Target& out, F const &f, Caller &&c, MaybeArg<Ts> &&...ts) {
     DUMP("casting arguments");
     if (!(ts && ...)) {
         DUMP("casting arguments failed");
@@ -234,7 +261,7 @@ struct Impl<Functor<F>> : Default<Functor<F>> {
 /******************************************************************************/
 
 template <bool UseCaller, class F, class S, class ...Ts>
-Method::stat invoke_method(Target& out, F const &f, Caller &&c, S &&self, maybe<Ts> &&...ts) {
+Method::stat invoke_method(Target& out, F const &f, Caller &&c, S &&self, MaybeArg<Ts> &&...ts) {
     DUMP("casting arguments");
     if (!(ts && ...)) {
         DUMP("casting arguments failed");
@@ -265,7 +292,8 @@ struct ApplyMethod {
      */
     template <class S>
     static Method::stat invoke(Target& out, Lifetime life, F const &f, S &&self, ArgView &args) noexcept {
-        DUMP("call_to ApplyMethod<", type_name<F>(), ">:", std::addressof(f), args.size(), life.value);
+        DUMP("call_to ApplyMethod<", type_name<F>(), ">", 
+            "address=", std::addressof(f), "args=", args.size(), "tags=", args.tags(), "lifetime=", life.value);
 
         if (args.size() != Args::size)
             return Method::wrong_number(out, args.size(), Args::size);

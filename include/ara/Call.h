@@ -37,12 +37,15 @@ struct ArgView {
 
     Ref* ptr() noexcept {return reinterpret_cast<ArgStack<1, 0> &>(c).refs;}
 
+    /// Begin/End of arguments
     auto begin() noexcept {return std::make_reverse_iterator(ptr() + c.args);}
     auto end() noexcept {return std::make_reverse_iterator(ptr());}
+    /// Number of args
     auto size() const noexcept {return c.args;}
 
     Caller &caller() const {return *static_cast<Caller *>(c.caller_ptr);}
 
+    /// Number of tags
     auto tags() const noexcept {return c.tags;}
     Ref &tag(unsigned int i) noexcept {return ptr()[c.args + c.tags + 1 - i];}
 

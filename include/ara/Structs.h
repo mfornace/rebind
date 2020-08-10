@@ -61,8 +61,6 @@ union Str {
     char const* data() const {return c.data;}
 
     operator ara_str() const & noexcept {return c;}
-
-    friend std::ostream& operator<<(std::ostream& os, Str const& s) {return os << s.view();}
 };
 
 static_assert(std::is_default_constructible_v<Str>);
@@ -273,6 +271,9 @@ union Shape {
 
     /**************************************************************************/
 
+    std::size_t operator[](std::size_t i) const noexcept {return data()[i];}
+    std::size_t& operator[](std::size_t i) noexcept {return data()[i];}
+
     constexpr std::size_t rank() const noexcept {return c.rank;}
 
     constexpr std::size_t const* data() const noexcept {
@@ -281,6 +282,15 @@ union Shape {
 
     constexpr std::size_t const* begin() const noexcept {return data();}
     constexpr std::size_t const* end() const noexcept {return data() + rank();}
+
+
+    constexpr std::size_t* data() noexcept {
+        return rank() < 2 ? &c.dims.stack : c.dims.alloc + 1;
+    }
+
+    constexpr std::size_t* begin() noexcept {return data();}
+    constexpr std::size_t* end() noexcept {return data() + rank();}
+
 
     constexpr std::size_t size() const noexcept {
         switch (rank()) {
@@ -291,7 +301,6 @@ union Shape {
     }
 
     constexpr bool empty() const noexcept {return !size();}
-
 };
 
 /******************************************************************************/
@@ -341,6 +350,7 @@ union Span {
     bool empty() const noexcept {return shape().empty();}
 
     Index index() const {return ara_get_index(c.index);}
+    Mode mode() const {return static_cast<Mode>(ara_get_mode(c.index));}
 
     template <class F>
     bool map(F &&f) const {
@@ -527,6 +537,21 @@ union Tuple {
 
 /******************************************************************************/
 
+std::ostream& operator<<(std::ostream&, Qualifier);
+std::ostream& operator<<(std::ostream&, Mode);
+std::ostream& operator<<(std::ostream&, Bool const &);
+std::ostream& operator<<(std::ostream&, Str const &);
+std::ostream& operator<<(std::ostream&, Bin const &);
+std::ostream& operator<<(std::ostream&, String const &);
+std::ostream& operator<<(std::ostream&, Binary const &);
+std::ostream& operator<<(std::ostream&, Span const &);
+std::ostream& operator<<(std::ostream&, Array const &);
+std::ostream& operator<<(std::ostream&, Tuple const &);
+std::ostream& operator<<(std::ostream&, View const &);
+std::ostream& operator<<(std::ostream&, Shape const &);
+
+/******************************************************************************/
+
 template <> struct AliasType<Bool>   {using type = ara_bool;};
 template <> struct AliasType<Str>    {using type = ara_str;};
 template <> struct AliasType<Bin>    {using type = ara_bin;};
@@ -536,6 +561,7 @@ template <> struct AliasType<Span>   {using type = ara_span;};
 template <> struct AliasType<Array>  {using type = ara_array;};
 template <> struct AliasType<Tuple>  {using type = ara_tuple;};
 template <> struct AliasType<View>   {using type = ara_view;};
+template <> struct AliasType<Shape>   {using type = ara_shape;};
 
 /******************************************************************************************/
 
@@ -549,3 +575,4 @@ ARA_DECLARE(span, ara_span);
 ARA_DECLARE(array, ara_array);
 ARA_DECLARE(tuple, ara_tuple);
 ARA_DECLARE(view, ara_view);
+ARA_DECLARE(view, ara_shape);

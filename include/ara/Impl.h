@@ -632,6 +632,26 @@ struct Switch<void, SFINAE> {
 
 /******************************************************************************************/
 
+template <class T, class SFINAE>
+struct Switch<T[], SFINAE> {
+    static Stat invoke(ara_input i, void* o, void* s, void*) noexcept {
+        switch (i.code) {
+            case code::name: {
+                return Name::Default<T[]>::name(*static_cast<ara_str *>(o));
+            }
+            case code::info: {
+                return Info::Default<T[]>::info(*static_cast<Idx *>(o), *static_cast<void const **>(s));
+            }
+            case code::check: {
+                return i.code == code::info || i.code == code::name;
+            }
+            default: {return -1;}
+        }
+    }
+};
+
+/******************************************************************************************/
+
 inline std::string_view Index::name() const noexcept {
     if (!has_value()) return "null";
     ara_str out;

@@ -79,7 +79,7 @@ struct Impl<T*> : Default<T*> {
         if (!v) {
             out.emplace(nullptr);
         } else {
-            if constexpr(!std::is_function_v<T>) {
+            if constexpr(!std::is_function_v<T> && !std::is_same_v<T, void>) {
                 if (auto p = v.get<T &>()) out.emplace(std::addressof(*p));
             }
         }

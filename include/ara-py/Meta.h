@@ -1,6 +1,7 @@
 #pragma once
 #include "Variable.h"
-#include <deque>
+#include "Buffer.h"
+#include <vector>
 #include <structmember.h>
 
 namespace ara::py {
@@ -177,13 +178,13 @@ struct bind {
     static constexpr std::string_view names[] = {"instance", "tag", "mode", "out"};
 };
 
-struct PyBind : StaticType<bind> {
+struct pyBind : StaticType<bind> {
     using type = Subtype<bind>;
 
     static void initialize_type(Always<pyType> t) {
-        define_type<PyBind>(t, "ara.bind", "ara binding decorator");
-        t->tp_call = reinterpret_kws<call, Always<PyBind>>;
-        GC<PyBind>::set_flags(t, true);
+        define_type<pyBind>(t, "ara.bind", "ara binding decorator");
+        t->tp_call = reinterpret_kws<call, Always<pyBind>>;
+        GC<pyBind>::set_flags(t, true);
     }
 
     static void placement_new(bind &f, Always<pyTuple> args, Maybe<pyDict> kws) {
@@ -195,7 +196,7 @@ struct PyBind : StaticType<bind> {
         new(&f) bind{v, tag, mode, out};
     }
 
-    static Value<> call(Always<PyBind> f, Always<pyTuple> args, Maybe<pyDict> kws);
+    static Value<> call(Always<pyBind> f, Always<pyTuple> args, Maybe<pyDict> kws);
 };
 
 /******************************************************************************/
@@ -208,20 +209,73 @@ struct Member {
     static constexpr std::string_view names[] = {"name", "out", "doc"};
 };
 
-struct PyMember : StaticType<Member> {
+struct pyMember : StaticType<Member> {
     using type = Subtype<Member>;
 
     static void initialize_type(Always<pyType> t) {
-        define_type<PyMember>(t, "ara.Member", "ara Member type");
-        t->tp_descr_get = reinterpret<get, nullptr, Always<PyMember>, Maybe<>, Ignore>;
-        GC<PyMember>::set_flags(t, true);
+        define_type<pyMember>(t, "ara.Member", "ara Member type");
+        t->tp_descr_get = reinterpret<get, nullptr, Always<pyMember>, Maybe<>, Ignore>;
+        GC<pyMember>::set_flags(t, true);
     }
 
-    static Value<> get(Always<PyMember> self, Maybe<> instance, Ignore);
+    static Value<> get(Always<pyMember> self, Maybe<> instance, Ignore);
 
     static void placement_new(Member &f, Always<pyTuple> args, Maybe<pyDict> kws) {
         auto [name, out, doc] = parse<1, pyStr, Object, pyStr>(args, kws, {"name", "out", "doc"});
         new(&f) Member{name, out, doc};
+    }
+};
+
+/******************************************************************************/
+
+struct ArrayBuffer {
+    Array t;
+    std::vector<Py_ssize_t> dims;
+};
+
+struct pyArray : StaticType<pyArray> {
+    using type = Subtype<ArrayBuffer>;
+
+
+    static void initialize_type(Always<pyType> t) {
+        static PyBufferProcs procs{
+            reinterpret<buffer, 0, Always<pyArray>, Py_buffer*, int>, 
+            nullptr
+        };
+
+        define_type<pyArray>(t, "ara.Array", "ara Array type");
+        t->tp_as_buffer = &procs;
+
+    }
+
+    static void placement_new(ArrayBuffer &f, Always<pyTuple> args, Maybe<pyDict> kws) {
+        throw PythonError::type("not implemented");
+    }
+
+    static void placement_new(ArrayBuffer &b, Array &&a) {
+        new(&b) ArrayBuffer{std::move(a)};
+        b.dims.assign(b.t.span().shape().begin(), b.t.span().shape().end());
+    }
+
+    static int buffer(Always<pyArray> self, Py_buffer *view, int flags) noexcept {
+        auto const &s = self->t.span();
+        auto const &shape = s.shape();
+
+        view->buf = s.c.data;
+        view->obj = ~self;
+        Py_INCREF(~self);
+        
+        view->itemsize = s.c.item;//Buffer::itemsize(*p.type);
+        view->len = shape.size();//p.n_elem;
+        view->readonly = true;
+        view->format = const_cast<char *>(buffer_string(s.index()));
+        
+        view->ndim = shape.rank();
+        view->shape = self->dims.data();
+        // view->strides = p.shape_stride.data() + view->ndim;
+        
+        view->suboffsets = nullptr;
+        return 0;
     }
 };
 

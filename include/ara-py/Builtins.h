@@ -175,15 +175,7 @@ struct pyMemoryView : Wrap<pyMemoryView> {
     static bool matches(Always<pyType> p) {return +p == &PyMemoryView_Type;}
     static bool check(Always<> p) {return PyMemoryView_Check(+p);}
 
-    static Value<pyMemoryView> load(Ref &ref, Value<> const &root) {
-        // if (auto p = ref.get<ArrayView>()) {
-        //     auto x = TypePtr::from<ArrayBuffer>();
-        //     auto obj = Value<>::from(PyObject_CallObject(x, nullptr));
-        //     cast_object<ArrayBuffer>(obj) = {std::move(*p), root};
-        //     return Value<>::from(PyMemoryView_FromObject(obj));
-        // }
-        return {};
-    }
+    static Value<pyMemoryView> load(Ref &ref, Value<> const &root, Value<> const &base);
 };
 
 /******************************************************************************/
@@ -280,6 +272,8 @@ struct pyDict : Wrap<pyDict> {
     static bool check(Always<> p) {return PyDict_Check(+p);}
 
     static bool matches(Always<> p) {return is_structured_type(p, &PyDict_Type);}
+
+    static Value<pyDict> empty() {return Value<pyDict>::take(PyDict_New());}
 
     template <class V>
     static Value<> load_iterable(V const& v, Always<> key, Always<> value, Maybe<> root) {

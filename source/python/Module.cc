@@ -1,5 +1,6 @@
 #include <ara-py/Meta.h>
 #include <ara-py/Dump.h>
+#include <ara-py/Buffer.h>
 
 namespace ara::py {
 
@@ -16,6 +17,8 @@ bool add_module_type(PyObject* mod, char const* name) {
 }
 
 /******************************************************************************/
+
+Value<pyDict> input_conversions, output_conversions;
 
 PyObject* init_module() noexcept {
     static PyMethodDef methods[] = {
@@ -41,9 +44,15 @@ PyObject* init_module() noexcept {
     if (!add_module_type<pyIndex>(mod, "Index")) return nullptr;
     if (!add_module_type<pyVariable>(mod, "Variable")) return nullptr;
     if (!add_module_type<pyMethod>(mod, "Method")) return nullptr;
-    if (!add_module_type<PyBind>(mod, "bind")) return nullptr;
+    if (!add_module_type<pyBind>(mod, "bind")) return nullptr;
     if (!add_module_type<pyBoundMethod>(mod, "BoundMethod")) return nullptr;
-    if (!add_module_type<PyMember>(mod, "Member")) return nullptr;
+    if (!add_module_type<pyMember>(mod, "Member")) return nullptr;
+    if (!add_module_type<pyArray>(mod, "Array")) return nullptr;
+
+    input_conversions = pyDict::empty();
+    output_conversions = pyDict::empty();
+    if (PyModule_AddObject(mod, "input_conversions", ~input_conversions) < 0) return nullptr;
+    if (PyModule_AddObject(mod, "output_conversions", ~output_conversions) < 0) return nullptr;
 
     DUMP("returning", bool(mod));
     return mod;
@@ -164,15 +173,22 @@ template <class Args>
 Value<> pyVariable::call(Always<pyVariable> v, Args args, Modes modes, Tag tag, Out out, GIL gil) {
     DUMP("variable_call", v->name());
     if (!v->has_value()) throw PythonError::type("Calling method on empty Variable");
-    auto const total = args.size();
-    ArgAlloc a(total, 0);
+    uint const tags = bool(tag.value), nargs = args.size();
+    DUMP("tag", tag.value, "tags=", tags, "args=", nargs);
+    ArgAlloc a(nargs, tags);
 
-    for (Py_ssize_t i = 0; i != total; ++i)
+    if (tags) {
+        a.view.tag(0) = Ref(Index::of<Export>(), Mode::Read, Pointer::from(~tag.value));
+    }
+
+    for (Py_ssize_t i = 0; i != nargs; ++i)
         a.view[i] = Ref(Index::of<Export>(), Mode::Write, Pointer::from(+args[i]));
     args.check();
-
-    return call_with_caller(v->index(), Pointer::from(v->address()), Mode::Read, a.view, out, gil).first;
+#warning "not sure why separate from method"
+    return call_with_caller(v->index(), Pointer::from(v->address()), Mode::Write, a.view, out, gil).first;
 }
+
+/******************************************************************************/
 
 struct TupleWrap {
     Always<pyTuple> args;
@@ -246,7 +262,7 @@ Value<> pyVariable::attribute(Always<pyVariable> v, Always<pyTuple> args, Maybe<
 
 /******************************************************************************/
 
-Value<> PyMember::get(Always<PyMember> self, Maybe<> instance, Ignore) {
+Value<> pyMember::get(Always<pyMember> self, Maybe<> instance, Ignore) {
     if (!instance) return self;
 
     if (auto o = try_variable_access(Always<pyVariable>::from(*instance), view_underlying(self->name), Mode::Read, Out{self->out}))
@@ -455,15 +471,37 @@ bool list_or_tuple(Always<> o, F &&f) {
     return false;
 }
 
+/******************************************************************************/
+
 bool dump_span(Target &target, Always<> o) {
-    DUMP("dump_span");
+    DUMP("dump_span", o);
+
     // depends on the guarantee below...hmmm...probably better to get rid of this approach
-    return list_or_tuple(o, [&target](auto t) {
+    if (list_or_tuple(o, [&target](auto t) {
         std::size_t n = size(t);
         PyObject** data = (+t)->ob_item;
         DUMP("dumping tuple/list into span", data, n);
         return target.emplace<Span>(reinterpret_cast<Export**>(data), n);
-    });
+    })) return true;
+
+    DUMP("dump_span2", o);
+
+    if (auto buff = try_buffer(o, PyBUF_FULL_RO)) {
+        DUMP("got buffer!");
+
+        Tagged<Mode> index(buffer_format(buff->format), Mode::Read);
+        void* data = buff->buf;
+
+        std::uint32_t const item = buff->itemsize;
+        
+        Shape shape(buff->shape, buff->shape + buff->ndim);
+        // for (auto &s : shape) s /= item;
+
+        DUMP("make span!!!!!");
+        return target.emplace<Span>(index, data, std::move(shape), item);
+    }
+
+    return false;
 }
 
 
@@ -606,7 +644,7 @@ Value<> pyVariable::cast(Always<pyVariable> self, Always<> type) {
 
 Value<> pyVariable::bind(Always<pyVariable> v, Always<pyTuple> args, Maybe<pyDict> kws) {
     auto [tag, mode, out] = parse<0, Object, pyStr, Object>(args, kws, {"tag", "mode", "out"});
-    return Value<PyBind>::new_from(v, tag, mode, out);
+    return Value<pyBind>::new_from(v, tag, mode, out);
 }
 
 /******************************************************************************/
@@ -618,7 +656,7 @@ bool compare_objects(Always<> a, Always<> b, int code) {
 
 /******************************************************************************/
 
-Value<> PyBind::call(Always<PyBind> f, Always<pyTuple> args, Maybe<pyDict> kws) {
+Value<> pyBind::call(Always<pyBind> f, Always<pyTuple> args, Maybe<pyDict> kws) {
     auto [fun, sig, doc, docstring] = parse<1, Object, pyTuple, pyStr, pyStr>(args, kws, {"function", "signature", "doc", "docstring"});
     
     Value<> tag = f->tag ? f->tag : Value<>::take(PyObject_GetAttrString(~fun, "__name__"));
@@ -714,6 +752,7 @@ struct ReorderWrap {
 
 Value<> pyBoundMethod::call(Always<pyBoundMethod> b, Always<pyTuple> args, Maybe<pyDict> kws) {
     Method const &m = b->method;
+    DUMP("pyBoundMethod::call", m.tag);
     if (m.signature) {
         return pyVariable::call(b->instance, ReorderWrap{*m.signature, args, kws}, Modes(m.mode), Tag{m.tag}, Out{m.out}, GIL{m.gil});
     } else {
@@ -724,6 +763,17 @@ Value<> pyBoundMethod::call(Always<pyBoundMethod> b, Always<pyTuple> args, Maybe
 
 /******************************************************************************/
 
+Value<pyMemoryView> pyMemoryView::load(Ref &ref, Value<> const &root, Value<> const &base) {
+    DUMP("trying to load memoryview");
+    if (auto p = ref.get<Array>()) {
+        DUMP("GOT AN ARRAY");
+        auto v = Value<pyArray>::new_from(std::move(*p));
+        return Value<pyMemoryView>::take(PyMemoryView_FromObject(~v));
+    }
+    return {};
+}
+
+/******************************************************************************/
 }
 
 /******************************************************************************/

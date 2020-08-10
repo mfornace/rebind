@@ -41,6 +41,16 @@ struct Type  {
     constexpr Type<unqualified<T>> operator+() const {return {};}
 };
 
+/******************************************************************************************/
+
+template <class T>
+struct Type<T[]>  {
+    using type = T;
+    constexpr Type<unqualified<T>> operator+() const {return {};}
+};
+
+/******************************************************************************************/
+
 template <class T, class U>
 constexpr std::is_same<T, U> is_same(Type<T>, Type<U>) {return {};}
 

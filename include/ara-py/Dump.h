@@ -48,15 +48,21 @@ struct ObjectGuard {
 
 }
 
+/******************************************************************************/
+
 namespace ara {
+
+/******************************************************************************/
 
 template <>
 struct Impl<py::Export> : Default<py::Export> {
-    static bool dump(Target &v, py::Export const &o) {return false;}
-
     static bool dump(Target &v, py::Export &o) {
         DUMP("dumping object!");
         return py::dump_object(v, reinterpret_cast<PyObject&>(o));
+    }
+
+    static bool dump(Target &v, py::Export const &o) {
+        return dump(v, const_cast<py::Export&>(o));
     }
 };
 
@@ -68,4 +74,8 @@ struct Impl<py::Export*> : Default<py::Export*> {
     }
 };
 
+/******************************************************************************/
+
 }
+
+/******************************************************************************/

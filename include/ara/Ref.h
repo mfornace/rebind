@@ -91,15 +91,19 @@ union Ref {
 
     /**************************************************************************************/
 
+    /// Try to convert to T via customizd conversion operators
     template <class T, std::enable_if_t<!std::is_reference_v<T>, int> = 0>
     std::optional<T> get(Type<T> t={});
 
+    /// Try to convert to T via customizd conversion operators
     template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
     std::remove_reference_t<T>* get(Type<T> t={}) const;
 
+    /// Try to convert to T via customizd conversion operators
     template <class T>
     bool get(T &t);
 
+    /// get(), but throw if it fails
     template <class T, std::enable_if_t<!std::is_reference_v<T>, int> = 0>
     T cast(Type<T> t={});
 
@@ -229,8 +233,12 @@ bool Ref::get(T& t) {
 
 template <class T, std::enable_if_t<std::is_reference_v<T>, int>>
 std::remove_reference_t<T>* Ref::get(Type<T>) const {
-    DUMP("load reference", type_name<T>(), name());
-    if (auto t = target<T>()) return t;
+    DUMP("Ref::get()", type_name<T>(), name());
+    if (auto t = target<T>()) {
+        DUMP("succeeded in Ref::get()", type_name<T>(), name());
+        return t;
+    }
+    DUMP("failed to Ref::get()", type_name<T>(), name());
     return nullptr;
 }
 

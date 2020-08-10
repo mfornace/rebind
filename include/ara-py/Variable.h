@@ -304,19 +304,20 @@ template <class F>
 Value<> map_output(Always<> t, F &&f) {
     // Type objects
     if (auto type = Maybe<pyType>(t)) {
-        if (pyNone::matches(*type))  return f(pyNone());
-        if (pyBool::matches(*type))  return f(pyBool());
-        if (pyInt::matches(*type))   return f(pyInt());
-        if (pyFloat::matches(*type)) return f(pyFloat());
-        if (pyStr::matches(*type))   return f(pyStr());
-        if (pyBytes::matches(*type)) return f(pyBytes());
-        if (pyIndex::matches(*type)) return f(pyIndex());
+        if (pyNone::matches(*type))       return f(pyNone());
+        if (pyBool::matches(*type))       return f(pyBool());
+        if (pyInt::matches(*type))        return f(pyInt());
+        if (pyFloat::matches(*type))      return f(pyFloat());
+        if (pyStr::matches(*type))        return f(pyStr());
+        if (pyBytes::matches(*type))      return f(pyBytes());
+        if (pyIndex::matches(*type))      return f(pyIndex());
+        if (pyMemoryView::matches(*type)) return f(pyMemoryView());
 // //         else if (*type == &PyBaseObject_Type)                  return as_deduced_object(std::move(r));        // object
         // if (*type == static_type<VariableType>()) return f(VariableType());           // Value
     }
 
     // Non type objects
-    DUMP("Not a type");
+    DUMP("Not a built in type");
     // if (auto p = instance<Index>(t)) return f(Index());  // Index
 
     if (pyUnion::matches(t)) return f(pyUnion());
@@ -324,7 +325,10 @@ Value<> map_output(Always<> t, F &&f) {
     if (pyTuple::matches(t)) return f(pyTuple());      // pyTuple[Ts...] for some Ts... (compound def)
     if (pyOption::matches(t)) return f(pyOption());      // pyTuple[Ts...] for some Ts... (compound def)
     if (pyDict::matches(t))  return f(pyDict());       // pyDict[K, V] for some K, V (compound def)
+
     DUMP("Not one of the structure types");
+    
+    
     return {};
 //     DUMP("custom convert ", output_conversions.size());
 //     if (auto p = output_conversions.find(Value<>{t, true}); p != output_conversions.end()) {
@@ -437,7 +441,7 @@ Lifetime call_to_output(Value<> &out, Always<> const output, F&& fun) {
     fun(*v);
     Ref r(v->index(), Mode::Write, Pointer::from(v->address()));
     if (auto o = try_cast(r, output, Value<>())) {out = o; return {};}
-    else throw PythonError(type_error("could not load"));
+    else throw PythonError(type_error("could not load the requested output type"));
 }
 
 /******************************************************************************/
