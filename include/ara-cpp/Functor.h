@@ -120,6 +120,20 @@ struct MaybeArg<T const &> {
     }
 };
 
+
+template <class T>
+struct MaybeArg<T&&> {
+    T* value;
+    std::optional<T> value2;
+
+    explicit operator bool() const {return value || value2;}
+    T&& operator*() noexcept {return std::move(value ? *value : *value2);}
+
+    MaybeArg(Ref &r) : value(r.get(Type<T&&>())) {
+        if (!value) value2 = r.get(Type<T>());
+    }
+};
+
 /******************************************************************************/
 
 /// Cast element i of v to type T
@@ -292,7 +306,7 @@ struct ApplyMethod {
      */
     template <class S>
     static Method::stat invoke(Target& out, Lifetime life, F const &f, S &&self, ArgView &args) noexcept {
-        DUMP("call_to ApplyMethod<", type_name<F>(), ">", 
+        DUMP("call_to ApplyMethod<", type_name<F>(), ">",
             "address=", std::addressof(f), "args=", args.size(), "tags=", args.tags(), "lifetime=", life.value);
 
         if (args.size() != Args::size)

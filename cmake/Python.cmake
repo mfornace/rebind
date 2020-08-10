@@ -34,4 +34,6 @@ else()
     set_target_properties(sfb_python PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
 endif()
 
+add_library(sfb::python ALIAS sfb_python)
+
 ################################################################################
