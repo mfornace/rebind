@@ -107,36 +107,36 @@ struct Value : Base {
     std::optional<T> get(Type<T> t={}) const {return as_ref().get(t);}
 
     template <class T=Value, bool Check=true, int N=0, class ...Ts>
-    decltype(auto) method(Caller c, Ts &&...ts) const {
+    decltype(auto) method(Ts &&...ts) const {
         return Output<T, Check>()([&](Target &t) {
             return parts::with_args<N>([&](auto &args) {
                 return Method::invoke(index(), t, address(), Mode::Read, args);
-            }, c, static_cast<Ts &&>(ts)...);
+            }, static_cast<Ts &&>(ts)...);
         });
     }
 
     template <class T=Value, bool Check=true, int N=0, class ...Ts>
-    decltype(auto) mutate(Caller c, Ts &&...ts) {
+    decltype(auto) mutate(Ts &&...ts) {
         return Output<T, Check>()([&](Target &t) {
             return parts::with_args<N>([&](auto &args) {
                 return Method::invoke(index(), t, address(), Mode::Write, args);
-            }, c, static_cast<Ts &&>(ts)...);
+            }, static_cast<Ts &&>(ts)...);
         });
     }
 
     template <class T=Value, bool Check=true, int N=0, class ...Ts>
-    decltype(auto) move(Caller c, Ts &&...ts) {
+    decltype(auto) move(Ts &&...ts) {
         Ref ref(index(), location() == Heap ? Mode::Heap : Mode::Stack, address());
         release();
         return Output<T, Check>()([&](Target &t) {
             return parts::with_args<N>([&](auto &args) {
                 return Method::invoke(ref.index(), t, ref.pointer(), ref.mode(), args);
-            }, c, static_cast<Ts &&>(ts)...);
+            }, static_cast<Ts &&>(ts)...);
         });
     }
 
     // template <class T=Value, int N=0, class ...Ts>
-    // maybe<T> attempt(Caller c, Ts &&...ts) const {
+    // maybe<T> attempt(Ts &&...ts) const {
     //     if (!has_value()) return Maybe<T>::none();
     //     return parts::attempt<T, N>(index(), Mode::Read, address(), c, static_cast<Ts &&>(ts)...);
     // }
@@ -228,7 +228,7 @@ inline bool Value::destruct() noexcept {
 /******************************************************************************/
 
 template <>
-struct Output<Value, true> {   
+struct Output<Value, true> {
     template <class F>
     Value operator()(F &&f) const {
         DUMP("calling to get Value");
@@ -256,7 +256,7 @@ struct Output<Value, true> {
 };
 
 template <>
-struct Output<Value, false> {   
+struct Output<Value, false> {
     template <class F>
     Value operator()(F &&f) const {
         DUMP("calling to get Value");

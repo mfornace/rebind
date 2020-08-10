@@ -74,12 +74,12 @@ union Ref {
     }
 
     template <class T, bool Check=true, int N=0, class ...Ts>
-    decltype(auto) call(Caller c, Ts &&...ts) const {
+    decltype(auto) call(Ts &&...ts) const {
         DUMP("Ref::call:", type_name<T>(), "(", sizeof...(Ts), ")");
         return Output<T, Check>()([&](Target &t) {
             return parts::with_args<N>([&](auto &args) {
                 return Method::invoke(index(), t, pointer(), Mode::Write, args);
-            }, c, static_cast<Ts &&>(ts)...);
+            }, static_cast<Ts &&>(ts)...);
         });
     }
 

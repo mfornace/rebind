@@ -177,7 +177,7 @@ struct Goo : GooBase {
 
 template <>
 struct ara::Impl<GooBase> : ara::Default<GooBase> {
-    static bool method(Body, GooBase const &) {return false;}
+    static bool method(Frame, GooBase const &) {return false;}
 };
 
 template <>
@@ -187,18 +187,22 @@ struct ara::Impl<Goo> : ara::Default<Goo> {
         return false;
     }
 
-    static bool method(Body body, Goo &self) {
+    // static bool call(Frame body) {
+    //     return body("new", [](double d) {return Goo(d);});
+    // }
+
+    static bool method(Frame body, Goo &self) {
         DUMP("calling Goo");
         return body(self, ".x", &Goo::x, {0})
             || body(self, ".x=", [](Goo &s, double x) {s.x = x;});
     }
 
-    static bool method(Body, Goo &&) {
+    static bool method(Frame, Goo &&) {
         DUMP("calling Goo");
         return false;
     }
 
-    static bool method(Body body, Goo const &self) {
+    static bool method(Frame body, Goo const &self) {
         DUMP("calling Goo body", ara::Lifetime({0}).value);
         return body(self, &Goo::x)
             || body(self, "add", [](Goo g, Goo g2, Goo g3) {return g;})
@@ -254,7 +258,7 @@ Schema make_schema() {
     s.function("string_argument", [](std::string s) {DUMP("string =", s); return s;});
     s.function("stringref_argument", [](std::string const &s) {DUMP("string =", s); return s;});
 
-    s.function("Goo.new", [](double x) -> Goo {return x;});
+    s.object("Goo", ara::Index::of<Goo>());
 
     // s.function("buffer", [](std::tuple<ara::BinaryData, std::type_index, std::vector<std::size_t>> i) {
     //     DUMP(std::get<0>(i).size());
@@ -283,7 +287,7 @@ using Boot = BootKey*;
 
 template <>
 struct ara::Impl<Boot> : ara::Default<Boot> {
-    static bool method(ara::Body body, Boot const &self) {
+    static bool method(ara::Frame body, Boot const &self) {
         return body(self, [](Boot const &self) {
             return make_schema();
         });

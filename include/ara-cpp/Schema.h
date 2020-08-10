@@ -83,12 +83,12 @@ struct Impl<Schema> : Default<Schema> {
         } else return false;
     }
 
-    static bool method(Body m, Schema const &s) {
+    static bool method(Frame m, Schema const &s) {
         DUMP("trying Schema method!", m.args.tags());
         DUMP("got to the module: # args =", m.args.size(), ", tags =", m.args.tags());
-        
+
         if (m.args.tags() || !m.args.size()) return false;
-        
+
         for (auto const &a : m.args) {
             DUMP("module call: argument =", a.name());
         }

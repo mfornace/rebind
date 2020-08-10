@@ -1,6 +1,5 @@
 #pragma once
 #include "Index.h"
-#include "Frame.h"
 #include "Impl.h"
 #include <optional>
 
@@ -53,7 +52,7 @@ struct Output;
 namespace parts {
 
 template <int N, class F, class ...Ts>
-decltype(auto) with_args(F &&f, Caller &c, Ts &&...ts);
+decltype(auto) with_args(F &&f, Ts &&...ts);
 
 
 inline void swap(Index i, Pointer l, Pointer r) noexcept {

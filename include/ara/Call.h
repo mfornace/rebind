@@ -15,8 +15,8 @@ struct ArgStack : ara_args {
     Ref refs[Args + Tags];
 
     template <class ...Ts>
-    ArgStack(Caller &c, Ts &&...ts) noexcept
-        : ara_args{&c, Tags, Args}, refs{static_cast<Ts &&>(ts)...} {
+    ArgStack(Context c, Ts &&...ts) noexcept
+        : ara_args{c, Tags, Args}, refs{static_cast<Ts &&>(ts)...} {
         static_assert(Args + Tags == sizeof...(Ts));
         // Possible to do at compile time...but sort of tedious.
         std::reverse(std::begin(refs), std::end(refs));
@@ -27,7 +27,7 @@ struct ArgStack : ara_args {
 
 template <>
 struct ArgStack<0, 0> : ara_args {
-    ArgStack(Caller& c) noexcept : ara_args{&c, 0, 0} {}
+    ArgStack(Context c) noexcept : ara_args{c, 0, 0} {}
 };
 
 /******************************************************************************/
@@ -42,8 +42,6 @@ struct ArgView {
     auto end() noexcept {return std::make_reverse_iterator(ptr());}
     /// Number of args
     auto size() const noexcept {return c.args;}
-
-    Caller &caller() const {return *static_cast<Caller *>(c.caller_ptr);}
 
     /// Number of tags
     auto tags() const noexcept {return c.tags;}
@@ -272,7 +270,7 @@ static_assert(std::is_same_v<typename Reduce< void(double) >::type, void(*)(doub
 /******************************************************************************/
 
 template <int N, class F, class ...Ts>
-decltype(auto) with_exact_args(F &&f, Caller &c, Arg<Ts &&> ...ts) {
+decltype(auto) with_exact_args(F &&f, Context &c, Arg<Ts &&> ...ts) {
     static_assert(N <= sizeof...(Ts));
     ArgStack<N, sizeof...(Ts) - N> args(c, ts.ref()...);
     DUMP(type_name<F>(), " tags=", N, " args=", reinterpret_cast<ArgView &>(args).size());
@@ -281,19 +279,19 @@ decltype(auto) with_exact_args(F &&f, Caller &c, Arg<Ts &&> ...ts) {
 }
 
 template <int N, class F, class ...Ts>
-decltype(auto) with_args(F &&f, Caller &c, Ts &&...ts) {
+decltype(auto) with_args(F &&f, Context &c, Ts &&...ts) {
     return with_exact_args<N, F, typename Reduce<Ts>::type...>(
         std::forward<F>(f), c, static_cast<Ts &&>(ts)...);
 }
 
 // template <class T, int N, class ...Ts>
-// maybe<T> attempt_args(Index i, Pointer self, Mode mode, Caller &c, Arg<Ts &&> ...ts) {
+// maybe<T> attempt_args(Index i, Pointer self, Mode mode, Context &c, Arg<Ts &&> ...ts) {
 //     ArgStack<N, sizeof...(Ts) - N> args(c, ts.ref()...);
 //     return Output<T>::attempt(i, self, mode, reinterpret_cast<ArgView &>(args));
 // }
 
 // template <class T, int N, class ...Ts>
-// maybe<T> attempt(Index i, Pointer self, Mode mode, Caller &c, Ts &&...ts) {
+// maybe<T> attempt(Index i, Pointer self, Mode mode, Context &c, Ts &&...ts) {
 //     return attempt_args<T, N, typename Reduce<Ts>::type...>(i, self, mode, c, static_cast<Ts &&>(ts)...);
 // }
 

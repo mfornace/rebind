@@ -12,13 +12,13 @@ struct Lock {
     using type = std::uintptr_t;
     type count;
     void subscribe() {count += 2;}
-    
+
     bool lock() {
         if (count & type(1)) return false;
         count |= type(1);
         return true;
     }
-    
+
     void unlock() {count &= ~type(1);}
 };
 
@@ -144,7 +144,7 @@ struct pyVariable : StaticType<pyVariable> {
     using type = VariableObject;
 
     static void placement_new(Variable &v) noexcept {new (&v) Variable();}
-    
+
     static void placement_new(Variable &v, Always<pyTuple> args, Maybe<pyDict> kws) noexcept {
         new (&v) Variable();
     }
@@ -201,13 +201,13 @@ struct pyVariable : StaticType<pyVariable> {
     template <class Args>
     static Value<> call(Always<pyVariable>, Args, Modes, Tag, Out, GIL);
     static Value<> fcall(Always<pyVariable>, Always<pyTuple>, Maybe<pyDict>);
-    
+
     static Value<> method(Always<pyVariable>, Always<pyTuple>, Modes, Tag, Out, GIL);
     static Value<> fmethod(Always<pyVariable>, Always<pyTuple>, Maybe<pyDict>);
 
     static Value<> element(Always<pyVariable>, Always<pyTuple>, Maybe<pyDict>);
     static Value<> attribute(Always<pyVariable>, Always<pyTuple>, Maybe<pyDict>);
-    
+
     static Value<> getattr(Always<pyVariable>, Always<> key);
 
     static Value<> bind(Always<pyVariable>, Always<pyTuple>, Maybe<pyDict> kws);
@@ -327,8 +327,8 @@ Value<> map_output(Always<> t, F &&f) {
     if (pyDict::matches(t))  return f(pyDict());       // pyDict[K, V] for some K, V (compound def)
 
     DUMP("Not one of the structure types");
-    
-    
+
+
     return {};
 //     DUMP("custom convert ", output_conversions.size());
 //     if (auto p = output_conversions.find(Value<>{t, true}); p != output_conversions.end()) {
@@ -408,7 +408,7 @@ Lifetime invoke_access(Variable &out, Index self, Pointer address, I element, Mo
 
 Value<pyVariable> new_variable_subtype(Always<pyType> t) {
     auto out = Value<pyVariable>::take(t->tp_alloc(+t, 0)); // allocate the object; 0 unused
-    pyVariable::placement_new(*out); 
+    pyVariable::placement_new(*out);
     DUMP(bool(out), reference_count(out));
     return out;
 }
@@ -538,10 +538,43 @@ struct TupleLock {
 
 /******************************************************************************/
 
+/// RAII release of Python GIL
+// struct PythonFrame final : Frame {
+//     std::mutex mutex;
+//     PyThreadState *state = nullptr;
+//     bool no_gil;
+
+//     explicit PythonFrame(bool no_gil) : no_gil(no_gil) {}
+
+//     void enter() override { // noexcept
+//         DUMP("running with nogil=", no_gil);
+//         // release GIL and save the thread
+//         if (no_gil && !state) state = PyEval_SaveThread();
+//     }
+
+//     // std::shared_ptr<Frame> new_frame(std::shared_ptr<Frame> t) noexcept override {
+//     //     DUMP("suspended Python ", bool(t));
+//     //     // if we already saved the python thread state, return this
+//     //     if (no_gil || state) return std::move(t);
+//     //     // return a new frame that can be entered
+//     //     else return std::make_shared<PythonFrame>(no_gil);
+//     // }
+
+//     // acquire GIL; lock mutex to prevent multiple threads trying to get the thread going
+//     void acquire() noexcept {if (state) {mutex.lock(); PyEval_RestoreThread(state);}}
+
+//     // release GIL; unlock mutex
+//     void release() noexcept {if (state) {state = PyEval_SaveThread(); mutex.unlock();}}
+
+//     // reacquire the GIL and restart the thread, if required
+//     ~PythonFrame() {if (state) PyEval_RestoreThread(state);}
+// };
+
+int python_context();
+
 auto call_with_caller(Index self, Pointer address, Mode mode, ArgView& args, Out out, GIL gil) {
-    auto lk = std::make_shared<PythonFrame>(!gil.value);
-    Caller caller(lk);
-    args.c.caller_ptr = &caller;
+    // auto lk = std::make_shared<PythonFrame>(!gil.value);
+    args.c.context = python_context;
 
     Value<> o;
     auto life = call_to_output(o, out, [&](Variable& v){
@@ -591,7 +624,7 @@ Value<> load_library(Ignore, Always<pyTuple> args, Maybe<pyDict> kws) {
     auto ctypes = Value<>::take(PyImport_ImportModule("ctypes"));
     auto CDLL = Value<>::take(PyObject_GetAttrString(~ctypes, "CDLL"));
     auto addressof = Value<>::take(PyObject_GetAttrString(~ctypes, "addressof"));
-    
+
     auto lib = Value<>::take(PyObject_CallFunctionObjArgs(~CDLL, ~file, nullptr));
     auto fun = Value<>::take(PyObject_GetAttr(~lib, ~name));
     auto address = Value<>::take(PyObject_CallFunctionObjArgs(~addressof, ~fun));

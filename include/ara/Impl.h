@@ -460,7 +460,7 @@ struct Load {
 
 /******************************************************************************/
 
-ARA_DETECT_TRAIT(has_method, decltype(Impl<T>::method(DeclAny(), std::declval<T&&>())));
+ARA_DETECT_TRAIT(has_call, decltype(Impl<T>::call(DeclAny(), std::declval<T&&>())));
 // stat operator()(Target *out, T, ArgView &args)
 
 // Call an object
@@ -471,13 +471,36 @@ ARA_DETECT_TRAIT(has_method, decltype(Impl<T>::method(DeclAny(), std::declval<T&
 // -- WrongReturn: wrong type or qualifier of return
 // -- WrongType: wrong type of argument
 // -- Exception: Exception while executing the function
-struct Method {
+struct Call {
     enum stat : Stat {Impossible, WrongNumber, WrongType, WrongReturn,
                       None, Stack, Heap, Write, Read,
                       Exception, OutOfMemory};
 
     static constexpr bool was_invoked(stat s) {return 3 < s;}
 
+    template <class T>
+    struct Default {
+        static stat call_nothrow(Target &out, ArgView &args) noexcept {
+            stat s = Impossible;
+            if constexpr(has_call_v<T>) {Impl<T>::call({out, args, s});}
+            return s;
+        }
+    };
+
+    static stat invoke(Idx f, Target &out, ArgView &args) noexcept {
+        return static_cast<stat>(f({code::call, {}}, &out, {}, reinterpret_cast<ara_args *>(&args)));
+    }
+
+    [[nodiscard]] static stat wrong_number(Target &, Code, Code) noexcept;
+    static stat wrong_type(Target &, Code, Index, Qualifier) noexcept;
+    [[nodiscard]] static stat wrong_return(Target &, Index, Qualifier) noexcept;
+};
+
+/******************************************************************************/
+
+ARA_DETECT_TRAIT(has_method, decltype(Impl<T>::method(DeclAny(), std::declval<T&&>())));
+
+struct Method : Call {
     template <class T>
     struct Default {
         static stat method_nothrow(Target &out, Pointer self, ArgView &args, Mode mode) noexcept {
@@ -497,10 +520,6 @@ struct Method {
     static stat invoke(Idx f, Target &out, Pointer self, Mode qualifier, ArgView &args) noexcept {
         return static_cast<stat>(f({code::method, static_cast<Code>(qualifier)}, &out, self.base, reinterpret_cast<ara_args *>(&args)));
     }
-
-    [[nodiscard]] static stat wrong_number(Target &, Code, Code) noexcept;
-    static stat wrong_type(Target &, Code, Index, Qualifier) noexcept;
-    [[nodiscard]] static stat wrong_return(Target &, Index, Qualifier) noexcept;
 };
 
 /******************************************************************************************/
@@ -529,6 +548,7 @@ struct Default :
     Compare::Default<T>,
     Dump::Default<T>,
     Load::Default<T>,
+    Call::Default<T>,
     Method::Default<T> {};
 
 template <class T, class SFINAE>
@@ -594,6 +614,9 @@ struct Switch {
 
             case code::dump:
                 return Impl<T>::dump_nothrow(*static_cast<Target *>(o), Pointer::from(s), static_cast<Mode>(i.tag));
+
+            case code::call:
+                return Impl<T>::call_nothrow(*static_cast<Target *>(o), *reinterpret_cast<ArgView *>(args));
 
             case code::method:
                 return Impl<T>::method_nothrow(*static_cast<Target *>(o), Pointer::from(s), *reinterpret_cast<ArgView *>(args), static_cast<Mode>(i.tag));

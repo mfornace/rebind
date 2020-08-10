@@ -13,12 +13,6 @@ template <class F>
 struct Functor {
     F function;
     Lifetime lifetime;
-    // tricky... may have a difference depending if return result is coerced to value...
-
-    // constexpr operator F const &() const noexcept {
-    //     DUMP("cast into Functor", &function, reinterpret_cast<void const *>(function), type_name<F>());
-    //     return function;
-    // }
 };
 
 // This is some future thing for default arguments
@@ -30,26 +24,31 @@ struct DefaultFunctor : Functor<F> {
 
 /******************************************************************************/
 
-// template <class F, class SFINAE=void>
-// struct FunctorCall;
-
-// template <int N, class F, class SFINAE=void>
-// struct DefaultFunctorCall;
-
 template <class F, class SFINAE=void>
 struct ApplyMethod;
 
 /******************************************************************************/
 
 // This is the function context with arguments, output, output stat
-struct Body {
+struct Frame {
     Target &target;
     ArgView &args;
     Method::stat &stat;
 
+    // template <class F>
+    // [[nodiscard]] bool operator()(F const functor, Lifetime life={}) {
+    //     DUMP("Frame::operator()", args.tags(), args.size());
+    //     if (args.tags() == 0) {
+    //         DUMP("found match");
+    //         stat = ApplyMethod<F>::invoke(target, life, functor, args);
+    //         return true;
+    //     }
+    //     return false;
+    // }
+
     template <class S, class F>
     [[nodiscard]] bool operator()(S &&self, F const functor, Lifetime life={}) {
-        DUMP("Body::operator()", args.tags(), args.size());
+        DUMP("Frame::operator()", args.tags(), args.size());
         if (args.tags() == 0) {
             DUMP("found match");
             stat = ApplyMethod<F>::invoke(target, life, functor, std::forward<S>(self), args);
@@ -60,7 +59,7 @@ struct Body {
 
     template <class S, class F>
     [[nodiscard]] bool operator()(S &&self, std::string_view name, F const functor, Lifetime life={}) {
-        DUMP("Body::operator()", args.tags(), args.size());
+        DUMP("Frame::operator()", args.tags(), args.size());
         if (args.tags() == 1) if (auto given = args.tag(0).get<Str>()) {
             std::string_view s(*given);
             DUMP("Checking for method", name, "from", s);
@@ -75,79 +74,21 @@ struct Body {
 
     template <class Base, class S>
     [[nodiscard]] bool derive(S &&self) {
-        static_assert(std::is_reference_v<Base>, "T should be a reference type for Body::derive<T>()");
+        static_assert(std::is_reference_v<Base>, "T should be a reference type for Frame::derive<T>()");
         static_assert(std::is_convertible_v<S &&, Base>);
         static_assert(!std::is_same_v<unqualified<S>, unqualified<Base>>);
         return Impl<unqualified<Base>>::method(*this, std::forward<S>(self));
     }
 };
 
-static_assert(std::is_move_constructible_v<Body>);
-static_assert(std::is_copy_constructible_v<Body>);
-
-/******************************************************************************/
-
-#warning "have to allow lifetime extension here"
-
-template <class T>
-struct MaybeArg {
-    std::optional<T> value;
-    explicit operator bool() const {return bool(value);}
-    T&& operator*() noexcept {return std::move(*value);}
-
-    MaybeArg(Ref &r) : value(r.get(Type<T>())) {}
-};
-
-template <class T>
-struct MaybeArg<T&> {
-    T* value;
-    explicit operator bool() const {return bool(value);}
-    T& operator*() noexcept {return *value;}
-
-    MaybeArg(Ref &r) : value(r.get(Type<T&>())) {}
-};
-
-template <class T>
-struct MaybeArg<T const &> {
-    T const* value;
-    std::optional<T> value2;
-
-    explicit operator bool() const {return value || value2;}
-    T const& operator*() noexcept {return value ? *value : *value2;}
-
-    MaybeArg(Ref &r) : value(r.get(Type<T const&>())) {
-        if (!value) value2 = r.get(Type<T>());
-    }
-};
-
-
-template <class T>
-struct MaybeArg<T&&> {
-    T* value;
-    std::optional<T> value2;
-
-    explicit operator bool() const {return value || value2;}
-    T&& operator*() noexcept {return std::move(value ? *value : *value2);}
-
-    MaybeArg(Ref &r) : value(r.get(Type<T&&>())) {
-        if (!value) value2 = r.get(Type<T>());
-    }
-};
-
-/******************************************************************************/
-
-/// Cast element i of v to type T
-template <class T>
-MaybeArg<T> cast_index(ArgView &v, IndexedType<T> i) {
-    DUMP("try to cast argument", i.index, "from", v[i.index].name(), "to", type_name<T>());
-    return v[i.index];
-}
+static_assert(std::is_move_constructible_v<Frame>);
+static_assert(std::is_copy_constructible_v<Frame>);
 
 /******************************************************************************/
 
 /// Invoke a function and arguments, storing output if it doesn't return void
 template <class F, class ...Ts>
-Method::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
+Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
     static_assert(std::is_invocable_v<F, Ts...>, "Function is not invokable with designated arguments");
     using O = simplify_result<std::invoke_result_t<F, Ts...>>;
     using U = unqualified<O>;
@@ -155,7 +96,7 @@ Method::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
 
     if (target.c.mode == Target::None || (std::is_void_v<U> && !target.index())) {
         (void) std::invoke(f, std::forward<Ts>(ts)...);
-        return Method::None;
+        return Call::None;
     }
 
     if constexpr(!std::is_void_v<U>) { // void already handled
@@ -163,12 +104,12 @@ Method::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
 
             if (std::is_same_v<O, U &> && target.can_yield(Target::Write)) {
                 target.set_reference(std::invoke(f, std::forward<Ts>(ts)...));
-                return Method::Write;
+                return Call::Write;
             }
 
             if (std::is_reference_v<O> && target.can_yield(Target::Read)) {
                 target.set_reference(static_cast<U const &>(std::invoke(f, std::forward<Ts>(ts)...)));
-                return Method::Read;
+                return Call::Read;
             }
 
             if (std::is_same_v<O, U> || std::is_convertible_v<O, U>) {
@@ -176,22 +117,22 @@ Method::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
                     Allocator<U>::invoke_stack(p, f, std::forward<Ts>(ts)...);
                     target.set_index<U>();
                     if (!std::is_same_v<O, U> && !is_dependent<U>) target.set_lifetime({});
-                    return Method::Stack;
+                    return Call::Stack;
                 }
                 if (target.can_yield(Target::Heap)) {
                     target.set_heap(Allocator<U>::invoke_heap(f, std::forward<Ts>(ts)...));
                     if (!std::is_same_v<O, U> && !is_dependent<U>) target.set_lifetime({});
-                    return Method::Heap;
+                    return Call::Heap;
                 }
             }
 
         } else {
             if constexpr(std::is_reference_v<O>) {
                 switch (Ref(std::invoke(f, std::forward<Ts>(ts)...)).get_to(target)) {
-                    case Load::Exception: return Method::Exception;
-                    case Load::OutOfMemory: return Method::OutOfMemory;
+                    case Load::Exception: return Call::Exception;
+                    case Load::OutOfMemory: return Call::OutOfMemory;
                     case std::is_same_v<O, U &> ? Load::Write : Load::Read:
-                        return std::is_same_v<O, U &> ? Method::Write : Method::Read;
+                        return std::is_same_v<O, U &> ? Call::Write : Call::Read;
                     default: {}
                 }
             } else {
@@ -199,10 +140,10 @@ Method::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
                 new (&storage) U(std::invoke(f, std::forward<Ts>(ts)...));
                 Ref out(Index::of<U>(), Mode::Stack, Pointer::from(&storage));
                 switch (out.get_to(target)) {
-                    case Load::Exception: return Method::Exception;
-                    case Load::OutOfMemory: return Method::OutOfMemory;
-                    case Load::Stack: return Method::Stack;
-                    case Load::Heap: return Method::Heap;
+                    case Load::Exception: return Call::Exception;
+                    case Load::OutOfMemory: return Call::OutOfMemory;
+                    case Load::Stack: return Call::Stack;
+                    case Load::Heap: return Call::Heap;
                     default: {}
                 }
             }
@@ -214,91 +155,112 @@ Method::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
     return Method::wrong_return(target, Index::of<U>(), qualifier_of<O>);
 }
 
-/******************************************************************************/
-
-template <bool UseCaller, class F, class ...Ts>
-Method::stat caller_invoke(Target& out, F const &f, Caller &&c, MaybeArg<Ts> &&...ts) {
-    DUMP("casting arguments");
-    if (!(ts && ...)) {
-        DUMP("casting arguments failed");
-        Code i = 0;
-        (void) ((ts ? (++i, true) : ((void) Method::wrong_type(out, i, Index::of<unqualified<Ts>>(), qualifier_of<Ts>), false)) && ...);
-        return Method::WrongType;
-    }
-    DUMP("caller_invoke");
-    c.enter();
-    if constexpr(UseCaller) {
-        return invoke_to(out, f, std::move(c), std::forward<Ts>(*ts)...);
-    } else {
-        return invoke_to(out, f, std::forward<Ts>(*ts)...);
-    }
-}
 
 /******************************************************************************/
 
-template <class F>
-struct Impl<Functor<F>> : Default<Functor<F>> {
-    using Signature = simplify_signature<F>;
-    using Return = decltype(first_type(Signature()));
-    using UseCaller = decltype(second_is_convertible<Caller>(Signature()));
-    using Args = decltype(without_first_types<1 + int(UseCaller::value)>(Signature()));
+template <class T>
+struct ArgCast {
+    T value;
 
-    /*
-     Interface implementation for a function with no optional arguments.
-     - Returns WrongNumber if args is not the right length
-     */
-    static bool method(Body m, Functor<F> const &f) noexcept {
-        DUMP("call_to function adapter", type_name<F>(), std::addressof(f), "args=", m.args.size());
-        if (m.args.tags())
-            return Method::wrong_number(m.target, m.args.tags(), 0);
-        if (m.args.size() != Args::size)
-            return Method::wrong_number(m.target, m.args.size(), Args::size);
+    T&& operator*() noexcept {return std::move(value);}
 
-        auto frame = m.args.caller().new_frame(); // make a new unentered frame, must be noexcept
-        Caller handle(frame); // make the Caller with a weak reference to frame
-
-        m.target.set_lifetime(f.lifetime);
-        m.stat = m.target.make_noexcept([&] {
-            return Args::indexed([&](auto ...ts) {
-                DUMP("invoking...");
-                return caller_invoke<UseCaller::value, F, decltype(*ts)...>(
-                    m.target, f.function, std::move(handle), cast_index(m.args, ts)...);
-            });
-        });
-        DUMP("invoked with stat and lifetime", m.stat, f.lifetime.value);
-        return Method::was_invoked(m.stat);
-        // It is possible that maybe the invoked function's C++ exception may propagated in the future, assuming the caller policies allow this.
-        // Therefore, resource destruction must be done via the frame going out of scope.
+    static bool put(ArgCast* a, Ref& r) {
+        if (auto p = r.get(Type<T>())) {
+            new (a) ArgCast{std::move(*p)};
+            return true;
+        } else return false;
     }
+};
+
+template <class T>
+struct ArgCast<T&> {
+    T* value;
+
+    T& operator*() noexcept {return *value;}
+
+    static bool put(ArgCast* a, Ref& r) {
+        if (auto p = r.get(Type<T&>())) {
+            new (a) ArgCast{p};
+            return true;
+        } else return false;
+    }
+};
+
+template <class T>
+struct ArgCast<T const &> {
+    std::aligned_union_t<0, T, T const*> t;
+    bool held;
+
+    T const& operator*() noexcept {return held ? reinterpret_cast<T const&>(t) : *reinterpret_cast<T const*&>(t);}
+
+    static bool put(ArgCast* a, Ref& r) {
+        if (auto p = r.get(Type<T const&>())) {new (&a->t) T const*(p); a->held = false; return true;}
+        if (auto p = r.get(Type<T>()))        {new (&a->t) T(std::move(*p)); a->held = true; return true;}
+        return false;
+    }
+
+    ~ArgCast() noexcept {if (held) reinterpret_cast<T&>(t).~T();}
+};
+
+template <class T>
+struct ArgCast<T&&> {
+    std::aligned_union_t<0, T, T*> t;
+    bool held;
+
+    T&& operator*() noexcept {return std::move(held ? reinterpret_cast<T &>(t) : *reinterpret_cast<T*&>(t));}
+
+    static bool put(ArgCast* a, Ref& r) {
+        if (auto p = r.get(Type<T&&>())) {new (&a->t) T*(p); a->held = false; return true;}
+        if (auto p = r.get(Type<T>()))   {new (&a->t) T(std::move(*p)); a->held = true; return true;}
+        return false;
+    }
+
+    ~ArgCast() noexcept {if (held) reinterpret_cast<T&>(t).~T();}
 };
 
 /******************************************************************************/
 
-template <bool UseCaller, class F, class S, class ...Ts>
-Method::stat invoke_method(Target& out, F const &f, Caller &&c, S &&self, MaybeArg<Ts> &&...ts) {
-    DUMP("casting arguments");
-    if (!(ts && ...)) {
-        DUMP("casting arguments failed");
-        Code i = 0;
-        (void) ((ts ? (++i, true) : (Method::wrong_type(out, i, Index::of<unqualified<Ts>>(), qualifier_of<Ts>), false)) && ...);
-        return Method::WrongType;
+template <class ...Ts>
+struct CastedArgs {
+    std::tuple<storage_like<ArgCast<Ts>>...> storage;
+    std::uint32_t done = 0;
+
+    template <class F, std::size_t ...Is>
+    Call::stat operator()(Target& t, ArgView& args, F const& callback, std::index_sequence<Is...>) {
+        bool ok = ((ArgCast<Ts>::put(reinterpret_cast<ArgCast<Ts>*>(&std::get<Is>(storage)),
+            args[Is]) ? (++done, true) : false) && ...);
+        if (ok) return callback(*reinterpret_cast<ArgCast<Ts>&>(std::get<Is>(storage))...);
+
+        Call::stat err;
+        (void)((Is == done ? (err = Call::wrong_type(t, Is, Index::of<unqualified<Ts>>(), qualifier_of<Ts>), true) : false) || ...);
+        return err;
     }
-    DUMP("invoke_method");
-    c.enter();
-    if constexpr(UseCaller) {
-        return invoke_to(out, f, std::forward<S>(self), std::move(c), std::forward<Ts>(*ts)...);
-    } else {
-        return invoke_to(out, f, std::forward<S>(self), std::forward<Ts>(*ts)...);
+
+    template <std::size_t ...Is>
+    void destruct(std::index_sequence<Is...>) noexcept {
+        if (done == sizeof...(Ts)) {
+            (reinterpret_cast<ArgCast<Ts>&>(std::get<Is>(storage)).~ArgCast<Ts>(), ...);
+        } else {
+            (void)((Is < done ? (reinterpret_cast<ArgCast<Ts>&>(std::get<Is>(storage)).~ArgCast<Ts>(), true) : false) && ...);
+        }
     }
+
+    ~CastedArgs() noexcept {destruct(std::make_index_sequence<sizeof...(Ts)>());}
+};
+
+template <class F, class ...Ts>
+Call::stat apply_casts(Pack<Ts...>, Target& t, ArgView& args, F const& callback) {
+    return CastedArgs<Ts...>()(t, args, callback, std::make_index_sequence<sizeof...(Ts)>());
 }
+
+/******************************************************************************/
 
 // This thing does the job of converting arguments, handling the call context
 template <class F, class SFINAE>
 struct ApplyMethod {
     using Signature = simplify_signature<F>;
     using Return = decltype(first_type(Signature()));
-    using UseCaller = decltype(third_is_convertible<Caller>(Signature()));
-    using Args = decltype(without_first_types<2 + int(UseCaller::value)>(Signature()));
+    using Args = decltype(without_first_types<2>(Signature()));
 
     /*
      Interface implementation for a function with no optional arguments.
@@ -312,19 +274,52 @@ struct ApplyMethod {
         if (args.size() != Args::size)
             return Method::wrong_number(out, args.size(), Args::size);
 
-        auto frame = args.caller().new_frame(); // make a new unentered frame, must be noexcept
-        Caller handle(frame); // make the Caller with a weak reference to frame
-
         out.set_lifetime(life);
         return out.make_noexcept([&] {
-            return Args::indexed([&](auto ...ts) {
-                DUMP("invoking...");
-                return invoke_method<UseCaller::value, F, S &&, decltype(*ts)...>(
-                    out, f, std::move(handle), std::forward<S>(self), cast_index(args, ts)...);
+            return apply_casts(Args(), out, args, [&](auto &&...ts) {
+                return invoke_to(out, f, std::forward<S>(self), std::forward<decltype(ts)>(ts)...);
             });
         });
-        // It is planned to be allowed that the invoked function's C++ exception may propagated in the future, assuming the caller policies allow this.
-        // Therefore, resource destruction must be done via the frame going out of scope.
+    }
+};
+
+/******************************************************************************/
+
+// Impl for a functor
+// method() calls the functor with argview, returning result in target
+// prepare() takes the argview, casts each argument to the exact type requested
+// some arguments are fine as is or easily convertible, these can be just left in the argview
+// some arguments are non-trivial, have to allocate space for them ...
+// better not to do this on heap, so should just allocate the maybe tuple for this stuff
+// currently on the stack but it won't be able to be kept there if has to be returned
+// other option is to take a pointer which actually does invocation...?
+// could put the returned args into the target, would sometimes fit there
+// dont really need the bool annotation though...
+template <class F>
+struct Impl<Functor<F>> : Default<Functor<F>> {
+    using Signature = simplify_signature<F>;
+    using Return = decltype(first_type(Signature()));
+    using Args = decltype(without_first_types<1>(Signature()));
+
+    /*
+     Interface implementation for a function with no optional arguments.
+     - Returns WrongNumber if args is not the right length
+     */
+    static bool method(Frame m, Functor<F> const &f) noexcept {
+        DUMP("call_to function adapter", type_name<F>(), std::addressof(f), "args=", m.args.size());
+        if (m.args.tags())
+            return Call::wrong_number(m.target, m.args.tags(), 0);
+        if (m.args.size() != Args::size)
+            return Call::wrong_number(m.target, m.args.size(), Args::size);
+
+        m.target.set_lifetime(f.lifetime);
+        m.stat = m.target.make_noexcept([&] {
+            return apply_casts(Args(), m.target, m.args, [&](auto &&...ts) {
+                return invoke_to(m.target, f.function, std::forward<decltype(ts)>(ts)...);
+            });
+        });
+        DUMP("invoked with stat and lifetime", m.stat, f.lifetime.value);
+        return Call::was_invoked(m.stat);
     }
 };
 
@@ -347,14 +342,14 @@ auto make_functor(F f, Lifetime const lifetime={}) {
     return Out{std::move(simplified), lifetime};
 }
 
+/******************************************************************************/
 
 // N is the number of trailing optional arguments
 template <int N, class F>
 struct Impl<DefaultFunctor<N, F>> : Default<DefaultFunctor<N, F>> {
     using Signature = simplify_signature<F>;
     using Return = decltype(first_type(Signature()));
-    using UsesCaller = decltype(second_is_convertible<Caller>(Signature()));
-    using Args = decltype(without_first_types<1 + int(UsesCaller::value)>(Signature()));
+    using Args = decltype(without_first_types<1>(Signature()));
 
 //     template <class P, class Out>
 //     static bool call_one(P, F const &f, Out &out, Caller &c, Scope &s, ArgView const &args) {
