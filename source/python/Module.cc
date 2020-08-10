@@ -543,10 +543,11 @@ bool dump_tuple(Target& target, Always<> o) {
 /******************************************************************************/
 
 bool dump_object(Target &target, Always<> o) {
-    DUMP("dumping object", target.name(), o);
+    DUMP("dumping object:", "target=", target.name(), "base=", o);
 
     if (auto v = Maybe<pyVariable>(o)) {
         auto acquired = v->acquire_ref(LockType::Read);
+        DUMP("acquired reference!");
         return acquired.ref.get_to(target);
     }
 
