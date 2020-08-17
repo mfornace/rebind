@@ -67,8 +67,10 @@ def default_bool(self) -> bool:
 
 def default_logical(self, other, _fun_=None):
     '''Run a logical operation via C++'''
+    if type(self) != type(other):
+        return NotImplemented
     try:
-        return _fun_(self, other)
+        return _fun_(self, other).cast(bool)
     except Exception:
         return NotImplemented
 
@@ -76,10 +78,12 @@ def default_int(self) -> int:
     '''Run an integer operation via C++'''
 
 default_methods = {'__%s__' % k: f for k, f in (
-    [('str', default_str), ('repr', default_str)] +
-    [('bool', default_bool), ('contains', default_logical)] +
-    [(k, default_logical) for k in 'eq ne lt gt le ge'.split()] +
-    [(k, default_int) for k in 'int len index hash'.split()]
+    ('str', default_str),
+    ('repr', default_str),
+    ('bool', default_bool),
+    ('contains', default_logical),
+    *[(k, default_logical) for k in 'eq ne lt gt le ge'.split()],
+    *[(k, default_int) for k in 'int len index hash'.split()]
 )}
 
 ################################################################################

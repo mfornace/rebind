@@ -176,7 +176,6 @@ def render_object(pkg, key, value):
     else:
         log.info("deriving object '%s.%s' from %s", mod.__name__, key, repr(old))
         if not isinstance(old, type):
-            print(value.type())
             raise TypeError('expected placeholder {} to be a type'.format(old))
         value = value.cast(old)
 
