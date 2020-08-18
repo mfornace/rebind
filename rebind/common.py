@@ -69,10 +69,7 @@ def default_logical(self, other, _fun_=None):
     '''Run a logical operation via C++'''
     if type(self) != type(other):
         return NotImplemented
-    try:
-        return _fun_(self, other).cast(bool)
-    except Exception:
-        return NotImplemented
+    return _fun_(self, other).cast(bool)
 
 def default_int(self) -> int:
     '''Run an integer operation via C++'''
