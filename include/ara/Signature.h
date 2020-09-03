@@ -191,11 +191,11 @@ struct SimplifyFunction<F, -1, std::void_t<decltype(false ? nullptr : std::declv
 
 /******************************************************************************/
 
-template <int N, class R, class ...Ts, std::enable_if_t<N == 1, int> = 0>
-Pack<Ts...> without_first_types(Pack<R, Ts...>);
+template <class R, class ...Ts>
+Pack<Ts...> pop_first_type(Pack<R, Ts...>);
 
-template <int N, class R, class C, class ...Ts, std::enable_if_t<N == 2, int> = 0>
-Pack<Ts...> without_first_types(Pack<R, C, Ts...>);
+template <class R, class ...Ts>
+Pack<R, Ts...> prepend_type(Pack<Ts...>, Type<R>);
 
 template <class R, class ...Ts>
 R first_type(Pack<R, Ts...>);

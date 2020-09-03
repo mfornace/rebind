@@ -1,6 +1,5 @@
 #pragma once
-#include <ara/Call.h>
-#include <ara/Structs.h>
+#include "Frame.h"
 
 // Implementations for defining functions and methods in C++
 
@@ -21,68 +20,6 @@ struct DefaultFunctor : Functor<F> {
     static_assert(N > 0, "Functor must have some default arguments");
     using Functor<F>::Functor;
 };
-
-/******************************************************************************/
-
-template <class F, class SFINAE=void>
-struct ApplyMethod;
-
-/******************************************************************************/
-
-// This is the function context with arguments, output, output stat
-struct Frame {
-    Target &target;
-    ArgView &args;
-    Method::stat &stat;
-
-    // template <class F>
-    // [[nodiscard]] bool operator()(F const functor, Lifetime life={}) {
-    //     DUMP("Frame::operator()", args.tags(), args.size());
-    //     if (args.tags() == 0) {
-    //         DUMP("found match");
-    //         stat = ApplyMethod<F>::invoke(target, life, functor, args);
-    //         return true;
-    //     }
-    //     return false;
-    // }
-
-    template <class S, class F>
-    [[nodiscard]] bool operator()(S &&self, F const functor, Lifetime life={}) {
-        DUMP("Frame::operator()", args.tags(), args.size());
-        if (args.tags() == 0) {
-            DUMP("found match");
-            stat = ApplyMethod<F>::invoke(target, life, functor, std::forward<S>(self), args);
-            return true;
-        }
-        return false;
-    }
-
-    template <class S, class F>
-    [[nodiscard]] bool operator()(S &&self, std::string_view name, F const functor, Lifetime life={}) {
-        DUMP("Frame::operator()", args.tags(), args.size());
-        if (args.tags() == 1) if (auto given = args.tag(0).get<Str>()) {
-            std::string_view s(*given);
-            DUMP("Checking for method", name, "from", s);
-            if (s == name) {
-                DUMP("found match, forwarding args");
-                stat = ApplyMethod<F>::invoke(target, life, functor, std::forward<S>(self), args);
-                return true;
-            }
-        }
-        return false;
-    }
-
-    template <class Base, class S>
-    [[nodiscard]] bool derive(S &&self) {
-        static_assert(std::is_reference_v<Base>, "T should be a reference type for Frame::derive<T>()");
-        static_assert(std::is_convertible_v<S &&, Base>);
-        static_assert(!std::is_same_v<unqualified<S>, unqualified<Base>>);
-        return Impl<unqualified<Base>>::method(*this, std::forward<S>(self));
-    }
-};
-
-static_assert(std::is_move_constructible_v<Frame>);
-static_assert(std::is_copy_constructible_v<Frame>);
 
 /******************************************************************************/
 
@@ -152,7 +89,7 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
 
 #   warning "needs work... for reference returned as value... etc"
 
-    return Method::wrong_return(target, Index::of<U>(), qualifier_of<O>);
+    return Call::wrong_return(target, Index::of<U>(), qualifier_of<O>);
 }
 
 
@@ -172,6 +109,8 @@ struct ArgCast {
     }
 };
 
+/******************************************************************************/
+
 template <class T>
 struct ArgCast<T&> {
     T* value;
@@ -185,6 +124,8 @@ struct ArgCast<T&> {
         } else return false;
     }
 };
+
+/******************************************************************************/
 
 template <class T>
 struct ArgCast<T const &> {
@@ -201,6 +142,8 @@ struct ArgCast<T const &> {
 
     ~ArgCast() noexcept {if (held) reinterpret_cast<T&>(t).~T();}
 };
+
+/******************************************************************************/
 
 template <class T>
 struct ArgCast<T&&> {
@@ -225,15 +168,23 @@ struct CastedArgs {
     std::tuple<storage_like<ArgCast<Ts>>...> storage;
     std::uint32_t done = 0;
 
-    template <class F, std::size_t ...Is>
-    Call::stat operator()(Target& t, ArgView& args, F const& callback, std::index_sequence<Is...>) {
-        bool ok = ((ArgCast<Ts>::put(reinterpret_cast<ArgCast<Ts>*>(&std::get<Is>(storage)),
-            args[Is]) ? (++done, true) : false) && ...);
-        if (ok) return callback(*reinterpret_cast<ArgCast<Ts>&>(std::get<Is>(storage))...);
-
+    template <std::size_t ...Is>
+    Call::stat error(Target& t, std::index_sequence<Is...>) const {
         Call::stat err;
         (void)((Is == done ? (err = Call::wrong_type(t, Is, Index::of<unqualified<Ts>>(), qualifier_of<Ts>), true) : false) || ...);
         return err;
+    }
+
+    template <class F, std::size_t ...Is>
+    Call::stat operator()(Target& t, ArgView& args, F const& callback, std::index_sequence<Is...>) {
+        // Check number of arguments
+        if (args.size() != sizeof...(Ts))
+            return Call::wrong_number(t, args.size(), sizeof...(Ts));
+        // Cast each argument
+        bool ok = ((ArgCast<Ts>::put(reinterpret_cast<ArgCast<Ts>*>(&std::get<Is>(storage)),
+            args[Is]) ? (++done, true) : false) && ...);
+        if (ok) return callback(*reinterpret_cast<ArgCast<Ts>&>(std::get<Is>(storage))...);
+        else return error(t, std::index_sequence<Is...>());
     }
 
     template <std::size_t ...Is>
@@ -257,27 +208,23 @@ Call::stat apply_casts(Pack<Ts...>, Target& t, ArgView& args, F const& callback)
 
 // This thing does the job of converting arguments, handling the call context
 template <class F, class SFINAE>
-struct ApplyMethod {
+struct ApplyCall {
     using Signature = simplify_signature<F>;
     using Return = decltype(first_type(Signature()));
-    using Args = decltype(without_first_types<2>(Signature()));
+    using Args = decltype(pop_first_type(Signature()));
 
     /*
      Interface implementation for a function with no optional arguments.
      - Returns WrongNumber if args is not the right length
      */
-    template <class S>
-    static Method::stat invoke(Target& out, Lifetime life, F const &f, S &&self, ArgView &args) noexcept {
-        DUMP("call_to ApplyMethod<", type_name<F>(), ">",
+    static Call::stat invoke(Target& out, Lifetime life, F const &f, ArgView &args) noexcept {
+        DUMP("call_to ApplyCall<", type_name<F>(), ">",
             "address=", std::addressof(f), "args=", args.size(), "tags=", args.tags(), "lifetime=", life.value);
-
-        if (args.size() != Args::size)
-            return Method::wrong_number(out, args.size(), Args::size);
 
         out.set_lifetime(life);
         return out.make_noexcept([&] {
             return apply_casts(Args(), out, args, [&](auto &&...ts) {
-                return invoke_to(out, f, std::forward<S>(self), std::forward<decltype(ts)>(ts)...);
+                return invoke_to(out, f, std::forward<decltype(ts)>(ts)...);
             });
         });
     }
@@ -299,26 +246,24 @@ template <class F>
 struct Impl<Functor<F>> : Default<Functor<F>> {
     using Signature = simplify_signature<F>;
     using Return = decltype(first_type(Signature()));
-    using Args = decltype(without_first_types<1>(Signature()));
+    using Args = decltype(prepend_type(pop_first_type(Signature()), Type<Functor<F> const&>()));
 
     /*
      Interface implementation for a function with no optional arguments.
      - Returns WrongNumber if args is not the right length
      */
-    static bool method(Frame m, Functor<F> const &f) noexcept {
-        DUMP("call_to function adapter", type_name<F>(), std::addressof(f), "args=", m.args.size());
+    static bool call(Frame m) noexcept {
+        DUMP("call_to function adapter", type_name<F>(), "args=", m.args.size());
         if (m.args.tags())
             return Call::wrong_number(m.target, m.args.tags(), 0);
-        if (m.args.size() != Args::size)
-            return Call::wrong_number(m.target, m.args.size(), Args::size);
 
-        m.target.set_lifetime(f.lifetime);
         m.stat = m.target.make_noexcept([&] {
-            return apply_casts(Args(), m.target, m.args, [&](auto &&...ts) {
+            return apply_casts(Args(), m.target, m.args, [&](Functor<F> const& f, auto &&...ts) {
+                m.target.set_lifetime(f.lifetime);
                 return invoke_to(m.target, f.function, std::forward<decltype(ts)>(ts)...);
             });
         });
-        DUMP("invoked with stat and lifetime", m.stat, f.lifetime.value);
+        DUMP("invoked with stat", m.stat);
         return Call::was_invoked(m.stat);
     }
 };
@@ -349,7 +294,7 @@ template <int N, class F>
 struct Impl<DefaultFunctor<N, F>> : Default<DefaultFunctor<N, F>> {
     using Signature = simplify_signature<F>;
     using Return = decltype(first_type(Signature()));
-    using Args = decltype(without_first_types<1>(Signature()));
+    using Args = decltype(pop_first_type(Signature()));
 
 //     template <class P, class Out>
 //     static bool call_one(P, F const &f, Out &out, Caller &c, Scope &s, ArgView const &args) {

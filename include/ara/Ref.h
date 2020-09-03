@@ -78,8 +78,8 @@ union Ref {
         DUMP("Ref::call:", type_name<T>(), "(", sizeof...(Ts), ")");
         return Output<T, Check>()([&](Target &t) {
             return parts::with_args<N>([&](auto &args) {
-                return Method::invoke(index(), t, pointer(), Mode::Write, args);
-            }, static_cast<Ts &&>(ts)...);
+                return Call::invoke(index(), t, args);
+            }, *this, static_cast<Ts &&>(ts)...);
         });
     }
 

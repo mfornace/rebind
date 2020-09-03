@@ -110,8 +110,8 @@ struct Value : Base {
     decltype(auto) method(Ts &&...ts) const {
         return Output<T, Check>()([&](Target &t) {
             return parts::with_args<N>([&](auto &args) {
-                return Method::invoke(index(), t, address(), Mode::Read, args);
-            }, static_cast<Ts &&>(ts)...);
+                return Call::invoke(index(), t, args);
+            }, *this, static_cast<Ts &&>(ts)...);
         });
     }
 
@@ -119,8 +119,8 @@ struct Value : Base {
     decltype(auto) mutate(Ts &&...ts) {
         return Output<T, Check>()([&](Target &t) {
             return parts::with_args<N>([&](auto &args) {
-                return Method::invoke(index(), t, address(), Mode::Write, args);
-            }, static_cast<Ts &&>(ts)...);
+                return Call::invoke(index(), t, args);
+            }, *this, static_cast<Ts &&>(ts)...);
         });
     }
 
@@ -130,8 +130,8 @@ struct Value : Base {
         release();
         return Output<T, Check>()([&](Target &t) {
             return parts::with_args<N>([&](auto &args) {
-                return Method::invoke(ref.index(), t, ref.pointer(), ref.mode(), args);
-            }, static_cast<Ts &&>(ts)...);
+                return Call::invoke(ref.index(), t, args);
+            }, *this, static_cast<Ts &&>(ts)...);
         });
     }
 
@@ -239,12 +239,12 @@ struct Output<Value, true> {
         DUMP("called the output!", stat);
 
         switch (stat) {
-            case Method::None: {break;}
-            case Method::Stack: {
+            case Call::None: {break;}
+            case Call::Stack: {
                 out.idx = Tagged(target.index(), Value::Stack);
                 break;
             }
-            case Method::Heap: {
+            case Call::Heap: {
                 out.storage.pointer = target.output();
                 out.idx = Tagged(target.index(), Value::Heap);
                 break;
@@ -267,20 +267,20 @@ struct Output<Value, false> {
         DUMP("called the output!", stat);
 
         switch (stat) {
-            case Method::None: {break;}
-            case Method::Stack: {
+            case Call::None: {break;}
+            case Call::Stack: {
                 out.idx = Tagged(target.index(), Value::Stack);
                 break;
             }
-            case Method::Heap: {
+            case Call::Heap: {
                 out.storage.pointer = target.output();
                 out.idx = Tagged(target.index(), Value::Heap);
                 break;
             }
-            case Method::Impossible: {break;}
-            case Method::WrongNumber: {break;}
-            case Method::WrongType: {break;}
-            case Method::WrongReturn: {break;}
+            case Call::Impossible: {break;}
+            case Call::WrongNumber: {break;}
+            case Call::WrongType: {break;}
+            case Call::WrongReturn: {break;}
             default: call_throw(std::move(target), stat);
         }
         return out;

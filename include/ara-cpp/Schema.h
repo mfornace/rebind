@@ -73,37 +73,40 @@ struct is_copy_constructible<Schema> : std::false_type {};
 
 template <>
 struct Impl<Schema> : Default<Schema> {
-    static bool attribute(Target &t, Schema const &s, std::string_view key) {
-        if (auto it = s.find(key); it != s.contents().end()) {
-            t.c.output = it->second.address().base;
-            t.c.mode = static_cast<ara_mode>(Mode::Read);
-            t.c.index = it->second.index();
-            t.c.lifetime = 1;
-            return true;
-        } else return false;
-    }
+    // static bool attribute(Target &t, Schema const &s, std::string_view key) {
+    //     if (auto it = s.find(key); it != s.contents().end()) {
+    //         t.c.output = it->second.address().base;
+    //         t.c.mode = static_cast<ara_mode>(Mode::Read);
+    //         t.c.index = it->second.index();
+    //         t.c.lifetime = 1;
+    //         return true;
+    //     } else return false;
+    // }
 
-    static bool method(Frame m, Schema const &s) {
+    static bool call(Frame m) {
         DUMP("trying Schema method!", m.args.tags());
         DUMP("got to the module: # args =", m.args.size(), ", tags =", m.args.tags());
 
-        if (m.args.tags() || !m.args.size()) return false;
+        if (m.args.tags() || m.args.size() < 2) return false;
 
         for (auto const &a : m.args) {
             DUMP("module call: argument =", a.name());
         }
 
-        DUMP("number of contents", s.contents().size());
+        if (auto s = m.args[0].get<Schema const &>()) {
+            DUMP("number of contents", s->contents().size());
 
-        if (auto name = m.args[0].get<Str>()) {
-            DUMP(name->data());
-            DUMP(std::string_view(*name), name->size());
-            if (auto it = s.find(std::string_view(*name)); it != s.contents().end()) {
-                m.args.c.args -= 1;
-                DUMP("invoking module member! args=", m.args.size(), " tags=", m.args.tags());
-                m.stat = Method::invoke(it->second.index(), m.target, it->second.address(), Mode::Read, m.args);
+            if (auto name = m.args[1].get<Str>()) {
+                DUMP(name->data());
+                DUMP(std::string_view(*name), name->size());
+                if (auto it = s->find(std::string_view(*name)); it != s->contents().end()) {
+                    m.args.c.args -= 1;
+                    m.args[0] = Ref(it->second.index(), Mode::Read, it->second.address());
+                    DUMP("invoking module member! args=", m.args.size(), " tags=", m.args.tags());
+                    m.stat = Call::invoke(it->second.index(), m.target, m.args);
+                }
+                return true;
             }
-            return true;
         }
 
         return false;

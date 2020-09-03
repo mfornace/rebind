@@ -61,18 +61,6 @@ struct Goo : GooBase {
     }
 };
 
-// bool members(Self<Goo> &s) {
-//     return s("x", &Goo::x);
-// }
-
-
-// template <class T>
-// struct Temporary {
-//     T &&t;
-//     T *operator->() const {return &t;}
-//     T &&operator*() const {return t;}
-// };
-
 // String
 // --> Ref holding <String &&>
 // now we want String back
@@ -176,43 +164,27 @@ struct Goo : GooBase {
 /******************************************************************************/
 
 template <>
-struct ara::Impl<GooBase> : ara::Default<GooBase> {
-    static bool method(Frame, GooBase const &) {return false;}
+struct ara::Impl<GooBase> {
+    static bool call(Frame) {return false;}
 };
 
 template <>
 struct ara::Impl<Goo> : ara::Default<Goo> {
-    static auto attribute(Target& target, Goo const& self, std::string_view name) {
-        if (name == "x") return target.assign(self.x); // change to mem fn
-        return false;
-    }
-
-    // static bool call(Frame body) {
-    //     return body("new", [](double d) {return Goo(d);});
+    // static auto attribute(AttributeFrame<Goo> f) {
+    //     return f(&Goo::x, "x")
+    //         || f(&Goo::x, "x2");
     // }
 
-    static bool method(Frame body, Goo &self) {
-        DUMP("calling Goo");
-        return body(self, ".x", &Goo::x, {0})
-            || body(self, ".x=", [](Goo &s, double x) {s.x = x;});
-    }
-
-    static bool method(Frame, Goo &&) {
-        DUMP("calling Goo");
-        return false;
-    }
-
-    static bool method(Frame body, Goo const &self) {
-        DUMP("calling Goo body", ara::Lifetime({0}).value);
-        return body(self, &Goo::x)
-            || body(self, "add", [](Goo g, Goo g2, Goo g3) {return g;})
-            // || body(self, "test_throw", &Goo::test_throw)
-            || body(self, "get_x", [](Goo const &g) {return g.x;})
-            // || body(self, "add", [](Goo &g, double x) {g.x += x;})
-            || body.derive<GooBase const &>(self);
+    static bool method(Frame f) {
+        DUMP("calling Goo f", ara::Lifetime({0}).value);
+        return f([](double x){return Goo(x);},          "new")
+            || f([](Goo g, Goo g2, Goo g3) {return g;}, "add")
+            || f(&Goo::test_throw,                      "test_throw")
+            || f([](Goo const &g) {return g.x;},        "get_x")
+            || f([](Goo &g, double x) {g.x += x;},      "add")
+            || f.derive<GooBase>();
     }
 };
-
 
 /******************************************************************************/
 
@@ -260,12 +232,6 @@ Schema make_schema() {
 
     s.object("Goo", ara::Index::of<Goo>());
 
-    // s.function("buffer", [](std::tuple<ara::BinaryData, std::type_index, std::vector<std::size_t>> i) {
-    //     DUMP(std::get<0>(i).size());
-    //     DUMP(std::get<1>(i).name());
-    //     DUMP(std::get<2>(i).size());
-    //     for (auto &c : std::get<0>(i)) c += 4;
-    // });
     s.function("vec1", [](std::vector<int> const &) {});
     s.function("vec2", [](std::vector<int> &) {});
     s.function("vec3", [](std::vector<int>) {});
@@ -276,26 +242,45 @@ Schema make_schema() {
         for (auto const &p : b) DUMP("map item", p.first, p.second);
         return b;
     });
-    // s.function<1>("vec4", [](int, int i=2) {});
 
     DUMP("made schema");
     return s;
 }
 
-struct BootKey;
-using Boot = BootKey*;
+struct Example {};
 
 template <>
-struct ara::Impl<Boot> : ara::Default<Boot> {
-    static bool method(ara::Frame body, Boot const &self) {
-        return body(self, [](Boot const &self) {
-            return make_schema();
-        });
+struct ara::Impl<Example> : ara::Default<Example> {
+    static bool call(ara::Frame frame) {
+        return frame([](Example const &self) {return make_schema();});
     }
 };
 
+struct Test {};
 
-ARA_DECLARE(example_boot, Boot);
-ARA_DEFINE(example_boot, Boot);
+
+template <>
+struct ara::Impl<Test> {
+    static ara::Name::stat name(ara::Str&)                                     noexcept {return {};}
+    static ara::Info::stat info(ara::Index&, void const*& s)                   noexcept {return {};}
+    static ara::Call::stat call_nothrow(Target&, ArgView&)                     noexcept {return {};} // combine with method?
+    static ara::Load::stat load_nothrow(Target&, Pointer, Mode)                noexcept {return {};}
+    static ara::Dump::stat dump_nothrow(Target&, Pointer, Mode)                noexcept {return {};}
+    static ara::Equal::stat equal_nothrow(Test const&, Test const&)            noexcept {return {};} // no cross type comparison... (at least Str to String would be good...)
+    static ara::Compare::stat compare_nothrow(Test const&, Test const&)        noexcept {return {};} // no cross type comparison... (at least Str to String would be good...)
+    static ara::Attribute::stat attribute_nothrow(Target&, Pointer, Str, Mode) noexcept {return {};} // too specific? make static possible?
+    static ara::Element::stat element_nothrow(Target&, Pointer, Integer, Mode) noexcept {return {};} // too specific?
+    static ara::Hash::stat hash_nothrow(std::size_t&, Test const&)             noexcept {return {};}
+    static ara::Swap::stat swap(Test&, Test&)                                  noexcept {return {};}
+    static ara::Relocate::stat relocate(void*, Test&&)                         noexcept {return {};}
+    static ara::Copy::stat copy(Target&, Test const&)                          noexcept {return {};}
+    static ara::Deallocate::stat deallocate(Test&)                             noexcept {return {};}
+    static ara::Destruct::stat destruct(Test&)                                 noexcept {return {};}
+};
+
+
+ARA_DEFINE(example_test, Test);
+ARA_DECLARE(example_boot, Example);
+ARA_DEFINE(example_boot, Example);
 
 

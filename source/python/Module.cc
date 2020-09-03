@@ -80,12 +80,12 @@ void Variable::reset() noexcept {
     if (!has_value()) return;
     auto const state = idx.tag();
     DUMP("state", state);
-    
+
     if (!(state & 0x1) && lock.count > 0) { // Read or Write
         DUMP("not resetting because a reference is held");
         return;
     }
-    
+
     if (state & 0x2) { // Heap
         if (storage.address.qualifier == Mode::Heap)
             Deallocate::invoke(index(), Pointer::from(storage.address.pointer));
@@ -134,8 +134,8 @@ Value<> pyVariable::method(Always<pyVariable> v, Always<pyTuple> args, Modes mod
         auto self = v->acquire_ref(self_mode == 'w' ? LockType::Write : LockType::Read);
         TupleLock locking(a.view, args, 1);
         locking.lock(modes.value);
-
-        std::tie(ret, life) = call_with_caller(self.ref.index(), self.ref.pointer(), self.ref.mode(), a.view, out, gil);
+// self.ref.pointer(), self.ref.mode()
+        std::tie(ret, life) = call_with_caller(self.ref.index(), a.view, out, gil);
     }
     DUMP("reference count", reference_count(ret), "lifetime to attach = ", life.value);
     if (life.value) {
@@ -175,17 +175,19 @@ Value<> pyVariable::call(Always<pyVariable> v, Args args, Modes modes, Tag tag, 
     if (!v->has_value()) throw PythonError::type("Calling method on empty Variable");
     uint const tags = bool(tag.value), nargs = args.size();
     DUMP("tag", tag.value, "tags=", tags, "args=", nargs);
-    ArgAlloc a(nargs, tags);
+    ArgAlloc a(nargs+1, tags);
 
     if (tags) {
         a.view.tag(0) = Ref(Index::of<Export>(), Mode::Read, Pointer::from(~tag.value));
     }
 
+    a.view[0] = Ref(v->index(), Mode::Write, Pointer::from(v->address()));
     for (Py_ssize_t i = 0; i != nargs; ++i)
-        a.view[i] = Ref(Index::of<Export>(), Mode::Write, Pointer::from(+args[i]));
+        a.view[i+1] = Ref(Index::of<Export>(), Mode::Write, Pointer::from(+args[i]));
     args.check();
+
 #warning "not sure why separate from method"
-    return call_with_caller(v->index(), Pointer::from(v->address()), Mode::Write, a.view, out, gil).first;
+    return call_with_caller(v->index(), a.view, out, gil).first;
 }
 
 /******************************************************************************/
@@ -452,13 +454,13 @@ Value<> pyVariable::compare(Always<pyVariable> l, Always<> other, int op) noexce
             case Py_LE: return Always<>(*Py_True);
             case Py_GE: return Always<>(*Py_True);
         }
-    } 
+    }
     if (auto r = Maybe<pyVariable>(other)) {
         switch (compare_impl(l, *r, op)) {
             case 0: return Always<>(*Py_False);
             case 1: return Always<>(*Py_True);
         }
-    } 
+    }
     return Always<>(*Py_NotImplemented);
 }
 
@@ -493,7 +495,7 @@ bool dump_span(Target &target, Always<> o) {
         void* data = buff->buf;
 
         std::uint32_t const item = buff->itemsize;
-        
+
         Shape shape(buff->shape, buff->shape + buff->ndim);
         // for (auto &s : shape) s /= item;
 
@@ -659,9 +661,9 @@ bool compare_objects(Always<> a, Always<> b, int code) {
 
 Value<> pyBind::call(Always<pyBind> f, Always<pyTuple> args, Maybe<pyDict> kws) {
     auto [fun, sig, doc, docstring] = parse<1, Object, pyTuple, pyStr, pyStr>(args, kws, {"function", "signature", "doc", "docstring"});
-    
+
     Value<> tag = f->tag ? f->tag : Value<>::take(PyObject_GetAttrString(~fun, "__name__"));
-    
+
     auto inspect = Value<>::take(PyImport_ImportModule("inspect"));
     auto signature = Value<>::take(PyObject_GetAttrString(~inspect, "signature"));
     auto s = Value<>::take(PyObject_CallFunctionObjArgs(~signature, ~fun, nullptr));
@@ -680,7 +682,7 @@ Value<> pyBind::call(Always<pyBind> f, Always<pyTuple> args, Maybe<pyDict> kws) 
         auto d = Value<>::take(PyObject_GetAttrString(~fun, "__doc__"));
         if (auto s = Maybe<pyStr>(*d)) doc2 = s;
     }
-  
+
     if (docstring) {
         docstring2 = docstring;
     } else {
@@ -688,7 +690,7 @@ Value<> pyBind::call(Always<pyBind> f, Always<pyTuple> args, Maybe<pyDict> kws) 
         if (auto s = Maybe<pyStr>(*d)) docstring2 = s;
     }
 
-    Value<pyTuple> sig2; 
+    Value<pyTuple> sig2;
     if (sig) {
         sig2 = sig;
     } else {
@@ -722,7 +724,7 @@ Value<> pyBind::call(Always<pyBind> f, Always<pyTuple> args, Maybe<pyDict> kws) 
         DUMP("got the attr", attr, Always<pyVariable>::from(*attr)->name());
 
         auto method = Value<pyMethod>::new_from(Maybe<>(), f->mode, sig, std::move(out), doc2, docstring2);
-        
+
         return Value<pyBoundMethod>::new_from(*method, Always<pyVariable>::from(*attr));
     } else {
         return Value<pyMethod>::new_from(std::move(tag), f->mode, sig, std::move(out), doc2, docstring2);
@@ -737,10 +739,10 @@ struct ReorderWrap {
     Maybe<pyDict> kws;
 
     auto size() const {return ::ara::py::size(names);}
-    
+
     Always<> operator[](Py_ssize_t i) {
         if (i < ::ara::py::size(args)) return item(args, i);
-        if (kws) if (auto p = item(*kws, item(names, i))) return *p; 
+        if (kws) if (auto p = item(*kws, item(names, i))) return *p;
         throw PythonError::type("Missing argument %R", item(names, i));
     }
 

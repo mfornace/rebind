@@ -131,7 +131,7 @@ Call::stat Call::wrong_number(Target &target, Code got, Code expected) noexcept 
 }
 
 Call::stat Call::wrong_type(Target &target, Code n, Index i, Qualifier q) noexcept {
-    DUMP("Call::wrong_type", "arg=", n, "expected=", i, "qualifier=", q);
+    DUMP("Call::wrong_type", "arg=", n, "expected=", i.name(), "qualifier=", q);
     // target.construct<ara_index>(ara_mode_index(i, static_cast<ara_mode>(q)), n);
     return WrongType;
 }
@@ -147,8 +147,9 @@ Call::stat Call::wrong_return(Target &target, Index i, Qualifier q) noexcept {
         case Call::Stack:   {throw InvalidStatus("Call: InvalidStatus: Stack", stat);}
         case Call::Heap:    {throw InvalidStatus("Call: InvalidStatus: Heap", stat);}
         case Call::None:    {throw InvalidStatus("Call: InvalidStatus: None", stat);}
-        case Call::Read:   {throw InvalidStatus("Call: InvalidStatus: Read", stat);}
-        case Call::Write: {throw InvalidStatus("Call: InvalidStatus: Write", stat);}
+        case Call::Read:    {throw InvalidStatus("Call: InvalidStatus: Read", stat);}
+        case Call::Write:   {throw InvalidStatus("Call: InvalidStatus: Write", stat);}
+        case Call::Index2:  {throw InvalidStatus("Call: InvalidStatus: Index", stat);}
 
         case Call::Impossible:  {throw NotImplemented("Call: Impossible", stat);}
         case Call::WrongType:   {throw WrongType("WrongType");}

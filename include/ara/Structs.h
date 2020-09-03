@@ -72,16 +72,6 @@ static_assert(std::is_destructible_v<Str>);
 
 /******************************************************************************/
 
-// target.emplace<Str>(...): can actually emplace CStr I guess? Then it returns CStr* instead...not too bad I guess
-// object.target<Str>(): ? could also return CStr*
-// object.get<Str>(): would return Str
-// object.get<Str &>(): probably disallow
-// dump(T &, Target, Index::of<Str>()): would put CStr into Target
-// dump(CStr &, Target, Index::of<T>()): acts normally
-// Index::of<Str>() same as Index::of<CStr>() same as Index::of<ara_str>()
-
-/******************************************************************************/
-
 union Bin {
     using value_type = std::byte;
     using native = std::basic_string_view<std::byte>;
@@ -562,6 +552,23 @@ template <> struct AliasType<Array>  {using type = ara_array;};
 template <> struct AliasType<Tuple>  {using type = ara_tuple;};
 template <> struct AliasType<View>   {using type = ara_view;};
 template <> struct AliasType<Shape>   {using type = ara_shape;};
+
+/******************************************************************************************/
+
+template <class T>
+Name::stat Name::Default<T>::name(Str& s) noexcept {
+    s = Str(TypeName<T>::name.data(), TypeName<T>::name.size());
+    return OK;
+}
+
+/******************************************************************************************/
+
+inline std::string_view Index::name() const noexcept {
+    if (!has_value()) return "null";
+    Str out;
+    Name::invoke(*this, out);
+    return out;
+}
 
 /******************************************************************************************/
 

@@ -171,7 +171,7 @@ struct Info {
 
     template <class T>
     struct Default {
-        static stat info(Idx& out, void const*& t) noexcept {
+        static stat info(Index& out, void const*& t) noexcept {
             t = &typeid(T);
             out = fetch(Type<std::type_info>());
             return OK;
@@ -193,14 +193,10 @@ struct Name {
 
     template <class T>
     struct Default {
-        static stat name(ara_str& s) noexcept {
-            s.data = TypeName<T>::name.data();
-            s.size = TypeName<T>::name.size();
-            return OK;
-        }
+        static stat name(Str& s) noexcept;
     };
 
-    static stat invoke(Idx f, ara_str &s) noexcept {
+    static stat invoke(Idx f, Str& s) noexcept {
         return static_cast<stat>(f({code::name, {}}, &s, {}, {}));
     }
 };
@@ -460,7 +456,7 @@ struct Load {
 
 /******************************************************************************/
 
-ARA_DETECT_TRAIT(has_call, decltype(Impl<T>::call(DeclAny(), std::declval<T&&>())));
+ARA_DETECT_TRAIT(has_call, decltype(Impl<T>::call(DeclAny())));
 // stat operator()(Target *out, T, ArgView &args)
 
 // Call an object
@@ -473,7 +469,7 @@ ARA_DETECT_TRAIT(has_call, decltype(Impl<T>::call(DeclAny(), std::declval<T&&>()
 // -- Exception: Exception while executing the function
 struct Call {
     enum stat : Stat {Impossible, WrongNumber, WrongType, WrongReturn,
-                      None, Stack, Heap, Write, Read,
+                      None, Stack, Heap, Write, Read, Index2,
                       Exception, OutOfMemory};
 
     static constexpr bool was_invoked(stat s) {return 3 < s;}
@@ -497,32 +493,6 @@ struct Call {
 };
 
 /******************************************************************************/
-
-ARA_DETECT_TRAIT(has_method, decltype(Impl<T>::method(DeclAny(), std::declval<T&&>())));
-
-struct Method : Call {
-    template <class T>
-    struct Default {
-        static stat method_nothrow(Target &out, Pointer self, ArgView &args, Mode mode) noexcept {
-            stat s = Impossible;
-            if constexpr(has_method_v<T>) {
-                switch (mode) {
-                    case Mode::Stack: {Impl<T>::method({out, args, s}, self.load<T&&>()); break;}
-                    case Mode::Heap:  {Impl<T>::method({out, args, s}, self.load<T&&>()); break;}
-                    case Mode::Write: {Impl<T>::method({out, args, s}, self.load<T&>()); break;}
-                    case Mode::Read:  {Impl<T>::method({out, args, s}, self.load<T const&>()); break;}
-                }
-            }
-            return s;
-        }
-    };
-
-    static stat invoke(Idx f, Target &out, Pointer self, Mode qualifier, ArgView &args) noexcept {
-        return static_cast<stat>(f({code::method, static_cast<Code>(qualifier)}, &out, self.base, reinterpret_cast<ara_args *>(&args)));
-    }
-};
-
-/******************************************************************************************/
 
 template <class Op>
 Stat return_stat(typename Op::stat status) {
@@ -548,8 +518,7 @@ struct Default :
     Compare::Default<T>,
     Dump::Default<T>,
     Load::Default<T>,
-    Call::Default<T>,
-    Method::Default<T> {};
+    Call::Default<T> {};
 
 template <class T, class SFINAE>
 struct Impl : Default<T> {};
@@ -601,7 +570,7 @@ struct Switch {
                 return Impl<T>::element_nothrow(*static_cast<Target*>(o), Pointer::from(s), reinterpret_cast<std::uintptr_t>(args), static_cast<Mode>(i.tag));
 
             case code::attribute:
-                return Impl<T>::attribute_nothrow(*static_cast<Target*>(o), Pointer::from(s), *static_cast<ara_str*>(args), static_cast<Mode>(i.tag));
+                return Impl<T>::attribute_nothrow(*static_cast<Target*>(o), Pointer::from(s), *static_cast<Str*>(args), static_cast<Mode>(i.tag));
 
             case code::compare:
                 return Impl<T>::compare_nothrow(Pointer::from(o).load<T const&>(), Pointer::from(s).load<T const&>());
@@ -618,14 +587,11 @@ struct Switch {
             case code::call:
                 return Impl<T>::call_nothrow(*static_cast<Target *>(o), *reinterpret_cast<ArgView *>(args));
 
-            case code::method:
-                return Impl<T>::method_nothrow(*static_cast<Target *>(o), Pointer::from(s), *reinterpret_cast<ArgView *>(args), static_cast<Mode>(i.tag));
-
             case code::name:
-                return Impl<T>::name(*static_cast<ara_str *>(o));
+                return Impl<T>::name(*static_cast<Str*>(o));
 
             case code::info:
-                return Impl<T>::info(*static_cast<Idx *>(o), *static_cast<void const **>(s));
+                return Impl<T>::info(*static_cast<Index*>(o), *static_cast<void const **>(s));
 
             case code::check:
                 return code::valid(i.code);
@@ -640,10 +606,10 @@ struct Switch<void, SFINAE> {
     static Stat invoke(ara_input i, void* o, void* s, void*) noexcept {
         switch (i.code) {
             case code::name: {
-                return Name::Default<void>::name(*static_cast<ara_str *>(o));
+                return Name::Default<void>::name(*static_cast<Str*>(o));
             }
             case code::info: {
-                return Info::Default<void>::info(*static_cast<Idx *>(o), *static_cast<void const **>(s));
+                return Info::Default<void>::info(*static_cast<Index *>(o), *static_cast<void const **>(s));
             }
             case code::check: {
                 return i.code == code::info || i.code == code::name;
@@ -660,10 +626,10 @@ struct Switch<T[], SFINAE> {
     static Stat invoke(ara_input i, void* o, void* s, void*) noexcept {
         switch (i.code) {
             case code::name: {
-                return Name::Default<T[]>::name(*static_cast<ara_str *>(o));
+                return Name::Default<T[]>::name(*static_cast<Str*>(o));
             }
             case code::info: {
-                return Info::Default<T[]>::info(*static_cast<Idx *>(o), *static_cast<void const **>(s));
+                return Info::Default<T[]>::info(*static_cast<Index *>(o), *static_cast<void const **>(s));
             }
             case code::check: {
                 return i.code == code::info || i.code == code::name;
@@ -672,15 +638,6 @@ struct Switch<T[], SFINAE> {
         }
     }
 };
-
-/******************************************************************************************/
-
-inline std::string_view Index::name() const noexcept {
-    if (!has_value()) return "null";
-    ara_str out;
-    Name::invoke(*this, out);
-    return std::string_view(out.data, out.size);
-}
 
 /******************************************************************************************/
 

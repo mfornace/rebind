@@ -83,10 +83,10 @@ struct Arg<T&&> {
     Ref ref() noexcept {return Ref(Index::of<T>(), Mode::Stack, Pointer::from(&storage));}
 };
 
-[[noreturn]] void call_throw(Target &&target, Method::stat c);
+[[noreturn]] void call_throw(Target &&target, Call::stat c);
 
 /******************************************************************************/
-// auto const stat = Method::invoke(i, target, self, mode, args);
+// auto const stat = Call::invoke(i, target, self, mode, args);
 
 
 
@@ -100,15 +100,15 @@ struct Output<T, false> {
 
         std::optional<T> out;
         switch (stat) {
-            case Method::Stack: {
+            case Call::Stack: {
                 Destruct::RAII<T> raii{storage_cast<T>(buffer)};
                 out.emplace(std::move(raii.held));
                 break;
             }
-            case Method::Impossible:  {break;}
-            case Method::WrongType:   {break;}
-            case Method::WrongNumber: {break;}
-            case Method::WrongReturn: {break;}
+            case Call::Impossible:  {break;}
+            case Call::WrongType:   {break;}
+            case Call::WrongNumber: {break;}
+            case Call::WrongReturn: {break;}
             default: call_throw(std::move(target), stat);
         }
         return out;
@@ -124,7 +124,7 @@ struct Output<T, true> {
         auto const stat = f(target);
 
         switch (stat) {
-            case Method::Stack: {
+            case Call::Stack: {
                 Destruct::RAII<T> raii{storage_cast<T>(buffer)};
                 return std::move(raii.held);
             }
@@ -146,11 +146,11 @@ struct Output<T &, false> {
         auto const stat = f(target);
         DUMP("got stat", stat);
         switch (stat) {
-            case (std::is_const_v<T> ? Method::Read : Method::Write): return *reinterpret_cast<T *>(target.output());
-            case Method::Impossible:  {return nullptr;}
-            case Method::WrongType:   {return nullptr;}
-            case Method::WrongNumber: {return nullptr;}
-            case Method::WrongReturn: {return nullptr;}
+            case (std::is_const_v<T> ? Call::Read : Call::Write): return *reinterpret_cast<T *>(target.output());
+            case Call::Impossible:  {return nullptr;}
+            case Call::WrongType:   {return nullptr;}
+            case Call::WrongNumber: {return nullptr;}
+            case Call::WrongReturn: {return nullptr;}
             default: call_throw(std::move(target), stat);
         }
     }
@@ -167,7 +167,7 @@ struct Output<T &, true> {
         auto const stat = f(target);
         DUMP("got stat", stat);
         switch (stat) {
-            case (std::is_const_v<T> ? Method::Read : Method::Write): return *reinterpret_cast<T *>(target.output());
+            case (std::is_const_v<T> ? Call::Read : Call::Write): return *reinterpret_cast<T *>(target.output());
             default: call_throw(std::move(target), stat);
         }
     }
@@ -184,7 +184,7 @@ struct Output<void, false> {
         auto const stat = f(target);
         DUMP("got stat", stat);
         switch (stat) {
-            case Method::None: {return;}
+            case Call::None: {return;}
             default: call_throw(std::move(target), stat);
         }
     }
@@ -200,11 +200,11 @@ struct Output<void, true> {
         auto const stat = f(target);
         DUMP("got stat", stat);
         switch (stat) {
-            case Method::None: {return;}
-            case Method::Impossible:  {return;}
-            case Method::WrongType:   {return;}
-            case Method::WrongNumber: {return;}
-            case Method::WrongReturn: {return;}
+            case Call::None: {return;}
+            case Call::Impossible:  {return;}
+            case Call::WrongType:   {return;}
+            case Call::WrongNumber: {return;}
+            case Call::WrongReturn: {return;}
             default: call_throw(std::move(target), stat);
         }
     }
@@ -221,8 +221,8 @@ struct Output<Ref, true> {
         auto const stat = f(target);
 
         switch (stat) {
-            case Method::Read:   return Ref(target.index(), Mode::Read, Pointer::from(target.output()));
-            case Method::Write: return Ref(target.index(), Mode::Write, Pointer::from(target.output()));
+            case Call::Read:   return Ref(target.index(), Mode::Read, Pointer::from(target.output()));
+            case Call::Write: return Ref(target.index(), Mode::Write, Pointer::from(target.output()));
             // function is noexcept until here, now it is permitted to throw (I think)
             default: return nullptr;
         }

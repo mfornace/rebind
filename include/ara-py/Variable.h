@@ -359,23 +359,29 @@ Target variable_target(Variable& out) {
         Target::Relocatable | Target::MoveNoThrow | Target::Unmovable | Target::MoveThrow};
 }
 
-Lifetime invoke_call(Variable &out, Index self, Pointer address, ArgView &args, Mode mode) {
+Lifetime invoke_call(Variable &out, Index self, ArgView &args) {
     Target target = variable_target(out);
-    auto const stat = Method::invoke(self, target, address, mode, args);
+    auto const stat = Call::invoke(self, target, args);
     DUMP("Variable got stat and lifetime:", stat, target.c.lifetime);
 
     switch (stat) {
-        case Method::None:        break;
-        case Method::Stack:       {out.set_stack(target.index()); break;}
-        case Method::Read:        {out.set_pointer(target.index(), target.output(), Mode::Read); break;}
-        case Method::Write:       {out.set_pointer(target.index(), target.output(), Mode::Write); break;}
-        case Method::Heap:        {out.set_pointer(target.index(), target.output(), Mode::Heap); break;}
-        case Method::Impossible:  {throw PythonError(type_error("Impossible"));}
-        case Method::WrongNumber: {throw PythonError(type_error("WrongNumber"));}
-        case Method::WrongType:   {throw PythonError(type_error("WrongType"));}
-        case Method::WrongReturn: {throw PythonError(type_error("WrongReturn"));}
-        case Method::Exception:   {throw PythonError(type_error("Exception"));}
-        case Method::OutOfMemory: {throw std::bad_alloc();}
+        case Call::None:        break;
+        case Call::Stack:       {out.set_stack(target.index()); break;}
+        case Call::Read:        {out.set_pointer(target.index(), target.output(), Mode::Read); break;}
+        case Call::Write:       {out.set_pointer(target.index(), target.output(), Mode::Write); break;}
+        case Call::Heap:        {out.set_pointer(target.index(), target.output(), Mode::Heap); break;}
+        case Call::Index2:      {throw PythonError::type("Expected Variable but got Index");}
+        case Call::Impossible:  {throw PythonError::type("Impossible");}
+        case Call::WrongNumber: {
+            auto const &info = *reinterpret_cast<ara_input const*>(target.c.output);
+            throw PythonError::type("WrongNumber %I %I", info.code, info.tag);
+        }
+        case Call::WrongType:   {
+            throw PythonError(type_error("WrongType"));
+        }
+        case Call::WrongReturn: {throw PythonError(type_error("WrongReturn"));}
+        case Call::Exception:   {throw PythonError(type_error("Exception"));}
+        case Call::OutOfMemory: {throw std::bad_alloc();}
     }
     DUMP("output:", out.name(), "stat:", stat, "address:", out.address(), "lifetime:", target.c.lifetime, target.lifetime().value);
     return target.lifetime();
@@ -417,7 +423,6 @@ Value<pyVariable> new_variable_subtype(Always<pyType> t) {
 
 template <class F>
 Lifetime call_to_output(Value<> &out, Always<> const output, F&& fun) {
-    DUMP("wtf", output);
     if (auto v = Maybe<pyVariable>(output)) {
         DUMP("instance of Variable");
         out = {Py_None, true};
@@ -426,7 +431,13 @@ Lifetime call_to_output(Value<> &out, Always<> const output, F&& fun) {
 
     if (auto t = Maybe<pyType>(output)) {
         DUMP("is type");
-        if (is_subclass(*t, pyVariable::def())) {
+        if (output == pyIndex::def()) {
+            Variable v;
+            fun(v);
+#warning "this part is annoying"
+            out = Value<pyIndex>::new_from(*static_cast<Index*>(v.address()));
+            return Lifetime();
+        } else if (is_subclass(*t, pyVariable::def())) {
             DUMP("is Variable subclass");
             auto v = new_variable_subtype(*t);
             auto life = fun(*v);
@@ -436,6 +447,8 @@ Lifetime call_to_output(Value<> &out, Always<> const output, F&& fun) {
             return life;
         }
     }
+
+
 #warning "aliasing is a problem here"
     auto v = Value<pyVariable>::new_from();
     fun(*v);
@@ -570,16 +583,21 @@ struct TupleLock {
 //     ~PythonFrame() {if (state) PyEval_RestoreThread(state);}
 // };
 
-int python_context();
+int python_context() {return 0;}
 
-auto call_with_caller(Index self, Pointer address, Mode mode, ArgView& args, Out out, GIL gil) {
+struct CallHandler {
+    Index self;
+    ArgView& args;
+    auto operator()(Variable& v) const {return invoke_call(v, self, args);}
+    // auto operator()(Index& i) const {return invoke_call(v, self, args);}
+};
+
+auto call_with_caller(Index self, ArgView& args, Out out, GIL gil) {
     // auto lk = std::make_shared<PythonFrame>(!gil.value);
     args.c.context = python_context;
 
     Value<> o;
-    auto life = call_to_output(o, out, [&](Variable& v){
-        return invoke_call(v, self, address, args, mode);
-    });
+    auto life = call_to_output(o, out, CallHandler{self, args});
     DUMP("call_with_caller output", reference_count(o), bool(o));
     return std::make_pair(o, life);
 }
@@ -604,19 +622,9 @@ auto try_access_with_caller(Index self, Pointer address, I element, Mode mode, O
 Value<> load_address(Ignore, Always<> addr) {
     std::uintptr_t i = view_underlying(Always<pyInt>::from(addr));
     Index idx = *reinterpret_cast<ara_index*>(i);
-    // auto const total = size(args);
-    ArgAlloc a(0, 0);
-
-    // for (Py_ssize_t i = 0; i != total; ++i)
-    //     a.view[i] = Ref(Index::of<Export>(), Mode::Write, Pointer::from(+item(args, i)));
-
-    Value<> out = call_with_caller(idx, Pointer::from(nullptr), Mode::Read, a.view, {}, {}).first;
-    auto v = Always<pyVariable>::from(*out);
-    // v.load();
-    // if (PyObject_SetAttrString(~v, "blah", ~v)) return {};
-
-    return out;
-    // Method::call(idx);
+    ArgAlloc a(0, 0); // no arguments
+    Value<> out = call_with_caller(idx, a.view, {}, {}).first;
+    return Always<pyVariable>::from(*out);
 }
 
 Value<> load_library(Ignore, Always<pyTuple> args, Maybe<pyDict> kws) {
@@ -627,6 +635,7 @@ Value<> load_library(Ignore, Always<pyTuple> args, Maybe<pyDict> kws) {
 
     auto lib = Value<>::take(PyObject_CallFunctionObjArgs(~CDLL, ~file, nullptr));
     auto fun = Value<>::take(PyObject_GetAttr(~lib, ~name));
+    // ctypes.addressof(getattr(ctypes.CDLL(file), function_name))
     auto address = Value<>::take(PyObject_CallFunctionObjArgs(~addressof, ~fun));
     return load_address({}, *address);
 }

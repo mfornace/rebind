@@ -92,7 +92,7 @@ template <class T, class SFINAE>
 std::string const TypeName<T, SFINAE>::name = demangle(typeid(T).name());
 
 template <class T>
-auto const & type_name() noexcept {return TypeName<T>::name;}
+std::string_view type_name() noexcept {return TypeName<T>::name;}
 
 /******************************************************************************/
 
