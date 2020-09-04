@@ -253,8 +253,9 @@ union Shape {
     Shape& operator=(Shape &&s) noexcept {std::swap(c, s.c); return *this;}
 
     ~Shape() noexcept {
+        DUMP("deleting shape");
         if (rank() > 1) {
-            DUMP(rank(), c.dims.alloc[0], c.dims.alloc[1], c.dims.alloc[2]);
+            DUMP("rank size dim0 dim1", rank(), c.dims.alloc[0], c.dims.alloc[1], c.dims.alloc[2]);
             ara_dims_deallocate(c.dims.alloc, rank());
         }
     }

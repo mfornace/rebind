@@ -57,7 +57,9 @@ namespace ara {
 template <>
 struct Impl<py::Export> : Default<py::Export> {
     static bool dump(Target &v, py::Export &o) {
-        DUMP("dumping object!");
+        DUMP("dumping object!", &o);
+        DUMP("dumping object!", reference_count(py::Maybe<>(reinterpret_cast<PyObject*>(&o))));
+        DUMP("dumping object!", py::Maybe<>(reinterpret_cast<PyObject*>(&o)));
         return py::dump_object(v, reinterpret_cast<PyObject&>(o));
     }
 

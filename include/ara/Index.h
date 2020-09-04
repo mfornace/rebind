@@ -103,7 +103,7 @@ static constexpr bool is_always_stackable = is_stackable<T>(sizeof(void*));
 /******************************************************************************************/
 
 struct Pointer {
-    void *base;
+    void* base;
 
     static constexpr Pointer from(void *b=nullptr) {return {b};}
 

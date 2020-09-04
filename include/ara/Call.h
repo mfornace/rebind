@@ -45,7 +45,7 @@ struct ArgView {
 
     /// Number of tags
     auto tags() const noexcept {return c.tags;}
-    Ref &tag(unsigned int i) noexcept {return ptr()[c.args + c.tags + 1 - i];}
+    Ref &tag(unsigned int i) noexcept {return ptr()[c.args + c.tags - 1 - i];}
 
     Ref &operator[](std::size_t i) noexcept {return begin()[i];}
 };

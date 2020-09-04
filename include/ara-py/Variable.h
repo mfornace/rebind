@@ -199,11 +199,11 @@ struct pyVariable : StaticType<pyVariable> {
     static Value<> compare(Always<pyVariable> l, Always<> other, int op) noexcept;
 
     template <class Args>
-    static Value<> call(Always<pyVariable>, Args, Modes, Tag, Out, GIL);
-    static Value<> fcall(Always<pyVariable>, Always<pyTuple>, Maybe<pyDict>);
+    static Value<> call_or_method(Always<pyVariable>, Args, Modes, Tag, Out, GIL);
+    static Value<> call(Always<pyVariable>, Always<pyTuple>, Maybe<pyDict>);
 
-    static Value<> method(Always<pyVariable>, Always<pyTuple>, Modes, Tag, Out, GIL);
-    static Value<> fmethod(Always<pyVariable>, Always<pyTuple>, Maybe<pyDict>);
+    // static Value<> method(Always<pyVariable>, Always<pyTuple>, Modes, Tag, Out, GIL);
+    static Value<> method(Always<pyVariable>, Always<pyTuple>, Maybe<pyDict>);
 
     static Value<> element(Always<pyVariable>, Always<pyTuple>, Maybe<pyDict>);
     static Value<> attribute(Always<pyVariable>, Always<pyTuple>, Maybe<pyDict>);
@@ -374,7 +374,7 @@ Lifetime invoke_call(Variable &out, Index self, ArgView &args) {
         case Call::Impossible:  {throw PythonError::type("Impossible");}
         case Call::WrongNumber: {
             auto const &info = *reinterpret_cast<ara_input const*>(target.c.output);
-            throw PythonError::type("WrongNumber %I %I", info.code, info.tag);
+            throw PythonError::type("WrongNumber %u %u", info.code, info.tag);
         }
         case Call::WrongType:   {
             throw PythonError(type_error("WrongType"));
@@ -595,10 +595,12 @@ struct CallHandler {
 auto call_with_caller(Index self, ArgView& args, Out out, GIL gil) {
     // auto lk = std::make_shared<PythonFrame>(!gil.value);
     args.c.context = python_context;
+    DUMP("CALLING");
+    for (auto const &a: args) {DUMP("--", a.index().name(), a.pointer().base);}
 
     Value<> o;
     auto life = call_to_output(o, out, CallHandler{self, args});
-    DUMP("call_with_caller output", reference_count(o), bool(o));
+    DUMP("call_with_caller output (refcount, bool)", reference_count(o), bool(o));
     return std::make_pair(o, life);
 }
 
@@ -636,7 +638,7 @@ Value<> load_library(Ignore, Always<pyTuple> args, Maybe<pyDict> kws) {
     auto lib = Value<>::take(PyObject_CallFunctionObjArgs(~CDLL, ~file, nullptr));
     auto fun = Value<>::take(PyObject_GetAttr(~lib, ~name));
     // ctypes.addressof(getattr(ctypes.CDLL(file), function_name))
-    auto address = Value<>::take(PyObject_CallFunctionObjArgs(~addressof, ~fun));
+    auto address = Value<>::take(PyObject_CallFunctionObjArgs(~addressof, ~fun, nullptr));
     return load_address({}, *address);
 }
 

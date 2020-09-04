@@ -37,10 +37,28 @@ struct ElementFrame {
 
 /******************************************************************************/
 
+template <class Tag>
+bool match_tag(Tag const& tag, Ref& ref) {
+    if (auto t = ref.get<Tag>()) return *t == tag;
+    return false;
+}
+
+inline bool match_tag(char const *tag, Ref& ref) {
+    if (auto t = ref.get<Str>()) {
+        return std::string_view(*t) == std::string_view(tag);
+    }
+    return false;
+}
+
+template <std::size_t ...Is, class ...Tags>
+bool match_tags_impl(std::index_sequence<Is...>, ArgView& args, Tags const& ...tags) {
+    return (match_tag(tags, args.tag(Is)) && ...);
+}
+
 template <class ...Tags>
-bool match_tags(ArgView& args, Tags const &...tags) {
+bool match_tags(ArgView& args, Tags const& ...tags) {
     if (args.tags() != sizeof...(tags)) return false;
-    return true;
+    return match_tags_impl(std::make_index_sequence<sizeof...(Tags)>(), args, tags...);
 }
 
 /******************************************************************************/
@@ -52,7 +70,7 @@ struct Frame {
 
     template <class F, class ...Tags>
     [[nodiscard]] bool operator()(F const functor, Tags const&... tags) {
-        DUMP("MethodFrame::operator()", args.tags(), args.size());
+        DUMP("Frame::operator()", args.tags(), args.size());
         if (match_tags(args, tags...)) {
             stat = ApplyCall<F>::invoke(target, Lifetime(), functor, args);
             return true;

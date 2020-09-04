@@ -135,8 +135,11 @@ struct ArgCast<T const &> {
     T const& operator*() noexcept {return held ? reinterpret_cast<T const&>(t) : *reinterpret_cast<T const*&>(t);}
 
     static bool put(ArgCast* a, Ref& r) {
+        DUMP("ArgCast: try reference conversion");
         if (auto p = r.get(Type<T const&>())) {new (&a->t) T const*(p); a->held = false; return true;}
+        DUMP("ArgCast: try copy conversion");
         if (auto p = r.get(Type<T>()))        {new (&a->t) T(std::move(*p)); a->held = true; return true;}
+        a->held = false;
         return false;
     }
 
@@ -218,7 +221,7 @@ struct ApplyCall {
      - Returns WrongNumber if args is not the right length
      */
     static Call::stat invoke(Target& out, Lifetime life, F const &f, ArgView &args) noexcept {
-        DUMP("call_to ApplyCall<", type_name<F>(), ">",
+        DUMP("call_to ApplyCall<", type_name<F>(), ">", type_name<Signature>(),
             "address=", std::addressof(f), "args=", args.size(), "tags=", args.tags(), "lifetime=", life.value);
 
         out.set_lifetime(life);

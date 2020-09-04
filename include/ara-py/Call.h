@@ -46,6 +46,7 @@ struct ArgAlloc {
         using namespace std;
         static_assert(alignof(ArgStack<0, 1>) <= alignof(ara_ref));
         std::size_t const size = sizeof(ArgStack<0, 1>) - sizeof(ara_ref) + n * sizeof(ara_ref);
+        DUMP("allocating view, size (head=16) =", size);
         return aligned_alloc(alignof(ArgStack<0, 1>), size);
     }
 

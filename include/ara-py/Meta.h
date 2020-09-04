@@ -148,7 +148,7 @@ struct pyBoundMethod : StaticType<pyBoundMethod> {
     }
 
     static Value<> call(Always<pyBoundMethod>, Always<pyTuple>, Maybe<pyDict>);
-    
+
     static void placement_new(BoundMethod &f, Always<pyMethod> m, Always<pyVariable> s) noexcept {
         new(&f) BoundMethod{m, s};
     }
@@ -231,6 +231,7 @@ struct pyMember : StaticType<Member> {
 struct ArrayBuffer {
     Array t;
     std::vector<Py_ssize_t> dims;
+    ~ArrayBuffer() {DUMP("deleting ArrayBuffer", t.span().target<double>());}
 };
 
 struct pyArray : StaticType<pyArray> {
@@ -239,7 +240,7 @@ struct pyArray : StaticType<pyArray> {
 
     static void initialize_type(Always<pyType> t) {
         static PyBufferProcs procs{
-            reinterpret<buffer, 0, Always<pyArray>, Py_buffer*, int>, 
+            reinterpret<buffer, 0, Always<pyArray>, Py_buffer*, int>,
             nullptr
         };
 
@@ -254,26 +255,43 @@ struct pyArray : StaticType<pyArray> {
 
     static void placement_new(ArrayBuffer &b, Array &&a) {
         new(&b) ArrayBuffer{std::move(a)};
+        auto const rank = b.t.span().shape().rank();
+        if (rank == 0) throw PythonError::type("output array rank must be positive");
+        DUMP("new ArrayBuffer", *b.t.span().target<double>(), b.t.span().target<double>());
+        b.dims.resize(2 * rank);
+
+        std::copy(b.t.span().shape().begin(), b.t.span().shape().end(), b.dims.begin());
+        auto rb = std::make_reverse_iterator(b.dims.begin() + 2 * rank), re = rb + rank, rs = re;
+
+        *rb = b.t.span().c.item;
+        for (++rb; rb != re; ++rb, ++rs) *rb = rb[-1] * (*rs);
+        for (auto i : b.dims) DUMP("sss", i);
+
         b.dims.assign(b.t.span().shape().begin(), b.t.span().shape().end());
     }
 
     static int buffer(Always<pyArray> self, Py_buffer *view, int flags) noexcept {
         auto const &s = self->t.span();
+        DUMP(*s.target<double>(), s.target<double>());
         auto const &shape = s.shape();
 
         view->buf = s.c.data;
         view->obj = ~self;
         Py_INCREF(~self);
-        
+
         view->itemsize = s.c.item;//Buffer::itemsize(*p.type);
-        view->len = shape.size();//p.n_elem;
+        view->len = shape.size() * view->itemsize;//p.n_elem;
         view->readonly = true;
         view->format = const_cast<char *>(buffer_string(s.index()));
-        
+
         view->ndim = shape.rank();
         view->shape = self->dims.data();
-        // view->strides = p.shape_stride.data() + view->ndim;
-        
+        view->strides = self->dims.data() + shape.rank();
+        view->suboffsets = self->dims.data() + 2 * shape.rank();
+
+        DUMP("view info", view->len, static_cast<char const*>(view->format), view->ndim, view->buf, view->itemsize);
+        for (auto i : self->dims) DUMP(i);
+
         view->suboffsets = nullptr;
         return 0;
     }

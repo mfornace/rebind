@@ -70,6 +70,7 @@ void pyIndex::initialize_type(Always<pyType> o) noexcept {
     o->tp_repr = reinterpret<repr, nullptr, Always<pyIndex>>;
     o->tp_hash = reinterpret<hash, -1, Always<pyIndex>>;
     o->tp_str = reinterpret<str, nullptr, Always<pyIndex>>;
+    o->tp_call = reinterpret_kws<call, Always<pyIndex>>;
     o->tp_as_number = &number_methods;
     o->tp_richcompare = reinterpret<compare<pyIndex>, nullptr, Always<pyIndex>, Always<>, int>;
 };
@@ -79,7 +80,7 @@ void pyIndex::initialize_type(Always<pyType> o) noexcept {
 void Variable::reset() noexcept {
     if (!has_value()) return;
     auto const state = idx.tag();
-    DUMP("state", state);
+    DUMP("Variable::reset() state =", state);
 
     if (!(state & 0x1) && lock.count > 0) { // Read or Write
         DUMP("not resetting because a reference is held");
@@ -119,79 +120,79 @@ Py_hash_t pyVariable::hash(Always<pyVariable> self) noexcept {
 
 /******************************************************************************/
 
-Value<> pyVariable::method(Always<pyVariable> v, Always<pyTuple> args, Modes modes, Tag tag, Out out, GIL gil) {
-    DUMP("pyVariable::method", v->name(), out.value);
-    auto const total = size(args);
-    ArgAlloc a(total-1, 1);
+// Treats the first argument as the tag
+// Value<> pyVariable::method(Always<pyVariable> v, Always<pyTuple> args, Modes modes, Tag tag, Out out, GIL gil) {
+//     DUMP("pyVariable::method", v->name(), out.value);
+//     auto const total = size(args);
+//     ArgAlloc a(total-1, 1);
 
-    Str name = as_string_view(item(args, 0));
-    a.view.tag(0) = Ref(name);
+//     Str name = as_string_view(item(args, 0));
+//     a.view.tag(0) = Ref(name);
 
-    Value<> ret;
-    Lifetime life;
-    {
-        char self_mode = modes.pop_first();
-        auto self = v->acquire_ref(self_mode == 'w' ? LockType::Write : LockType::Read);
-        TupleLock locking(a.view, args, 1);
-        locking.lock(modes.value);
-// self.ref.pointer(), self.ref.mode()
-        std::tie(ret, life) = call_with_caller(self.ref.index(), a.view, out, gil);
-    }
-    DUMP("reference count", reference_count(ret), "lifetime to attach = ", life.value);
-    if (life.value) {
-        if (auto o = Maybe<pyVariable>(ret)) {
-            for (unsigned i = 0; life.value; ++i) {
-                if (life.value & 1) {
-                    DUMP("got one", i);
-                    if (i) {
-                        DUMP("setting root to argument", i-1, size(args));
-                        if (auto arg = Maybe<pyVariable>(item(args, i))) {
-                            o->set_lock(current_root(*arg));
-                        } else throw PythonError::type("Expected instance of Variable");
-                    } else {
-                        DUMP("setting root to self");
-                        o->set_lock(current_root(v));
-                    }
-                }
-                life.value >>= 1;
-            }
-        }
-    }
-    return ret;
-}
-
-/******************************************************************************/
-
-Value<> pyVariable::fmethod(Always<pyVariable> v, Always<pyTuple> args, Maybe<pyDict> kws) {
-    auto [modes, tag, out, gil] = parse<0, pyStr, Object, Object, Object>(kws, {"mode", "tag", "out", "gil"});
-    return method(v, args, Modes(modes), Tag{tag}, Out{out}, GIL{gil});
-}
+//     Value<> ret;
+//     Lifetime life;
+//     {
+//         char self_mode = modes.pop_first();
+//         auto self = v->acquire_ref(self_mode == 'w' ? LockType::Write : LockType::Read);
+//         TupleLock locking(a.view, args, 1);
+//         locking.lock(modes.value);
+// // self.ref.pointer(), self.ref.mode()
+//         std::tie(ret, life) = call_with_caller(self.ref.index(), a.view, out, gil);
+//     }
+//     DUMP("reference count", reference_count(ret), "lifetime to attach = ", life.value);
+//     if (life.value) {
+//         if (auto o = Maybe<pyVariable>(ret)) {
+//             for (unsigned i = 0; life.value; ++i) {
+//                 if (life.value & 1) {
+//                     DUMP("got one", i);
+//                     if (i) {
+//                         DUMP("setting root to argument", i-1, size(args));
+//                         if (auto arg = Maybe<pyVariable>(item(args, i))) {
+//                             o->set_lock(current_root(*arg));
+//                         } else throw PythonError::type("Expected instance of Variable");
+//                     } else {
+//                         DUMP("setting root to self");
+//                         o->set_lock(current_root(v));
+//                     }
+//                 }
+//                 life.value >>= 1;
+//             }
+//         }
+//     }
+//     return ret;
+// }
 
 /******************************************************************************/
 
+// forwards arguments and tags to call_with_caller
+// args <-- (self, *args)
+// tags <-- tag (if supplied)
 template <class Args>
-Value<> pyVariable::call(Always<pyVariable> v, Args args, Modes modes, Tag tag, Out out, GIL gil) {
-    DUMP("variable_call", v->name());
+Value<> pyVariable::call_or_method(Always<pyVariable> v, Args args, Modes modes, Tag tag, Out out, GIL gil) {
+    DUMP("pyVariable::call", v->name());
     if (!v->has_value()) throw PythonError::type("Calling method on empty Variable");
+
     uint const tags = bool(tag.value), nargs = args.size();
     DUMP("tag", tag.value, "tags=", tags, "args=", nargs);
     ArgAlloc a(nargs+1, tags);
 
-    if (tags) {
+    if (tags) { // put in tags
         a.view.tag(0) = Ref(Index::of<Export>(), Mode::Read, Pointer::from(~tag.value));
     }
 
-    a.view[0] = Ref(v->index(), Mode::Write, Pointer::from(v->address()));
-    for (Py_ssize_t i = 0; i != nargs; ++i)
+    a.view[0] = Ref(v->index(), Mode::Write, Pointer::from(v->address())); // put in self
+
+    for (Py_ssize_t i = 0; i != nargs; ++i) { // put in *args
         a.view[i+1] = Ref(Index::of<Export>(), Mode::Write, Pointer::from(+args[i]));
+    }
     args.check();
 
-#warning "not sure why separate from method"
     return call_with_caller(v->index(), a.view, out, gil).first;
 }
 
 /******************************************************************************/
 
+// No customization, just a wrapper for the args tuple to provide consistent interface
 struct TupleWrap {
     Always<pyTuple> args;
     auto size() const {return ::ara::py::size(args);}
@@ -199,9 +200,48 @@ struct TupleWrap {
     void check() const {}
 };
 
-Value<> pyVariable::fcall(Always<pyVariable> v, Always<pyTuple> args, Maybe<pyDict> kws) {
+Value<> pyVariable::call(Always<pyVariable> v, Always<pyTuple> args, Maybe<pyDict> kws) {
     auto [modes, tag, out, gil] = parse<0, pyStr, Object, Object, Object>(kws, {"mode", "tag", "out", "gil"});
-    return call(v, TupleWrap{args}, Modes(modes), Tag{tag}, Out{out}, GIL{gil});
+    return call_or_method(v, TupleWrap{args}, Modes(modes), Tag{tag}, Out{out}, GIL{gil});
+}
+
+/******************************************************************************/
+
+struct DropFirst {
+    Always<pyTuple> args;
+    auto size() const {return ::ara::py::size(args) - 1;}
+    auto operator[](Py_ssize_t i) const {return item(args, i+1);}
+    void check() const {}
+};
+
+Value<> pyVariable::method(Always<pyVariable> v, Always<pyTuple> args, Maybe<pyDict> kws) {
+    auto [modes, out, gil] = parse<0, pyStr, Object, Object>(kws, {"mode", "out", "gil"});
+    if (!size(args)) throw PythonError::type("Variable.method() must be called with at least one argument");
+    DUMP("arguments:", args);
+    return call_or_method(v, DropFirst{args}, Modes(modes), Tag{item(args, 0)}, Out{out}, GIL{gil});
+}
+
+/******************************************************************************/
+
+Value<> pyIndex::call(Always<pyIndex> i, Always<pyTuple> args, Maybe<pyDict> kws) {
+    auto [modes, tag, out, gil] = parse<0, pyStr, Object, Object, Object>(kws, {"mode", "tag", "out", "gil"});
+
+    DUMP("pyIndex::call", i->name());
+    if (!i->has_value()) throw PythonError::type("Calling method on empty Index");
+
+    uint const tags = bool(tag), nargs = size(args);
+    DUMP("tag", tag, "tags=", tags, "args=", nargs);
+    ArgAlloc a(nargs, tags);
+
+    if (tags) { // put in tag, optionally
+        a.view.tag(0) = Ref(Index::of<Export>(), Mode::Read, Pointer::from(+tag));
+    }
+
+    for (Py_ssize_t i = 0; i != nargs; ++i) { // put in args
+        a.view[i] = Ref(Index::of<Export>(), Mode::Write, Pointer::from(+item(args, i)));
+    }
+
+    return call_with_caller(*i, a.view, Out{out}, GIL{gil}).first;
 }
 
 /******************************************************************************/
@@ -348,7 +388,7 @@ PyMethodDef pyVariable::methods[] = {
     {"bind", reinterpret_kws<bind, Always<pyVariable>>, METH_VARARGS | METH_KEYWORDS,
         "bind(self)\n--\n\nbind a method"},
 
-    {"method", reinterpret_kws<fmethod, Always<pyVariable>>, METH_VARARGS | METH_KEYWORDS,
+    {"method", reinterpret_kws<method, Always<pyVariable>>, METH_VARARGS | METH_KEYWORDS,
         "method(self, name, out=None)\n--\n\ncall a method given a name and arguments"},
 
     {"attribute", reinterpret_kws<attribute, Always<pyVariable>>, METH_VARARGS | METH_KEYWORDS,
@@ -370,7 +410,7 @@ void pyVariable::initialize_type(Always<pyType> o) noexcept {
     define_type<pyVariable>(o, "ara.Variable", "Object class");
     o->tp_as_number = &number_methods;
     o->tp_methods = methods;
-    o->tp_call = reinterpret_kws<fcall, Always<pyVariable>>;
+    o->tp_call = reinterpret_kws<call, Always<pyVariable>>;
     o->tp_clear = reinterpret<clear, nullptr, Always<pyVariable>>;
     o->tp_traverse = reinterpret<traverse, nullptr, Always<pyVariable>, visitproc, void*>;
     o->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC;
@@ -499,7 +539,7 @@ bool dump_span(Target &target, Always<> o) {
         Shape shape(buff->shape, buff->shape + buff->ndim);
         // for (auto &s : shape) s /= item;
 
-        DUMP("make span!!!!!");
+        DUMP("make span!!!!!", *static_cast<double *>(data));
         return target.emplace<Span>(index, data, std::move(shape), item);
     }
 
@@ -757,10 +797,12 @@ Value<> pyBoundMethod::call(Always<pyBoundMethod> b, Always<pyTuple> args, Maybe
     Method const &m = b->method;
     DUMP("pyBoundMethod::call", m.tag);
     if (m.signature) {
-        return pyVariable::call(b->instance, ReorderWrap{*m.signature, args, kws}, Modes(m.mode), Tag{m.tag}, Out{m.out}, GIL{m.gil});
+        return pyVariable::call_or_method(b->instance,
+            ReorderWrap{*m.signature, args, kws}, Modes(m.mode), Tag{m.tag}, Out{m.out}, GIL{m.gil});
     } else {
         if (kws) throw PythonError::type("should not have keywords");
-        return pyVariable::call(b->instance, TupleWrap{args}, Modes(m.mode), Tag{m.tag}, Out{m.out}, GIL{m.gil});
+        return pyVariable::call_or_method(b->instance,
+            TupleWrap{args}, Modes(m.mode), Tag{m.tag}, Out{m.out}, GIL{m.gil});
     }
 }
 
@@ -770,8 +812,12 @@ Value<pyMemoryView> pyMemoryView::load(Ref &ref, Value<> const &root, Value<> co
     DUMP("trying to load memoryview");
     if (auto p = ref.get<Array>()) {
         DUMP("GOT AN ARRAY");
+        DUMP(*p->span().target<double>());
         auto v = Value<pyArray>::new_from(std::move(*p));
-        return Value<pyMemoryView>::take(PyMemoryView_FromObject(~v));
+        DUMP(reference_count(v));
+        auto o = Value<pyMemoryView>::take(PyMemoryView_FromObject(~v));
+        DUMP(reference_count(v));
+        return o;
     }
     return {};
 }

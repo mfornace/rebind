@@ -101,6 +101,8 @@ struct pyIndex : StaticType<pyIndex> {
     static void initialize_type(Always<pyType> o) noexcept;
 
     static Value<pyIndex> load(Ref &ref, Ignore, Ignore) {return {};}
+
+    static Value<> call(Always<pyIndex>, Always<pyTuple>, Maybe<pyDict>);
 };
 
 /******************************************************************************/

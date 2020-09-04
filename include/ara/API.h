@@ -68,9 +68,9 @@ typedef ara_stat (*ara_context)(void);
 
 /// span of a contiguous array of tags and arguments
 // [caller, arg[N]...arg[0], tag[M]...tag[0]]
-typedef struct ara_args {
-    ara_context context;
-    uint32_t tags, args;
+typedef struct ara_args { // 16 bytes
+    ara_context context; //usually 8 bytes
+    uint32_t tags, args; // usually 8 bytes
 } ara_args;
 
 /******************************************************************************************/

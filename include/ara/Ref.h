@@ -233,7 +233,7 @@ bool Ref::get(T& t) {
 
 template <class T, std::enable_if_t<std::is_reference_v<T>, int>>
 std::remove_reference_t<T>* Ref::get(Type<T>) const {
-    DUMP("Ref::get()", type_name<T>(), name());
+    DUMP("Ref::get()", type_name<T>(), name(), typeid(std::tuple<T>).name());
     if (auto t = target<T>()) {
         DUMP("succeeded in Ref::get()", type_name<T>(), name());
         return t;
