@@ -1,15 +1,15 @@
 
-#include <ara-cpp/Schema.h>
-#include <ara/Core.h>
+#include <sfb-cpp/Schema.h>
+#include <sfb/Core.h>
 #include <mutex>
 
 
-ara::Ref const * make_schema();
+sfb::Ref const * make_schema();
 
-static ara::Ref module = make_schema()->copy();
+static sfb::Ref module = make_schema()->copy();
 
 int main() {
-    using namespace ara;
+    using namespace sfb;
 
     // auto v = schema["global_value"];
     // auto p = v.target<int const &>();

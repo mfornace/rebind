@@ -1,10 +1,10 @@
 
-#include <ara/Call.h>
-#include <ara/Core.h>
-#include <ara-cpp/Schema.h>
-#include <ara-cpp/Standard.h>
-#include <ara-cpp/Array.h>
-#include <ara-cpp/Tuple.h>
+#include <sfb/Call.h>
+#include <sfb/Core.h>
+#include <sfb-cpp/Schema.h>
+#include <sfb-cpp/Standard.h>
+#include <sfb-cpp/Array.h>
+#include <sfb-cpp/Tuple.h>
 #include <iostream>
 
 
@@ -26,9 +26,9 @@ static_assert(8 == sizeof(std::optional<int>));
 static_assert(std::is_trivially_copyable_v<std::optional<int>>);
 
 
-using ara::Type;
-using ara::Value;
-using ara::Schema;
+using sfb::Type;
+using sfb::Value;
+using sfb::Schema;
 
 /******************************************************************************/
 
@@ -164,19 +164,19 @@ struct Goo : GooBase {
 /******************************************************************************/
 
 template <>
-struct ara::Impl<GooBase> {
+struct sfb::Impl<GooBase> {
     static bool call(Frame) {return false;}
 };
 
 template <>
-struct ara::Impl<Goo> : ara::Default<Goo> {
+struct sfb::Impl<Goo> : sfb::Default<Goo> {
     // static auto attribute(AttributeFrame<Goo> f) {
     //     return f(&Goo::x, "x")
     //         || f(&Goo::x, "x2");
     // }
 
     static bool method(Frame f) {
-        DUMP("calling Goo f", ara::Lifetime({0}).value);
+        DUMP("calling Goo f", sfb::Lifetime({0}).value);
         return f([](double x){return Goo(x);},          "new")
             || f([](Goo g, Goo g2, Goo g3) {return g;}, "add")
             || f(&Goo::test_throw,                      "test_throw")
@@ -230,7 +230,7 @@ Schema make_schema() {
     s.function("string_argument", [](std::string s) {DUMP("string =", s); return s;});
     s.function("stringref_argument", [](std::string const &s) {DUMP("string =", s); return s;});
 
-    s.object("Goo", ara::Index::of<Goo>());
+    s.object("Goo", sfb::Index::of<Goo>());
 
     s.function("vec1", [](std::vector<int> const &) {});
     s.function("vec2", [](std::vector<int> &) {});
@@ -250,8 +250,8 @@ Schema make_schema() {
 struct Example {};
 
 template <>
-struct ara::Impl<Example> : ara::Default<Example> {
-    static bool call(ara::Frame frame) {
+struct sfb::Impl<Example> : sfb::Default<Example> {
+    static bool call(sfb::Frame frame) {
         return frame([](Example const &self) {return make_schema();});
     }
 };
@@ -260,27 +260,27 @@ struct Test {};
 
 
 template <>
-struct ara::Impl<Test> {
-    static ara::Name::stat name(ara::Str&)                                     noexcept {return {};}
-    static ara::Info::stat info(ara::Index&, void const*& s)                   noexcept {return {};}
-    static ara::Call::stat call_nothrow(Target&, ArgView&)                     noexcept {return {};} // combine with method?
-    static ara::Load::stat load_nothrow(Target&, Pointer, Mode)                noexcept {return {};}
-    static ara::Dump::stat dump_nothrow(Target&, Pointer, Mode)                noexcept {return {};}
-    static ara::Equal::stat equal_nothrow(Test const&, Test const&)            noexcept {return {};} // no cross type comparison... (at least Str to String would be good...)
-    static ara::Compare::stat compare_nothrow(Test const&, Test const&)        noexcept {return {};} // no cross type comparison... (at least Str to String would be good...)
-    static ara::Attribute::stat attribute_nothrow(Target&, Pointer, Str, Mode) noexcept {return {};} // too specific? make static possible?
-    static ara::Element::stat element_nothrow(Target&, Pointer, Integer, Mode) noexcept {return {};} // too specific?
-    static ara::Hash::stat hash_nothrow(std::size_t&, Test const&)             noexcept {return {};}
-    static ara::Swap::stat swap(Test&, Test&)                                  noexcept {return {};}
-    static ara::Relocate::stat relocate(void*, Test&&)                         noexcept {return {};}
-    static ara::Copy::stat copy(Target&, Test const&)                          noexcept {return {};}
-    static ara::Deallocate::stat deallocate(Test&)                             noexcept {return {};}
-    static ara::Destruct::stat destruct(Test&)                                 noexcept {return {};}
+struct sfb::Impl<Test> {
+    static sfb::Name::stat name(sfb::Str&)                                     noexcept {return {};}
+    static sfb::Info::stat info(sfb::Index&, void const*& s)                   noexcept {return {};}
+    static sfb::Call::stat call_nothrow(Target&, ArgView&)                     noexcept {return {};} // combine with method?
+    static sfb::Load::stat load_nothrow(Target&, Pointer, Mode)                noexcept {return {};}
+    static sfb::Dump::stat dump_nothrow(Target&, Pointer, Mode)                noexcept {return {};}
+    static sfb::Equal::stat equal_nothrow(Test const&, Test const&)            noexcept {return {};} // no cross type comparison... (at least Str to String would be good...)
+    static sfb::Compare::stat compare_nothrow(Test const&, Test const&)        noexcept {return {};} // no cross type comparison... (at least Str to String would be good...)
+    static sfb::Attribute::stat attribute_nothrow(Target&, Pointer, Str, Mode) noexcept {return {};} // too specific? make static possible?
+    static sfb::Element::stat element_nothrow(Target&, Pointer, Integer, Mode) noexcept {return {};} // too specific?
+    static sfb::Hash::stat hash_nothrow(std::size_t&, Test const&)             noexcept {return {};}
+    static sfb::Swap::stat swap(Test&, Test&)                                  noexcept {return {};}
+    static sfb::Relocate::stat relocate(void*, Test&&)                         noexcept {return {};}
+    static sfb::Copy::stat copy(Target&, Test const&)                          noexcept {return {};}
+    static sfb::Deallocate::stat deallocate(Test&)                             noexcept {return {};}
+    static sfb::Destruct::stat destruct(Test&)                                 noexcept {return {};}
 };
 
 
-ARA_DEFINE(example_test, Test);
-ARA_DECLARE(example_boot, Example);
-ARA_DEFINE(example_boot, Example);
+SFB_DEFINE(example_test, Test);
+SFB_DECLARE(example_boot, Example);
+SFB_DEFINE(example_boot, Example);
 
 

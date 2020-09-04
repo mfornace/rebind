@@ -1,44 +1,44 @@
-#include <ara/Call.h>
-#include <ara/Error.h>
+#include <sfb/Call.h>
+#include <sfb/Error.h>
 #include <stdexcept>
-#include <ara/Core.h>
+#include <sfb/Core.h>
 
 /******************************************************************************/
 
 extern "C" {
 
-ARA_DEFINE(void, void);
-ARA_DEFINE(cpp_bool, bool);
-ARA_DEFINE(char, char);
-ARA_DEFINE(uchar, unsigned char);
-ARA_DEFINE(int, int);
-ARA_DEFINE(long, long);
-ARA_DEFINE(longlong, long long);
-ARA_DEFINE(ulonglong, unsigned long long);
-ARA_DEFINE(unsigned, unsigned);
-ARA_DEFINE(float, float);
-ARA_DEFINE(double, double);
+SFB_DEFINE(void,      void);
+SFB_DEFINE(cpp_bool,  bool);
+SFB_DEFINE(char,      char);
+SFB_DEFINE(uchar,     unsigned char);
+SFB_DEFINE(int,       int);
+SFB_DEFINE(long,      long);
+SFB_DEFINE(longlong,  long long);
+SFB_DEFINE(ulonglong, unsigned long long);
+SFB_DEFINE(unsigned,  unsigned);
+SFB_DEFINE(float,     float);
+SFB_DEFINE(double,    double);
 
-// ara_define_str() {return }
-// ara::Switch<TYPE>::call
+// SFB_DEFINE_str() {return }
+// sfb::Switch<TYPE>::call
 
-ARA_DEFINE(bool,   ara::Bool);
-ARA_DEFINE(str,    ara::Str);
-ARA_DEFINE(bin,    ara::Bin);
-ARA_DEFINE(string, ara::String);
-ARA_DEFINE(binary, ara::Binary);
-ARA_DEFINE(span,   ara::Span);
-ARA_DEFINE(array,  ara::Array);
-ARA_DEFINE(tuple,  ara::Tuple);
-ARA_DEFINE(view,   ara::View);
-ARA_DEFINE(index,  ara::Index);
+SFB_DEFINE(bool,   sfb::Bool);
+SFB_DEFINE(str,    sfb::Str);
+SFB_DEFINE(bin,    sfb::Bin);
+SFB_DEFINE(string, sfb::String);
+SFB_DEFINE(binary, sfb::Binary);
+SFB_DEFINE(span,   sfb::Span);
+SFB_DEFINE(array,  sfb::Array);
+SFB_DEFINE(tuple,  sfb::Tuple);
+SFB_DEFINE(view,   sfb::View);
+SFB_DEFINE(index,  sfb::Index);
 
 }
 
 // static_assert(sizeof(std::exception_ptr) == 8);
 // #if __has_include(<boost/core/demangle.hpp>)
 // #   include <boost/core/demangle.hpp>
-//     namespace ara::runtime {
+//     namespace sfb::runtime {
 //         std::string demangle(char const *s) {return boost::demangle(s);}
 
 //         char const * unknown_exception_description() noexcept {
@@ -48,7 +48,7 @@ ARA_DEFINE(index,  ara::Index);
 
 #if __has_include(<cxxabi.h>)
 #   include <cxxabi.h>
-    namespace ara {
+    namespace sfb {
         struct demangle_raii {
             char *buff;
             ~demangle_raii() {std::free(buff);}
@@ -75,7 +75,7 @@ ARA_DEFINE(index,  ara::Index);
         }
     }
 #else
-    namespace ara {
+    namespace sfb {
         std::string demangle(char const *s) {return s;}
 
         char const *unknown_exception_description() noexcept {return "C++: unknown exception";}
@@ -84,7 +84,7 @@ ARA_DEFINE(index,  ara::Index);
 
 /******************************************************************************/
 
-namespace ara {
+namespace sfb {
 
 /******************************************************************************/
 
@@ -126,18 +126,18 @@ void Target::set_current_exception() noexcept {
 
 Call::stat Call::wrong_number(Target &target, Code got, Code expected) noexcept {
     DUMP("Call::wrong_number", "got=", got, "expected=", expected);
-    target.construct<ara_input>(got, expected);
+    target.construct<sfb_input>(got, expected);
     return WrongNumber;
 }
 
 Call::stat Call::wrong_type(Target &target, Code n, Index i, Qualifier q) noexcept {
     DUMP("Call::wrong_type", "arg=", n, "expected=", i.name(), "qualifier=", q);
-    // target.construct<ara_index>(ara_mode_index(i, static_cast<ara_mode>(q)), n);
+    // target.construct<sfb_index>(sfb_mode_index(i, static_cast<sfb_mode>(q)), n);
     return WrongType;
 }
 
 Call::stat Call::wrong_return(Target &target, Index i, Qualifier q) noexcept {
-    target.construct<ara_index>(ara_mode_index(i, static_cast<ara_mode>(q)));
+    target.construct<sfb_index>(sfb_mode_index(i, static_cast<sfb_mode>(q)));
     return WrongReturn;
 }
 

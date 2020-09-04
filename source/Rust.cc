@@ -1,30 +1,30 @@
-#include <ara/Schema.h>
+#include <sfb/Schema.h>
 
-#include <ara-rust/Module.h>
+#include <sfb-rust/Module.h>
 #include <deque>
 
 /******************************************************************************/
 
-namespace ara {
+namespace sfb {
     std::deque<Table> rust_tables;
 }
 
 /******************************************************************************/
 
-void ara_value_drop(ara_value *x) noexcept {
-    using namespace ara;
+void sfb_value_drop(sfb_value *x) noexcept {
+    using namespace sfb;
     reinterpret_cast<Value *>(x)->~Value();
 }
 
-// void ara_value_new(ara_value *v) { // noexcept
-    // return reinterpret_cast<ara_value *>(new ara::Value(std::string()));
+// void sfb_value_new(sfb_value *v) { // noexcept
+    // return reinterpret_cast<sfb_value *>(new sfb::Value(std::string()));
 // }
 
-namespace ara {void init(ara::Schema &);}
+namespace sfb {void init(sfb::Schema &);}
 
-ara_bool ara_init() noexcept {
+sfb_bool sfb_init() noexcept {
     try {
-        ara::init(ara::schema());
+        sfb::init(sfb::schema());
         DUMP("worked!");
         return 1;
     } catch (...) {
@@ -33,37 +33,37 @@ ara_bool ara_init() noexcept {
     }
 }
 
-ara_bool ara_value_copy(ara_value *v, ara_value const *o) noexcept {
+sfb_bool sfb_value_copy(sfb_value *v, sfb_value const *o) noexcept {
     // try {
-    //     return reinterpret_cast<ara_value *>(new ara::Value(
-    //         *reinterpret_cast<ara::Value const *>(v)));
+    //     return reinterpret_cast<sfb_value *>(new sfb::Value(
+    //         *reinterpret_cast<sfb::Value const *>(v)));
     // } catch (...) {
     //     return nullptr;
     // }
     return true;
 }
 
-// ara_index ara_value_index(ara_value *v) {
-    // ara_index[16] ARAC(variable_type)(ara_value *v);
-//     auto t = reinterpret_cast<ara::Value const *>(v)->index();
-//     static_assert(sizeof(t) == sizeof(ara_index));
-//     return reinterpret_cast<ara_index const &>(t);
+// sfb_index sfb_value_index(sfb_value *v) {
+    // sfb_index[16] SFBC(variable_type)(sfb_value *v);
+//     auto t = reinterpret_cast<sfb::Value const *>(v)->index();
+//     static_assert(sizeof(t) == sizeof(sfb_index));
+//     return reinterpret_cast<sfb_index const &>(t);
 // }
 
-char const * ara_index_name(ara_index v) noexcept {
-    return ara::raw::name(v).data();
+char const * sfb_index_name(sfb_index v) noexcept {
+    return sfb::raw::name(v).data();
 }
 
-inline std::string_view as_view(ara_str const &s) {
+inline std::string_view as_view(sfb_str const &s) {
     return {reinterpret_cast<char const *>(s.data), s.size};
 }
 
-inline ara::ArgView as_view(ara_args const &s) {
-    return {reinterpret_cast<ara::Ref *>(s.data), s.size};
+inline sfb::ArgView as_view(sfb_args const &s) {
+    return {reinterpret_cast<sfb::Ref *>(s.data), s.size};
 }
 
-ara_value const * ara_lookup(ara_str s) noexcept {
-    auto const &c = ara::schema().contents;
+sfb_value const * sfb_lookup(sfb_str s) noexcept {
+    auto const &c = sfb::schema().contents;
     DUMP("looking up", as_view(s), as_view(s).size());
     if (auto it = c.find(as_view(s)); it != c.end()) {
         auto v = it->second.as_raw();
@@ -76,17 +76,17 @@ ara_value const * ara_lookup(ara_str s) noexcept {
     }
 }
 
-ara_index ara_table_emplace(
-    ara_str name,
+sfb_index sfb_table_emplace(
+    sfb_str name,
     void const *info,
-    ara::CTable::drop_t drop,
-    ara::CTable::copy_t copy,
-    ara::CTable::to_value_t to_value,
-    ara::CTable::to_ref_t to_ref,
-    ara::CTable::assign_if_t assign_if,
-    ara::CTable::from_ref_t from_ref) {
+    sfb::CTable::drop_t drop,
+    sfb::CTable::copy_t copy,
+    sfb::CTable::to_value_t to_value,
+    sfb::CTable::to_ref_t to_ref,
+    sfb::CTable::assign_if_t assign_if,
+    sfb::CTable::from_ref_t from_ref) {
 
-    auto &t = ara::rust_tables.emplace_back();
+    auto &t = sfb::rust_tables.emplace_back();
     t.c.drop = drop;
     t.c.copy = copy;
     t.c.to_value = to_value;
@@ -98,10 +98,10 @@ ara_index ara_table_emplace(
     return &t;
 }
 
-ara_bool ara_value_call_value(ara_value *out, ara_value const *v, ara_args a) noexcept {
-    auto const &f = *reinterpret_cast<ara::Value const *>(v);
+sfb_bool sfb_value_call_value(sfb_value *out, sfb_value const *v, sfb_args a) noexcept {
+    auto const &f = *reinterpret_cast<sfb::Value const *>(v);
     try {
-        return f.call_to(reinterpret_cast<ara::Value &>(out), ara::Caller(), as_view(a));
+        return f.call_to(reinterpret_cast<sfb::Value &>(out), sfb::Caller(), as_view(a));
     } catch(std::exception const &e) {
         DUMP(e.what());
         return 0;
