@@ -276,7 +276,7 @@ inline sfb_index sfb_get_index(sfb_index i) {
 
 /******************************************************************************************/
 
-#define sfb_FUNCTION(NAME) SFB_DEFINE_##NAME
+#define SFB_FUNCTION(NAME) sfb_define_##NAME
 
 /******************************************************************************************/
 

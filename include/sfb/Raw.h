@@ -4,11 +4,11 @@
 
 /******************************************************************************************/
 
-#define SFB_DEFINE(NAME, TYPE) sfb_stat sfb_FUNCTION(NAME)(sfb_input i, void* s, void* p, void* a) noexcept {return sfb::Switch<TYPE>::invoke(i,s,p,a);}
+#define SFB_DEFINE(NAME, TYPE) sfb_stat SFB_FUNCTION(NAME)(sfb_input i, void* s, void* p, void* a) noexcept {return sfb::Switch<TYPE>::invoke(i,s,p,a);}
 
 #define SFB_DECLARE(NAME, TYPE) \
-    extern "C" sfb_stat sfb_FUNCTION(NAME)(sfb_input, void*, void*, void*) noexcept; \
-    namespace sfb {template<> struct Lookup<TYPE> {static constexpr sfb_index invoke = sfb_FUNCTION(NAME);};}
+    extern "C" sfb_stat SFB_FUNCTION(NAME)(sfb_input, void*, void*, void*) noexcept; \
+    namespace sfb {template<> struct Lookup<TYPE> {static constexpr sfb_index invoke = SFB_FUNCTION(NAME);};}
 
 /******************************************************************************************/
 
