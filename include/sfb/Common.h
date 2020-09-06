@@ -9,19 +9,19 @@ namespace sfb {
 
 /******************************************************************************/
 
-extern bool Debug;
-void set_debug(bool debug) noexcept;
-bool debug() noexcept;
+extern std::shared_ptr<std::ostream> debug_stream;
+void set_debug_stream(std::string_view debug);
 
 char const * unknown_exception_description() noexcept;
 
 /// For debugging purposes
 template <class ...Ts>
 void print_arguments(char const *s, int n, Ts const &...ts) {
-    if (!Debug) return;
-    std::cout << '[' << s << ':' << n << "] ";
-    ((std::cout << ts << ' '), ...);
-    std::cout << std::endl;
+    if (!debug_stream) return;
+    auto &os = *debug_stream;
+    os << '[' << s << ':' << n << "] ";
+    ((os << ts << ' '), ...);
+    os << std::endl;
 }
 
 
@@ -80,6 +80,9 @@ static constexpr bool is_copy_constructible_v = is_copy_constructible<T>::value;
 struct Ignore {
     template <class ...Ts>
     constexpr Ignore(Ts const &...) {}
+
+    template <class ...Ts>
+    void operator()(Ts const &...) {}
 };
 
 /******************************************************************************/

@@ -1,6 +1,7 @@
 #include <sfb/Call.h>
 #include <sfb/Error.h>
 #include <stdexcept>
+#include <fstream>
 #include <sfb/Core.h>
 
 /******************************************************************************/
@@ -97,10 +98,20 @@ std::string cat(Ts const &...ts) {
 
 /******************************************************************************/
 
-bool Debug = true;
+std::shared_ptr<std::ostream> debug_stream = std::make_shared<std::ofstream>("debug.log");
 
-void set_debug(bool debug) noexcept {Debug = debug;}
-bool debug() noexcept {return Debug;}
+void set_debug_stream(std::string_view s) {
+    if (s.empty()) {
+        debug_stream.reset();
+    } else if (s == "stderr") {
+        debug_stream = std::shared_ptr<std::ostream>(&std::cerr, Ignore());
+    } else if (s == "stdout") {
+        debug_stream = std::shared_ptr<std::ostream>(&std::cout, Ignore());
+    } else {
+        debug_stream = std::make_shared<std::ofstream>(s);
+    }
+}
+// bool debug() noexcept {return Debug;}
 
 /******************************************************************************/
 
