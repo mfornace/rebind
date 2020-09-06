@@ -195,10 +195,6 @@ struct Impl<T, std::enable_if_t<(std::is_enum_v<T>)>> {
 
 /******************************************************************************/
 
-#warning "broken"
-// template <>
-// struct TypeName<sfb_index> {static std::string const name;};
-
 }
 
 /******************************************************************************/

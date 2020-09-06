@@ -487,7 +487,7 @@ struct Call {
         return static_cast<stat>(f({code::call, {}}, &out, {}, reinterpret_cast<sfb_args *>(&args)));
     }
 
-    [[nodiscard]] static stat wrong_number(Target &, Code, Code) noexcept;
+    [[nodiscard]] static stat wrong_number(Target &, Code got, Code expected) noexcept;
     static stat wrong_type(Target &, Code, Index, Qualifier) noexcept;
     [[nodiscard]] static stat wrong_return(Target &, Index, Qualifier) noexcept;
 };

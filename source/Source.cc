@@ -164,7 +164,10 @@ Call::stat Call::wrong_return(Target &target, Index i, Qualifier q) noexcept {
 
         case Call::Impossible:  {throw NotImplemented("Call: Impossible", stat);}
         case Call::WrongType:   {throw WrongType("WrongType");}
-        case Call::WrongNumber: {throw WrongNumber(1, 2);}
+        case Call::WrongNumber: {
+            auto const &i = *static_cast<sfb_input const *>(target.output());
+            throw WrongNumber(i.code, i.tag);
+        }
         case Call::WrongReturn: {throw WrongReturn("WrongReturn");}
                 // Postcondition failure
         case Call::OutOfMemory: {throw std::bad_alloc();}

@@ -61,7 +61,6 @@ struct WrongType : PreconditionError {
 
 /******************************************************************************/
 
-#warning "cleanup"
 struct Failure : std::exception {
     Index idx;
     void *ptr;
