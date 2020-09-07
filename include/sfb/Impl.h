@@ -479,6 +479,7 @@ struct Call {
         static stat call_nothrow(Target &out, ArgView &args) noexcept {
             stat s = Impossible;
             if constexpr(has_call_v<T>) {Impl<T>::call({out, args, s});}
+            else {DUMP("no call operator", type_name<T>());}
             return s;
         }
     };

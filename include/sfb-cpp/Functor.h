@@ -38,6 +38,7 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
 
     if constexpr(!std::is_void_v<U>) { // void already handled
         if constexpr(std::is_same_v<U, Index>) {
+            DUMP("hmmm!!!", target.can_yield(Target::Index2));
             if (target.can_yield(Target::Index2)) {
                 target.c.index = std::invoke(f, std::forward<Ts>(ts)...);
                 return Call::Index2;
@@ -262,19 +263,19 @@ struct Impl<Functor<F>> : Default<Functor<F>> {
      Interface implementation for a function with no optional arguments.
      - Returns WrongNumber if args is not the right length
      */
-    static bool call(Frame m) noexcept {
-        DUMP("call_to function adapter", type_name<F>(), "args=", m.args.size());
-        if (m.args.tags())
-            return Call::wrong_number(m.target, m.args.tags(), 0);
+    static Call::stat call_nothrow(Target& target, ArgView& args) noexcept {
+        DUMP("call_to function adapter", type_name<F>(), "args=", args.size());
+        if (args.tags())
+            return Call::wrong_number(target, args.tags(), 0);
 
-        m.stat = m.target.make_noexcept([&] {
-            return apply_casts(Args(), m.target, m.args, [&](Functor<F> const& f, auto &&...ts) {
-                m.target.set_lifetime(f.lifetime);
-                return invoke_to(m.target, f.function, std::forward<decltype(ts)>(ts)...);
+        auto stat = target.make_noexcept([&] {
+            return apply_casts(Args(), target, args, [&](Functor<F> const& f, auto &&...ts) {
+                target.set_lifetime(f.lifetime);
+                return invoke_to(target, f.function, std::forward<decltype(ts)>(ts)...);
             });
         });
-        DUMP("invoked with stat", m.stat);
-        return Call::was_invoked(m.stat);
+        DUMP("invoked with stat", stat);
+        return stat;
     }
 };
 
