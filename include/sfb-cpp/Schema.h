@@ -73,15 +73,15 @@ struct is_copy_constructible<Schema> : std::false_type {};
 
 template <>
 struct Impl<Schema> : Default<Schema> {
-    // static bool attribute(Target &t, Schema const &s, std::string_view key) {
-    //     if (auto it = s.find(key); it != s.contents().end()) {
-    //         t.c.output = it->second.address().base;
-    //         t.c.mode = static_cast<sfb_mode>(Mode::Read);
-    //         t.c.index = it->second.index();
-    //         t.c.lifetime = 1;
-    //         return true;
-    //     } else return false;
-    // }
+    static bool attribute(Target &t, Schema const &s, std::string_view key) {
+        if (auto it = s.find(key); it != s.contents().end()) {
+            t.c.output = it->second.address().base;
+            t.c.mode = static_cast<sfb_mode>(Mode::Read);
+            t.c.index = it->second.index();
+            t.c.lifetime = 1;
+            return true;
+        } else return false;
+    }
 
     static bool call(Frame m) {
         DUMP("trying Schema method!", m.args.tags());
