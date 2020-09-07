@@ -37,6 +37,13 @@ Call::stat invoke_to(Target& target, F const &f, Ts &&... ts) {
     }
 
     if constexpr(!std::is_void_v<U>) { // void already handled
+        if constexpr(std::is_same_v<U, Index>) {
+            if (target.can_yield(Target::Index2)) {
+                target.c.index = std::invoke(f, std::forward<Ts>(ts)...);
+                return Call::Index2;
+            }
+        }
+
         if (target.matches<U>()) { // exact type match, excluding qualifiers
 
             if (std::is_same_v<O, U &> && target.can_yield(Target::Write)) {

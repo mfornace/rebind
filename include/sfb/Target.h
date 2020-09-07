@@ -114,14 +114,16 @@ union Target {
         Relocatable = 1 << 5, // Relocatable but not trivial type
         MoveNoThrow = 1 << 6, // Noexcept move constructible
         MoveThrow   = 1 << 7, // Non-noexcept move constructible
-        Unmovable   = 1 << 8; // Not move constructible
+        Unmovable   = 1 << 8, // Not move constructible
+        Index2      = 1 << 9;
 
     template <class T>
     static constexpr Constraint constraint = {
-        std::is_trivial_v<T> ? Trivial :
-            is_trivially_relocatable_v<T> ? Relocatable :
-                std::is_nothrow_move_constructible_v<T> ? MoveNoThrow :
-                    std::is_move_constructible_v<T> ? MoveThrow : Unmovable};
+        std::is_same_v<T, Index> ? Index2 :
+            std::is_trivial_v<T> ? Trivial :
+                is_trivially_relocatable_v<T> ? Relocatable :
+                    std::is_nothrow_move_constructible_v<T> ? MoveNoThrow :
+                        std::is_move_constructible_v<T> ? MoveThrow : Unmovable};
 
     /**************************************************************************/
 
