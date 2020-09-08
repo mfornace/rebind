@@ -4,6 +4,7 @@
 #include <sstream>
 #include <memory>
 #include <cstring>
+#include <vector>
 
 #define DUMP(...) ::sfb::print_arguments(__FILE__, __LINE__, __VA_ARGS__);
 
