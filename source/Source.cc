@@ -2,6 +2,7 @@
 #include <sfb/Error.h>
 #include <stdexcept>
 #include <fstream>
+#include <iostream>
 #include <sfb/Core.h>
 
 /******************************************************************************/
@@ -87,7 +88,7 @@ SFB_DEFINE(index,  sfb::Index);
 
 namespace sfb {
 
-std::cout << "Index address" << Index::of<Index>().base << std::endl;
+int test_address = (std::cout << "Index address" << reinterpret_cast<void*>(Index::of<Index>().base) << std::endl, 0);
 
 /******************************************************************************/
 
