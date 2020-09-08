@@ -88,7 +88,7 @@ SFB_DEFINE(index,  sfb::Index);
 
 namespace sfb {
 
-int test_address = (std::cout << "Index address" << reinterpret_cast<void*>(Index::of<Index>().base) << std::endl, 0);
+int test_address = (std::cout << "Index address " << reinterpret_cast<void*>(Index::of<Index>().base) << " " << reinterpret_cast<void*>(&sfb_define_index) << std::endl, 0);
 
 /******************************************************************************/
 
