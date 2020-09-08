@@ -477,6 +477,7 @@ struct Call {
     template <class T>
     struct Default {
         static stat call_nothrow(Target &out, ArgView &args) noexcept {
+            BEEP("call_nothrow");
             stat s = Impossible;
             if constexpr(has_call_v<T>) {Impl<T>::call({out, args, s});}
             else {DUMP("no call operator", type_name<T>());}
@@ -580,13 +581,13 @@ struct Switch {
                 return Impl<T>::equal_nothrow(Pointer::from(o).load<T const&>(), Pointer::from(s).load<T const&>());
 
             case code::load:
-                return Impl<T>::load_nothrow(*static_cast<Target *>(o), Pointer::from(s), static_cast<Mode>(i.tag));
+                return Impl<T>::load_nothrow(*static_cast<Target*>(o), Pointer::from(s), static_cast<Mode>(i.tag));
 
             case code::dump:
-                return Impl<T>::dump_nothrow(*static_cast<Target *>(o), Pointer::from(s), static_cast<Mode>(i.tag));
+                return Impl<T>::dump_nothrow(*static_cast<Target*>(o), Pointer::from(s), static_cast<Mode>(i.tag));
 
             case code::call:
-                return Impl<T>::call_nothrow(*static_cast<Target *>(o), *reinterpret_cast<ArgView *>(args));
+                return Impl<T>::call_nothrow(*static_cast<Target*>(o), *reinterpret_cast<ArgView*>(args));
 
             case code::name:
                 return Impl<T>::name(*static_cast<Str*>(o));
