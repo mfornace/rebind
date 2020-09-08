@@ -260,7 +260,8 @@ union Target {
     auto make_noexcept(F &&f) noexcept {
         using Enum = decltype(f());
         try {return f();}
-        catch (std::bad_alloc const &) {return Enum::OutOfMemory;}
+        catch (std::bad_alloc const&) {return Enum::OutOfMemory;}
+        catch (std::exception const& e) {DUMP("Output exception", e.what()); set_current_exception(); return Enum::Exception;}
         catch (...) {set_current_exception(); return Enum::Exception;}
     }
 
