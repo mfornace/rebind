@@ -175,12 +175,12 @@ struct Impl<T, std::enable_if_t<(std::is_integral_v<T>)>> : Default<T> {
 
 /// Default Dumpable for enum permits conversion to integer types
 template <class T>
-struct Impl<T, std::enable_if_t<(std::is_enum_v<T>)>> {
+struct Impl<T, std::enable_if_t<(std::is_enum_v<T>)>> : Default<T> {
     static bool dump(Target& v, T t) {
-        if (v.accepts<std::underlying_type_t<T>>())
-            return v.assign<std::underlying_type_t<T>>(t);
-        if (v.accepts<Integer>())
-            return v.assign<Integer>(t);
+        // if (v.accepts<std::underlying_type_t<T>>())
+        //     return v.assign<std::underlying_type_t<T>>(t);
+        // if (v.accepts<Integer>())
+        //     return v.assign<Integer>(t);
         return false;
     }
 
@@ -188,7 +188,8 @@ struct Impl<T, std::enable_if_t<(std::is_enum_v<T>)>> {
     static auto load(Ref& v) {
         std::optional<T> out;
         DUMP("trying convert to enum", v.name(), Index::of<T>());
-        if (auto p = v.get<std::underlying_type_t<T>>()) out.emplace(*p);
+#warning "fix enum"
+        // if (auto p = v.get<std::underlying_type_t<T>>()) out.emplace(static_cast<T>(*p));
         return out;
     }
 };
