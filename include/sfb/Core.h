@@ -200,16 +200,3 @@ struct Impl<T, std::enable_if_t<(std::is_enum_v<T>)>> : Default<T> {
 
 /******************************************************************************/
 
-SFB_DECLARE(void, void);
-SFB_DECLARE(cpp_bool, bool);
-SFB_DECLARE(bool, sfb_bool);
-SFB_DECLARE(char, char);
-SFB_DECLARE(uchar, unsigned char);
-SFB_DECLARE(int, int);
-SFB_DECLARE(long, long);
-SFB_DECLARE(longlong, long long);
-SFB_DECLARE(ulonglong, unsigned long long);
-SFB_DECLARE(unsigned, unsigned);
-SFB_DECLARE(float, float);
-SFB_DECLARE(double, double);
-SFB_DECLARE(index, sfb_index);

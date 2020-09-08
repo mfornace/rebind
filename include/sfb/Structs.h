@@ -575,13 +575,3 @@ inline std::string_view Index::name() const noexcept {
 /******************************************************************************************/
 
 }
-
-SFB_DECLARE(str, sfb_str);
-SFB_DECLARE(bin, sfb_bin);
-SFB_DECLARE(string, sfb_string);
-SFB_DECLARE(binary, sfb_binary);
-SFB_DECLARE(span, sfb_span);
-SFB_DECLARE(array, sfb_array);
-SFB_DECLARE(tuple, sfb_tuple);
-SFB_DECLARE(view, sfb_view);
-SFB_DECLARE(view, sfb_shape);

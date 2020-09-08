@@ -139,5 +139,33 @@ constexpr void assert_implementable() {
 
 /******************************************************************************/
 
+template <class T>
+struct Lookup;
+
 }
 
+
+SFB_DECLARE(str, sfb_str);
+SFB_DECLARE(bin, sfb_bin);
+SFB_DECLARE(string, sfb_string);
+SFB_DECLARE(binary, sfb_binary);
+SFB_DECLARE(span, sfb_span);
+SFB_DECLARE(array, sfb_array);
+SFB_DECLARE(tuple, sfb_tuple);
+SFB_DECLARE(view, sfb_view);
+SFB_DECLARE(view, sfb_shape);
+
+
+SFB_DECLARE(void, void);
+SFB_DECLARE(cpp_bool, bool);
+SFB_DECLARE(bool, sfb_bool);
+SFB_DECLARE(char, char);
+SFB_DECLARE(uchar, unsigned char);
+SFB_DECLARE(int, int);
+SFB_DECLARE(long, long);
+SFB_DECLARE(longlong, long long);
+SFB_DECLARE(ulonglong, unsigned long long);
+SFB_DECLARE(unsigned, unsigned);
+SFB_DECLARE(float, float);
+SFB_DECLARE(double, double);
+SFB_DECLARE(index, sfb_index);
