@@ -98,7 +98,8 @@ std::string cat(Ts const &...ts) {
 
 /******************************************************************************/
 
-std::shared_ptr<std::ostream> debug_stream = std::make_shared<std::ofstream>("debug.log");
+// std::shared_ptr<std::ostream> debug_stream = std::make_shared<std::ofstream>("debug.log");
+std::shared_ptr<std::ostream> debug_stream = std::shared_ptr<std::ostream>(&std::cout, Ignore());
 
 void set_debug_stream(std::string_view s) {
     if (s.empty()) {

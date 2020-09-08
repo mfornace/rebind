@@ -477,7 +477,6 @@ struct Call {
     template <class T>
     struct Default {
         static stat call_nothrow(Target &out, ArgView &args) noexcept {
-            BEEP("call_nothrow");
             stat s = Impossible;
             if constexpr(has_call_v<T>) {Impl<T>::call({out, args, s});}
             else {DUMP("no call operator", type_name<T>());}
