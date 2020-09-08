@@ -57,8 +57,8 @@ union Str {
     constexpr native view() const {return c.data ? native(c.data, c.size) : native();}
     constexpr operator native() const {return view();}
 
-    std::size_t size() const {return c.size;}
-    char const* data() const {return c.data;}
+    constexpr std::size_t size() const {return c.size;}
+    constexpr char const* data() const {return c.data;}
 
     operator sfb_str() const & noexcept {return c;}
 };
@@ -166,12 +166,12 @@ union String {
 
     void reset() noexcept {this->~String(); c.size = 0;}
 
-    bool sbo() const {return c.size < sizeof(c.sbo);}
+    constexpr bool sbo() const {return c.size < sizeof(c.sbo);}
 
-    char* data() {return sbo() ? c.sbo.storage : c.sbo.alloc.pointer;}
-    char const* data() const {return sbo() ? c.sbo.storage : c.sbo.alloc.pointer;}
+    constexpr char* data() {return sbo() ? c.sbo.storage : c.sbo.alloc.pointer;}
+    constexpr char const* data() const {return sbo() ? c.sbo.storage : c.sbo.alloc.pointer;}
 
-    std::size_t size() const {return c.size;}
+    constexpr std::size_t size() const {return c.size;}
 
     constexpr operator Str() const {return {data(), size()};}
     constexpr operator std::string_view() const {return {data(), size()};}
@@ -202,13 +202,13 @@ union Binary {
 
     ~Binary() noexcept {if (!sbo()) c.sbo.alloc.destructor(c.size, c.sbo.alloc.pointer);}
 
-    bool sbo() const {return c.size <= sizeof(c.sbo);}
+    constexpr bool sbo() const {return c.size <= sizeof(c.sbo);}
 
     std::byte* data() {return reinterpret_cast<std::byte*>(sbo() ? c.sbo.storage : c.sbo.alloc.pointer);}
     std::byte const* data() const {return reinterpret_cast<std::byte const *>(sbo() ? c.sbo.storage : c.sbo.alloc.pointer);}
 
-    std::size_t size() const {return c.size;}
-    constexpr operator Bin() const {return {data(), size()};}
+    constexpr std::size_t size() const {return c.size;}
+    operator Bin() const {return {data(), size()};}
 
     explicit operator sfb_binary() && noexcept {return move_slice(*this);}
     // explicit operator sfb_binary() const & {return const_slice(*this);}
@@ -263,8 +263,8 @@ union Shape {
 
     /**************************************************************************/
 
-    std::size_t operator[](std::size_t i) const noexcept {return data()[i];}
-    std::size_t& operator[](std::size_t i) noexcept {return data()[i];}
+    constexpr std::size_t operator[](std::size_t i) const noexcept {return data()[i];}
+    constexpr std::size_t& operator[](std::size_t i) noexcept {return data()[i];}
 
     constexpr std::size_t rank() const noexcept {return c.rank;}
 
@@ -472,7 +472,7 @@ union View {
     Shape& shape() {return reinterpret_cast<Shape&>(c.shape);}
     Shape const& shape() const {return reinterpret_cast<Shape const&>(c.shape);}
 
-    constexpr std::size_t size() const noexcept {return shape().size();}
+    std::size_t size() const noexcept {return shape().size();}
     constexpr bool empty() const noexcept {return c.data == nullptr;}
 
     Ref* begin() const {return reinterpret_cast<Ref*>(c.data);}

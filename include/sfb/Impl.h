@@ -546,7 +546,6 @@ struct Switch {
         warn_unimplemented<T>();
 
         if (i.code != code::name) DUMP("Switch<", type_name<T>(), ">: ", code_name(i.code));
-        if (!code::valid(i.code)) return -1; // ?
 
         switch (static_cast<code::codes>(i.code)) {
             case code::destruct:
@@ -596,7 +595,9 @@ struct Switch {
 
             case code::check:
                 return code::valid(i.code);
-        }
+            
+	    default: return -1;
+	}
     }
 };
 

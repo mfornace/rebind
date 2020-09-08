@@ -111,7 +111,7 @@ void set_debug_stream(std::string_view s) {
     } else if (s == "stdout") {
         debug_stream = std::shared_ptr<std::ostream>(&std::cout, Ignore());
     } else {
-        debug_stream = std::make_shared<std::ofstream>(s);
+        debug_stream = std::make_shared<std::ofstream>(std::string(s));
     }
 }
 // bool debug() noexcept {return Debug;}
