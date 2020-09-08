@@ -144,6 +144,7 @@ inline Load::stat dump_or_load(Target &target, Index source, Pointer p, Mode t) 
             DUMP("try backup load");
             return Load::invoke(target_index, target, p, t);
         }
+	default: return Load::None;
     }
 }
 

@@ -82,7 +82,6 @@ inline constexpr bool valid(Code c) {return c < 16;}
 }
 
 inline char const * code_name(Code c) {
-    if (!code::valid(c)) return "unknown";
     switch (static_cast<code::codes>(c)) {
         case code::check :      return "check";
         case code::destruct :   return "destruct";
@@ -100,6 +99,7 @@ inline char const * code_name(Code c) {
         case code::element :    return "element";
         case code::compare :    return "compare";
         case code::equal :      return "equal";
+        default:                return "unknown";
     }
 }
 
