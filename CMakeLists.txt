@@ -11,10 +11,10 @@ target_include_directories(headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include
 ################################################################################
 
 # Maybe change in future to user provided interface library?
-add_library(libsfb STATIC
+add_library(libsfb SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/source/Source.cc
 )
-set_target_properties(libsfb PROPERTIES OUTPUT_NAME sfb ${SFB_STATIC_PROPERTIES})
+set_target_properties(libsfb PROPERTIES OUTPUT_NAME sfb)
 target_link_libraries(libsfb PUBLIC headers)
 
 ################################################################################
