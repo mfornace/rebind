@@ -4,11 +4,13 @@
 
 /******************************************************************************************/
 
+// define just provides the definition based on a specified type, nothing more.
 #define SFB_DEFINE(NAME, TYPE) sfb_stat SFB_FUNCTION(NAME)(sfb_input i, void* s, void* p, void* a) noexcept {return sfb::Switch<TYPE>::invoke(i,s,p,a);}
 
-#define SFB_DECLARE(NAME, TYPE) \
-    extern "C" sfb_stat SFB_FUNCTION(NAME)(sfb_input, void*, void*, void*) noexcept; \
-    namespace sfb {template<> struct Lookup<TYPE> {static constexpr sfb_index invoke = SFB_FUNCTION(NAME);};}
+// declare declares the function with a given name
+#define SFB_DECLARE(NAME) extern "C" sfb_stat SFB_FUNCTION(NAME)(sfb_input, void*, void*, void*) noexcept;
+
+#define SFB_DELEGATE(NAME, TYPE) namespace sfb {template<> struct Lookup<TYPE> {static constexpr sfb_index invoke = SFB_FUNCTION(NAME);};}
 
 /******************************************************************************************/
 
@@ -109,6 +111,15 @@ struct ArgView;
 union Ref;
 union Target;
 union Str;
+union Bin;
+union String;
+union Binary;
+union Tuple;
+struct Index;
+union Shape;
+union Array;
+union Span;
+union View;
 
 template <class T>
 static constexpr bool is_implementable = true
@@ -144,28 +155,30 @@ struct Lookup;
 
 }
 
-
-SFB_DECLARE(str, sfb_str);
-SFB_DECLARE(bin, sfb_bin);
-SFB_DECLARE(string, sfb_string);
-SFB_DECLARE(binary, sfb_binary);
-SFB_DECLARE(span, sfb_span);
-SFB_DECLARE(array, sfb_array);
-SFB_DECLARE(tuple, sfb_tuple);
-SFB_DECLARE(view, sfb_view);
-SFB_DECLARE(view, sfb_shape);
+#define SFB_DECLARE_1(NAME, TYPE) SFB_DECLARE(NAME); SFB_DELEGATE(NAME, TYPE);
+#define SFB_DECLARE_2(NAME, TYPE1, TYPE2) SFB_DECLARE(NAME); SFB_DELEGATE(NAME, TYPE1); SFB_DELEGATE(NAME, TYPE2);
 
 
-SFB_DECLARE(void, void);
-SFB_DECLARE(cpp_bool, bool);
-SFB_DECLARE(bool, sfb_bool);
-SFB_DECLARE(char, char);
-SFB_DECLARE(uchar, unsigned char);
-SFB_DECLARE(int, int);
-SFB_DECLARE(long, long);
-SFB_DECLARE(longlong, long long);
-SFB_DECLARE(ulonglong, unsigned long long);
-SFB_DECLARE(unsigned, unsigned);
-SFB_DECLARE(float, float);
-SFB_DECLARE(double, double);
-SFB_DECLARE(index, sfb_index);
+SFB_DECLARE_1(void, void);
+SFB_DECLARE_1(cpp_bool, bool);
+SFB_DECLARE_1(bool, sfb_bool);
+SFB_DECLARE_1(char, char);
+SFB_DECLARE_1(uchar, unsigned char);
+SFB_DECLARE_1(int, int);
+SFB_DECLARE_1(long, long);
+SFB_DECLARE_1(longlong, long long);
+SFB_DECLARE_1(ulonglong, unsigned long long);
+SFB_DECLARE_1(unsigned, unsigned);
+SFB_DECLARE_1(float, float);
+SFB_DECLARE_1(double, double);
+
+SFB_DECLARE_2(str,    sfb_str,    sfb::Str);
+SFB_DECLARE_2(bin,    sfb_bin,    sfb::Bin);
+SFB_DECLARE_2(string, sfb_string, sfb::String   );
+SFB_DECLARE_2(binary, sfb_binary, sfb::Binary   );
+SFB_DECLARE_2(span,   sfb_span,   sfb::Span );
+SFB_DECLARE_2(array,  sfb_array,  sfb::Array  );
+SFB_DECLARE_2(tuple,  sfb_tuple,  sfb::Tuple  );
+SFB_DECLARE_2(view,   sfb_view,   sfb::View );
+SFB_DECLARE_2(shape,  sfb_shape,  sfb::Shape  );
+SFB_DECLARE_2(index,  sfb_index,  sfb::Index  );
