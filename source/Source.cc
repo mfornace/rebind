@@ -121,8 +121,9 @@ void set_debug_stream(std::string_view s) {
 
 void Target::set_current_exception() noexcept {
     try {
-        construct<std::exception_ptr>(std::current_exception());
-        c.index = Index::of<std::exception_ptr>();
+        c.output = Allocator<std::exception_ptr>::heap(std::current_exception());
+        c.mode = static_cast<sfb_mode>(Mode::Heap);
+        set_index<std::exception_ptr>();
     } catch (...) {
         c.output = nullptr;
     }

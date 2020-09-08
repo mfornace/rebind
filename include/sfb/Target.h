@@ -248,6 +248,8 @@ union Target {
         set_index<T>();
     }
 
+    Mode mode() const noexcept {return static_cast<Mode>(c.mode);}
+
     template <class T>
     void set_index() noexcept {c.index = Index::of<T>();}
 
