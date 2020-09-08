@@ -87,6 +87,8 @@ SFB_DEFINE(index,  sfb::Index);
 
 namespace sfb {
 
+std::cout << "Index address" << Index::of<Index>().base << std::endl;
+
 /******************************************************************************/
 
 template <class ...Ts>
