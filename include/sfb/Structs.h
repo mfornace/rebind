@@ -226,10 +226,10 @@ static_assert(std::is_destructible_v<Binary>);
 union Shape {
     sfb_shape c;
 
-    static constexpr sfb_shape Empty{0, 1};
+    static constexpr sfb_shape Empty{0, (1 << 1) + 1};
     constexpr Shape() noexcept : c{Empty} {}
 
-    constexpr Shape(std::size_t size) noexcept : c{size, 1} {}
+    constexpr Shape(std::size_t size) noexcept : c{size, (1 << 1) + 1} {}
 
     template <class B, class E>
     Shape(B begin, E end, bool row_major) {
@@ -263,6 +263,9 @@ union Shape {
     }
 
     /**************************************************************************/
+
+    constexpr bool row_major() const {return rank() == 1 ||  (c.rank_order & 1) || size() == 0;}
+    constexpr bool col_major() const {return rank() == 1 || !(c.rank_order & 1) || size() == 0;}
 
     constexpr std::size_t operator[](std::size_t i) const noexcept {return data()[i];}
     constexpr std::size_t& operator[](std::size_t i) noexcept {return data()[i];}
