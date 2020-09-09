@@ -232,23 +232,24 @@ union Shape {
     constexpr Shape(std::size_t size) noexcept : c{size, 1} {}
 
     template <class B, class E>
-    Shape(B begin, E end) {
-        c.rank = std::distance(begin, end);
-        if (c.rank == 0) {
+    Shape(B begin, E end, bool row_major) {
+        c.rank_order = (std::distance(begin, end) << 1) + row_major;
+        if (rank() == 0) {
             throw std::invalid_argument("rank 0 not supported");
-        } else if (c.rank == 1) {
+        } else if (rank() == 1) {
             c.dims.stack = *begin;
-        } else if (c.rank > 1) {
-            c.dims.alloc = sfb_dims_allocate(c.rank);
+        } else if (rank() > 1) {
+            c.dims.alloc = sfb_dims_allocate(rank());
             if (!c.dims.alloc) throw std::bad_alloc();
             std::copy(begin, end, c.dims.alloc+1);
             c.dims.alloc[0] = 1;
-            for (auto d = c.dims.alloc+1; d != c.dims.alloc+1+c.rank; ++d)
+            for (auto d = c.dims.alloc+1; d != c.dims.alloc+1+rank(); ++d)
                 c.dims.alloc[0] *= *d; // not really worth the #include for accumulate
         }
     }
 
-    Shape(std::initializer_list<std::size_t> const &l) : Shape(l.begin(), l.end()) {}
+    Shape(std::initializer_list<std::size_t> const &l, bool row_major)
+        : Shape(l.begin(), l.end(), row_major) {}
 
     Shape(Shape &&s) noexcept : Shape() {std::swap(c, s.c);}
     Shape& operator=(Shape &&s) noexcept {std::swap(c, s.c); return *this;}
@@ -266,7 +267,7 @@ union Shape {
     constexpr std::size_t operator[](std::size_t i) const noexcept {return data()[i];}
     constexpr std::size_t& operator[](std::size_t i) noexcept {return data()[i];}
 
-    constexpr std::size_t rank() const noexcept {return c.rank;}
+    constexpr std::size_t rank() const noexcept {return c.rank_order >> 1;}
 
     constexpr std::size_t const* data() const noexcept {
         return rank() < 2 ? &c.dims.stack : c.dims.alloc + 1;
@@ -331,7 +332,7 @@ union Span {
     Shape& shape() {return reinterpret_cast<Shape&>(c.shape);}
     Shape const& shape() const {return reinterpret_cast<Shape const&>(c.shape);}
 
-    auto rank() const {return c.shape.rank;}
+    auto rank() const {return shape().rank();}
 
     std::size_t length(std::uint32_t axis) const {
         if (axis >= rank()) throw std::out_of_range("Span dimension out of range");

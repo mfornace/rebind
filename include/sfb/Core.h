@@ -11,6 +11,23 @@ namespace sfb {
 /******************************************************************************/
 
 template <>
+struct Impl<std::exception_ptr> : Default<std::exception_ptr> {
+    static bool dump(Target& v, std::exception_ptr const& p) {
+        if (v.accepts<String>()) {
+            try {
+                std::rethrow_exception(p);
+            } catch (std::exception const& e) {
+                return v.assign<String>(e.what());
+            } catch (...) {}
+
+        }
+        return false;
+    };
+};
+
+/******************************************************************************/
+
+template <>
 struct Impl<Str> : Default<Str> {
     static bool dump(Target& v, Str s) {
         if (v.accepts<String>()) return v.assign<String>(s);
