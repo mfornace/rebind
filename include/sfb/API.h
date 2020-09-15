@@ -158,7 +158,7 @@ inline void sfb_dims_deallocate(size_t* data, int32_t) {free(data);}
 
 typedef struct sfb_shape {
     sfb_dims dims;
-    uint32_t rank_order; // Rank of the array
+    uint32_t rank; // Rank of the array
 } sfb_shape;
 
 /******************************************************************************************/

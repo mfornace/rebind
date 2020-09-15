@@ -233,7 +233,7 @@ union Shape {
 
     template <class B, class E>
     Shape(B begin, E end, bool row_major) {
-        c.rank_order = (std::distance(begin, end) << 1) + row_major;
+        c.rank = std::distance(begin, end);
         if (rank() == 0) {
             throw std::invalid_argument("rank 0 not supported");
         } else if (rank() == 1) {
@@ -264,13 +264,10 @@ union Shape {
 
     /**************************************************************************/
 
-    constexpr bool row_major() const {return rank() == 1 ||  (c.rank_order & 1) || size() == 0;}
-    constexpr bool col_major() const {return rank() == 1 || !(c.rank_order & 1) || size() == 0;}
-
     constexpr std::size_t operator[](std::size_t i) const noexcept {return data()[i];}
     constexpr std::size_t& operator[](std::size_t i) noexcept {return data()[i];}
 
-    constexpr std::size_t rank() const noexcept {return c.rank_order >> 1;}
+    constexpr std::size_t rank() const noexcept {return c.rank;}
 
     constexpr std::size_t const* data() const noexcept {
         return rank() < 2 ? &c.dims.stack : c.dims.alloc + 1;
