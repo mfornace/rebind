@@ -226,13 +226,13 @@ static_assert(std::is_destructible_v<Binary>);
 union Shape {
     sfb_shape c;
 
-    static constexpr sfb_shape Empty{0, (1 << 1) + 1};
+    static constexpr sfb_shape Empty{0, 1};
     constexpr Shape() noexcept : c{Empty} {}
 
-    constexpr Shape(std::size_t size) noexcept : c{size, (1 << 1) + 1} {}
+    constexpr Shape(std::size_t size) noexcept : c{size, 1} {}
 
     template <class B, class E>
-    Shape(B begin, E end, bool row_major) {
+    Shape(B begin, E end) {
         c.rank = std::distance(begin, end);
         if (rank() == 0) {
             throw std::invalid_argument("rank 0 not supported");
@@ -248,14 +248,14 @@ union Shape {
         }
     }
 
-    Shape(std::initializer_list<std::size_t> const &l, bool row_major)
-        : Shape(l.begin(), l.end(), row_major) {}
+    Shape(std::initializer_list<std::size_t> const &l)
+        : Shape(l.begin(), l.end()) {}
 
     Shape(Shape &&s) noexcept : Shape() {std::swap(c, s.c);}
     Shape& operator=(Shape &&s) noexcept {std::swap(c, s.c); return *this;}
 
     ~Shape() noexcept {
-        DUMP("deleting shape");
+        DUMP("deleting shape", rank());
         if (rank() > 1) {
             DUMP("rank size dim0 dim1", rank(), c.dims.alloc[0], c.dims.alloc[1], c.dims.alloc[2]);
             sfb_dims_deallocate(c.dims.alloc, rank());
