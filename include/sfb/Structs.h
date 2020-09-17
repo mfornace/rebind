@@ -358,8 +358,13 @@ union Span {
         return true;
     }
 
-    template <class T>
-    T const* target() const {return index() == Index::of<T>() ? static_cast<T const *>(c.data) : nullptr;}
+    template <class T, std::enable_if_t<std::is_lvalue_reference_v<T>, int> = 0>
+    std::remove_reference_t<T>* target() const {
+        using U = std::remove_reference_t<T>;
+        if (index() != Index::of<std::remove_cv_t<U>>()) return nullptr;
+        if constexpr(!std::is_const_v<U>) if (mode() != Mode::Write) return nullptr;
+        return static_cast<U*>(c.data);
+    }
 
     explicit operator sfb_span() && noexcept {return move_slice(*this);}
     // explicit operator sfb_span() const & {return const_slice(*this);}
