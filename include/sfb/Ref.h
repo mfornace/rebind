@@ -149,13 +149,14 @@ inline Load::stat dump_or_load(Target &target, Index source, Pointer p, Mode t) 
 }
 
 inline Load::stat Ref::get_to(Target& target) noexcept {
-    DUMP("get_to", has_value(), name(), target.name(), pointer().base, mode());
+    DUMP("Ref::get_to(", has_value(), name(), target.name(), pointer().base);
     if (!has_value()) return Load::None;
     return dump_or_load(target, index(), pointer(), mode());
 }
 
 template <class T, std::enable_if_t<!std::is_reference_v<T>, int>>
 std::optional<T> Ref::get(Type<T>) {
+    DUMP("Ref::get()", Index::of<T>().name(), index().name(), typeid(Type<T>).name(), mode());
     std::optional<T> out;
     if (!has_value()) {
         DUMP("no value");
