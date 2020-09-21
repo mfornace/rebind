@@ -149,7 +149,7 @@ inline Load::stat dump_or_load(Target &target, Index source, Pointer p, Mode t) 
 }
 
 inline Load::stat Ref::get_to(Target& target) noexcept {
-    DUMP("get_to", has_value(), name(), target.name(), pointer().base);
+    DUMP("get_to", has_value(), name(), target.name(), pointer().base, mode());
     if (!has_value()) return Load::None;
     return dump_or_load(target, index(), pointer(), mode());
 }

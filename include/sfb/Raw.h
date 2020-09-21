@@ -107,7 +107,6 @@ inline char const * code_name(Code c) {
 
 /******************************************************************************/
 
-struct ArgView;
 union Ref;
 union Target;
 union Str;
