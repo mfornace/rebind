@@ -10,46 +10,6 @@ namespace sfb {
 
 /******************************************************************************/
 
-template <std::size_t Tags, std::size_t Args>
-struct ArgStack : sfb_args {
-    Ref refs[Args + Tags];
-
-    template <class ...Ts>
-    ArgStack(Context c, Ts &&...ts) noexcept
-        : sfb_args{c, Tags, Args}, refs{static_cast<Ts &&>(ts)...} {
-        static_assert(Args + Tags == sizeof...(Ts));
-        // Possible to do at compile time...but sort of tedious.
-        std::reverse(std::begin(refs), std::end(refs));
-    }
-};
-
-/******************************************************************************/
-
-template <>
-struct ArgStack<0, 0> : sfb_args {
-    ArgStack(Context c) noexcept : sfb_args{c, 0, 0} {}
-};
-
-/******************************************************************************/
-
-struct ArgView {
-    sfb_args c;
-
-    Ref* ptr() noexcept {return reinterpret_cast<ArgStack<1, 0> &>(c).refs;}
-
-    /// Begin/End of arguments
-    auto begin() noexcept {return std::make_reverse_iterator(ptr() + c.args);}
-    auto end() noexcept {return std::make_reverse_iterator(ptr());}
-    /// Number of args
-    auto size() const noexcept {return c.args;}
-
-    /// Number of tags
-    auto tags() const noexcept {return c.tags;}
-    Ref &tag(unsigned int i) noexcept {return ptr()[c.args + c.tags - 1 - i];}
-
-    Ref &operator[](std::size_t i) noexcept {return begin()[i];}
-};
-
 static_assert(std::is_aggregate_v<ArgView>);
 
 /******************************************************************************/
@@ -272,10 +232,11 @@ static_assert(std::is_same_v<typename Reduce< void(double) >::type, void(*)(doub
 template <int N, class F, class ...Ts>
 decltype(auto) with_exact_args(F &&f, Context &c, Arg<Ts &&> ...ts) {
     static_assert(N <= sizeof...(Ts));
-    ArgStack<N, sizeof...(Ts) - N> args(c, ts.ref()...);
-    DUMP(type_name<F>(), " tags=", N, " args=", reinterpret_cast<ArgView &>(args).size());
+    Ref[] refs = {ts.ref()...};
+    ArgView args(N, sizeof...(Ts) - N, refs);
+    DUMP(type_name<F>(), " tags=", N, " args=", args.size());
     ((std::cout << type_name<Ts>() << std::endl), ...);
-    return f(reinterpret_cast<ArgView &>(args));
+    return f(args);
 }
 
 template <int N, class F, class ...Ts>
