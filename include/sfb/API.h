@@ -68,10 +68,10 @@ typedef sfb_stat (*sfb_context)(void);
 
 /// span of a contiguous array of tags and arguments
 // [caller, arg[N]...arg[0], tag[M]...tag[0]]
-typedef struct sfb_args { // 16 bytes
+typedef struct sfb_header { // 16 bytes
     sfb_context context; //usually 8 bytes
     uint32_t tags, args; // usually 8 bytes
-} sfb_args;
+} sfb_header;
 
 /******************************************************************************************/
 

@@ -107,7 +107,6 @@ inline char const * code_name(Code c) {
 
 /******************************************************************************/
 
-struct ArgView;
 union Ref;
 union Target;
 union Str;
@@ -120,6 +119,7 @@ union Shape;
 union Array;
 union Span;
 union View;
+union Header;
 
 template <class T>
 static constexpr bool is_implementable = true
