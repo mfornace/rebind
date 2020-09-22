@@ -478,14 +478,14 @@ struct Call {
     struct Default {
         static stat call_nothrow(Target &out, Header const &h, Ref *args) noexcept {
             stat s = Impossible;
-            if constexpr(has_call_v<T>) {Impl<T>::call({out, h, args, s});}
+            if constexpr(has_call_v<T>) {Impl<T>::call({out, {h, args}, s});}
             else {DUMP("no call operator", type_name<T>());}
             return s;
         }
     };
 
     static stat invoke(Idx f, Target &out, Header const &h, Ref *args) noexcept {
-        return static_cast<stat>(f({code::call, {}}, &out, &h, reinterpret_cast<sfb_ref *>(args)));
+        return static_cast<stat>(f({code::call, {}}, &out, const_cast<Header*>(&h), reinterpret_cast<sfb_ref *>(args)));
     }
 
     [[nodiscard]] static stat wrong_number(Target &, Code got, Code expected) noexcept;
@@ -585,7 +585,7 @@ struct Switch {
                 return Impl<T>::dump_nothrow(*static_cast<Target*>(o), Pointer::from(s), static_cast<Mode>(i.tag));
 
             case code::call:
-                return Impl<T>::call_nothrow(*static_cast<Target*>(o), reinterpret_cast<Header*>(s), reinterpret_cast<Ref*>(args));
+                return Impl<T>::call_nothrow(*static_cast<Target*>(o), *reinterpret_cast<Header const*>(s), reinterpret_cast<Ref*>(args));
 
             case code::name:
                 return Impl<T>::name(*static_cast<Str*>(o));

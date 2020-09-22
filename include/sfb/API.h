@@ -67,10 +67,10 @@ typedef struct sfb_ref {
 typedef sfb_stat (*sfb_context)(void);
 
 /// header for a contiguous array of tags and arguments
-typedef struct sfb_head { // 16 bytes
+typedef struct sfb_header { // 16 bytes
     sfb_context context; //usually 8 bytes
     uint32_t tags, args; // usually 8 bytes
-} sfb_head;
+} sfb_header;
 
 /******************************************************************************************/
 

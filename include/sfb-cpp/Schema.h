@@ -100,10 +100,10 @@ struct Impl<Schema> : Default<Schema> {
                 DUMP(name->data());
                 DUMP(std::string_view(*name), name->size());
                 if (auto it = s->find(std::string_view(*name)); it != s->contents().end()) {
-                    m.args.c.args -= 1;
+                    m.args.header.args -= 1;
                     m.args[0] = Ref(it->second.index(), Mode::Read, it->second.address());
                     DUMP("invoking module member! args=", m.args.size(), " tags=", m.args.tags());
-                    m.stat = Call::invoke(it->second.index(), m.target, m.args);
+                    m.stat = Call::invoke(it->second.index(), m.target, m.args.header, m.args.view);
                 }
                 return true;
             }

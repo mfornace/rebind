@@ -65,7 +65,7 @@ bool match_tags(ArgView& args, Tags const& ...tags) {
 
 struct Frame {
     Target& target;
-    ArgView& args;
+    ArgView args;
     Call::stat& stat;
 
     template <class F, class ...Tags>

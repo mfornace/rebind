@@ -119,7 +119,8 @@ union Shape;
 union Array;
 union Span;
 union View;
-union Header;
+
+using Header = sfb_header;
 
 template <class T>
 static constexpr bool is_implementable = true

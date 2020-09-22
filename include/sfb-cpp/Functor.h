@@ -263,7 +263,8 @@ struct Impl<Functor<F>> : Default<Functor<F>> {
      Interface implementation for a function with no optional arguments.
      - Returns WrongNumber if args is not the right length
      */
-    static Call::stat call_nothrow(Target& target, ArgView& args) noexcept {
+    static Call::stat call_nothrow(Target& target, Header const &h, Ref *refs) noexcept {
+        ArgView args{h, refs};
         DUMP("call_to function adapter", type_name<F>(), "args=", args.size());
         if (args.tags())
             return Call::wrong_number(target, args.tags(), 0);

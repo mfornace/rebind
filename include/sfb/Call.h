@@ -10,7 +10,34 @@ namespace sfb {
 
 /******************************************************************************/
 
-static_assert(std::is_aggregate_v<ArgView>);
+struct ArgView {
+    Header header;
+    Ref *view;
+
+    Ref* data() noexcept {return view;}
+
+    /// Begin/End of arguments
+    auto begin() noexcept {return std::make_reverse_iterator(data() + header.args);}
+    auto end() noexcept {return std::make_reverse_iterator(data());}
+    /// Number of args
+    auto size() const noexcept {return header.args;}
+
+    /// Number of tags
+    auto tags() const noexcept {return header.tags;}
+    Ref &tag(unsigned int i) noexcept {return data()[header.args + header.tags + 1 - i];}
+
+    Ref &operator[](std::size_t i) noexcept {return begin()[i];}
+    // auto size() const {return header.tags;}
+};
+
+/******************************************************************************/
+
+struct ArgAlloc : ArgView {
+    ArgAlloc(std::uint32_t args, std::uint32_t tags)
+        : ArgView{{nullptr, args, tags}, new Ref[args + tags]} {}
+
+    ~ArgAlloc() noexcept {delete[] view;}
+};
 
 /******************************************************************************/
 
@@ -232,7 +259,7 @@ static_assert(std::is_same_v<typename Reduce< void(double) >::type, void(*)(doub
 template <int N, class F, class ...Ts>
 decltype(auto) with_exact_args(F &&f, Context &c, Arg<Ts &&> ...ts) {
     static_assert(N <= sizeof...(Ts));
-    Ref[] refs = {ts.ref()...};
+    Ref refs[] = {ts.ref()...};
     ArgView args(N, sizeof...(Ts) - N, refs);
     DUMP(type_name<F>(), " tags=", N, " args=", args.size());
     ((std::cout << type_name<Ts>() << std::endl), ...);

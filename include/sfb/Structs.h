@@ -7,6 +7,8 @@
 
 namespace sfb {
 
+/******************************************************************************/
+
 // "An aggregate or union type that includes one of the aforementioned types among its elements or non- static data members (including, recursively, an element or non-static data member of a subaggregate or contained union),"
 // When we actually construct the String wherever we may need to instead construct sfb_string and cast back (probably better to anyway)
 
