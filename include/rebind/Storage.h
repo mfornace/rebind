@@ -52,7 +52,7 @@ struct VariableData {
 
     constexpr VariableData() noexcept : buff(), act(nullptr), stack(false) {}
 
-    VariableData(TypeIndex i, ActionFunction a, bool s) noexcept : buff(), idx(i), act(a), stack(s) {}
+    VariableData(TypeIndex i, ActionFunction a, bool s) noexcept : buff(), act(a), idx(i), stack(s) {}
 
     void reset_data() noexcept {
         if (!act) return;

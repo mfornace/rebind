@@ -91,8 +91,8 @@ struct Function {
 
 template <class R, class ...Ts>
 struct AnnotatedCallback {
-    Caller caller;
     Function function;
+    Caller caller;
 
     AnnotatedCallback() = default;
     AnnotatedCallback(Function f, Caller c) : function(std::move(f)), caller(std::move(c)) {}

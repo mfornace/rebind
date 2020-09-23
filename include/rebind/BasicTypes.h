@@ -95,7 +95,7 @@ public:
     bool mutate() const {return mut;}
     std::type_info const &type() const {return t ? *t : typeid(void);}
 
-    ArrayData(void *p, std::type_info const *t, bool mut) : t(t), ptr(p), mut(mut) {}
+    ArrayData(void *p, std::type_info const *t, bool mut) : ptr(p), t(t), mut(mut) {}
 
     template <class T>
     ArrayData(T *t) : ArrayData(const_cast<std::remove_cv_t<T> *>(static_cast<T const *>(t)),
