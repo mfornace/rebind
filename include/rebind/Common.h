@@ -30,7 +30,7 @@ template <class ...Ts>
 void dump(char const *s, int n, Ts const &...ts) {
     if (!Debug) return;
     std::cout << '[' << s << ':' << n << "] ";
-    int x[] = {(std::cout << ts, 0)...};
+    ((std::cout << ts), ...);
     std::cout << std::endl;
 }
 

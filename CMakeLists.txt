@@ -51,10 +51,10 @@ set_property(GLOBAL PROPERTY rebind_module_files
     ${CMAKE_CURRENT_SOURCE_DIR}/source/Globals.cc
 )
 
-function(rebind_module module_name)
+function(rebind_module module_name output_name)
     get_property(files GLOBAL PROPERTY rebind_module_files)
     add_library(${module_name} MODULE ${files})
-    set_target_properties(${module_name} PROPERTIES PREFIX "")
+    set_target_properties(${module_name} PROPERTIES PREFIX "" OUTPUT_NAME ${output_name})
 
     if(${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
         set_target_properties(${module_name} PROPERTIES LINK_FLAGS "-Wl,-flat_namespace,-undefined,dynamic_lookup")
@@ -62,7 +62,7 @@ function(rebind_module module_name)
         set_target_properties(${module_name} PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
     endif()
 
-    target_compile_definitions(${module_name} PRIVATE REBIND_MODULE=${module_name})
+    target_compile_definitions(${module_name} PRIVATE REBIND_MODULE=${output_name})
     target_link_libraries(${module_name} PRIVATE rebind_interface ${ARGN})
 
     get_property(python_include GLOBAL PROPERTY rebind_python_include)
