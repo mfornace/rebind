@@ -74,7 +74,7 @@ endfunction(rebind_module)
 add_library(librebindtest SHARED EXCLUDE_FROM_ALL source/Test.cc)
 set_target_properties(librebindtest PROPERTIES OUTPUT_NAME "rebindtest")
 target_link_libraries(librebindtest PRIVATE librebind)
-rebind_module(rebindtest librebindtest)
+rebind_module(rebindtest rebindtest librebindtest)
 
 ################################################################################
 
