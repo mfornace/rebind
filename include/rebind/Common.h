@@ -5,7 +5,7 @@
 #include <string_view>
 #include <memory>
 
-#define DUMP(...) if (!::rebind::Debug) {::rebind::dump(__FILE__, __LINE__, __VA_ARGS__);}
+#define DUMP(...) if (::rebind::Debug) {::rebind::dump(__FILE__, __LINE__, __VA_ARGS__);}
 
 namespace rebind {
 
