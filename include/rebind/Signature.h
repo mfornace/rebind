@@ -102,9 +102,13 @@ struct Signature;
 
 template <class R, class ...Ts>
 struct Signature<R(Ts...)> : Pack<R, Ts...> {using return_type = R;};
+template <class R, class ...Ts>
+struct Signature<R(Ts...) noexcept> : Pack<R, Ts...> {using return_type = R;};
 
 template <class R, class ...Ts>
 struct Signature<R(*)(Ts...)> : Signature<R(Ts...)> {using return_type = R;};
+template <class R, class ...Ts>
+struct Signature<R(*)(Ts...) noexcept> : Signature<R(Ts...)> {using return_type = R;};
 
 #define REBIND_TMP(C, Q, C2) \
     template <class R, class C, class ...Ts> \
