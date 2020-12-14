@@ -20,19 +20,21 @@ target_link_libraries(sfb PUBLIC headers)
 # This function preferentially symlinks a file and records the output in ${link_outputs}
 # If on Windows, a copy is done instead of symlinking
 # This function is provided for convenience in downstream use of the sfb library
-function(link_file in out)
-    get_filename_component(dir "${CMAKE_CURRENT_BINARY_DIR}/${out}" DIRECTORY)
+function(link_file out_list in out)
+    get_filename_component(dir ${out} DIRECTORY)
     if(WIN32)
         set(link_file_flag "copy")
     else()
         set(link_file_flag "create_symlink")
     endif()
-    add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${out}"
+    add_custom_command(OUTPUT ${out}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${dir}
-        COMMAND ${CMAKE_COMMAND} -E ${link_file_flag} "${CMAKE_CURRENT_SOURCE_DIR}/${in}" "${CMAKE_CURRENT_BINARY_DIR}/${out}"
-        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${in}"
+        COMMAND ${CMAKE_COMMAND} -E ${link_file_flag} ${in} ${out}
+        DEPENDS ${in}
     )
-    set(link_outputs ${link_outputs} "${CMAKE_CURRENT_BINARY_DIR}/${out}" PARENT_SCOPE)
+    set(${out_list} ${${out_list}} ${out}) # Update list in the current scope only
+    # Before return, propagate variable's value to the parent scope.
+    set(${out_list} ${${out_list}} PARENT_SCOPE)
 endfunction(link_file)
 
 ################################################################################

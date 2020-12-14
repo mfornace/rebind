@@ -51,10 +51,11 @@ union Str {
 
     constexpr Str() : c{nullptr, 0} {}
 
-    Str(char const *data) : c{data, std::strlen(data)} {}
 
     constexpr Str(char const *data, std::size_t size) : c{data, size} {}
     constexpr Str(std::string_view s) : c{s.data(), s.size()} {}
+
+    constexpr Str(char const *data) : Str(std::string_view(data)) {}
 
     constexpr native view() const {return c.data ? native(c.data, c.size) : native();}
     constexpr operator native() const {return view();}

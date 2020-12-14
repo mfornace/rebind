@@ -185,6 +185,31 @@ struct Info {
 
 /******************************************************************************/
 
+SFB_DETECT_TRAIT(has_message, decltype(Impl<T>::message(std::declval<String&>(), std::declval<T const&>())));
+
+struct Message {
+    enum stat : Stat {OK, Impossible, Failure};
+
+    template <class T>
+    struct Default {
+        static stat message_nothrow(String& out, T const& t) noexcept {
+            if constexpr(has_message_v<T>) {
+                try {
+                    return Impl<T>::message(out, t);
+                } catch (...) {
+                    return Failure;
+                }
+            } else return Impossible;
+        }
+    };
+
+    static stat invoke(Idx f, String& out, Pointer s) noexcept {
+        return static_cast<stat>(f({code::message, {}}, &out, s.base, {}));
+    }
+};
+
+/******************************************************************************/
+
 // Return a handle to std::type_info or some language-specific equivalent
 // -- Should be done in a noexcept way and should always succeed
 // -- Should always succeed and return a sfb_str (basically like std::string_view)
@@ -511,6 +536,7 @@ struct Default :
     Destruct::Default<T>,
     Deallocate::Default<T>,
     Info::Default<T>,
+    Message::Default<T>,
     Name::Default<T>,
     Element::Default<T>,
     Attribute::Default<T>,
@@ -592,6 +618,9 @@ struct Switch {
 
             case code::info:
                 return Impl<T>::info(*static_cast<Index*>(o), *static_cast<void const **>(s));
+
+            case code::message:
+                return Impl<T>::message_nothrow(*static_cast<String*>(o), Pointer::from(s).load<T const&>());
 
             case code::check:
                 return code::valid(i.code);

@@ -18,11 +18,11 @@ set_target_properties(example_exe PROPERTIES OUTPUT_NAME main)
 ################################################################################
 
 set(link_outputs)
-link_file(python/__init__.py example/__init__.py)
-link_file(python/submodule.py example/submodule.py)
-link_file(python/test.py example/test.py)
+link_file(link_outputs python/__init__.py example/__init__.py)
+link_file(link_outputs python/submodule.py example/submodule.py)
+link_file(link_outputs python/test.py example/test.py)
 foreach(f ${SFB_PYTHON_FILES})
-    link_file(../python/sfb/${f} example/sfb/${f})
+    link_file(link_outputs ../python/sfb/${f} example/sfb/${f})
 endforeach()
 
 ################################################################################

@@ -72,14 +72,15 @@ enum codes {
     element    = 12,
     hash       = 13,
     compare    = 14,
-    equal      = 15
+    equal      = 15,
+    message    = 16
     // unary
     // binary
     // print
     // increment/decrement
 };
 
-inline constexpr bool valid(Code c) {return c < 16;}
+inline constexpr bool valid(Code c) {return c < 17;}
 
 }
 
@@ -101,6 +102,7 @@ inline char const * code_name(Code c) {
         case code::element :    return "element";
         case code::compare :    return "compare";
         case code::equal :      return "equal";
+        case code::message :    return "message";
         default:                return "unknown";
     }
 }
@@ -175,11 +177,11 @@ SFB_DECLARE_1(double, double);
 
 SFB_DECLARE_2(str,    sfb_str,    sfb::Str);
 SFB_DECLARE_2(bin,    sfb_bin,    sfb::Bin);
-SFB_DECLARE_2(string, sfb_string, sfb::String   );
-SFB_DECLARE_2(binary, sfb_binary, sfb::Binary   );
-SFB_DECLARE_2(span,   sfb_span,   sfb::Span );
-SFB_DECLARE_2(array,  sfb_array,  sfb::Array  );
-SFB_DECLARE_2(tuple,  sfb_tuple,  sfb::Tuple  );
-SFB_DECLARE_2(view,   sfb_view,   sfb::View );
-SFB_DECLARE_2(shape,  sfb_shape,  sfb::Shape  );
-SFB_DECLARE_2(index,  sfb_index,  sfb::Index  );
+SFB_DECLARE_2(string, sfb_string, sfb::String);
+SFB_DECLARE_2(binary, sfb_binary, sfb::Binary);
+SFB_DECLARE_2(span,   sfb_span,   sfb::Span);
+SFB_DECLARE_2(array,  sfb_array,  sfb::Array);
+SFB_DECLARE_2(tuple,  sfb_tuple,  sfb::Tuple);
+SFB_DECLARE_2(view,   sfb_view,   sfb::View);
+SFB_DECLARE_2(shape,  sfb_shape,  sfb::Shape);
+SFB_DECLARE_2(index,  sfb_index,  sfb::Index);
