@@ -184,8 +184,10 @@ public:
         if constexpr(std::is_same_v<T, Variable>) return *this;
 
         std::optional<T> out;
-        if (auto p = target<T const &>()) out.emplace(*p);
-        else {
+	if constexpr(std::is_copy_constructible_v<T>) {
+            if (auto p = target<T const &>()) out.emplace(*p);
+        } 
+	if (!out) {
             auto v = request_variable(msg, typeid(T));
             if (auto p = std::move(v).target<T &&>()) {msg.source.clear(); out.emplace(std::move(*p));}
             else if ((out = Request<T>()(*this, msg))) msg.source.clear();
@@ -202,7 +204,8 @@ public:
 
     template <class T>
     T cast(Dispatch &msg, Type<T> t={}) const {
-        if (auto p = request(msg, t)) return static_cast<T>(*p);
+        if (auto p = request(msg, t))
+            if constexpr(std::is_constructible_v<T, decltype(*p)>) return static_cast<T>(*p);
         throw std::move(msg).exception();
     }
 
@@ -313,8 +316,10 @@ struct Action {
 
         } else if (a == ActionType::copy) { // Copy-Construct the object
             DUMP(v->stack, UseStack<T>::value);
-            if constexpr(UseStack<T>::value) ::new(static_cast<void *>(&v->buff)) T{*static_cast<T const *>(p)};
-            else reinterpret_cast<void *&>(v->buff) = ::new T{*static_cast<T const *>(p)};
+            if constexpr(std::is_copy_constructible_v<T>) {
+                if constexpr(UseStack<T>::value) ::new(static_cast<void *>(&v->buff)) T{*static_cast<T const *>(p)};
+                else reinterpret_cast<void *&>(v->buff) = ::new T{*static_cast<T const *>(p)};
+            } else throw std::invalid_argument("not copyable");
 
         } else if (a == ActionType::move) { // Move-Construct the object (known to be on stack)
             DUMP(v->stack, UseStack<T>::value);
