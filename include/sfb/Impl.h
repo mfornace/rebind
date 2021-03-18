@@ -503,7 +503,7 @@ struct Call {
     struct Default {
         static stat call_nothrow(Target &out, Header const &h, Ref *args) noexcept {
             stat s = Impossible;
-            if constexpr(has_call_v<T>) {Impl<T>::call({out, {h, args}, s});}
+            if constexpr(has_call_v<T>) {DUMP("has call operator"); Impl<T>::call({out, {h, args}, s});}
             else {DUMP("no call operator", type_name<T>());}
             return s;
         }
@@ -625,8 +625,8 @@ struct Switch {
             case code::check:
                 return code::valid(i.code);
 
-	    default: return -1;
-	}
+            default: return -1;
+        }
     }
 };
 
