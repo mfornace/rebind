@@ -331,7 +331,7 @@ struct Action {
 
         } else if (a == ActionType::assign) { // Assign from another variable
             // DUMP("assign", v->idx.name(), typeid(T).name(), v->qual);
-            if constexpr(std::is_move_assignable_v<T>) {
+            if constexpr(!std::is_abstract_v<T> &&  std::is_move_assignable_v<T>) {
                 if (auto r = reinterpret_cast<Variable &&>(*v).request<T>()) {
                     // DUMP("got the assignable", v->idx.name(), typeid(T).name(), v->qual, typeid(T).name());
                     *static_cast<T *>(p) = std::move(*r);
