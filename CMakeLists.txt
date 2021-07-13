@@ -5,6 +5,7 @@ project(rebind VERSION 0.0.0 LANGUAGES CXX)
 
 set(REBIND_PYTHON "python" CACHE STRING "Specified Python executable used to deduce include directory")
 set(REBIND_PYTHON_INCLUDE "" CACHE STRING "Specified include directory containing Python.h")
+option(REBIND_PIC "use position independent code" ON)
 
 ################################################################################
 
@@ -38,6 +39,9 @@ add_library(librebind STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/source/Source.cc
 )
 set_target_properties(librebind PROPERTIES OUTPUT_NAME rebind ${REBIND_STATIC_PROPERTIES})
+set_target_properties(librebind PROPERTIES OUTPUT_NAME rebind ${REBIND_STATIC_PROPERTIES})
+set_target_properties(librebind PROPERTIES POSITION_INDEPENDENT_CODE ${REBIND_PIC})
+
 target_link_libraries(librebind PUBLIC rebind_interface)
 
 ################################################################################
