@@ -38,10 +38,7 @@ target_include_directories(rebind_interface INTERFACE ${CMAKE_CURRENT_SOURCE_DIR
 add_library(librebind STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/source/Source.cc
 )
-set_target_properties(librebind PROPERTIES OUTPUT_NAME rebind ${REBIND_STATIC_PROPERTIES})
-set_target_properties(librebind PROPERTIES OUTPUT_NAME rebind ${REBIND_STATIC_PROPERTIES})
-set_target_properties(librebind PROPERTIES POSITION_INDEPENDENT_CODE ${REBIND_PIC})
-
+set_target_properties(librebind PROPERTIES OUTPUT_NAME rebind ${REBIND_STATIC_PROPERTIES} POSITION_INDEPENDENT_CODE ${REBIND_PIC})
 target_link_libraries(librebind PUBLIC rebind_interface)
 
 ################################################################################
