@@ -58,7 +58,7 @@ set_property(GLOBAL PROPERTY rebind_module_files
 function(rebind_module module_name output_name)
     get_property(files GLOBAL PROPERTY rebind_module_files)
     add_library(${module_name} MODULE ${files})
-    set_target_properties(${module_name} PROPERTIES PREFIX "" OUTPUT_NAME ${output_name})
+    set_target_properties(${module_name} PROPERTIES PREFIX "" OUTPUT_NAME ${output_name} POSITION_INDEPENDENT_CODE ${REBIND_PIC})
 
     if(${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
         set_target_properties(${module_name} PROPERTIES LINK_FLAGS "-Wl,-flat_namespace,-undefined,dynamic_lookup")
