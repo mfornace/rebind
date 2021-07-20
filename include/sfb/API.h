@@ -26,7 +26,13 @@ typedef struct sfb_input {
 } sfb_input;
 
 /// Qualifier
-enum sfb_modes {sfb_stack=0, sfb_heap=1, sfb_read=2, sfb_write=3};
+enum sfb_modes {
+    sfb_stack=0, // Managed variable living in the storage buffer
+    sfb_heap=1,  // Managed variable pointed to by the storage buffer
+    sfb_read=2,  // Unmanaged const lifetime
+    sfb_write=3, // Unmanaged mutable lifetime
+    sfb_static=4 // Unmanaged static lifetime
+};
 typedef uint_fast8_t sfb_mode;
 
 typedef intmax_t sfb_integer;
@@ -263,14 +269,14 @@ inline sfb_index sfb_mode_index(sfb_index i, sfb_mode q) {
     return (sfb_index)( (uintptr_t)(i) | (uintptr_t)(q) );
 }
 
-// Get out the last 2 bits as the tag
+// Get out the last 3 bits as the tag
 inline sfb_mode sfb_get_mode(sfb_index i) {
-    return (sfb_mode)( (uintptr_t)(i) & (uintptr_t)(0x3) );
+    return (sfb_mode)( (uintptr_t)(i) & (uintptr_t)(0x7) );
 }
 
 // Get out the pointer minus the tag
 inline sfb_index sfb_get_index(sfb_index i) {
-    return (sfb_index)( (uintptr_t)(i) & ~((uintptr_t)(0x3)) );
+    return (sfb_index)( (uintptr_t)(i) & ~((uintptr_t)(0x7)) );
 }
 
 /******************************************************************************************/

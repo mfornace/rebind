@@ -301,6 +301,8 @@ union Shape {
 
 /******************************************************************************/
 
+#warning "zero the pointers before deleting"
+
 // The only resource management to do is that for objects of > 2 dimensions,
 // the shape is stored on the heap
 union Span {
