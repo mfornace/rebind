@@ -164,10 +164,11 @@ std::optional<T> Ref::get(Type<T>) {
     } else if (index().equals<T>()) {
         DUMP("load exact match");
         switch (mode()) {
-            case Mode::Stack: {if constexpr(std::is_constructible_v<T, T&&>) {out.emplace(pointer().load<T &&>());} break;}
-            case Mode::Heap:  {if constexpr(std::is_constructible_v<T, T&&>) {out.emplace(pointer().load<T &&>());} break;}
-            case Mode::Read:  {if constexpr(is_copy_constructible_v<T>) out.emplace(pointer().load<T const &>()); break;}
-            case Mode::Write: {if constexpr(is_copy_constructible_v<T>) out.emplace(pointer().load<T &>()); break;}
+            case Mode::Stack:  {if constexpr(std::is_constructible_v<T, T&&>) {out.emplace(pointer().load<T &&>());} break;}
+            case Mode::Heap:   {if constexpr(std::is_constructible_v<T, T&&>) {out.emplace(pointer().load<T &&>());} break;}
+            case Mode::Read:   {if constexpr(is_copy_constructible_v<T>) out.emplace(pointer().load<T const &>()); break;}
+            case Mode::Write:  {if constexpr(is_copy_constructible_v<T>) out.emplace(pointer().load<T &>()); break;}
+            case Mode::Static: {break;}
         }
     } else {
         storage_like<T> storage;

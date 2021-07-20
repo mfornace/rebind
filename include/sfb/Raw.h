@@ -17,7 +17,7 @@
 namespace sfb {
 
 // C++ version of sfb_tags enum
-enum class Mode : sfb_mode {Stack=sfb_stack, Heap=sfb_heap, Read=sfb_read, Write=sfb_write};
+enum class Mode : sfb_mode {Stack=sfb_stack, Heap=sfb_heap, Read=sfb_read, Write=sfb_write, Static=sfb_static};
 
 static char const * TagNames[4] = {"stack", "heap", "const", "mutable"};
 

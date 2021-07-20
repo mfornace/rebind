@@ -231,7 +231,7 @@ struct Name {
 SFB_DETECT_TRAIT(has_element, decltype(Impl<T>::element(std::declval<Target&>(), std::declval<T const&>(), std::intptr_t())));
 
 struct Element {
-    enum stat : Stat {None, Write, Read, Stack, Heap, Exception, OutOfMemory};
+    enum stat : Stat {None, Write, Read, Stack, Heap, Static, Exception, OutOfMemory};
 
     template <class T>
     struct Default {
@@ -239,10 +239,11 @@ struct Element {
             if constexpr(has_element_v<T>) {
                 return out.make_noexcept([&] {
                     switch (mode) {
-                        case Mode::Stack: {return Impl<T>::element(out, self.load<T&&>(), i);}
-                        case Mode::Heap:  {return Impl<T>::element(out, self.load<T&&>(), i);}
-                        case Mode::Write: {return Impl<T>::element(out, self.load<T&>(), i);}
-                        case Mode::Read:  {return Impl<T>::element(out, self.load<T const&>(), i);}
+                        case Mode::Stack:  {return Impl<T>::element(out, self.load<T&&>(), i);}
+                        case Mode::Heap:   {return Impl<T>::element(out, self.load<T&&>(), i);}
+                        case Mode::Write:  {return Impl<T>::element(out, self.load<T&>(), i);}
+                        case Mode::Read:   {return Impl<T>::element(out, self.load<T const&>(), i);}
+                        case Mode::Static: {return Impl<T>::element(out, i);}
                     }
                 });
             } else return None;
@@ -260,7 +261,7 @@ struct Element {
 SFB_DETECT_TRAIT(has_attribute, decltype(Impl<T>::attribute(std::declval<Target&>(), std::declval<T const&>(), std::string_view())));
 
 struct Attribute {
-    enum stat : Stat {None, Write, Read, Stack, Heap, Exception, OutOfMemory};
+    enum stat : Stat {None, Write, Read, Stack, Heap, Static, Exception, OutOfMemory};
 
     template <class T>
     struct Default {
@@ -269,16 +270,18 @@ struct Attribute {
                 std::string_view const s(name.data, name.size);
                 return out.make_noexcept([&] {
                     switch (mode) {
-                        case Mode::Stack: {if (!Impl<T>::attribute(out, self.load<T&&>(), s)) return None; break;}
-                        case Mode::Heap:  {if (!Impl<T>::attribute(out, self.load<T&&>(), s)) return None; break;}
-                        case Mode::Write: {if (!Impl<T>::attribute(out, self.load<T&>(), s)) return None; break;}
-                        case Mode::Read:  {if (!Impl<T>::attribute(out, self.load<T const&>(), s)) return None; break;}
+                        case Mode::Stack:  {if (!Impl<T>::attribute(out, self.load<T&&>(), s)) return None; break;}
+                        case Mode::Heap:   {if (!Impl<T>::attribute(out, self.load<T&&>(), s)) return None; break;}
+                        case Mode::Write:  {if (!Impl<T>::attribute(out, self.load<T&>(), s)) return None; break;}
+                        case Mode::Read:   {if (!Impl<T>::attribute(out, self.load<T const&>(), s)) return None; break;}
+                        case Mode::Static: {if (!Impl<T>::attribute(out, s)) return None; break;}
                     }
                     switch (out.returned_mode()) {
                         case Mode::Write: return Write;
                         case Mode::Read: return Read;
                         case Mode::Stack: return Stack;
                         case Mode::Heap: return Heap;
+                        case Mode::Static: return Static;
                         default: return None;
                     }
                 });
@@ -410,10 +413,11 @@ struct Dump {
             if constexpr(has_dump_v<T>) {
                 return out.make_noexcept([&] {
                     switch (qualifier) {
-                        case Mode::Stack: {if (!Impl<T>::dump(out, source.load<T&&>())) return None; break;}
-                        case Mode::Heap:  {if (!Impl<T>::dump(out, source.load<T&&>())) return None; break;}
-                        case Mode::Write: {if (!Impl<T>::dump(out, source.load<T&>())) return None; break;}
-                        case Mode::Read:  {if (!Impl<T>::dump(out, source.load<T const&>())) return None; break;}
+                        case Mode::Stack:  {if (!Impl<T>::dump(out, source.load<T&&>())) return None; break;}
+                        case Mode::Heap:   {if (!Impl<T>::dump(out, source.load<T&&>())) return None; break;}
+                        case Mode::Write:  {if (!Impl<T>::dump(out, source.load<T&>())) return None; break;}
+                        case Mode::Read:   {if (!Impl<T>::dump(out, source.load<T const&>())) return None; break;}
+                        case Mode::Static: {return None; break;}
                     }
                     switch (out.returned_mode()) {
                         case Mode::Write: return Write;

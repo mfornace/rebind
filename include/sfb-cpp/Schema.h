@@ -73,6 +73,8 @@ struct is_copy_constructible<Schema> : std::false_type {};
 
 template <>
 struct Impl<Schema> : Default<Schema> {
+    static bool attribute(Target &t, std::string_view key) {return false;}
+    
     static bool attribute(Target &t, Schema const &s, std::string_view key) {
         if (auto it = s.find(key); it != s.contents().end()) {
             t.c.output = it->second.address().base;
