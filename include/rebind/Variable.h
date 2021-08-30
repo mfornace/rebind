@@ -133,7 +133,12 @@ public:
     }
 
     ~Variable() {
-        if (auto p = handle()) act(ActionType::destroy, p, nullptr);
+        if (auto p = handle()) {
+            DUMP("Variable::~Variable() deallocate ", qualifier(), " from variable ", idx);
+            act(ActionType::destroy, p, nullptr);
+        } else {
+            DUMP("Variable::~Variable() no delete ", qualifier(), " from variable ", idx);
+        }
     }
 
     /**************************************************************************/
@@ -311,6 +316,7 @@ struct Action {
 
     static void apply(ActionType a, void *p, VariableData *v) {
         if (a == ActionType::destroy) { // Delete the object (known to be non-reference)
+            DUMP("delete ", typeid(T).name());
             if constexpr(UseStack<T>::value) static_cast<T *>(p)->~T();
             else delete static_cast<T *>(p);
 
