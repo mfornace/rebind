@@ -135,7 +135,11 @@ bool compare(decltype(Py_EQ) op, T const &t, U const &u) {
 
 template <class T>
 PyTypeObject type_definition(char const *name, char const *doc) {
+#   pragma clang diagnostic push
+#   pragma clang diagnostic ignored "-Wmissing-field-initializers"
     PyTypeObject o{PyVarObject_HEAD_INIT(NULL, 0)};
+#   pragma clang diagnostic pop
+
     o.tp_name = name;
     o.tp_basicsize = sizeof(Holder<T>);
     o.tp_dealloc = tp_delete<T>;
