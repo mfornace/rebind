@@ -11,7 +11,7 @@ target_include_directories(headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include
 ################################################################################
 
 # Maybe change in future to user provided interface library?
-add_library(sfb SHARED ${CMAKE_CURRENT_SOURCE_DIR}/source/Source.cc)
+add_library(sfb STATIC ${CMAKE_CURRENT_SOURCE_DIR}/source/Source.cc)
 add_library(sfb::sfb ALIAS sfb)
 target_link_libraries(sfb PUBLIC headers)
 
