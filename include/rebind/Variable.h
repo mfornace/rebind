@@ -137,7 +137,7 @@ public:
             DUMP("Variable::~Variable() deallocate ", qualifier(), " from variable ", idx);
             act(ActionType::destroy, p, nullptr);
         } else {
-            DUMP("Variable::~Variable() no delete ", qualifier(), " from variable ", idx);
+            DUMP("Variable::~Variable() not deleting ", qualifier(), " from variable ", idx);
         }
     }
 

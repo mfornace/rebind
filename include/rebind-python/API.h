@@ -19,12 +19,16 @@ extern std::unordered_map<std::type_index, Object> python_types;
 
 /******************************************************************************/
 
+std::string_view from_unicode(PyObject *o);
+
 template <class ...Ts>
 std::nullptr_t type_error(char const *s, Ts ...ts) {PyErr_Format(TypeError, s, ts...); return nullptr;}
 
 struct Var : Variable {
     using Variable::Variable;
     Object ward = {};
+
+    ~Var() {DUMP("~Var() ", ward, ", refcount = ", reference_count(ward));}
 };
 
 template <>
@@ -57,7 +61,6 @@ struct ArrayBuffer {
 Variable variable_reference_from_object(Object o);
 void args_from_python(Sequence &s, Object const &pypack);
 bool object_response(Variable &v, TypeIndex t, Object o);
-std::string_view from_unicode(PyObject *o);
 
 template <Qualifier Q>
 struct Response<Object, Q> {
@@ -85,7 +88,7 @@ struct Response<Object, Value> {
             o = Object::from(PyObject_CallFunctionObjArgs(+p->second, +o, nullptr));
             type = Object(reinterpret_cast<PyObject *>((+o)->ob_type), true);
         }
-        DUMP("ref2", reference_count(o));
+        DUMP("reference count 2 = ", reference_count(o));
         bool ok = object_response(v, t, std::move(o));
         DUMP("got response from object, ok = ", ok);
         if (!ok) { // put diagnostic for the source type
