@@ -5,7 +5,11 @@
 #include <string_view>
 #include <memory>
 
+#ifdef NDEBUG
+#define DUMP(...) if (false) {}
+#else
 #define DUMP(...) if (::rebind::Debug) {::rebind::dump(__FILE__, __LINE__, __VA_ARGS__);}
+#endif
 
 namespace rebind {
 
