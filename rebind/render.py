@@ -216,6 +216,8 @@ def render_function(fun, old):
 
     if isinstance(old, property):
         return property(render_function(fun, old.fget))
+    if isinstance(old, (classmethod, staticmethod)):
+        return old
 
     sig = inspect.signature(old)
 
