@@ -15,7 +15,7 @@ Object python_cast(Variable &&v, Object const &t, Object const &root);
 
 // Unambiguous conversions from some basic C++ types to Objects
 
-inline Object as_object(Object o) {return std::move(o);}
+inline Object as_object(Object o) {return o;}
 
 inline Object as_object(bool b) {return {b ? Py_True : Py_False, true};}
 

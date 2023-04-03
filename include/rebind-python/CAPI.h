@@ -87,7 +87,7 @@ public:
     Py_buffer view;
 
     Buffer(Buffer const &) = delete;
-    Buffer(Buffer &&b) noexcept : view(b.view), valid(std::exchange(b.valid, false)) {}
+    Buffer(Buffer &&b) noexcept : valid(std::exchange(b.valid, false)), view(b.view) {}
 
     Buffer & operator=(Buffer const &) = delete;
     Buffer & operator=(Buffer &&b) noexcept {view = b.view; valid = std::exchange(b.valid, false); return *this;}
