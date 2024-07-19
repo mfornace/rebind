@@ -2,6 +2,7 @@
 #include "Variable.h"
 #include "Conversions.h"
 #include <cstdlib>
+#include <cstdint>
 
 namespace rebind {
 

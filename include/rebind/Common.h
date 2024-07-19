@@ -1,5 +1,6 @@
 #pragma once
 #include "Signature.h"
+#include <cstdint>
 #include <vector>
 #include <iostream>
 #include <string_view>
