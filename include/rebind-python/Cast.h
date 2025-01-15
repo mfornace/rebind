@@ -27,7 +27,7 @@ inline Object as_object(std::string const &s) {return {PyUnicode_FromStringAndSi
 
 inline Object as_object(std::string_view s) {return {PyUnicode_FromStringAndSize(s.data(), s.size()), false};}
 
-inline Object as_object(BinaryView s) {return {PyByteArray_FromStringAndSize(reinterpret_cast<char const *>(s.data()), s.size()), false};}
+inline Object as_object(BinaryData s) {return {PyByteArray_FromStringAndSize(reinterpret_cast<char const *>(s.data()), s.size()), false};}
 
 inline Object as_object(Binary const &s) {return {PyByteArray_FromStringAndSize(reinterpret_cast<char const *>(s.data()), s.size()), false};}
 
@@ -60,7 +60,7 @@ inline Object as_deduced_object(Variable &&ref) {
     if (auto v = ref.request<Function>())         return as_object(std::move(*v));
     if (auto v = ref.request<TypeIndex>())  return as_object(std::move(*v));
     if (auto v = ref.request<Binary>())           return as_object(std::move(*v));
-    if (auto v = ref.request<BinaryView>())       return as_object(std::move(*v));
+    if (auto v = ref.request<BinaryData>())       return as_object(std::move(*v));
     if (auto v = ref.request<Sequence>())
         return map_as_tuple(std::move(*v), [](auto &&x) {return as_deduced_object(std::move(x));});
     return {};
