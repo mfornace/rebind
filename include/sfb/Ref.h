@@ -19,6 +19,8 @@ union Ref {
           std::is_const_v<std::remove_reference_t<T>> ? Mode::Read : Mode::Write,
           Pointer::from(const_cast<void*>(static_cast<void const*>(std::addressof(t))))) {}
 
+    explicit Ref(Index t) noexcept : c{+Tagged<Mode>(t, Mode::Static)} {}
+
     Ref(Tagged<Mode> i, Pointer p) noexcept : c{i.base, p.base} {}
     Ref(Index i, Mode t, Pointer p) noexcept : Ref{{i, t}, p} {}
 
