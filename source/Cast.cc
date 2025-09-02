@@ -98,6 +98,7 @@ Object dict_cast(Variable &&ref, Object const &o, Object const &root) {
 
 // Convert Variable to a class which is a subclass of rebind.Variable
 Object variable_cast(Variable &&v, Object const &t) {
+    DUMP("variable_cast ", v.type(), " ", v.qualifier(), " to pointer ", t);
     PyObject *x;
     if (t) x = +t;
     else if (!v.has_value()) return {Py_None, true};
@@ -216,7 +217,7 @@ Object union_cast(Variable &&v, Object const &t, Object const &root) {
 // None, object, bool, int, float, str, bytes, TypeIndex, list, tuple, dict, Variable, Function, memoryview
 // Then, the output_conversions map is queried for Python function callable with the Variable
 Object try_python_cast(Variable &&v, Object const &t, Object const &root) {
-    DUMP("try_python_cast ", v.type());
+    DUMP("try_python_cast ", v.type(), " of qualifier ", v.qualifier());
     if (auto it = type_translations.find(t); it != type_translations.end()) {
         DUMP("type_translation found");
         return try_python_cast(std::move(v), it->second, root);

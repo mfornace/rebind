@@ -68,8 +68,8 @@ public:
     template <class T, class ...Ts, std::enable_if_t<(std::is_same_v<std::decay_t<T>, T>), int> = 0>
     Variable(Type<T> t, Ts &&...ts) : VariableData(t, Action<T>::apply, UseStack<T>::value) {
         static_assert(!std::is_same_v<unqualified<T>, Variable>);
-        if constexpr(UseStack<T>::value) ::new (&buff) T{static_cast<Ts &&>(ts)...};
-        else reinterpret_cast<T *&>(buff) = ::new T{static_cast<Ts &&>(ts)...};
+        if constexpr(UseStack<T>::value) ::new (&buff) T(static_cast<Ts &&>(ts)...);
+        else reinterpret_cast<T *&>(buff) = ::new T(static_cast<Ts &&>(ts)...);
     }
 
     template <class T, std::enable_if_t<!(std::is_same_v<std::decay_t<T>, T>), int> = 0>
@@ -84,8 +84,8 @@ public:
     T * emplace(Type<T> t, Ts &&...ts) {
         if (auto p = handle()) act(ActionType::destroy, p, nullptr);
         static_cast<VariableData &>(*this) = {t, Action<T>::apply, UseStack<T>::value};
-        if constexpr(UseStack<T>::value) return ::new (&buff) T{static_cast<Ts &&>(ts)...};
-        else return reinterpret_cast<T *&>(buff) = ::new T{static_cast<Ts &&>(ts)...};
+        if constexpr(UseStack<T>::value) return ::new (&buff) T(static_cast<Ts &&>(ts)...);
+        else return reinterpret_cast<T *&>(buff) = ::new T(static_cast<Ts &&>(ts)...);
     }
 
     template <class T, std::enable_if_t<!std::is_base_of_v<VariableData, unqualified<T>>, int> = 0>
@@ -176,10 +176,20 @@ public:
     template <class T, std::enable_if_t<std::is_reference_v<T>, int> = 0>
     std::remove_reference_t<T> *request(Dispatch &msg, Type<T> t={}) const {
         DUMP("Variable.request() ", typeid(Type<T>).name(), qualifier(), " from variable ", idx);
+        DUMP("Variable.request(): trivial = ", idx.matches<T>());
         if (idx.matches<T>()) return target<T>();
         auto v = request_variable(msg, type_index<T>());
-        if (auto p = v.template target<T>()) {msg.source.clear(); return p;}
-        if (auto p = Request<T>()(*this, msg)) {msg.source.clear(); return p;}
+        if (auto p = v.template target<T>()) {
+            DUMP("Variable.request():succeeded");
+            msg.source.clear(); 
+            return p;
+        }
+        if (auto p = Request<T>()(*this, msg)) {
+            DUMP("Variable.request(): succeeded via custom Request");
+            msg.source.clear(); 
+            return p;
+        }
+        DUMP("Variable.request(): failed");
         return nullptr;
     }
 
@@ -323,23 +333,24 @@ struct Action {
         } else if (a == ActionType::copy) { // Copy-Construct the object
             DUMP(v->stack, UseStack<T>::value);
             if constexpr(std::is_copy_constructible_v<T>) {
-                if constexpr(UseStack<T>::value) ::new(static_cast<void *>(&v->buff)) T{*static_cast<T const *>(p)};
-                else reinterpret_cast<void *&>(v->buff) = ::new T{*static_cast<T const *>(p)};
+                if constexpr(UseStack<T>::value) ::new(static_cast<void *>(&v->buff)) T(*static_cast<T const *>(p));
+                else reinterpret_cast<void *&>(v->buff) = ::new T(*static_cast<T const *>(p));
             } else throw std::invalid_argument("not copyable");
 
         } else if (a == ActionType::move) { // Move-Construct the object (known to be on stack)
             DUMP(v->stack, UseStack<T>::value);
             if constexpr(UseStack<T>::value) // this is always known, but eliminates compile warnings
-                ::new(static_cast<void *>(&v->buff)) T{std::move(*static_cast<T *>(p))};
+                ::new(static_cast<void *>(&v->buff)) T(std::move(*static_cast<T *>(p)));
 
         } else if (a == ActionType::response) { // Respond to a given type_index
+            DUMP("response", v->idx.name(), typeid(T).name(), v->idx.qualifier());
             response(reinterpret_cast<Variable &>(*v), p, std::move(reinterpret_cast<RequestData &>(v->buff)));
 
         } else if (a == ActionType::assign) { // Assign from another variable
-            // DUMP("assign", v->idx.name(), typeid(T).name(), v->qual);
+            DUMP("assign", v->idx.name(), typeid(T).name(), v->idx.qualifier());
             if constexpr(!std::is_abstract_v<T> &&  std::is_move_assignable_v<T>) {
                 if (auto r = reinterpret_cast<Variable &&>(*v).request<T>()) {
-                    // DUMP("got the assignable", v->idx.name(), typeid(T).name(), v->qual, typeid(T).name());
+                    DUMP("got the assignable", v->idx.name(), typeid(T).name(), v->idx.qualifier(), typeid(T).name());
                     *static_cast<T *>(p) = std::move(*r);
                     reinterpret_cast<Variable &>(*v).reset(); // signifies that assignment took place
                 }

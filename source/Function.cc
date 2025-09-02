@@ -5,7 +5,7 @@ namespace rebind {
 Object call_overload(ErasedFunction const &fun, Sequence args, bool gil) {
     // if (auto py = fun.target<PythonFunction>())
     //     return {PyObject_CallObject(+py->function, +args), false};
-    DUMP("constructed python args ", args.size());
+    DUMP("constructed python args, number = ", args.size());
     for (auto const &p : args) DUMP(p.type());
     Variable out;
     {
