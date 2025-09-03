@@ -150,7 +150,10 @@ def render_type(translate, pkg: str, bases: tuple, name: str, methods):
         else:
             old = common.unwrap(props.get(k, common.default_methods.get(k)))
             log.info("deriving method '%s.%s.%s' from %s", mod.__name__, name, k, repr(old))
-            translate[old] = props[k] = render_function(v, old)
+            try:
+                translate[old] = props[k] = render_function(v, old)
+            except Exception as e:
+                raise RuntimeError('Property wrapping failed', mod, name, k) from e
 
     props.setdefault('copy', copy)
 
