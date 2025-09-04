@@ -128,7 +128,7 @@ Object args_as_tuple(Ts &&...ts) {
     return (go(ts) && ...) ? out : Object();
 }
 
-Object variable_cast(Variable &&v, Object const &t={});
+Object variable_cast(Variable &&v, Object root={}, Object const &t={});
 
 inline Object args_to_python(Sequence &&s, Object const &sig={}) {
     if (sig && !PyTuple_Check(+sig))

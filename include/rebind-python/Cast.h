@@ -9,7 +9,7 @@ namespace rebind {
 
 /******************************************************************************/
 
-Object python_cast(Variable &&v, Object const &t, Object const &root);
+Object python_cast(Variable &&v, Object const &t, Object root);
 
 /******************************************************************************/
 
