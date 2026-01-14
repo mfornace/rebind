@@ -87,8 +87,8 @@ struct ArrayLayout {
 Binary data convenience wrapper for an array of POD data
  */
 class ArrayData {
-    void *ptr;
-    std::type_info const *t;
+    void *ptr = nullptr;
+    std::type_info const *t = nullptr;
     bool mut;
 
 public:
@@ -96,6 +96,8 @@ public:
     bool mutate() const {return mut;}
     std::type_info const &type() const {return t ? *t : typeid(void);}
 
+    ArrayData() = default;
+    
     ArrayData(void *p, std::type_info const *t, bool mut) : ptr(p), t(t), mut(mut) {}
 
     template <class T>
@@ -120,6 +122,9 @@ public:
 struct ArrayView {
     ArrayData data;
     ArrayLayout layout;
+
+    ArrayView() = default;
+    ArrayView(ArrayData d, ArrayLayout l) noexcept : data(std::move(d)), layout(std::move(l)) {}
 };
 
 /******************************************************************************/
